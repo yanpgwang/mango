@@ -10,6 +10,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Guides',
       items: [
+        'guides/terminal-ui',
         'guides/multi-agent',
         'sandboxes',
       ],
