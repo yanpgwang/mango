@@ -7,52 +7,48 @@
 </p>
 
 <p align="center">
-  <strong>The self-hosted, durable runtime for long-running AI agents.</strong>
+  <strong>The open-source, self-hosted alternative to Claude Managed Agents.</strong>
+</p>
+
+<p align="center">
+  Run stateful, long-running AI agents on infrastructure you control.
 </p>
 
 <p align="center">
   <a href="https://yanpgwang.github.io/mango/">Documentation</a> ·
-  <a href="https://yanpgwang.github.io/mango/getting-started">Getting started</a> ·
-  <a href="https://yanpgwang.github.io/mango/product">Product direction</a> ·
+  <a href="https://yanpgwang.github.io/mango/getting-started">Quick start</a> ·
+  <a href="https://yanpgwang.github.io/mango/api">API reference</a> ·
   <a href="https://yanpgwang.github.io/mango/capabilities">Capabilities</a> ·
   <a href="https://yanpgwang.github.io/mango/architecture">Architecture</a>
 </p>
 
 <p align="center">
+  <img alt="Status: Alpha" src="https://img.shields.io/badge/status-alpha-orange">
   <a href="https://github.com/yanpgwang/mango/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/yanpgwang/mango/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/yanpgwang/mango/actions/workflows/pages.yml"><img alt="Documentation" src="https://github.com/yanpgwang/mango/actions/workflows/pages.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/github/license/yanpgwang/mango"></a>
 </p>
 
-Mango is a self-hosted control plane and execution runtime for durable AI agent
-work: persistent Sessions, event streaming, tool orchestration, File and custom
-Skill resources, Memory Stores, encrypted credentials, scheduled Deployments,
-self-hosted worker leases, and pluggable sandbox execution. Its
-production-oriented architecture is built in Go on PostgreSQL and Temporal.
-
-Mango owns its public API and roadmap. Its original resource model was informed
-by public agent-platform contracts, but users are not required to use an
-Anthropic SDK and Mango does not pursue drop-in interoperability with a hosted
-service. Mango may deliberately reuse or adapt sound public routes, resource
-shapes, events, and SDK-exposed types; once adopted, they are Mango-owned and
-may evolve independently.
+Mango provides the control plane and execution runtime for autonomous agent
+work. Define reusable Agents, run persistent Sessions, stream and steer them
+through an event API, and equip them with sandboxed tools, Files, Git
+repositories, Skills, Memory, credentials, schedules, and multi-agent
+delegation.
 
 ## Why Mango
 
-- **Own the runtime.** Keep state, orchestration, credentials, and execution on
-  infrastructure you control, using Mango's documented HTTP API.
+- **Own the whole runtime.** Keep the API, state, orchestration, credentials,
+  model traffic, and execution within infrastructure and providers you choose.
 - **Keep accepted work durable.** Sessions, events, interrupts, tool calls, and
   client-action waits survive API and worker restarts.
-- **Bring your own execution environment.** Choose local, Docker, E2B,
-  CubeSandbox, OpenSandbox, or Daytona sandbox adapters.
-- **Run the whole stack locally.** Start without external model credentials;
-  the Compose stack supplies a development-only Mango API key.
-- **Inspect every turn.** Query the persisted event history, stream live
-  previews over SSE, and inspect active workflows in Temporal UI.
+- **Bring your infrastructure.** Choose the model endpoint, object store,
+  workers, and sandbox backend without handing the runtime to a hosted agent
+  service.
 
 ## Quick start
 
-You need Docker with Compose and `make`.
+You need Docker with Compose and `make`. No external model credential is
+required for the local walkthrough.
 
 ```bash
 git clone https://github.com/yanpgwang/mango.git
@@ -61,56 +57,43 @@ make local-up
 make local-health
 ```
 
-Verify that Mango is ready:
-
-```bash
-curl -i http://localhost:8080/readyz
-```
-
-The local stack uses a deterministic offline model, so no model API key is
-required. Protected Mango routes use the development key
-`sk-mango-local-development`; health and readiness remain public.
 Follow the [five-minute walkthrough](https://yanpgwang.github.io/mango/getting-started)
 to create an Environment, Agent, and Session, then send and stream your first
-message.
+message. The local stack uses a deterministic offline model and supplies a
+development-only Mango API key.
 
 ```bash
 make local-down
 ```
 
-## Capabilities and stability
+## What you get
+
+| Area | Included |
+| --- | --- |
+| Agents and Sessions | Versioned Agent definitions, persistent Sessions, budgets, interrupts, and an event-based HTTP/SSE API |
+| Tools and resources | Sandboxed file and shell tools, remote MCP, Files, Git repositories, custom Skills, Memory Stores, and encrypted credentials |
+| Durable execution | Persisted event history, journaled tool calls, retries, park/resume, and restart recovery |
+| Automation and delegation | Scheduled Deployments, Run history, persistent child Agents, and Advisor consultations |
+| Execution environments | Local and Docker backends, self-hosted worker leases, and Preview remote-sandbox adapters |
+| Operator stack | PostgreSQL-authoritative state, Temporal workflows, S3-compatible objects, and NATS live previews |
 
 > [!IMPORTANT]
-> Mango is in alpha, has no customers, and has no supported stable API.
-> `/v1` is its single development API namespace, not a claim that Mango 1.0
-> exists. Routes, fields, schemas, and behavior may all change
-> directly on `/v1`; earlier development snapshots are not preserved through
-> `/v2` or compatibility layers. The project does not yet claim production
-> readiness. Review
+> Mango is alpha: its API is unstable and the project does not yet claim
+> production readiness. Support varies by workflow and backend; review
 > [capabilities and limits](https://yanpgwang.github.io/mango/capabilities)
-> before relying on a workflow. The default local sandbox is for development
-> and is not a security boundary.
+> before relying on a workflow. The default local sandbox is not a security
+> boundary.
 
-| Area | Current support |
-| --- | --- |
-| Core resources | Agent, Environment, and Session lifecycle, versioning, filtering, and pagination |
-| Events and runtime | Messages, interrupts, custom-tool results, confirmations, outcomes, retries, SSE, and durable park/resume |
-| Tools | Sandbox built-ins, provider-native Web Search/Fetch, and remote MCP tools with optional Vault-backed bearer authentication |
-| Files | Object-backed File lifecycle, reusable outcome rubrics, File-backed Session Resources, and idle-boundary publication of Docker and remote-sandbox `/mnt/session/outputs` deliverables |
-| Skills | Custom Skill lifecycle, immutable Version pins, and on-demand instruction loading in Docker, E2B, CubeSandbox, OpenSandbox, and Daytona Sessions |
-| Memory | Store, Memory, and immutable Version lifecycle; durable read/write or read-only Docker mounts at `/mnt/memory` |
-| Vaults | Encrypted Vault and Credential lifecycle plus ordered Session attachment, live OAuth validation, and automatic token refresh; environment-variable egress remains in progress |
-| Deployments | Deployment and Run lifecycle, pinned Agent versions, manual runs, and PostgreSQL-leased cron scheduling |
-| Environment Work | Worker leases, transactional self-hosted Session activation, heartbeats, and reclaim |
-| Session Threads | Persistent coordinator delegation plus Mango-managed Advisor consultations over ordinary client tool calls, with independent context, usage, lifecycle events, reports, isolated event/preview streams, routed client-action waits, and durable interrupts |
-| Sandboxes | Local and Docker available; E2B, CubeSandbox, OpenSandbox, and Daytona in Preview |
+## Relationship to Claude Managed Agents
 
-The [capability summary](https://yanpgwang.github.io/mango/capabilities)
-states the user-visible boundary. Persistent child-Agent orchestration,
-provider-neutral Advisor consultations, and shared Session budgets are
-implemented. Active product work may live directly in focused pull requests;
-[GitHub Issues](https://github.com/yanpgwang/mango/issues) are used when
-discussion, sequencing, or longer-term tracking is useful.
+Mango began with resource and workflow ideas documented by
+[Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview).
+It addresses the same class of stateful, long-running agent work as an
+independent open-source runtime designed for a self-hosted trust boundary.
+Mango is not an Anthropic product, does not proxy runtime behavior to a hosted
+agent service, and does not promise drop-in SDK or API compatibility. Mango
+owns its public API and roadmap; see [Product direction](https://yanpgwang.github.io/mango/product)
+for the design policy.
 
 ## Architecture
 
