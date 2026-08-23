@@ -79,11 +79,16 @@ because it uses a credentialed network call and may incur cost:
 ```bash
 make test-model-live
 make test-platform-live
+scripts/with-dev-env make test-coding-agent-live
 ```
 
 The live targets require the `MANGO_MODEL_*` variables documented in
 the getting-started guide. They are intentionally not run in public CI and must
 never print or persist API keys.
+
+The deterministic form of the coding-agent scenario runs in the ordinary
+service suite and can also be selected directly with `make test-coding-agent`.
+Keep its guide, fixture, and deterministic/live outcome assertions aligned.
 
 ## Public API changes
 

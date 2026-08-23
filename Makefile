@@ -29,6 +29,7 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help build lint test test-race test-service test-model-live test-platform-live \
+	test-coding-agent test-coding-agent-live \
 	vet verify security docs-check image image-smoke dev-env-init \
 	local-config local-up local-down local-health local-ps local-logs
 
@@ -41,6 +42,8 @@ help:
 	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, MinIO, and Docker"
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"
 	@echo "  make test-platform-live  run durable text and Docker tool turns against that live model"
+	@echo "  make test-coding-agent   run the offline iterate coding scenario in Docker"
+	@echo "  make test-coding-agent-live  run the iterate scenario against the live model"
 	@echo "  make vet            run go vet"
 	@echo "  make verify         run the core Go checks"
 	@echo "  make security       scan reachable Go code and high-severity npm issues"
@@ -91,6 +94,19 @@ test-platform-live:
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
 	$(GO) test ./internal/temporal -run '^TestVerticalSlice_LiveModel(EndToEnd|ToolStepEndToEnd)$$' -count=1
+
+test-coding-agent:
+	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
+	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
+	$(GO) test ./internal/temporal \
+		-run '^TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd$$' -count=1
+
+test-coding-agent-live:
+	MANGO_TEST_LIVE_MODEL=1 \
+	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
+	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
+	$(GO) test ./internal/temporal \
+		-run '^TestVerticalSlice_LiveModelIterateFixFailingTestsEndToEnd$$' -count=1
 
 vet:
 	$(GO) vet ./...

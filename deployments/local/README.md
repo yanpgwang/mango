@@ -88,8 +88,10 @@ make test-service
 This is the same suite run by CI. It covers real PostgreSQL migrations and
 transactions, Temporal workflows and Activities, NATS reconciliation and
 previews, the Files lifecycle through real MinIO, the HTTP-to-service vertical
-slice, and a Docker sandbox tool step. Each database test uses an isolated
-schema; workflow, object, and sandbox cleanup is part of the assertions.
+slice, a Docker sandbox tool step, and an offline coding-agent scenario that
+observes failing assertions, fixes a mounted fixture, and publishes the verified
+source through Session Outputs. Each database test uses an isolated schema;
+workflow, object, and sandbox cleanup is part of the assertions.
 
 ## Health checks
 

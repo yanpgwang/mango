@@ -62,6 +62,16 @@ to create an Environment, Agent, and Session, then send and stream your first
 message. The local stack uses a deterministic offline model and supplies a
 development-only Mango API key.
 
+To use a real Messages-compatible model instead, create the repository-external
+development configuration, set `MANGO_SANDBOX=docker` and the documented
+`MANGO_MODEL_*` values, then start the same stack:
+
+```bash
+make dev-env-init
+$EDITOR ~/.config/mango/dev.env
+make local-up
+```
+
 ```bash
 make local-down
 ```

@@ -10,6 +10,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Guides',
       items: [
+        'guides/coding-agent-iterate',
         'guides/multi-agent',
         'sandboxes',
       ],

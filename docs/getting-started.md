@@ -185,12 +185,24 @@ make test-model-live
 # With the local PostgreSQL and Temporal services running, checks one complete
 # durable platform turn against the same model endpoint.
 make test-platform-live
+
+# Runs the longer File Resource -> coding loop -> Session Output scenario.
+# The wrapper loads ~/.config/mango/dev.env without copying secrets into the
+# repository or evaluating their contents as shell syntax.
+scripts/with-dev-env make test-coding-agent-live
 ```
 
-These tests run only when invoked through the live targets, do not enable tools,
-and never print the API key. They are excluded from public CI because external
-credentials, availability, latency, and cost are not deterministic. Use a newly
-issued key if a credential has ever appeared in chat, logs, or shell history.
+The [coding-agent iterate guide](guides/coding-agent-iterate.md) explains the
+corresponding user workflow and the Mango resources involved. It is a design
+walkthrough rather than a second test runner.
+
+These tests run only when invoked through the live targets and never print the
+API key. The model-only smoke test does not enable tools; the platform tests use
+an isolated Docker sandbox, and the coding scenario excludes Web Search/Fetch
+from its least-privilege toolset. Live tests are excluded from public CI because
+external credentials, availability, latency, and cost are not deterministic.
+Use a newly issued key if a credential has ever appeared in chat, logs, or shell
+history.
 
 If you understand the risk and deliberately want a real model against the local
 sandbox during development, set `MANGO_ALLOW_UNSAFE_LOCAL_SANDBOX=1` to
