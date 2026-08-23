@@ -443,7 +443,7 @@ func (m iterateProbeModel) CreateMessageStream(
 }
 
 func iterateVerificationCommand(modulePath string) string {
-	return fmt.Sprintf(`python3 - <<'PY'
+	return fmt.Sprintf(`python3 -B - <<'PY'
 import importlib.util
 
 spec = importlib.util.spec_from_file_location("calc", %q)
