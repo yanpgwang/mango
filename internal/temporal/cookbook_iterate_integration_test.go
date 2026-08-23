@@ -52,11 +52,12 @@ func TestVerticalSlice_LiveModelIterateFixFailingTestsEndToEnd(t *testing.T) {
 	modelClient, modelID := liveModelForTest(t, "iterate coding-agent scenario")
 	provider := iterateDockerProvider(t, dockerRequired)
 	runIterateFixFailingTests(t, iterateScenarioCase{
-		provider:    provider,
-		modelClient: modelClient,
-		modelID:     modelID,
-		timeout:     5 * time.Minute,
-		tools:       iterateCodingToolset(t),
+		provider:        provider,
+		modelClient:     modelClient,
+		modelID:         modelID,
+		timeout:         5 * time.Minute,
+		requireRecovery: true,
+		tools:           iterateCodingToolset(t),
 	})
 }
 
