@@ -116,6 +116,29 @@ support, so they run the same offline and opt-in live conformance suites.
   dependency. It does not define Mango's HTTP contract, and no hosted agent
   credentials or services are required by development, CI, or production.
 
+## Coding-agent scenario fixtures
+
+- Anthropic's public
+  [`CMA_iterate_fix_failing_tests` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_iterate_fix_failing_tests.ipynb)
+  supplied the MIT-licensed `calc.py` and `test_calc.py` fixture and the useful
+  do-observe-fix workflow. A copy of the source license is retained beside the
+  fixture in `internal/temporal/testdata/cma_iterate`.
+- Mango adopted the user problem and acceptance outcome: expose immutable input
+  files, let a coding Agent iterate in a writable sandbox, independently verify
+  the fix, and publish the final source as a durable Session output.
+- Mango changed the execution to its own PostgreSQL, Temporal, Docker, File
+  Resource, tool-journal, event, and Session Output lifecycle. The service test
+  uses a retry-safe deterministic model; a separate opt-in test runs the same
+  outcome against the configured Messages endpoint.
+- The live scenario enables only local coding tools (`bash`, `read`, `write`,
+  `edit`, `glob`, and `grep`). It deliberately rejects Web Search/Fetch for this
+  offline task at the Agent configuration boundary instead of relying on prompt
+  instructions as a security control.
+- Mango did not adopt CMA API calls, hosted sandbox behavior, exact event names,
+  archive semantics, or field-level compatibility. The external notebook is a
+  scenario reference, while Mango's observable outcome and executable tests
+  define success.
+
 ## Custom Skills
 
 - The public [Claude Managed Agents Skills guide](https://platform.claude.com/docs/en/managed-agents/skills)
