@@ -122,7 +122,7 @@ support, so they run the same offline and opt-in live conformance suites.
   [`CMA_iterate_fix_failing_tests` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_iterate_fix_failing_tests.ipynb)
   supplied the MIT-licensed `calc.py` and `test_calc.py` fixture and the useful
   do-observe-fix workflow. A copy of the source license is retained beside the
-  fixture in `internal/temporal/testdata/cma_iterate`.
+  test fixture in `internal/temporal/testdata/coding_agent_iterate`.
 - Mango adopted the user problem and acceptance outcome: expose immutable input
   files, let a coding Agent iterate in a writable sandbox, independently verify
   the fix, and publish the final source as a durable Session output.
@@ -138,6 +138,11 @@ support, so they run the same offline and opt-in live conformance suites.
   archive semantics, or field-level compatibility. The external notebook is a
   scenario reference, while Mango's observable outcome and executable tests
   define success.
+- The [coding-agent iterate guide](guides/coding-agent-iterate.md) describes the
+  Mango workflow without introducing a second runner. The `internal/temporal`
+  scenario test keeps the durable outcome deterministic in public CI; the
+  explicit live tier checks the same outcome against a configured model
+  endpoint.
 
 ## Custom Skills
 

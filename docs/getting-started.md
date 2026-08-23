@@ -192,6 +192,10 @@ make test-platform-live
 scripts/with-dev-env make test-coding-agent-live
 ```
 
+The [coding-agent iterate guide](guides/coding-agent-iterate.md) explains the
+corresponding user workflow and the Mango resources involved. It is a design
+walkthrough rather than a second test runner.
+
 These tests run only when invoked through the live targets and never print the
 API key. The model-only smoke test does not enable tools; the platform tests use
 an isolated Docker sandbox, and the coding scenario excludes Web Search/Fetch

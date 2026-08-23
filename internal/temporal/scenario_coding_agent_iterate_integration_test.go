@@ -22,12 +22,12 @@ import (
 )
 
 const (
-	iterateFixtureDirectory = "testdata/cma_iterate"
+	iterateFixtureDirectory = "testdata/coding_agent_iterate"
 	iterateOutputPath       = "calc.py"
 )
 
-// TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd adapts Anthropic's
-// public Managed Agents iterate cookbook into a Mango-owned product scenario.
+// TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd exercises Mango's
+// coding-agent iterate workflow as a Mango-owned product scenario.
 // A retry-safe deterministic model drives the real PostgreSQL + Temporal +
 // Docker path through two observed failures, fixes the fixture, and publishes
 // the final source through Mango's Session output lifecycle. It never calls an

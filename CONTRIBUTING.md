@@ -88,6 +88,7 @@ never print or persist API keys.
 
 The deterministic form of the coding-agent scenario runs in the ordinary
 service suite and can also be selected directly with `make test-coding-agent`.
+Keep its guide, fixture, and deterministic/live outcome assertions aligned.
 
 ## Public API changes
 
