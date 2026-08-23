@@ -165,7 +165,7 @@ func (r *commandGitRepositories) ImportGitRepository(
 	if err := r.writeMarker(ctx, mount.RuntimePath, marker); err != nil {
 		return err
 	}
-	archivePath, stagingPath := gitRepositoryStagingPaths(mount.RuntimePath)
+	archivePath, stagingPath := gitRepositoryStagingPaths(mount.RuntimePath, mount.Identity)
 	if err := r.prepareArchiveUpload(ctx, archivePath); err != nil {
 		return err
 	}
@@ -277,7 +277,7 @@ func (r *commandGitRepositories) RemoveGitRepository(
 	if json.Unmarshal(result.Stdout, &marker) != nil || marker.Identity != identity {
 		return nil
 	}
-	archivePath, stagingPath := gitRepositoryStagingPaths(runtimePath)
+	archivePath, stagingPath := gitRepositoryStagingPaths(runtimePath, identity)
 	remove := "rm -rf " + shellQuote(path.Clean(runtimePath)) + " " + shellQuote(stagingPath) + "\n" +
 		"rm -f " + shellQuote(archivePath) + " " + shellQuote(markerPath) + "\n"
 	result, err = r.execute(ctx, Command{Path: "/bin/sh", Args: []string{"-c", remove}})
@@ -545,9 +545,15 @@ func gitRepositoryMarkerPath(runtimePath string) string {
 	return path.Join(gitRepositoryMarkerRoot, hex.EncodeToString(sum[:]))
 }
 
-func gitRepositoryStagingPaths(runtimePath string) (string, string) {
-	sum := sha256.Sum256([]byte(path.Clean(runtimePath)))
+// gitRepositoryStagingPaths keeps the uploaded archive under Mango's private
+// control root while placing the extracted tree beside its final target. The
+// final mv is therefore a same-filesystem rename even when /workspace is a
+// separate sandbox volume. Resource identity makes the hidden sibling unique
+// without exposing user-controlled path components in its name.
+func gitRepositoryStagingPaths(runtimePath string, identity string) (string, string) {
+	target := path.Clean(runtimePath)
+	sum := sha256.Sum256([]byte(identity + "\x00" + target))
 	name := hex.EncodeToString(sum[:16])
 	return path.Join(gitRepositoryStagingRoot, name+".tar"),
-		path.Join(gitRepositoryStagingRoot, name+".tree")
+		path.Join(path.Dir(target), ".mango-repository-"+name+".tree")
 }

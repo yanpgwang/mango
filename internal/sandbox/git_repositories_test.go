@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,7 +28,9 @@ func TestCommandGitRepositoriesRestoresWritableSnapshotIdempotently(t *testing.T
 		value = strings.ReplaceAll(value, domainWorkspaceRootForTest, workspace)
 		return value
 	}
+	loseRestoreAcknowledgement := true
 	execute := func(ctx context.Context, command Command) (*Result, error) {
+		restore := len(command.Args) == 2 && strings.Contains(command.Args[1], "tar -xf ")
 		args := append([]string(nil), command.Args...)
 		for index := range args {
 			args[index] = mapPath(args[index])
@@ -44,6 +47,10 @@ func TestCommandGitRepositoriesRestoresWritableSnapshotIdempotently(t *testing.T
 				return nil, err
 			}
 			exitCode = exitErr.ExitCode()
+		}
+		if restore && exitCode == 0 && loseRestoreAcknowledgement {
+			loseRestoreAcknowledgement = false
+			return nil, errors.New("simulated lost restore acknowledgement")
 		}
 		return &Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: exitCode}, nil
 	}
@@ -73,8 +80,13 @@ func TestCommandGitRepositoriesRestoresWritableSnapshotIdempotently(t *testing.T
 	repositories := newCommandGitRepositories("test", execute, upload)
 	if err := repositories.ImportGitRepository(
 		context.Background(), mount, bytes.NewReader(archive),
+	); err == nil {
+		t.Fatal("restore unexpectedly acknowledged its first publication")
+	}
+	if err := repositories.ImportGitRepository(
+		context.Background(), mount, bytes.NewReader(archive),
 	); err != nil {
-		t.Fatal(err)
+		t.Fatalf("adopt published repository after lost acknowledgement: %v", err)
 	}
 	present, err := repositories.HasGitRepository(context.Background(), mount)
 	if err != nil || !present {
@@ -175,7 +187,7 @@ func TestCommandGitRepositoriesCleansStagingAfterTargetCollision(t *testing.T) {
 	if err == nil || !IsPermanent(err) {
 		t.Fatalf("collision error = %v, want permanent", err)
 	}
-	archivePath, stagingPath := gitRepositoryStagingPaths(mount.RuntimePath)
+	archivePath, stagingPath := gitRepositoryStagingPaths(mount.RuntimePath, mount.Identity)
 	for _, candidate := range []string{archivePath, stagingPath} {
 		if _, err := os.Lstat(mapPath(candidate)); !os.IsNotExist(err) {
 			t.Fatalf("staging artifact %s remains after collision: %v", candidate, err)
@@ -184,6 +196,20 @@ func TestCommandGitRepositoriesCleansStagingAfterTargetCollision(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join(workspace, "repository"))
 	if err != nil || string(content) != "collision\n" {
 		t.Fatalf("collision target changed: %q, %v", content, err)
+	}
+}
+
+func TestGitRepositoryStagingTreeIsTargetSibling(t *testing.T) {
+	const target = "/workspace/projects/repository"
+	archivePath, stagingPath := gitRepositoryStagingPaths(target, "sesrsc_repository")
+	if path.Dir(stagingPath) != path.Dir(target) {
+		t.Fatalf("staging tree %q is not a target sibling", stagingPath)
+	}
+	if !strings.HasPrefix(archivePath, gitRepositoryStagingRoot+"/") {
+		t.Fatalf("archive path %q escaped the private staging root", archivePath)
+	}
+	if strings.HasPrefix(stagingPath, gitRepositoryStagingRoot+"/") {
+		t.Fatalf("staging tree %q remained under the private archive root", stagingPath)
 	}
 }
 
