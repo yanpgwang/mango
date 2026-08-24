@@ -190,6 +190,10 @@ make test-platform-live
 # The wrapper loads ~/.config/mango/dev.env without copying secrets into the
 # repository or evaluating their contents as shell syntax.
 scripts/with-dev-env make test-coding-agent-live
+
+# Runs the custom-tool expense gate with real model-generated decide/escalate
+# calls and application-supplied results.
+scripts/with-dev-env make test-hitl-gate-live
 ```
 
 The [coding-agent iterate guide](guides/coding-agent-iterate.md) explains the

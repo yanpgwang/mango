@@ -32,10 +32,11 @@ sandbox implementation:
       "input_schema": {
         "type": "object",
         "properties": {
-          "expense_id": {"type": "string"},
-          "decision": {"type": "string", "enum": ["approve", "reject"]}
+          "receipt_id": {"type": "string"},
+          "action": {"type": "string", "enum": ["approve", "reject"]},
+          "reason": {"type": "string"}
         },
-        "required": ["expense_id", "decision"]
+        "required": ["receipt_id", "action", "reason"]
       }
     },
     {
@@ -45,10 +46,10 @@ sandbox implementation:
       "input_schema": {
         "type": "object",
         "properties": {
-          "expense_id": {"type": "string"},
+          "receipt_id": {"type": "string"},
           "question": {"type": "string"}
         },
-        "required": ["expense_id", "question"]
+        "required": ["receipt_id", "question"]
       }
     }
   ]
@@ -77,16 +78,19 @@ Multiple results can be sent in one Events request:
     {
       "type": "user.custom_tool_result",
       "custom_tool_use_id": "sevt_decide",
-      "content": [{"type": "text", "text": "{\"recorded\":true}"}]
+      "content": [{"type": "text", "text": "{\"recorded\":true,\"receipt_id\":\"r01\",\"decision\":\"approve\"}"}]
     },
     {
       "type": "user.custom_tool_result",
       "custom_tool_use_id": "sevt_escalate",
-      "content": [{"type": "text", "text": "{\"human_decision\":\"approve\"}"}]
+      "content": [{"type": "text", "text": "{\"recorded\":true,\"receipt_id\":\"r02\",\"human_decision\":\"reject\"}"}]
     }
   ]
 }
 ```
+
+Replace `sevt_decide` and `sevt_escalate` with the actual
+`agent.custom_tool_use` event IDs returned by the Session.
 
 Partial results remain durable without reopening the Session. The final result
 claims the complete barrier, changes the Session to running, and wakes one
@@ -113,17 +117,30 @@ retry, signing, idempotency, and delivery observability.
 
 ## Executable verification
 
-The deterministic scenario creates seven parallel custom-tool actions over
-real PostgreSQL and Temporal, answers only three, rejects a duplicate without a
-partial commit, replaces the execution worker, and then resumes the complete
-barrier exactly once:
+The documented expense workflow is exercised with a configured real model,
+real PostgreSQL, real Temporal, and Mango's durable Session runtime. The model
+must emit one `decide` and one `escalate` call, the test client returns the
+application and human decisions in two admissions, and the same model must
+finish after receiving both correlated results:
+
+```bash
+scripts/with-dev-env make test-hitl-gate-live
+```
+
+The test client deterministically stands in for the expense system and human
+reviewer; no test can automate a literal person. The model interaction and
+Mango lifecycle are real, credentialed, and potentially billable.
+
+A separate offline test creates seven parallel actions, answers only three,
+rejects a duplicate without a partial commit, replaces the execution worker,
+and then resumes the complete barrier exactly once:
 
 ```bash
 make test-hitl-gate
 ```
 
-The test is offline and does not call a model provider or an external approval
-service.
+That deterministic test proves failure and concurrency invariants; it is not
+presented as the Cookbook user example.
 
 ## Design boundary
 

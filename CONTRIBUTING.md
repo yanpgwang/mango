@@ -91,8 +91,18 @@ service suite and can also be selected directly with `make test-coding-agent`.
 Keep its guide, fixture, and deterministic/live outcome assertions aligned.
 
 The durable custom-tool gate scenario can be selected with
-`make test-hitl-gate`. Keep its guide aligned with the complete-barrier,
-partial-result, duplicate-result, and worker-replacement assertions.
+`make test-hitl-gate`; its credentialed user journey runs with
+`scripts/with-dev-env make test-hitl-gate-live`. Keep its guide aligned with
+the complete-barrier, partial-result, duplicate-result, worker-replacement,
+and live-model assertions.
+
+Cookbook-derived guides describe real Mango user journeys, not probe-only
+demos. Keep an offline deterministic test for exact runtime and recovery
+invariants, and an explicitly enabled live-model test for the documented model
+behavior. Run the live target locally before claiming that a guide is verified
+or runnable, and record that result in the pull request. A simulated external
+application or service boundary must be named as such; never present it as a
+real third-party integration.
 
 ## Public API changes
 
