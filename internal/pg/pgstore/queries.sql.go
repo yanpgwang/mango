@@ -143,6 +143,56 @@ func (q *Queries) EnqueueEnvironmentWork(ctx context.Context, arg EnqueueEnviron
 	return err
 }
 
+const enqueueWebhookEvent = `-- name: EnqueueWebhookEvent :exec
+WITH subscribers AS (
+    SELECT id
+    FROM webhooks
+    WHERE webhooks.workspace_id = $1
+      AND webhooks.status = 'enabled'
+      AND $2::text = ANY(webhooks.event_types)
+    ORDER BY webhooks.id
+    FOR UPDATE
+), inserted_event AS (
+    INSERT INTO webhook_events (
+        id, workspace_id, event_type, resource_id, payload, created_at
+    )
+    SELECT $3, $1, $2,
+           $4, $5, $6
+    WHERE EXISTS (SELECT 1 FROM subscribers)
+    RETURNING id, created_at
+)
+INSERT INTO webhook_deliveries (
+    webhook_id, event_id, next_attempt_at, created_at
+)
+SELECT subscribers.id, inserted_event.id,
+       inserted_event.created_at, inserted_event.created_at
+FROM subscribers CROSS JOIN inserted_event
+`
+
+type EnqueueWebhookEventParams struct {
+	WorkspaceID string
+	EventType   string
+	ID          string
+	ResourceID  string
+	Payload     []byte
+	CreatedAt   pgtype.Timestamptz
+}
+
+// EnqueueWebhookEvent snapshots the enabled subscriptions in the same
+// transaction as the source lifecycle change. No event row is retained when
+// no endpoint is subscribed, and later subscriptions never backfill it.
+func (q *Queries) EnqueueWebhookEvent(ctx context.Context, arg EnqueueWebhookEventParams) error {
+	_, err := q.db.Exec(ctx, enqueueWebhookEvent,
+		arg.WorkspaceID,
+		arg.EventType,
+		arg.ID,
+		arg.ResourceID,
+		arg.Payload,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const firstUnprocessedInterruptAfter = `-- name: FirstUnprocessedInterruptAfter :one
 SELECT event.id, event.session_id, event.seq, event.type, event.payload, event.turn_event_id, event.created_at, event.processed_at, event.thread_id
 FROM events AS event
@@ -392,6 +442,17 @@ func (q *Queries) GetSession(ctx context.Context, id string) (GetSessionRow, err
 		&i.WorkspaceID,
 	)
 	return i, err
+}
+
+const getSessionWorkspaceID = `-- name: GetSessionWorkspaceID :one
+SELECT workspace_id FROM sessions WHERE id = $1
+`
+
+func (q *Queries) GetSessionWorkspaceID(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, getSessionWorkspaceID, id)
+	var workspace_id string
+	err := row.Scan(&workspace_id)
+	return workspace_id, err
 }
 
 const hasActiveChildThreads = `-- name: HasActiveChildThreads :one

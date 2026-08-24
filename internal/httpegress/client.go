@@ -4,6 +4,7 @@ package httpegress
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/yanpgwang/mango/internal/domain"
 )
+
+var ErrNonPublicAddress = errors.New("target resolved to a non-public address")
 
 func NewPublicClient(timeout time.Duration) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -58,10 +61,7 @@ func DialPublic(ctx context.Context, network, address string) (net.Conn, error) 
 		lastErr = err
 	}
 	if !allowed {
-		return nil, fmt.Errorf(
-			"public egress: %s resolves only to non-public addresses",
-			host,
-		)
+		return nil, fmt.Errorf("public egress: %s: %w", host, ErrNonPublicAddress)
 	}
 	return nil, fmt.Errorf("public egress: dial %s: %w", host, lastErr)
 }

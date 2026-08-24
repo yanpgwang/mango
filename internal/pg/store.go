@@ -276,6 +276,12 @@ func (s *Store) createSession(
 		if err := s.insertPrimarySessionThread(ctx, tx, session); err != nil {
 			return err
 		}
+		if err := s.enqueueWebhookEvent(
+			ctx, q, workspaceID, domain.WebhookEventSessionStatusScheduled,
+			session.ID, session.CreatedAt, nil,
+		); err != nil {
+			return err
+		}
 		if err := insertSessionSkillVersions(ctx, tx, session); err != nil {
 			return err
 		}
@@ -296,7 +302,9 @@ func (s *Store) createSession(
 			}
 		}
 		if deploymentRun != nil {
-			return insertDeploymentRun(ctx, tx, *deploymentRun)
+			return s.insertDeploymentRun(
+				ctx, tx, q, workspaceID, *deploymentRun,
+			)
 		}
 		return nil
 	})
@@ -375,7 +383,13 @@ INSERT INTO session_threads (
 	return err
 }
 
-func insertDeploymentRun(ctx context.Context, tx pgx.Tx, run domain.DeploymentRun) error {
+func (s *Store) insertDeploymentRun(
+	ctx context.Context,
+	tx pgx.Tx,
+	q *pgstore.Queries,
+	workspaceID string,
+	run domain.DeploymentRun,
+) error {
 	run.CreatedAt = run.CreatedAt.UTC().Truncate(time.Microsecond)
 	if run.ScheduledAt != nil {
 		scheduled := run.ScheduledAt.UTC().Truncate(time.Microsecond)
@@ -396,7 +410,13 @@ INSERT INTO deployment_runs (
 	if isUniqueViolation(err) {
 		return domain.Conflict("deployment schedule occurrence already ran")
 	}
-	return err
+	if err != nil || run.TriggerType != domain.DeploymentTriggerSchedule {
+		return err
+	}
+	return s.enqueueWebhookEvent(
+		ctx, q, workspaceID, domain.WebhookEventDeploymentRunSucceeded,
+		run.ID, run.CreatedAt, nil,
+	)
 }
 
 func lockActiveSessionVaults(
@@ -1083,6 +1103,21 @@ func (s *Store) appendThreadDraftsAt(
 	seq := startSeq
 	out := make([]domain.Event, 0, len(drafts))
 	now := eventTime.UTC()
+	primaryThread := false
+	var webhookWorkspaceID string
+	if webhookCandidateDrafts(drafts) {
+		primaryThreadID, err := q.GetPrimarySessionThreadID(ctx, sessionID)
+		if err != nil {
+			return nil, 0, err
+		}
+		primaryThread = primaryThreadID == threadID
+		if primaryThread {
+			webhookWorkspaceID, err = q.GetSessionWorkspaceID(ctx, sessionID)
+			if err != nil {
+				return nil, 0, err
+			}
+		}
+	}
 	for _, d := range drafts {
 		seq++
 		id := d.ID
@@ -1116,6 +1151,13 @@ func (s *Store) appendThreadDraftsAt(
 			ProcessedAt: processedAt,
 		}); err != nil {
 			return nil, 0, err
+		}
+		if primaryThread {
+			if err := s.enqueueWebhooksForSessionEvent(
+				ctx, q, webhookWorkspaceID, sessionID, d.Type, payload, now,
+			); err != nil {
+				return nil, 0, err
+			}
 		}
 		out = append(out, domain.Event{
 			ID:          id,

@@ -127,6 +127,15 @@ type VaultService interface {
 	ValidateMCPOAuthCredential(context.Context, string, string) (app.CredentialValidation, error)
 }
 
+type WebhookService interface {
+	CreateWebhook(context.Context, app.WebhookCreateInput) (app.WebhookSecretResult, error)
+	GetWebhook(context.Context, string) (domain.Webhook, error)
+	UpdateWebhook(context.Context, string, app.WebhookUpdateInput) (domain.Webhook, error)
+	ListWebhooks(context.Context, app.WebhookListQuery) (app.WebhookListPage, error)
+	RegenerateSigningSecret(context.Context, string) (app.WebhookSecretResult, error)
+	DeleteWebhook(context.Context, string) error
+}
+
 type DeploymentService interface {
 	Create(context.Context, app.DeploymentCreateInput) (domain.Deployment, error)
 	Get(context.Context, string) (domain.Deployment, error)
@@ -158,6 +167,7 @@ type Deps struct {
 	Skills           SkillService
 	Memory           MemoryService
 	Vaults           VaultService
+	Webhooks         WebhookService
 	Deployments      DeploymentService
 	EnvironmentWork  EnvironmentWorkService
 	SessionResources SessionResourceService
@@ -249,6 +259,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v1/vaults/{vault_id}/credentials/{credential_id}/archive", s.archiveCredential)
 	s.mux.HandleFunc("POST /v1/vaults/{vault_id}/credentials/{credential_id}/mcp_oauth_validate", s.validateMCPOAuthCredential)
 	s.mux.HandleFunc("DELETE /v1/vaults/{vault_id}/credentials/{credential_id}", s.deleteCredential)
+
+	s.mux.HandleFunc("POST /v1/webhooks", s.createWebhook)
+	s.mux.HandleFunc("GET /v1/webhooks", s.listWebhooks)
+	s.mux.HandleFunc("GET /v1/webhooks/{webhook_id}", s.getWebhook)
+	s.mux.HandleFunc("POST /v1/webhooks/{webhook_id}", s.updateWebhook)
+	s.mux.HandleFunc("DELETE /v1/webhooks/{webhook_id}", s.deleteWebhook)
+	s.mux.HandleFunc("POST /v1/webhooks/{webhook_id}/regenerate_signing_secret", s.regenerateWebhookSigningSecret)
 
 	s.mux.HandleFunc("POST /v1/deployments", s.createDeployment)
 	s.mux.HandleFunc("GET /v1/deployments", s.listDeployments)

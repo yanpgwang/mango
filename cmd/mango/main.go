@@ -592,14 +592,21 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 	cfg.Authenticator = pgStore
 	systemStore := pg.NewSystemStore(pool, ids, clock)
 	memory := app.NewMemoryService(pg.NewMemoryRepository(pgStore), ids, clock)
-	vaults, err := resolveVaultService(pgStore, ids, clock)
+	secretCipher, err := resolveSecretCipher()
 	if err != nil {
-		log.Fatalf("serve: Vault API keyring: %v", err)
+		log.Fatalf("serve: secret keyring: %v", err)
+	}
+	vaults := resolveVaultService(pgStore, secretCipher, ids, clock)
+	var webhooks *app.WebhookService
+	if secretCipher != nil {
+		webhooks = app.NewWebhookService(
+			pg.NewWebhookRepository(pgStore), secretCipher, ids, clock,
+		)
 	}
 	if vaults == nil {
-		log.Printf("serve: Vault API disabled; %s is not configured", vaultKeyringFileEnv)
+		log.Printf("serve: Vault and Webhook APIs disabled; %s is not configured", vaultKeyringFileEnv)
 	} else {
-		log.Printf("serve: Vault API encrypted credential store enabled")
+		log.Printf("serve: encrypted Vault and Webhook control planes enabled")
 	}
 	broker, err := live.Connect(os.Getenv(envNATSURL))
 	if err != nil {
@@ -750,32 +757,36 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 	handler := httpapi.NewServer(httpapi.Deps{
 		Agents: agents, Envs: environments, Sessions: sessions,
 		Threads: threads, Events: events, Stream: stream, Files: files, Skills: skills, Memory: memory,
-		Vaults: vaults, Deployments: deployments, EnvironmentWork: environmentWork,
+		Vaults: vaults, Webhooks: webhooks, Deployments: deployments, EnvironmentWork: environmentWork,
 		SessionResources: sessionResources,
 	}, cfg).Handler()
 	log.Printf("serve: PostgreSQL control plane, Temporal client, and NATS live channel connected")
 	serveHTTP(addr, handler)
 }
 
-func resolveVaultService(
-	store *pg.Store,
-	ids domain.IDGenerator,
-	clock domain.Clock,
-) (*app.VaultService, error) {
+func resolveSecretCipher() (secretcrypto.Cipher, error) {
 	keyringPath := strings.TrimSpace(os.Getenv(vaultKeyringFileEnv))
 	if keyringPath == "" {
 		return nil, nil
 	}
-	keyring, err := secretcrypto.LoadAESGCMKeyringFile(keyringPath)
-	if err != nil {
-		return nil, err
+	return secretcrypto.LoadAESGCMKeyringFile(keyringPath)
+}
+
+func resolveVaultService(
+	store *pg.Store,
+	cipher secretcrypto.Cipher,
+	ids domain.IDGenerator,
+	clock domain.Clock,
+) *app.VaultService {
+	if cipher == nil {
+		return nil
 	}
 	return app.NewVaultService(app.VaultServiceConfig{
 		Repository: pg.NewVaultRepository(store),
-		Cipher:     keyring, IDGenerator: ids, Clock: clock,
+		Cipher:     cipher, IDGenerator: ids, Clock: clock,
 		OAuthRefresher: oauthclient.New(nil),
 		MCPValidator:   mcpclient.NewRemote(nil),
-	}), nil
+	})
 }
 
 func serveHTTP(addr string, handler http.Handler) {

@@ -94,6 +94,7 @@ const sidebars: SidebarsConfig = {
         'api/skills',
         'api/memory',
         'api/vaults',
+        'api/webhooks',
         'api/deployments',
       ],
     },

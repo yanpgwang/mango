@@ -33,6 +33,42 @@ release is never an automatic roadmap.
   SDK are optional research evidence; raw HTTP and OpenAPI tests define Mango's
   transport contract.
 
+## Outbound Webhooks
+
+- The public [Claude Managed Agents Webhook guide](https://platform.claude.com/docs/en/managed-agents/webhooks),
+  current public API reference, and generated Go SDK types supplied the
+  high-level event envelope, useful event names, thin-resource notification
+  model, one-time `whsec_` secret, and delivery edge cases.
+- Mango adopted the Standard Webhooks `webhook-id`, `webhook-timestamp`, and
+  `webhook-signature` headers and HMAC input. It also adopted stable IDs across
+  retries, a fresh attempt timestamp, any-`2xx` acknowledgement, three jittered
+  attempts bounded to 5–120 seconds, transactional subscription scope, no
+  backfill, no ordering guarantee, and immediate redirect/private-address
+  disable semantics. The public
+  [Standard Webhooks specification](https://www.standardwebhooks.com/) defines
+  the signing convention; Mango's leased PostgreSQL dispatcher is independent
+  implementation code.
+- Mango changed endpoint management for its self-hosted boundary. `/v1/webhooks`
+  provides Workspace-scoped CRUD and explicit secret rotation because Mango
+  has no hosted Console. Secrets use the operator-mounted AES-GCM keyring,
+  deliveries and exact signed bytes survive worker replacement, public egress
+  is checked again at connect time, and terminal delivery state is retained
+  internally for bounded cleanup.
+- Mango retains `workspace_id` in notifications but omits the hosted
+  `organization_id` because no equivalent Organization resource exists. It
+  supports the Session and scheduled Deployment Run event subset backed by a
+  current Mango lifecycle; it does not advertise broader CMA resource events
+  merely because their names exist externally. Manual Runs emit no Run
+  notifications, matching the useful scheduled-only distinction.
+- Mango rejected Anthropic authentication and beta headers, Console-only
+  management, hosted rollout constraints, SDK compatibility as a success
+  criterion, and an invented duration for sustained-failure auto-disable. CMA
+  publicly describes that trigger but not its threshold; Mango records the
+  continuous-failure window and leaves a concrete operator policy as follow-up
+  work. It also defers `deployment_run.started` until Mango has a real
+  in-progress Run lifecycle rather than synthesizing an event around an
+  immutable final record.
+
 ## File-backed Session messages
 
 - The [Managed Agents event API](https://platform.claude.com/docs/en/api/beta/sessions/events)
@@ -164,9 +200,9 @@ support, so they run the same offline and opt-in live conformance suites.
 - The scenario uses Mango-owned synthetic inputs and copies no Cookbook
   fixture. Its executable contract is PostgreSQL atomic admission, Temporal
   recovery, duplicate-result rejection, and persisted Event ordering.
-- Mango did not adopt Console-managed webhooks or long-lived connection
-  assumptions. Durable outbound webhook delivery remains separate work with
-  its own signing, retry, idempotency, and observability requirements.
+- Mango's Webhook slice can now wake the application on
+  `session.status_idled`, but the example retains stream-plus-history recovery:
+  an at-least-once notification is not the authoritative custom-tool barrier.
 
 ## Multi-agent specialist team
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/yanpgwang/mango/internal/controlplane"
 	"github.com/yanpgwang/mango/internal/credentialruntime"
 	"github.com/yanpgwang/mango/internal/domain"
+	"github.com/yanpgwang/mango/internal/httpegress"
 	"github.com/yanpgwang/mango/internal/live"
 	"github.com/yanpgwang/mango/internal/pg"
 	"github.com/yanpgwang/mango/internal/sandbox"
@@ -385,10 +387,11 @@ func runOrchestrate() {
 
 	ids := domain.NewRandomIDGen()
 	store := pg.NewSystemStore(pool, ids, realClock{})
-	vaults, err := resolveVaultService(store, ids, realClock{})
+	secretCipher, err := resolveSecretCipher()
 	if err != nil {
-		log.Fatalf("orchestrate: Vault runtime keyring: %v", err)
+		log.Fatalf("orchestrate: secret keyring: %v", err)
 	}
+	vaults := resolveVaultService(store, secretCipher, ids, realClock{})
 	var mcpAuth credentialruntime.AuthSource
 	if vaults == nil {
 		mcpAuth = app.NewUnavailableVaultAuthSource(pg.NewVaultRepository(store))
@@ -526,6 +529,18 @@ func runOrchestrate() {
 		IDGenerator: ids, Clock: realClock{},
 	})
 	deploymentReconciler := app.NewDeploymentReconciler(deployments)
+	var webhookDispatcher *app.WebhookDispatcher
+	if secretCipher != nil {
+		webhookClient := httpegress.NewPublicClient(app.DefaultWebhookHTTPTimeout)
+		webhookClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+		webhookDispatcher = app.NewWebhookDispatcher(
+			pg.NewWebhookRepository(store), secretCipher, webhookClient, ids, realClock{},
+		)
+	} else {
+		log.Printf("orchestrate: Webhook delivery disabled; %s is not configured", vaultKeyringFileEnv)
+	}
 
 	if err := runtime.Worker.Start(); err != nil {
 		log.Fatalf("orchestrate: worker start: %v", err)
@@ -542,6 +557,13 @@ func runOrchestrate() {
 	deploymentErr := make(chan error, 1)
 	go func() { deploymentErr <- deploymentReconciler.Run(ctx) }()
 	log.Printf("orchestrate: scheduled Deployment reconciler running")
+	var webhookErr <-chan error
+	if webhookDispatcher != nil {
+		channel := make(chan error, 1)
+		webhookErr = channel
+		go func() { channel <- webhookDispatcher.Run(ctx) }()
+		log.Printf("orchestrate: durable Webhook dispatcher running")
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -559,6 +581,10 @@ func runOrchestrate() {
 	case err := <-deploymentErr:
 		if err != nil && ctx.Err() == nil {
 			log.Printf("orchestrate: scheduled Deployment reconciler stopped: %v", err)
+		}
+	case err := <-webhookErr:
+		if err != nil && ctx.Err() == nil {
+			log.Printf("orchestrate: Webhook dispatcher stopped: %v", err)
 		}
 	}
 	cancel()

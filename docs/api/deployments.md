@@ -106,6 +106,10 @@ Run lists support `deployment_id`, `has_error`, `trigger_type`, all four
 `trigger_context` distinguishes manual attempts from scheduled attempts and
 records `scheduled_at` for the latter.
 
+Webhook endpoints may subscribe to `deployment_run.succeeded` and
+`deployment_run.failed`. These notifications apply only to scheduled Runs;
+manual Runs do not emit `deployment_run.*`. See [Webhooks](webhooks.md).
+
 ## Scheduling and capabilities
 
 The `orchestrate` worker role executes schedules. Due occurrences are claimed

@@ -114,10 +114,11 @@ client, API, or execution worker restarts:
    events;
 5. submit only missing results.
 
-Mango does not currently deliver outbound webhooks. Production consumers must
-use the documented stream-plus-history recovery pattern or bounded polling.
-Webhook delivery remains a separate product feature because it needs durable
-retry, signing, idempotency, and delivery observability.
+An application may subscribe to `session.status_idled` through
+[Webhooks](../api/webhooks.md) to start this recovery promptly. The notification
+is deliberately thin, at least once, and not an infinite log: production
+consumers must still use the documented stream-plus-history recovery pattern or
+bounded reconciliation after receiving it.
 
 ## Executable verification
 
