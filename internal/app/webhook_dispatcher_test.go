@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -102,6 +103,58 @@ func TestWebhookDispatcherDisablesRedirectAndNonPublicTargets(t *testing.T) {
 	}
 }
 
+func TestWebhookDispatcherMeasuresRetryDelayFromAttemptCompletion(t *testing.T) {
+	startedAt := time.Unix(1700000000, 0).UTC()
+	clock := &advancingWebhookClock{now: startedAt}
+	keyring, delivery, _ := webhookDispatcherFixture(t)
+	repo := &webhookDeliveryRepositoryFake{deliveries: []domain.WebhookDelivery{delivery}}
+	dispatcher := NewWebhookDispatcher(
+		repo, keyring, webhookHTTPDoerFunc(func(*http.Request) (*http.Response, error) {
+			clock.Advance(15 * time.Second)
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       io.NopCloser(strings.NewReader("")),
+			}, nil
+		}), domain.NewSeqIDGen(), clock,
+	)
+	dispatcher.retryDelay = func(int) time.Duration { return 5 * time.Second }
+
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.results) != 1 || repo.results[0].NextAttemptAt == nil {
+		t.Fatalf("completion = %#v", repo.results)
+	}
+	wantCompletedAt := startedAt.Add(15 * time.Second)
+	if !repo.results[0].AttemptedAt.Equal(startedAt) ||
+		!repo.results[0].CompletedAt.Equal(wantCompletedAt) ||
+		!repo.results[0].NextAttemptAt.Equal(wantCompletedAt.Add(5*time.Second)) {
+		t.Fatalf("completion times = %#v", repo.results[0])
+	}
+}
+
+func TestWebhookDispatcherDrainsExpiredEventsAcrossPolls(t *testing.T) {
+	now := time.Unix(1700000000, 0).UTC()
+	repo := &webhookDeliveryRepositoryFake{cleanupRows: []int64{webhookCleanupBatchSize, 0}}
+	keyring, _, _ := webhookDispatcherFixture(t)
+	dispatcher := NewWebhookDispatcher(
+		repo, keyring, webhookHTTPDoerFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("unexpected delivery")
+		}), domain.NewSeqIDGen(),
+		domain.FixedClock{T: now},
+	)
+
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if repo.cleanupCalls != 2 {
+		t.Fatalf("cleanup calls = %d, want 2", repo.cleanupCalls)
+	}
+}
+
 func webhookDispatcherFixture(t *testing.T) (secretcrypto.Cipher, domain.WebhookDelivery, []byte) {
 	t.Helper()
 	rawKey := bytes.Repeat([]byte{23}, 32)
@@ -123,8 +176,10 @@ func webhookDispatcherFixture(t *testing.T) (secretcrypto.Cipher, domain.Webhook
 }
 
 type webhookDeliveryRepositoryFake struct {
-	deliveries []domain.WebhookDelivery
-	results    []WebhookDeliveryResult
+	deliveries   []domain.WebhookDelivery
+	results      []WebhookDeliveryResult
+	cleanupRows  []int64
+	cleanupCalls int
 }
 
 func (r *webhookDeliveryRepositoryFake) ClaimWebhookDeliveries(context.Context, time.Time, time.Time, string, int) ([]domain.WebhookDelivery, error) {
@@ -135,6 +190,10 @@ func (r *webhookDeliveryRepositoryFake) CompleteWebhookDelivery(_ context.Contex
 	return true, nil
 }
 func (r *webhookDeliveryRepositoryFake) CleanupWebhookEvents(context.Context, time.Time, int) (int64, error) {
+	defer func() { r.cleanupCalls++ }()
+	if r.cleanupCalls < len(r.cleanupRows) {
+		return r.cleanupRows[r.cleanupCalls], nil
+	}
 	return 0, nil
 }
 
@@ -142,4 +201,21 @@ type webhookHTTPDoerFunc func(*http.Request) (*http.Response, error)
 
 func (f webhookHTTPDoerFunc) Do(request *http.Request) (*http.Response, error) {
 	return f(request)
+}
+
+type advancingWebhookClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *advancingWebhookClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *advancingWebhookClock) Advance(duration time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(duration)
 }

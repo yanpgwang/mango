@@ -106,7 +106,7 @@ func TestWebhookDeliveryClaimIsLeasedAndCompletionIsClaimFenced(t *testing.T) {
 	}
 	completed, err := repo.CompleteWebhookDelivery(ctx, app.WebhookDeliveryResult{
 		WebhookID: first[0].WebhookID, EventID: first[0].EventID,
-		ClaimID: "stale_claim", AttemptedAt: now, Succeeded: true,
+		ClaimID: "stale_claim", AttemptedAt: now, CompletedAt: now, Succeeded: true,
 	})
 	if err != nil || completed {
 		t.Fatalf("stale completion = %v, err=%v", completed, err)
@@ -114,11 +114,156 @@ func TestWebhookDeliveryClaimIsLeasedAndCompletionIsClaimFenced(t *testing.T) {
 	status := 204
 	completed, err = repo.CompleteWebhookDelivery(ctx, app.WebhookDeliveryResult{
 		WebhookID: first[0].WebhookID, EventID: first[0].EventID,
-		ClaimID: first[0].ClaimID, AttemptedAt: now, Succeeded: true,
+		ClaimID: first[0].ClaimID, AttemptedAt: now, CompletedAt: now, Succeeded: true,
 		ResponseStatus: &status,
 	})
 	if err != nil || !completed {
 		t.Fatalf("completion = %v, err=%v", completed, err)
+	}
+	removed, err := repo.CleanupWebhookEvents(ctx, now.Add(-time.Hour), 10)
+	if err != nil || removed != 0 {
+		t.Fatalf("cleanup before terminal retention elapsed = %d, err=%v", removed, err)
+	}
+	removed, err = repo.CleanupWebhookEvents(ctx, now.Add(time.Hour), 10)
+	if err != nil || removed != 1 {
+		t.Fatalf("cleanup after terminal retention elapsed = %d, err=%v", removed, err)
+	}
+}
+
+func TestWebhookCompletionUsesEndpointThenDeliveryLockOrder(t *testing.T) {
+	store := testStoreWithMaxConns(t, 4)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	keyring, err := secretcrypto.NewAESGCMKeyring("test", map[string][]byte{
+		"test": bytes.Repeat([]byte{44}, 32),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewWebhookRepository(store)
+	service := app.NewWebhookService(repo, keyring, domain.NewSeqIDGen(), fixedClock{})
+	created, err := service.CreateWebhook(ctx, app.WebhookCreateInput{
+		URL:        "https://hooks.example.test/events",
+		EventTypes: []string{domain.WebhookEventSessionStatusScheduled},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSession(ctx, newSession("sesn_lock_order"), nil); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	claimed, err := repo.ClaimWebhookDeliveries(ctx, now, now.Add(-time.Minute), "claim_lock_order", 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim = %#v, err=%v", claimed, err)
+	}
+
+	blocker, err := store.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Rollback(context.Background()) //nolint:errcheck // best-effort test cleanup
+	if _, err := blocker.Exec(ctx, `SELECT 1 FROM webhooks WHERE id = $1 FOR UPDATE`, created.Webhook.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	type completionResult struct {
+		completed bool
+		err       error
+	}
+	completion := make(chan completionResult, 1)
+	started := make(chan struct{})
+	status := http.StatusNoContent
+	go func() {
+		close(started)
+		completed, completeErr := repo.CompleteWebhookDelivery(ctx, app.WebhookDeliveryResult{
+			WebhookID: claimed[0].WebhookID, EventID: claimed[0].EventID,
+			ClaimID: claimed[0].ClaimID, AttemptedAt: now, CompletedAt: now,
+			Succeeded: true, ResponseStatus: &status,
+		})
+		completion <- completionResult{completed: completed, err: completeErr}
+	}()
+	<-started
+	secondConnectionAcquired := false
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		select {
+		case result := <-completion:
+			t.Fatalf("completion returned before endpoint lock release: completed=%v, err=%v", result.completed, result.err)
+		default:
+		}
+		if store.pool.Stat().AcquiredConns() >= 2 {
+			secondConnectionAcquired = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !secondConnectionAcquired {
+		t.Fatal("completion did not acquire a database connection")
+	}
+	// Give the completion transaction time to reach its first row lock. With
+	// the required endpoint-first order it blocks there; delivery-first code
+	// instead holds the row updated below and hits lock_timeout.
+	time.Sleep(50 * time.Millisecond)
+	if _, err := blocker.Exec(ctx, `SET LOCAL lock_timeout = '500ms'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := blocker.Exec(ctx, `
+UPDATE webhook_deliveries
+SET last_error = last_error
+WHERE webhook_id = $1 AND event_id = $2`, claimed[0].WebhookID, claimed[0].EventID); err != nil {
+		t.Fatalf("delivery was locked before endpoint: %v", err)
+	}
+	if err := blocker.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case result := <-completion:
+		if result.err != nil || !result.completed {
+			t.Fatalf("completion = %v, err=%v", result.completed, result.err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
+func TestWebhookDisableRecordsPendingDeliveryCompletionTime(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	keyring, err := secretcrypto.NewAESGCMKeyring("test", map[string][]byte{
+		"test": bytes.Repeat([]byte{46}, 32),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewWebhookRepository(store)
+	service := app.NewWebhookService(repo, keyring, domain.NewSeqIDGen(), fixedClock{})
+	created, err := service.CreateWebhook(ctx, app.WebhookCreateInput{
+		URL:        "https://hooks.example.test/events",
+		EventTypes: []string{domain.WebhookEventSessionStatusScheduled},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSession(ctx, newSession("sesn_manual_disable"), nil); err != nil {
+		t.Fatal(err)
+	}
+	disabled := domain.WebhookStatusDisabled
+	updated, err := service.UpdateWebhook(ctx, created.Webhook.ID, app.WebhookUpdateInput{
+		Status: &disabled,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	var completedAt time.Time
+	if err := store.pool.QueryRow(ctx, `
+SELECT state, completed_at
+FROM webhook_deliveries
+WHERE webhook_id = $1`, created.Webhook.ID).Scan(&state, &completedAt); err != nil {
+		t.Fatal(err)
+	}
+	if state != "failed" || !completedAt.Equal(updated.UpdatedAt) {
+		t.Fatalf("delivery state/completed_at = %q/%s, want failed/%s", state, completedAt, updated.UpdatedAt)
 	}
 }
 

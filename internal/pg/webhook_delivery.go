@@ -26,7 +26,8 @@ WHERE id IN (
     WHERE event.created_at < $1
       AND NOT EXISTS (
           SELECT 1 FROM webhook_deliveries AS delivery
-          WHERE delivery.event_id = event.id AND delivery.state = 'pending'
+          WHERE delivery.event_id = event.id
+            AND (delivery.completed_at IS NULL OR delivery.completed_at >= $1)
       )
     ORDER BY event.created_at, event.id
     LIMIT $2
@@ -100,8 +101,17 @@ func (r *WebhookRepository) CompleteWebhookDelivery(
 ) (bool, error) {
 	completed := false
 	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
-		var attemptCount int
+		var endpointExists int
 		err := tx.QueryRow(ctx, `
+SELECT 1 FROM webhooks WHERE id = $1 FOR UPDATE`, result.WebhookID).Scan(&endpointExists)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var attemptCount int
+		err = tx.QueryRow(ctx, `
 SELECT attempt_count
 FROM webhook_deliveries
 WHERE webhook_id = $1 AND event_id = $2 AND state = 'pending' AND claim_id = $3
@@ -117,18 +127,18 @@ FOR UPDATE`, result.WebhookID, result.EventID, result.ClaimID).Scan(&attemptCoun
 			if _, err := tx.Exec(ctx, `
 UPDATE webhook_deliveries
 SET state = 'succeeded', attempt_count = $4, claimed_at = NULL,
-    claim_id = NULL, last_attempt_at = $5, delivered_at = $5,
-    response_status = $6, last_error = NULL
+    claim_id = NULL, last_attempt_at = $5, delivered_at = $6,
+    completed_at = $6, response_status = $7, last_error = NULL
 WHERE webhook_id = $1 AND event_id = $2 AND claim_id = $3`,
 				result.WebhookID, result.EventID, result.ClaimID,
-				attemptCount, result.AttemptedAt.UTC(), result.ResponseStatus,
+				attemptCount, result.AttemptedAt.UTC(), result.CompletedAt.UTC(), result.ResponseStatus,
 			); err != nil {
 				return err
 			}
 			_, err = tx.Exec(ctx, `
 UPDATE webhooks
 SET failure_started_at = NULL, last_success_at = $2
-WHERE id = $1 AND status = 'enabled'`, result.WebhookID, result.AttemptedAt.UTC())
+WHERE id = $1 AND status = 'enabled'`, result.WebhookID, result.CompletedAt.UTC())
 			if err != nil {
 				return err
 			}
@@ -137,7 +147,7 @@ WHERE id = $1 AND status = 'enabled'`, result.WebhookID, result.AttemptedAt.UTC(
 		}
 
 		state := "failed"
-		nextAttemptAt := result.AttemptedAt.UTC()
+		nextAttemptAt := result.CompletedAt.UTC()
 		if result.DisableReason == nil && result.NextAttemptAt != nil &&
 			attemptCount < app.MaxWebhookDeliveryAttempts {
 			state = "pending"
@@ -147,11 +157,12 @@ WHERE id = $1 AND status = 'enabled'`, result.WebhookID, result.AttemptedAt.UTC(
 UPDATE webhook_deliveries
 SET state = $4, attempt_count = $5, next_attempt_at = $6,
     claimed_at = NULL, claim_id = NULL, last_attempt_at = $7,
-    response_status = $8, last_error = $9
+    response_status = $8, last_error = $9,
+    completed_at = CASE WHEN $4 = 'pending' THEN NULL ELSE $10 END
 WHERE webhook_id = $1 AND event_id = $2 AND claim_id = $3`,
 			result.WebhookID, result.EventID, result.ClaimID, state,
 			attemptCount, nextAttemptAt, result.AttemptedAt.UTC(),
-			result.ResponseStatus, result.Error,
+			result.ResponseStatus, result.Error, result.CompletedAt.UTC(),
 		); err != nil {
 			return err
 		}
@@ -160,15 +171,15 @@ WHERE webhook_id = $1 AND event_id = $2 AND claim_id = $3`,
 UPDATE webhooks
 SET status = 'disabled', disabled_reason = $2,
     failure_started_at = COALESCE(failure_started_at, $3), updated_at = $3
-WHERE id = $1`, result.WebhookID, *result.DisableReason, result.AttemptedAt.UTC()); err != nil {
+WHERE id = $1`, result.WebhookID, *result.DisableReason, result.CompletedAt.UTC()); err != nil {
 				return err
 			}
 			if _, err := tx.Exec(ctx, `
 UPDATE webhook_deliveries
 SET state = 'failed', claimed_at = NULL, claim_id = NULL,
-    last_error = $2
+    last_error = $2, completed_at = $3
 WHERE webhook_id = $1 AND state = 'pending'`,
-				result.WebhookID, *result.DisableReason,
+				result.WebhookID, *result.DisableReason, result.CompletedAt.UTC(),
 			); err != nil {
 				return err
 			}
@@ -176,7 +187,7 @@ WHERE webhook_id = $1 AND state = 'pending'`,
 			if _, err := tx.Exec(ctx, `
 UPDATE webhooks
 SET failure_started_at = COALESCE(failure_started_at, $2)
-WHERE id = $1 AND status = 'enabled'`, result.WebhookID, result.AttemptedAt.UTC()); err != nil {
+WHERE id = $1 AND status = 'enabled'`, result.WebhookID, result.CompletedAt.UTC()); err != nil {
 				return err
 			}
 		}

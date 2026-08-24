@@ -56,17 +56,22 @@ CREATE TABLE webhook_deliveries (
     claim_id            text,
     last_attempt_at     timestamptz,
     delivered_at        timestamptz,
+    completed_at        timestamptz,
     response_status     integer,
     last_error          text,
     created_at          timestamptz NOT NULL,
     PRIMARY KEY (webhook_id, event_id),
     CHECK ((claimed_at IS NULL) = (claim_id IS NULL)),
-    CHECK (state = 'pending' OR claim_id IS NULL)
+    CHECK (state = 'pending' OR claim_id IS NULL),
+    CHECK ((state = 'pending') = (completed_at IS NULL))
 );
 
 CREATE INDEX webhook_deliveries_due_idx
     ON webhook_deliveries (next_attempt_at, created_at, webhook_id, event_id)
     WHERE state = 'pending';
+
+CREATE INDEX webhook_deliveries_event_retention_idx
+    ON webhook_deliveries (event_id, completed_at);
 
 -- +goose StatementEnd
 

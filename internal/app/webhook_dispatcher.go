@@ -30,6 +30,7 @@ const (
 	DefaultWebhookCleanupEvery = time.Hour
 	MaxWebhookDeliveryAttempts = 3
 	maxWebhookDiagnosticBytes  = 1024
+	webhookCleanupBatchSize    = 1000
 )
 
 type WebhookDeliveryResult struct {
@@ -37,6 +38,7 @@ type WebhookDeliveryResult struct {
 	EventID        string
 	ClaimID        string
 	AttemptedAt    time.Time
+	CompletedAt    time.Time
 	Succeeded      bool
 	ResponseStatus *int
 	Error          string
@@ -112,10 +114,18 @@ func (d *WebhookDispatcher) Run(ctx context.Context) error {
 func (d *WebhookDispatcher) RunOnce(ctx context.Context) error {
 	now := d.clock.Now().UTC()
 	if d.lastCleanup.IsZero() || now.Sub(d.lastCleanup) >= d.cleanupEvery {
-		if _, err := d.repo.CleanupWebhookEvents(ctx, now.Add(-d.retention), 1000); err != nil {
+		removed, err := d.repo.CleanupWebhookEvents(
+			ctx, now.Add(-d.retention), webhookCleanupBatchSize,
+		)
+		if err != nil {
 			return err
 		}
-		d.lastCleanup = now
+		// A full batch means more expired records may remain. Leave cleanup due
+		// so later polls drain the backlog without making one dispatch cycle
+		// unbounded.
+		if removed < webhookCleanupBatchSize {
+			d.lastCleanup = now
+		}
 	}
 	claimID := d.ids.NewID(domain.PrefixWebhookClaim)
 	deliveries, err := d.repo.ClaimWebhookDeliveries(
@@ -178,10 +188,11 @@ func (d *WebhookDispatcher) deliver(ctx context.Context, delivery domain.Webhook
 			_ = response.Body.Close()
 		}
 	}
+	completedAt := d.clock.Now().UTC()
 	if requestErr == nil && status != nil && *status >= 200 && *status < 300 {
 		_, err := d.repo.CompleteWebhookDelivery(ctx, WebhookDeliveryResult{
 			WebhookID: delivery.WebhookID, EventID: delivery.EventID,
-			ClaimID: delivery.ClaimID, AttemptedAt: attemptedAt,
+			ClaimID: delivery.ClaimID, AttemptedAt: attemptedAt, CompletedAt: completedAt,
 			Succeeded: true, ResponseStatus: status,
 		})
 		return err
@@ -198,7 +209,9 @@ func (d *WebhookDispatcher) deliver(ctx context.Context, delivery domain.Webhook
 	if requestErr == nil {
 		requestErr = fmt.Errorf("endpoint returned HTTP %d", *status)
 	}
-	return d.finishFailure(ctx, delivery, attemptedAt, status, requestErr, disableReason)
+	return d.finishFailureAt(
+		ctx, delivery, attemptedAt, completedAt, status, requestErr, disableReason,
+	)
 }
 
 func (d *WebhookDispatcher) finishFailure(
@@ -209,15 +222,29 @@ func (d *WebhookDispatcher) finishFailure(
 	deliveryErr error,
 	disableReason *string,
 ) error {
+	return d.finishFailureAt(
+		ctx, delivery, attemptedAt, d.clock.Now().UTC(), status, deliveryErr, disableReason,
+	)
+}
+
+func (d *WebhookDispatcher) finishFailureAt(
+	ctx context.Context,
+	delivery domain.WebhookDelivery,
+	attemptedAt time.Time,
+	completedAt time.Time,
+	status *int,
+	deliveryErr error,
+	disableReason *string,
+) error {
 	message := truncateWebhookDiagnostic(deliveryErr)
 	var nextAttemptAt *time.Time
 	if disableReason == nil && delivery.AttemptCount+1 < MaxWebhookDeliveryAttempts {
-		next := attemptedAt.Add(d.retryDelay(delivery.AttemptCount + 1)).UTC()
+		next := completedAt.Add(d.retryDelay(delivery.AttemptCount + 1)).UTC()
 		nextAttemptAt = &next
 	}
 	_, err := d.repo.CompleteWebhookDelivery(ctx, WebhookDeliveryResult{
 		WebhookID: delivery.WebhookID, EventID: delivery.EventID,
-		ClaimID: delivery.ClaimID, AttemptedAt: attemptedAt,
+		ClaimID: delivery.ClaimID, AttemptedAt: attemptedAt, CompletedAt: completedAt,
 		ResponseStatus: status, Error: message, NextAttemptAt: nextAttemptAt,
 		DisableReason: disableReason,
 	})

@@ -152,8 +152,10 @@ WHERE id = $1`
 			if _, err := tx.Exec(ctx, `
 UPDATE webhook_deliveries
 SET state = 'failed', claimed_at = NULL, claim_id = NULL,
-    last_error = COALESCE($2, 'endpoint disabled')
-WHERE webhook_id = $1 AND state = 'pending'`, id, next.DisabledReason); err != nil {
+    last_error = COALESCE($2, 'endpoint disabled'), completed_at = $3
+WHERE webhook_id = $1 AND state = 'pending'`,
+				id, next.DisabledReason, next.UpdatedAt,
+			); err != nil {
 				return err
 			}
 		}

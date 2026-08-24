@@ -443,6 +443,7 @@ type WebhookDelivery struct {
 	ClaimID        *string
 	LastAttemptAt  pgtype.Timestamptz
 	DeliveredAt    pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
 	ResponseStatus *int32
 	LastError      *string
 	CreatedAt      pgtype.Timestamptz
