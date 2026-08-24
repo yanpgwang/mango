@@ -138,7 +138,7 @@ support, so they run the same offline and opt-in live conformance suites.
   archive semantics, or field-level compatibility. The external notebook is a
   scenario reference, while Mango's observable outcome and executable tests
   define success.
-- The [coding-agent iterate guide](guides/coding-agent-iterate.md) describes the
+- The [coding-agent iteration example](examples/coding-agent-iterate.md) describes the
   Mango workflow without introducing a second runner. The `internal/temporal`
   scenario test keeps the durable outcome deterministic in public CI; the
   explicit live tier checks the same outcome against a configured model
@@ -153,7 +153,7 @@ support, so they run the same offline and opt-in live conformance suites.
 - Mango adopted the application-owned action boundary: the model proposes a
   typed custom call, the Session becomes idle, and an application or human
   returns the correlated result before inference continues.
-- The guide's expense flow is a runnable public-HTTP example exercised against
+- The example's expense flow is a runnable public-HTTP program exercised against
   a real model. Its client represents the external expense system and prompts
   a terminal user for the review decision, while the deterministic scenario
   separately proves crash and concurrency invariants.

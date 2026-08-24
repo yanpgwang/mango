@@ -196,10 +196,10 @@ scripts/with-dev-env make test-coding-agent-live
 scripts/with-dev-env make demo-hitl-gate
 ```
 
-The [coding-agent iterate guide](guides/coding-agent-iterate.md) explains the
+The [coding-agent iteration example](examples/coding-agent-iterate.md) explains the
 corresponding user workflow and the Mango resources involved. It is a design
 walkthrough rather than a second test runner. The
-[HITL gate guide](guides/hitl-gate.md) documents the interactive public-HTTP
+[HITL gate example](examples/hitl-gate.md) documents the interactive public-HTTP
 example and its application-owned action boundary.
 
 These commands never print the API key. The model-only smoke test does not

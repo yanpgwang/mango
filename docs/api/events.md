@@ -81,7 +81,7 @@ before retrying rather than assuming the result was rejected.
 The barrier lives in PostgreSQL and is selected before ordinary queued input.
 Worker or API replacement does not discard it, and a message accepted during
 the wait cannot overtake the complete result round. See the
-[human-in-the-loop gate guide](../guides/hitl-gate.md) for the full workflow.
+[human-in-the-loop gate example](../examples/hitl-gate.md) for the full workflow.
 
 An interrupt without `session_thread_id` is admitted to the primary and every
 active, non-archived child Thread. Supplying `session_thread_id` admits it only

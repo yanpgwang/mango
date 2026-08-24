@@ -1,6 +1,6 @@
 ---
 title: Gate agent actions on application or human input
-slug: /guides/hitl-gate
+slug: /examples/hitl-gate
 ---
 
 # Gate agent actions on application or human input
@@ -10,7 +10,7 @@ run inside its sandbox. The application can call an internal service, record an
 audited decision, or wait for a human reviewer, then return the result to the
 same durable Session.
 
-This guide includes a runnable example over Mango's public HTTP API. Mango does
+This example includes a runnable program over Mango's public HTTP API. Mango does
 not yet publish an SDK, so the example deliberately uses Go's standard
 `net/http` client and exposes the same requests an SDK would eventually wrap.
 It never calls the model provider directly: the configured Mango worker owns

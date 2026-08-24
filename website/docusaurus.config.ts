@@ -62,7 +62,17 @@ const config: Config = {
           type: 'docSidebar',
           sidebarId: 'docs',
           position: 'left',
-          label: 'Documentation',
+          label: 'Docs',
+        },
+        {
+          to: '/examples',
+          label: 'Examples',
+          position: 'left',
+        },
+        {
+          to: '/api',
+          label: 'API',
+          position: 'left',
         },
         {
           href: 'https://github.com/yanpgwang/mango',
@@ -82,12 +92,12 @@ const config: Config = {
               to: '/getting-started',
             },
             {
-              label: 'Architecture',
-              to: '/architecture',
+              label: 'Examples',
+              to: '/examples',
             },
             {
-              label: 'Multi-agent guide',
-              to: '/guides/multi-agent',
+              label: 'Guides',
+              to: '/guides',
             },
             {
               label: 'API reference',
@@ -101,6 +111,10 @@ const config: Config = {
             {
               label: 'Capabilities',
               to: '/capabilities',
+            },
+            {
+              label: 'Operations',
+              to: '/operations',
             },
             {
               label: 'Product direction',
