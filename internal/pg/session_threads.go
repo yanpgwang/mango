@@ -221,6 +221,11 @@ WHERE session_id = $1 AND id = $2`, sessionID, threadID).Scan(&threadKind); err 
 				"cannot archive a running session Thread; interrupt first",
 			)
 		}
+		if err := s.interruptSessionThreadAttemptsLocked(
+			ctx, tx, q, sessionID, threadID,
+		); err != nil {
+			return err
+		}
 
 		pendingResult, err := tx.Exec(ctx, `
 DELETE FROM pending_actions
@@ -386,6 +391,60 @@ ORDER BY created_at, id`, sessionID)
 	return nil
 }
 
+// interruptSessionThreadAttemptsLocked closes every active execution journal
+// owned by one Thread. The caller holds the Session and Thread lifecycle locks;
+// locking each attempt establishes the final ordering with StartToolStep.
+func (s *Store) interruptSessionThreadAttemptsLocked(
+	ctx context.Context,
+	tx pgx.Tx,
+	q *pgstore.Queries,
+	sessionID string,
+	threadID string,
+) error {
+	rows, err := tx.Query(ctx, `
+SELECT attempt.id, attempt.trigger_event_id
+FROM turn_attempts AS attempt
+JOIN events AS trigger
+  ON trigger.session_id = attempt.session_id
+ AND trigger.id = attempt.trigger_event_id
+WHERE attempt.session_id = $1
+  AND trigger.thread_id = $2
+  AND attempt.state = 'active'
+ORDER BY attempt.id
+FOR UPDATE OF attempt`, sessionID, threadID)
+	if err != nil {
+		return err
+	}
+	type activeAttempt struct {
+		id             string
+		triggerEventID string
+	}
+	attempts := make([]activeAttempt, 0)
+	for rows.Next() {
+		var attempt activeAttempt
+		if err := rows.Scan(&attempt.id, &attempt.triggerEventID); err != nil {
+			rows.Close()
+			return err
+		}
+		attempts = append(attempts, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, attempt := range attempts {
+		if err := s.finishAttemptLocked(
+			ctx, q, attempt.id, domain.RunAttemptInterrupted, nil,
+			sessionID, attempt.triggerEventID,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // terminateChildSessionThreadsLocked fences every persistent child when its
 // primary owner reaches a terminal state. Child completion takes the same
 // Session row lock, so either it commits before this transition or observes the
@@ -435,6 +494,11 @@ FOR UPDATE`, sessionID)
 
 	committed := make([]domain.Event, 0, len(children)*2)
 	for _, thread := range children {
+		if err := s.interruptSessionThreadAttemptsLocked(
+			ctx, tx, q, sessionID, thread.ID,
+		); err != nil {
+			return nil, maxSeq, err
+		}
 		if _, err := tx.Exec(ctx, `
 DELETE FROM pending_actions
 WHERE session_id = $1 AND thread_id = $2 AND resolved_at IS NULL`,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/yanpgwang/mango/internal/domain"
@@ -33,7 +34,12 @@ type TurnAttempt struct {
 // replayed. Call RecoverTurn first to classify leftovers.
 func (s *Store) BeginAttempt(ctx context.Context, sessionID, triggerEventID string) (TurnAttempt, error) {
 	var attempt TurnAttempt
-	err := s.withTx(ctx, func(q *pgstore.Queries) error {
+	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
+		if err := s.lockTurnExecutionOwner(
+			ctx, tx, q, sessionID, triggerEventID,
+		); err != nil {
+			return err
+		}
 		if _, err := q.ActiveAttemptForTurn(ctx, pgstore.ActiveAttemptForTurnParams{
 			SessionID: sessionID, TriggerEventID: triggerEventID,
 		}); err == nil {
@@ -80,6 +86,60 @@ func (s *Store) BeginAttempt(ctx context.Context, sessionID, triggerEventID stri
 	return attempt, nil
 }
 
+// lockTurnExecutionOwner serializes attempt admission with Session and Thread
+// lifecycle transitions. Once an owner is terminal, no delayed Activity may
+// create an attempt that a completed termination transaction could not fence.
+func (s *Store) lockTurnExecutionOwner(
+	ctx context.Context,
+	tx pgx.Tx,
+	q *pgstore.Queries,
+	sessionID string,
+	triggerEventID string,
+) error {
+	row, err := q.LockSession(ctx, sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.NotFound("session not found")
+	}
+	if err != nil {
+		return err
+	}
+	if row.DeletingAt.Valid {
+		return domain.Conflict("session deletion is in progress")
+	}
+	session, err := sessionFromLockRow(row)
+	if err != nil {
+		return err
+	}
+	if session.ArchivedAt != nil || session.Status == domain.StatusTerminated {
+		return domain.Conflict("cannot execute a turn for a terminated Session")
+	}
+
+	var (
+		threadStatus string
+		archivedAt   *time.Time
+	)
+	err = tx.QueryRow(ctx, `
+SELECT thread.status, thread.archived_at
+FROM events AS event
+JOIN session_threads AS thread
+  ON thread.session_id = event.session_id
+ AND thread.id = event.thread_id
+WHERE event.session_id = $1 AND event.id = $2
+FOR UPDATE OF thread`, sessionID, triggerEventID).Scan(
+		&threadStatus, &archivedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.NotFound("turn trigger event not found")
+	}
+	if err != nil {
+		return err
+	}
+	if archivedAt != nil || domain.Status(threadStatus) == domain.StatusTerminated {
+		return domain.Conflict("cannot execute a turn for a terminated Session Thread")
+	}
+	return nil
+}
+
 // EnsureAttempt returns the explicitly named active attempt for a
 // Workflow-owned turn, creating it when none exists. Unlike BeginAttempt, this
 // operation is intentionally idempotent: a Temporal Activity retry after the
@@ -99,7 +159,12 @@ func (s *Store) EnsureAttempt(
 		return TurnAttempt{}, domain.Validation("turn attempt id is required")
 	}
 	var attempt TurnAttempt
-	err := s.withTx(ctx, func(q *pgstore.Queries) error {
+	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
+		if err := s.lockTurnExecutionOwner(
+			ctx, tx, q, sessionID, triggerEventID,
+		); err != nil {
+			return err
+		}
 		activeID, err := q.ActiveAttemptForTurn(ctx, pgstore.ActiveAttemptForTurnParams{
 			SessionID: sessionID, TriggerEventID: triggerEventID,
 		})
@@ -217,11 +282,12 @@ func (s *Store) finishAttemptLocked(
 	}
 	now := s.clock.Now().UTC()
 	if state == domain.RunAttemptInterrupted {
-		// WaitForCancellation guarantees the Activity has acknowledged the
-		// Workflow's cancellation before this transaction runs. Locking the
-		// attempt serializes this fence with StartToolStep: either Start won and
-		// its result-less step becomes ambiguous, or this interrupt wins and the
-		// stale prepared step can never cross the side-effect boundary.
+		// An ordinary interrupt reaches this point after the Activity acknowledges
+		// cancellation. Owner termination can also call it while committing the
+		// terminal lifecycle. Locking the attempt serializes both fences with
+		// StartToolStep: either Start already crossed the boundary and its
+		// result-less step becomes ambiguous, or this transition wins and a stale
+		// prepared step can never start.
 		if _, err := q.MarkStartedStepsAmbiguousForAttempt(
 			ctx,
 			pgstore.MarkStartedStepsAmbiguousForAttemptParams{
