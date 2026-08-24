@@ -10,9 +10,13 @@ run inside its sandbox. The application can call an internal service, record an
 audited decision, or wait for a human reviewer, then return the result to the
 same durable Session.
 
-This guide describes the lifecycle contract. Complete
-[Getting started](../getting-started.md) first and use the exact request shapes
-from the [Agents](../api/agents.md) and [Events](../api/events.md) references.
+This guide includes a runnable example over Mango's public HTTP API. Mango does
+not yet publish an SDK, so the example deliberately uses Go's standard
+`net/http` client and exposes the same requests an SDK would eventually wrap.
+It never calls the model provider directly: the configured Mango worker owns
+that credential and model request. Complete [Getting started](../getting-started.md)
+first and use the exact request shapes from the [Agents](../api/agents.md) and
+[Events](../api/events.md) references.
 
 ## Define the gate
 
@@ -117,19 +121,52 @@ retry, signing, idempotency, and delivery observability.
 
 ## Executable verification
 
-The documented expense workflow is exercised with a configured real model,
-real PostgreSQL, real Temporal, and Mango's durable Session runtime. The model
-must emit one `decide` and one `escalate` call, the test client returns the
-application and human decisions in two admissions, and the same model must
-finish after receiving both correlated results:
+Start the local stack with the real model values in
+`~/.config/mango/dev.env`, then run the interactive example:
 
 ```bash
-scripts/with-dev-env make test-hitl-gate-live
+make local-up
+make local-health
+scripts/with-dev-env make demo-hitl-gate
 ```
 
-The test client deterministically stands in for the expense system and human
-reviewer; no test can automate a literal person. The model interaction and
-Mango lifecycle are real, credentialed, and potentially billable.
+The program creates an Environment, Agent, and Session through public HTTP,
+sends two receipts, and waits for the complete `requires_action` barrier. The
+real model must produce `decide` for the clear receipt and `escalate` for the
+ambiguous one. The application records `decide` automatically; for `escalate`,
+the terminal displays the model's question and waits for you to type
+`approve` or `reject`. Results are submitted separately, and the program waits
+for the real model's final response after the complete barrier.
+
+The runnable source is
+[`examples/hitl-gate`](https://github.com/yanpgwang/mango/tree/main/examples/hitl-gate).
+It defaults to `http://localhost:8080` and the documented local Mango API key.
+Set `MANGO_EXAMPLE_BASE_URL`, `MANGO_API_KEY`, or
+`MANGO_EXAMPLE_MODEL_ID` to override them. Set
+`MANGO_EXAMPLE_KEEP_RESOURCES=1` to retain the created resources for history
+inspection; otherwise the program deletes the Session and Environment and
+archives the Agent after success. The Make target removes model-provider
+credentials from the example process environment before starting it.
+
+A successful run resembles the following. Model wording can vary, but the
+program requires the two typed actions and the final completed turn:
+
+```text
+The real model requested these application-owned actions:
+  decide {"action":"approve",...,"receipt_id":"r01"}
+  escalate {"question":"This USD 900 expense ... can an itemized receipt be provided?","receipt_id":"r02"}
+
+Application records approve for r01.
+First result persisted; the Session remains at the incomplete barrier.
+
+Human review required for r02: This USD 900 expense ... can an itemized receipt be provided?
+Decision [approve/reject]: reject
+
+Agent final response:
+Summary of recorded outcomes:
+Receipt r01: Approved ...
+Receipt r02: Rejected (after human review) ...
+```
 
 A separate offline test creates seven parallel actions, answers only three,
 rejects a duplicate without a partial commit, replaces the execution worker,

@@ -20,6 +20,7 @@ MANGO_TEST_S3_ENDPOINT ?= http://localhost:9000
 MANGO_TEST_S3_BUCKET ?= mango-test
 MANGO_TEST_S3_ACCESS_KEY ?= minioadmin
 MANGO_TEST_S3_SECRET_KEY ?= minioadmin
+MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
 
 DOCKER_BUILD_ARGS := --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION)
 ifneq ($(strip $(GOPROXY)),)
@@ -29,7 +30,7 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help build lint test test-race test-service test-model-live test-platform-live \
-	test-coding-agent test-coding-agent-live test-hitl-gate test-hitl-gate-live \
+	test-coding-agent test-coding-agent-live test-hitl-gate demo-hitl-gate \
 	vet verify security docs-check image image-smoke dev-env-init \
 	local-config local-up local-down local-health local-ps local-logs
 
@@ -45,7 +46,7 @@ help:
 	@echo "  make test-coding-agent   run the offline iterate coding scenario in Docker"
 	@echo "  make test-coding-agent-live  run the iterate scenario against the live model"
 	@echo "  make test-hitl-gate      run the durable custom-tool HITL scenario"
-	@echo "  make test-hitl-gate-live run the HITL scenario against the live model"
+	@echo "  make demo-hitl-gate      run the interactive HITL example over public HTTP"
 	@echo "  make vet            run go vet"
 	@echo "  make verify         run the core Go checks"
 	@echo "  make security       scan reachable Go code and high-severity npm issues"
@@ -116,12 +117,10 @@ test-hitl-gate:
 	$(GO) test ./internal/temporal \
 		-run '^TestVerticalSlice_HITLGateSurvivesWorkerRestart$$' -count=1
 
-test-hitl-gate-live:
-	MANGO_TEST_LIVE_MODEL=1 \
-	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
-	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
-	$(GO) test ./internal/temporal \
-		-run '^TestVerticalSlice_LiveModelHITLGateEndToEnd$$' -count=1
+demo-hitl-gate:
+	MANGO_EXAMPLE_MODEL_ID='$(MANGO_EXAMPLE_MODEL_ID)' \
+	env -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
+		$(GO) run ./examples/hitl-gate
 
 vet:
 	$(GO) vet ./...

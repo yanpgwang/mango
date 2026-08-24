@@ -153,9 +153,10 @@ support, so they run the same offline and opt-in live conformance suites.
 - Mango adopted the application-owned action boundary: the model proposes a
   typed custom call, the Session becomes idle, and an application or human
   returns the correlated result before inference continues.
-- The guide's expense flow is executed by an opt-in real-model scenario. Its
-  test client represents the external expense system and reviewer, while the
-  deterministic scenario separately proves crash and concurrency invariants.
+- The guide's expense flow is a runnable public-HTTP example exercised against
+  a real model. Its client represents the external expense system and prompts
+  a terminal user for the review decision, while the deterministic scenario
+  separately proves crash and concurrency invariants.
 - Mango changed the hosted presentation behavior. One idle event exposes every
   action in the current barrier rather than a sliding window. Partial results
   are durably claimed without waking execution; the final result resumes the

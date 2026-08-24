@@ -2,7 +2,6 @@ package temporal_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -21,8 +20,6 @@ import (
 )
 
 const gateActionCount = 7
-
-const liveGateActionCount = 2
 
 // TestVerticalSlice_HITLGateSurvivesWorkerRestart exercises Mango's durable
 // client-action boundary over real PostgreSQL and Temporal. One model response
@@ -198,115 +195,6 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 	final, err := store.GetSession(ctx, session.ID)
 	if err != nil || final.Status != domain.StatusIdle {
 		t.Fatalf("completed HITL gate Session = %+v, err=%v", final, err)
-	}
-}
-
-// TestVerticalSlice_LiveModelHITLGateEndToEnd executes the documented
-// expense-approval journey with the explicitly configured Messages endpoint.
-// Mango persists real model-generated custom-tool calls, the test client acts
-// as the external approval application, and the same model receives the
-// correlated results before completing the Session.
-func TestVerticalSlice_LiveModelHITLGateEndToEnd(t *testing.T) {
-	modelClient, modelID := liveModelForTest(t, "HITL gate scenario")
-	databaseURL := os.Getenv("MANGO_TEST_DATABASE_URL")
-	temporalAddress := os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT")
-
-	ctx := context.Background()
-	store, cleanup := integrationStore(t, databaseURL)
-	defer cleanup()
-	temporalClient, err := client.Dial(client.Options{HostPort: temporalAddress})
-	if err != nil {
-		t.Skipf("temporal unreachable at %s: %v", temporalAddress, err)
-	}
-	defer temporalClient.Close()
-
-	ids := domain.NewRandomIDGen()
-	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
-		TemporalClient:  temporalClient,
-		Store:           store,
-		ModelClient:     modelClient,
-		SandboxProvider: sandbox.NewLocalProvider(),
-		IDGenerator:     ids,
-		RelayConfig:     temporalpkg.RelayConfig{PollInterval: 100 * time.Millisecond},
-		TaskQueue:       "mango-hitl-gate-live-" + ids.NewID(""),
-	})
-	stopRuntime := startGateRuntime(t, ctx, runtime)
-	defer stopRuntime()
-
-	system := "You process expense receipts through application-owned tools. Follow the supplied policy and call exactly one tool per receipt. After tool results arrive, summarize the recorded outcomes without calling another tool."
-	session := domain.Session{
-		ID:                "sesn_hitl_gate_live_" + ids.NewID(""),
-		AgentID:           "agent_hitl_gate_live",
-		AgentVersion:      1,
-		EnvironmentID:     "env_hitl_gate_live",
-		EnvironmentType:   "cloud",
-		EnvironmentConfig: map[string]any{"type": "cloud"},
-		Status:            domain.StatusIdle,
-		Metadata:          map[string]any{},
-		AgentSnapshot: domain.Agent{
-			ID: "agent_hitl_gate_live", Version: 1, Name: "expense-gate-live",
-			Model: domain.Model{ID: modelID}, System: &system,
-			Tools: gateCustomTools(),
-		},
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
-	}
-	orchestrator := runtime.Orchestrator()
-	if _, _, err := orchestrator.CreateSession(ctx, session, nil); err != nil {
-		t.Fatalf("create live HITL gate Session: %v", err)
-	}
-	defer terminateIntegrationWorkflow(t, temporalClient, session.ID)
-
-	prompt := strings.Join([]string{
-		"Apply this expense policy: office supplies at or below USD 100 with a receipt are approved; expenses above USD 500 without an itemized receipt require human review.",
-		"Process exactly two receipts in one response.",
-		"Receipt r01 is USD 12 for office pencils and has an itemized receipt. Call decide with action approve.",
-		"Receipt r02 is USD 900 for an unspecified team activity and has no itemized receipt. Call escalate with a useful reviewer question.",
-		"Call exactly one tool for each receipt now, with no prose before the two tool calls.",
-	}, " ")
-	if _, err := orchestrator.Admit(ctx, session.ID, []domain.EventDraft{{
-		Type: domain.EvUserMessage,
-		Payload: map[string]any{"content": []any{map[string]any{
-			"type": "text", "text": prompt,
-		}}},
-	}}); err != nil {
-		t.Fatalf("admit live HITL gate task: %v", err)
-	}
-
-	_, actions, actionIDs := waitForGateBarrier(
-		t, store, session.ID, liveGateActionCount, 2*time.Minute,
-	)
-	assertLiveGateActions(t, actions)
-	assertStringSetEqual(t, actionIDs, eventIDs(actions), "live requires_action event ids")
-
-	firstResults := liveGateResolutionDrafts(t, actions[:1])
-	if _, err := orchestrator.Admit(ctx, session.ID, firstResults); err != nil {
-		t.Fatalf("admit first live HITL result: %v", err)
-	}
-	assertGatePendingState(t, store, session.ID, liveGateActionCount, 1)
-	if got := len(eventsOfType(mustGateEvents(t, store, session.ID), domain.EvSpanModelRequestStart)); got != 1 {
-		t.Fatalf("live gate resumed before its complete barrier: model requests=%d", got)
-	}
-
-	remainingResults := liveGateResolutionDrafts(t, actions[1:])
-	if _, err := orchestrator.Admit(ctx, session.ID, remainingResults); err != nil {
-		t.Fatalf("admit final live HITL result: %v", err)
-	}
-	events := waitForGateCompletion(t, store, session.ID, 2*time.Minute)
-	if got := len(eventsOfType(events, domain.EvAgentCustomToolUse)); got != liveGateActionCount {
-		t.Fatalf("live custom tool uses = %d, want %d; events=%s", got, liveGateActionCount, typeList(events))
-	}
-	if got := len(eventsOfType(events, domain.EvUserCustomToolResult)); got != liveGateActionCount {
-		t.Fatalf("live custom tool results = %d, want %d; events=%s", got, liveGateActionCount, typeList(events))
-	}
-	if got := len(eventsOfType(events, domain.EvSpanModelRequestStart)); got != 2 {
-		t.Fatalf("live model requests = %d, want 2; events=%s", got, typeList(events))
-	}
-	if messages := gateAgentMessages(events); strings.TrimSpace(messages) == "" {
-		t.Fatalf("live gate completed without a final model message; events=%s", typeList(events))
-	}
-	if pending, err := store.UnresolvedPendingActions(ctx, session.ID); err != nil || len(pending) != 0 {
-		t.Fatalf("live gate pending actions = %+v, err=%v", pending, err)
 	}
 }
 
@@ -499,80 +387,6 @@ func assertGateActions(t *testing.T, actions []domain.Event) {
 	if names["decide"] == 0 || names["escalate"] == 0 {
 		t.Fatalf("HITL actions did not exercise both lanes: %v", names)
 	}
-}
-
-func assertLiveGateActions(t *testing.T, actions []domain.Event) {
-	t.Helper()
-	want := map[string]string{"r01": "decide", "r02": "escalate"}
-	seen := make(map[string]string, len(actions))
-	for _, action := range actions {
-		name, _ := action.Payload["name"].(string)
-		input, _ := action.Payload["input"].(map[string]any)
-		receiptID, _ := input["receipt_id"].(string)
-		if receiptID == "" || name != want[receiptID] {
-			t.Fatalf("unexpected live HITL action: %+v", action)
-		}
-		if _, duplicate := seen[receiptID]; duplicate {
-			t.Fatalf("duplicate live HITL action for %s: %+v", receiptID, actions)
-		}
-		seen[receiptID] = name
-	}
-	if len(seen) != len(want) {
-		t.Fatalf("live HITL actions = %v, want %v", seen, want)
-	}
-}
-
-func liveGateResolutionDrafts(t *testing.T, actions []domain.Event) []domain.EventDraft {
-	t.Helper()
-	drafts := make([]domain.EventDraft, 0, len(actions))
-	for _, action := range actions {
-		name, _ := action.Payload["name"].(string)
-		input, _ := action.Payload["input"].(map[string]any)
-		receiptID, _ := input["receipt_id"].(string)
-		result := map[string]any{"recorded": true, "receipt_id": receiptID}
-		switch name {
-		case "decide":
-			result["decision"] = "approve"
-		case "escalate":
-			result["human_decision"] = "reject"
-		default:
-			t.Fatalf("cannot resolve unexpected live HITL tool %q", name)
-		}
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			t.Fatalf("encode live HITL result: %v", err)
-		}
-		drafts = append(drafts, domain.EventDraft{
-			Type: domain.EvUserCustomToolResult,
-			Payload: map[string]any{
-				"custom_tool_use_id": action.ID,
-				"content": []any{map[string]any{
-					"type": "text", "text": string(encoded),
-				}},
-			},
-		})
-	}
-	return drafts
-}
-
-func mustGateEvents(t *testing.T, store *pg.Store, sessionID string) []domain.Event {
-	t.Helper()
-	events, err := store.EventsAfter(context.Background(), sessionID, 0, 200)
-	if err != nil {
-		t.Fatalf("list HITL gate events: %v", err)
-	}
-	return events
-}
-
-func gateAgentMessages(events []domain.Event) string {
-	messages := make([]string, 0)
-	for _, event := range eventsOfType(events, domain.EvAgentMessage) {
-		text, _, ok := eventText(event)
-		if ok && strings.TrimSpace(text) != "" {
-			messages = append(messages, strings.TrimSpace(text))
-		}
-	}
-	return strings.Join(messages, " | ")
 }
 
 func eventIDs(events []domain.Event) []string {

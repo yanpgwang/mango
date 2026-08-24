@@ -175,7 +175,7 @@ Temporal Task Queue. Keep credentials in the environment and never commit them.
 Only this model endpoint is called; Mango does not call a separate hosted agent
 service. Whether a credential is usable depends on whether its gateway permits
 authenticated `POST /v1/messages` requests with streaming. The following
-opt-in smoke tests answer that directly:
+explicit live checks and examples exercise that endpoint:
 
 ```bash
 # Checks the external Messages endpoint only. This makes a real, potentially
@@ -191,20 +191,23 @@ make test-platform-live
 # repository or evaluating their contents as shell syntax.
 scripts/with-dev-env make test-coding-agent-live
 
-# Runs the custom-tool expense gate with real model-generated decide/escalate
-# calls and application-supplied results.
-scripts/with-dev-env make test-hitl-gate-live
+# Runs the public-HTTP expense gate example. The real model generates the
+# decide/escalate calls and the terminal prompts for the human decision.
+scripts/with-dev-env make demo-hitl-gate
 ```
 
 The [coding-agent iterate guide](guides/coding-agent-iterate.md) explains the
 corresponding user workflow and the Mango resources involved. It is a design
-walkthrough rather than a second test runner.
+walkthrough rather than a second test runner. The
+[HITL gate guide](guides/hitl-gate.md) documents the interactive public-HTTP
+example and its application-owned action boundary.
 
-These tests run only when invoked through the live targets and never print the
-API key. The model-only smoke test does not enable tools; the platform tests use
-an isolated Docker sandbox, and the coding scenario excludes Web Search/Fetch
-from its least-privilege toolset. Live tests are excluded from public CI because
-external credentials, availability, latency, and cost are not deterministic.
+These commands never print the API key. The model-only smoke test does not
+enable tools; the platform tests use an isolated Docker sandbox, the coding
+scenario excludes Web Search/Fetch from its least-privilege toolset, and the
+HITL example removes provider credentials from its client process. Live checks
+are excluded from public CI because external credentials, availability,
+latency, user input, and cost are not deterministic.
 Use a newly issued key if a credential has ever appeared in chat, logs, or shell
 history.
 
