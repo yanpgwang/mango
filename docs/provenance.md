@@ -144,6 +144,30 @@ support, so they run the same offline and opt-in live conformance suites.
   explicit live tier checks the same outcome against a configured model
   endpoint.
 
+## Human-in-the-loop custom-tool gate
+
+- Anthropic's public
+  [`CMA_gate_human_in_the_loop` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_gate_human_in_the_loop.ipynb)
+  supplied the expense-approval user problem, the useful `decide` versus
+  `escalate` split, and the custom-tool result round trip as design evidence.
+- Mango adopted the application-owned action boundary: the model proposes a
+  typed custom call, the Session becomes idle, and an application or human
+  returns the correlated result before inference continues.
+- The guide's expense flow is a runnable public-HTTP example exercised against
+  a real model. Its client represents the external expense system and prompts
+  a terminal user for the review decision, while the deterministic scenario
+  separately proves crash and concurrency invariants.
+- Mango changed the hosted presentation behavior. One idle event exposes every
+  action in the current barrier rather than a sliding window. Partial results
+  are durably claimed without waking execution; the final result resumes the
+  complete result round exactly once, including after worker replacement.
+- The scenario uses Mango-owned synthetic inputs and copies no Cookbook
+  fixture. Its executable contract is PostgreSQL atomic admission, Temporal
+  recovery, duplicate-result rejection, and persisted Event ordering.
+- Mango did not adopt Console-managed webhooks or long-lived connection
+  assumptions. Durable outbound webhook delivery remains separate work with
+  its own signing, retry, idempotency, and observability requirements.
+
 ## Custom Skills
 
 - The public [Claude Managed Agents Skills guide](https://platform.claude.com/docs/en/managed-agents/skills)
