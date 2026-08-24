@@ -168,6 +168,31 @@ support, so they run the same offline and opt-in live conformance suites.
   assumptions. Durable outbound webhook delivery remains separate work with
   its own signing, retry, idempotency, and observability requirements.
 
+## Multi-agent specialist team
+
+- Anthropic's public
+  [`CMA_coordinate_specialist_team` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_coordinate_specialist_team.ipynb)
+  supplied the useful specialist-team user problem: a coordinator delegates
+  role-scoped work, waits for reports, consults an Advisor, and synthesizes a
+  final decision.
+- Mango's real-model example adopts that high-level workflow but uses synthetic
+  release-readiness facts and no Web, hosted data, or third-party integration.
+  The client exercises Mango's public HTTP resources and inspects its persisted
+  Event and Session Thread projections.
+- Mango changes child completion semantics deliberately. Ordinary child Agents
+  finish a turn and the runtime projects their report to the coordinator; they
+  do not receive or need a hosted `send_to_parent` tool. Persistent follow-up is
+  addressed through Mango's runtime-owned `send_to_agent` tool and the existing
+  `session_thread_id`.
+- The scenario verifies one real provider run with two ordinary children, a
+  primary-only Advisor consultation, per-Thread usage, a final synthesis
+  barrier, and an interactive follow-up. Deterministic service tests remain
+  authoritative for retry, interruption, recovery, archive, and deletion
+  invariants.
+- Mango did not adopt the Cookbook's SDK calls, cloud Environment fields,
+  bundled sales collateral, web-search dependency, hosted model restrictions,
+  or exact response text.
+
 ## Custom Skills
 
 - The public [Claude Managed Agents Skills guide](https://platform.claude.com/docs/en/managed-agents/skills)

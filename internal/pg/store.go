@@ -2061,7 +2061,7 @@ func (s *Store) completeTurn(
 	usage domain.TokenUsage,
 ) (TurnCompletion, error) {
 	var result TurnCompletion
-	err := s.withTx(ctx, func(q *pgstore.Queries) error {
+	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
 		row, err := q.LockSession(ctx, sessionID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.NotFound("session not found")
@@ -2382,6 +2382,17 @@ func (s *Store) completeTurn(
 		)
 		if err != nil {
 			return err
+		}
+		if independentPrimary && effectiveStatus == domain.StatusTerminated {
+			terminatedEvents, next, err := s.terminateChildSessionThreadsLocked(
+				ctx, tx, q, sessionID, primaryThread.ID,
+				triggerEventID, finalMaxSeq, completionTime,
+			)
+			if err != nil {
+				return err
+			}
+			events = append(events, terminatedEvents...)
+			finalMaxSeq = next
 		}
 		allowedActions := make(map[string]domain.Event, len(events))
 		for _, event := range events {
