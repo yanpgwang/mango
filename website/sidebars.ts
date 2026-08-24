@@ -11,6 +11,7 @@ const sidebars: SidebarsConfig = {
       label: 'Guides',
       items: [
         'guides/coding-agent-iterate',
+        'guides/hitl-gate',
         'guides/multi-agent',
         'sandboxes',
       ],

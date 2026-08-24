@@ -90,6 +90,10 @@ The deterministic form of the coding-agent scenario runs in the ordinary
 service suite and can also be selected directly with `make test-coding-agent`.
 Keep its guide, fixture, and deterministic/live outcome assertions aligned.
 
+The durable custom-tool gate scenario can be selected with
+`make test-hitl-gate`. Keep its guide aligned with the complete-barrier,
+partial-result, duplicate-result, and worker-replacement assertions.
+
 ## Public API changes
 
 When changing the public HTTP surface:
