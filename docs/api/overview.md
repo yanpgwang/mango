@@ -6,7 +6,7 @@ slug: /api
 # API overview
 
 The server exposes Mango's current Agent, Environment, Session, Event, File,
-Skill, Memory, Vault, Deployment, Environment Work, and Session Thread HTTP
+Skill, Memory, Vault, Webhook, Deployment, Environment Work, and Session Thread HTTP
 surface under `/v1`. Operation presence does not imply unrestricted support
 for every workflow; resource-specific limitations are documented explicitly.
 
@@ -32,6 +32,7 @@ or still in preview. Mango's API is not defined by a third-party SDK.
 | Skills | Create/list/get/delete custom Skills and immutable Versions; download Version zip archives |
 | Memory | Create/list/get/update/archive/delete Stores; create/list/get/update/delete Memories; get/list/redact immutable Versions |
 | Vaults | Create/list/get/update/archive/delete Vaults; create/list/get/update/archive/delete encrypted Credentials; validate MCP OAuth Credentials |
+| Webhooks | Create/list/get/update/delete signed lifecycle endpoints; rotate one-time signing secrets |
 | Deployments | Create/list/get/update/archive/pause/unpause/run under `/v1/deployments`; get/list immutable records under `/v1/deployment_runs` |
 | Session Resources | Add, list, get, update contract, and delete under `/v1/sessions/{id}/resources` |
 | Operations | `GET /healthz`, `GET /readyz`, `GET /openapi.yaml` |
@@ -49,6 +50,7 @@ Resource-specific request shapes are covered in:
 - [Skills](skills.md)
 - [Memory](memory.md)
 - [Vaults and Credentials](vaults.md)
+- [Webhooks](webhooks.md)
 - [Deployments and Deployment Runs](deployments.md)
 
 ## Headers
@@ -147,7 +149,7 @@ Files currently use ID-based pagination: `after_id` and
 `before_id` select a direction, while the response contains `has_more`,
 `first_id`, and `last_id`. The two direction parameters cannot be combined.
 
-Vault, Credential, Deployment, Deployment Run, and Environment Work lists use forward-only opaque
+Vault, Credential, Webhook, Deployment, Deployment Run, and Environment Work lists use forward-only opaque
 `page` cursors and return `data` with nullable `next_page`. Cursors are bound to
 their normalized filters; Credential cursors are additionally bound to their
 parent Vault ID and archive filter.

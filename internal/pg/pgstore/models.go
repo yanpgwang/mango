@@ -125,6 +125,8 @@ type File struct {
 	ChecksumSha256 string
 	State          string
 	WorkspaceID    string
+	OutputPath     *string
+	InternalUse    bool
 }
 
 type McpDiscoverySnapshot struct {
@@ -245,20 +247,24 @@ type Session struct {
 }
 
 type SessionResource struct {
-	ID                     string
-	SessionID              string
-	ResourceType           string
-	SourceFileID           *string
-	FileID                 *string
-	MountPath              string
-	State                  string
-	CreatedAt              pgtype.Timestamptz
-	UpdatedAt              pgtype.Timestamptz
-	MemoryStoreID          *string
-	MemoryAccess           *string
-	MemoryInstructions     *string
-	MemoryStoreName        *string
-	MemoryStoreDescription *string
+	ID                       string
+	SessionID                string
+	ResourceType             string
+	SourceFileID             *string
+	FileID                   *string
+	MountPath                string
+	State                    string
+	CreatedAt                pgtype.Timestamptz
+	UpdatedAt                pgtype.Timestamptz
+	MemoryStoreID            *string
+	MemoryAccess             *string
+	MemoryInstructions       *string
+	MemoryStoreName          *string
+	MemoryStoreDescription   *string
+	RepositoryUrl            *string
+	RepositoryCheckoutType   *string
+	RepositoryCheckoutValue  *string
+	RepositoryResolvedCommit *string
 }
 
 type SessionSandbox struct {
@@ -283,8 +289,9 @@ type SessionThread struct {
 	ID             string
 	SessionID      string
 	ParentThreadID *string
-	Kind           string
-	CreatedAt      pgtype.Timestamptz
+	// primary and persistent child Workflows, plus automatically terminating advisor consultations
+	Kind      string
+	CreatedAt pgtype.Timestamptz
 	// Independent Thread archive time; primary archive currently follows Session archive
 	ArchivedAt pgtype.Timestamptz
 	Status     string
@@ -406,6 +413,48 @@ type VaultCredential struct {
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 	ArchivedAt       pgtype.Timestamptz
+}
+
+type Webhook struct {
+	ID               string
+	WorkspaceID      string
+	Url              string
+	EventTypes       []string
+	Status           string
+	DisabledReason   *string
+	SecretVersion    int32
+	SecretAlgorithm  string
+	SecretKeyID      string
+	SecretNonce      []byte
+	SecretCiphertext []byte
+	FailureStartedAt pgtype.Timestamptz
+	LastSuccessAt    pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+type WebhookDelivery struct {
+	WebhookID      string
+	EventID        string
+	State          string
+	AttemptCount   int32
+	NextAttemptAt  pgtype.Timestamptz
+	ClaimedAt      pgtype.Timestamptz
+	ClaimID        *string
+	LastAttemptAt  pgtype.Timestamptz
+	DeliveredAt    pgtype.Timestamptz
+	ResponseStatus *int32
+	LastError      *string
+	CreatedAt      pgtype.Timestamptz
+}
+
+type WebhookEvent struct {
+	ID          string
+	WorkspaceID string
+	EventType   string
+	ResourceID  string
+	Payload     []byte
+	CreatedAt   pgtype.Timestamptz
 }
 
 type Workspace struct {

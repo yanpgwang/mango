@@ -28,6 +28,9 @@ const (
 	PrefixDeployment      = "depl_"
 	PrefixDeploymentRun   = "drun_"
 	PrefixEnvironmentWork = "work_"
+	PrefixWebhook         = "wh_"
+	PrefixWebhookEvent    = "whe_"
+	PrefixWebhookClaim    = "whclaim_"
 )
 
 type Clock interface{ Now() time.Time }

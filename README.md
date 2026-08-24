@@ -83,7 +83,7 @@ make local-down
 | Agents and Sessions | Versioned Agent definitions, persistent Sessions, budgets, interrupts, and an event-based HTTP/SSE API |
 | Tools and resources | Sandboxed file and shell tools, remote MCP, Files, Git repositories, custom Skills, Memory Stores, and encrypted credentials |
 | Durable execution | Persisted event history, journaled tool calls, retries, park/resume, and restart recovery |
-| Automation and delegation | Scheduled Deployments, Run history, persistent child Agents, and Advisor consultations |
+| Automation and delegation | Scheduled Deployments, Run history, signed durable Webhooks, persistent child Agents, and Advisor consultations |
 | Execution environments | Local and Docker backends, self-hosted worker leases, and Preview remote-sandbox adapters |
 | Operator stack | PostgreSQL-authoritative state, Temporal workflows, S3-compatible objects, and NATS live previews |
 

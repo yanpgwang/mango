@@ -224,7 +224,8 @@ func (r *DeploymentRepository) CreateRun(
 	ctx context.Context,
 	run domain.DeploymentRun,
 ) (domain.DeploymentRun, error) {
-	if _, err := r.Get(ctx, run.DeploymentID); err != nil {
+	workspaceID, scoped, err := r.store.workspaceForRead(ctx)
+	if err != nil {
 		return domain.DeploymentRun{}, err
 	}
 	run = normalizeDeploymentRunTimes(run)
@@ -232,14 +233,38 @@ func (r *DeploymentRepository) CreateRun(
 	if err != nil {
 		return domain.DeploymentRun{}, err
 	}
-	_, err = r.store.pool.Exec(ctx, `
+	err = r.store.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
+		query := `SELECT workspace_id FROM deployments WHERE id = $1`
+		args := []any{run.DeploymentID}
+		if scoped {
+			query += ` AND workspace_id = $2`
+			args = append(args, workspaceID)
+		}
+		var ownerWorkspaceID string
+		if err := tx.QueryRow(ctx, query, args...).Scan(&ownerWorkspaceID); errors.Is(err, pgx.ErrNoRows) {
+			return domain.NotFound("deployment not found")
+		} else if err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `
 INSERT INTO deployment_runs (
     id, deployment_id, session_id, error_type, trigger_type,
     scheduled_at, body, created_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		run.ID, run.DeploymentID, run.SessionID, nullString(run.ErrorType),
-		run.TriggerType, run.ScheduledAt, body, run.CreatedAt,
-	)
+			run.ID, run.DeploymentID, run.SessionID, nullString(run.ErrorType),
+			run.TriggerType, run.ScheduledAt, body, run.CreatedAt,
+		)
+		if err != nil {
+			return err
+		}
+		if run.TriggerType != domain.DeploymentTriggerSchedule || run.ErrorType == "" {
+			return nil
+		}
+		return r.store.enqueueWebhookEvent(
+			ctx, q, ownerWorkspaceID, domain.WebhookEventDeploymentRunFailed,
+			run.ID, run.CreatedAt, nil,
+		)
+	})
 	if isUniqueViolation(err) {
 		return domain.DeploymentRun{}, domain.Conflict("deployment schedule occurrence already ran")
 	}

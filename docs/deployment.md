@@ -105,7 +105,7 @@ to PostgreSQL. API and worker processes must select the same provider. Local,
 self-hosted, and current remote adapters reject Memory Store attachment while
 the standalone Memory API remains available.
 
-The Vault API is disabled unless `MANGO_VAULT_KEYRING_FILE` points to
+The Vault and Webhook APIs are disabled unless `MANGO_VAULT_KEYRING_FILE` points to
 an operator-mounted JSON keyring. A configured but invalid keyring fails API
 startup rather than falling back to plaintext storage. The file has this shape:
 
@@ -119,11 +119,12 @@ startup rather than falling back to plaintext storage. The file has this shape:
 }
 ```
 
-New Credentials and secret/auth updates use the active key. Older keys may remain in
+New Credentials, Webhook signing secrets, and secret/auth updates use the active key. Older keys may remain in
 the file for reads during rotation; removing one makes Credentials encrypted by
 that key unavailable. Both the API and worker processes must load the same
 keyring: the API encrypts and admits Session Vault references, while workers
-decrypt matching credentials immediately before MCP requests. It must never be
+decrypt matching credentials immediately before MCP requests and Webhook
+delivery. It must never be
 mounted into a Session sandbox, copied into Agent context, or stored in
 PostgreSQL. The bundled local keyring is
 deterministic development material and must not be reused outside the local
