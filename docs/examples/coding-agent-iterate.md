@@ -1,11 +1,11 @@
 ---
-title: Build a coding-agent iteration loop
-slug: /guides/coding-agent-iterate
+title: Coding agent iteration loop
+slug: /examples/coding-agent-iterate
 ---
 
-# Build a coding-agent iteration loop
+# Coding agent iteration loop
 
-This guide shows how Mango represents a common coding-agent job: receive source
+This example shows how Mango represents a common coding-agent job: receive source
 files and failing checks, work on a writable copy until the checks pass, and
 publish the repaired source as a durable Session output.
 
@@ -79,7 +79,7 @@ turn reaches idle.
 ## Executable verification
 
 Mango keeps the automation in its test suite instead of duplicating the full
-service startup and polling logic in this guide:
+service startup and polling logic in this example:
 
 ```bash
 # Retry-safe deterministic model; part of the ordinary service suite.
