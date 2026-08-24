@@ -43,6 +43,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'examples/coding-agent-iterate',
         'examples/hitl-gate',
+        'examples/multi-agent-team',
       ],
     },
     {

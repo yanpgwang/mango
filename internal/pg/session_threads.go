@@ -386,6 +386,106 @@ ORDER BY created_at, id`, sessionID)
 	return nil
 }
 
+// terminateChildSessionThreadsLocked fences every persistent child when its
+// primary owner reaches a terminal state. Child completion takes the same
+// Session row lock, so either it commits before this transition or observes the
+// terminated projection and becomes a no-op. Lifecycle events and durable
+// Workflow termination intents commit in this same transaction.
+func (s *Store) terminateChildSessionThreadsLocked(
+	ctx context.Context,
+	tx pgx.Tx,
+	q *pgstore.Queries,
+	sessionID string,
+	primaryThreadID string,
+	triggerEventID string,
+	maxSeq int64,
+	now time.Time,
+) ([]domain.Event, int64, error) {
+	rows, err := tx.Query(ctx, `
+SELECT body
+FROM session_threads
+WHERE session_id = $1
+  AND kind = 'child'
+  AND archived_at IS NULL
+  AND status <> 'terminated'
+ORDER BY created_at, id
+FOR UPDATE`, sessionID)
+	if err != nil {
+		return nil, maxSeq, err
+	}
+	children := make([]domain.SessionThread, 0)
+	for rows.Next() {
+		var body []byte
+		if err := rows.Scan(&body); err != nil {
+			rows.Close()
+			return nil, maxSeq, err
+		}
+		var thread domain.SessionThread
+		if err := json.Unmarshal(body, &thread); err != nil {
+			rows.Close()
+			return nil, maxSeq, err
+		}
+		children = append(children, thread)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, maxSeq, err
+	}
+	rows.Close()
+
+	committed := make([]domain.Event, 0, len(children)*2)
+	for _, thread := range children {
+		if _, err := tx.Exec(ctx, `
+DELETE FROM pending_actions
+WHERE session_id = $1 AND thread_id = $2 AND resolved_at IS NULL`,
+			sessionID, thread.ID,
+		); err != nil {
+			return nil, maxSeq, err
+		}
+		if _, err := tx.Exec(ctx, `
+UPDATE events
+SET processed_at = COALESCE(processed_at, $3)
+WHERE session_id = $1 AND thread_id = $2 AND processed_at IS NULL`,
+			sessionID, thread.ID, now,
+		); err != nil {
+			return nil, maxSeq, err
+		}
+
+		thread.TransitionStatus(domain.StatusTerminated, now)
+		if err := putSessionThreadTx(ctx, tx, thread); err != nil {
+			return nil, maxSeq, err
+		}
+		lifecycle := domain.EventDraft{
+			Type:    domain.EvSessionThreadStatusTerminated,
+			Payload: threadLifecyclePayload(thread),
+		}
+		childEvents, next, err := s.appendThreadDraftsAt(
+			ctx, q, sessionID, thread.ID,
+			[]domain.EventDraft{lifecycle}, maxSeq, nil, now,
+		)
+		if err != nil {
+			return nil, maxSeq, err
+		}
+		maxSeq = next
+		committed = append(committed, childEvents...)
+		primaryEvents, next, err := s.appendThreadDraftsAt(
+			ctx, q, sessionID, primaryThreadID,
+			[]domain.EventDraft{lifecycle}, maxSeq, &triggerEventID, now,
+		)
+		if err != nil {
+			return nil, maxSeq, err
+		}
+		maxSeq = next
+		committed = append(committed, primaryEvents...)
+	}
+	if err := enqueueChildThreadTerminationsLocked(
+		ctx, tx, q, sessionID, maxSeq, now,
+	); err != nil {
+		return nil, maxSeq, err
+	}
+	return committed, maxSeq, nil
+}
+
 // CreateChildSessionThread atomically captures a callable Agent from the
 // Session-owned resolved roster, inserts its independent Thread projection,
 // and appends session.thread_created to the parent ledger. It deliberately does

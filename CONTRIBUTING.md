@@ -97,6 +97,11 @@ The durable custom-tool gate scenario can be selected with
 its documented example aligned with the complete-barrier, partial-result,
 duplicate-result, worker-replacement, and interactive live-model assertions.
 
+The specialist-team user journey runs with
+`scripts/with-dev-env make demo-multi-agent-team`. Keep it aligned with the
+ordinary-child, Advisor, real-usage, completion-barrier, and persistent-follow-up
+contracts covered by the multi-agent service and runtime tests.
+
 Cookbook-derived examples describe real Mango user journeys, not probe-only
 demos. Keep an offline deterministic test for exact runtime and recovery
 invariants, and a runnable public-API example for the documented live-model

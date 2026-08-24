@@ -80,15 +80,15 @@ func AnthropicFromEnv() (*Anthropic, bool, error) {
 
 // wireBlock is one content block in the Anthropic Messages wire format. A block
 // is a tagged union keyed on Type; only the fields relevant to that type are
-// emitted (omitempty), so a text block carries text, a tool_use block carries
-// id/name/input, and a tool_result block carries tool_use_id/content/is_error.
+// emitted. Input is a pointer because Messages requires tool_use.input even for
+// an empty object, while non-tool blocks must omit it.
 type wireBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
 	// tool_use
-	ID    string         `json:"id,omitempty"`
-	Name  string         `json:"name,omitempty"`
-	Input map[string]any `json:"input,omitempty"`
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Input *map[string]any `json:"input,omitempty"`
 	// tool_result
 	ToolUseID string            `json:"tool_use_id,omitempty"`
 	Content   []json.RawMessage `json:"content,omitempty"`
@@ -641,7 +641,13 @@ func marshalTypedBlock(b domain.ContentBlock) (json.RawMessage, error) {
 	var value any
 	switch b.Type {
 	case "tool_use":
-		value = wireBlock{Type: "tool_use", ID: b.ToolUseID, Name: b.ToolName, Input: b.Input}
+		input := b.Input
+		if input == nil {
+			input = map[string]any{}
+		}
+		value = wireBlock{
+			Type: "tool_use", ID: b.ToolUseID, Name: b.ToolName, Input: &input,
+		}
 	case "tool_result":
 		wb := wireBlock{Type: "tool_result", ToolUseID: b.ToolResultFor, IsError: b.IsError}
 		if len(b.ResultContent) > 0 {

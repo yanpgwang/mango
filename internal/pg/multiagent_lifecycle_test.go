@@ -248,6 +248,108 @@ WHERE session_id = $1 AND thread_id = $2`,
 	}
 }
 
+func TestPrimaryTerminalCompletion_FencesActiveChildrenAtomically(t *testing.T) {
+	fixture := newMultiagentInterruptFixture(t, "primary_terminal")
+	admitted, err := fixture.store.AdmitEvents(
+		fixture.ctx, fixture.session.ID,
+		[]domain.EventDraft{{
+			Type: domain.EvUserMessage,
+			Payload: map[string]any{"content": []any{map[string]any{
+				"type": "text", "text": "stop after this failure",
+			}}},
+		}},
+	)
+	if err != nil || len(admitted.SubmittedEvents) != 1 {
+		t.Fatalf("admit primary failure trigger = %+v, err=%v", admitted, err)
+	}
+	trigger := admitted.SubmittedEvents[0]
+	const attemptID = "ratm_primary_terminal"
+	if _, err := fixture.store.EnsureAttempt(
+		fixture.ctx, fixture.session.ID, trigger.ID, attemptID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	attemptError := "primary model request failed"
+	completion, err := fixture.store.CompleteWorkflowTurn(
+		fixture.ctx, fixture.session.ID, trigger.ID,
+		[]domain.EventDraft{
+			{Type: domain.EvSessionError, Payload: map[string]any{
+				"error": map[string]any{
+					"type": "model_request_failed_error", "message": attemptError,
+					"retry_status": map[string]any{"type": "terminal"},
+				},
+			}},
+			{Type: domain.EvSessionStatusTerminated, Payload: map[string]any{}},
+		},
+		domain.StatusTerminated, attemptID, domain.RunAttemptFailed,
+		&attemptError, nil, nil,
+	)
+	if err != nil || completion.Session.Status != domain.StatusTerminated {
+		t.Fatalf("primary terminal completion = %+v, err=%v", completion, err)
+	}
+
+	child, err := fixture.store.GetSessionThread(
+		fixture.ctx, fixture.session.ID, fixture.child.ID,
+	)
+	if err != nil || child.Status != domain.StatusTerminated {
+		t.Fatalf("fenced child = %+v, err=%v", child, err)
+	}
+	childEvents, err := fixture.store.ThreadEventsAfter(
+		fixture.ctx, fixture.session.ID, fixture.child.ID, 0, 100,
+	)
+	if err != nil || countEventsOfType(
+		childEvents, domain.EvSessionThreadStatusTerminated,
+	) != 1 {
+		t.Fatalf("child termination events = %+v, err=%v", childEvents, err)
+	}
+	primaryEvents, err := fixture.store.QueryEvents(
+		fixture.ctx, fixture.session.ID, app.EventQuery{Limit: 100},
+	)
+	if err != nil || countEventsOfType(
+		primaryEvents, domain.EvSessionThreadStatusTerminated,
+	) != 1 {
+		t.Fatalf("primary termination projection = %+v, err=%v", primaryEvents, err)
+	}
+
+	var intent string
+	if err := fixture.store.pool.QueryRow(fixture.ctx, `
+SELECT intent
+FROM thread_orchestration_outbox
+WHERE session_id = $1 AND thread_id = $2`,
+		fixture.session.ID, fixture.child.ID,
+	).Scan(&intent); err != nil {
+		t.Fatal(err)
+	}
+	if intent != string(OrchestrationTerminate) {
+		t.Fatalf("child termination intent = %q", intent)
+	}
+
+	late, err := fixture.store.CompleteThreadWorkflowTurn(
+		fixture.ctx, fixture.session.ID, fixture.child.ID,
+		fixture.childTrigger.ID,
+		[]domain.EventDraft{{
+			Type: domain.EvSessionStatusIdle,
+			Payload: map[string]any{
+				"stop_reason": map[string]any{"type": "end_turn"},
+			},
+		}},
+		domain.StatusIdle, "", "", nil, nil, nil, nil, nil,
+		domain.TokenUsage{},
+	)
+	if err != nil || late.Applied || late.ThreadStatus != domain.StatusTerminated {
+		t.Fatalf("late child completion = %+v, err=%v", late, err)
+	}
+	primaryEvents, err = fixture.store.QueryEvents(
+		fixture.ctx, fixture.session.ID, app.EventQuery{Limit: 100},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countEventsOfType(primaryEvents, domain.EvAgentThreadMessageReceived) != 0 {
+		t.Fatalf("late child report reached terminated primary: %+v", primaryEvents)
+	}
+}
+
 func countEventsOfType(events []domain.Event, eventType string) int {
 	count := 0
 	for _, event := range events {

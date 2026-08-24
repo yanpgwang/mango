@@ -13,6 +13,10 @@ Multi-agent execution uses the ordinary Session and Event APIs. Delegation is
 not a client-side endpoint: a coordinator receives the private `list_agents`
 and `send_to_agent` model tools and decides when to call them.
 
+For a runnable public-HTTP scenario with a real coordinator, two specialists,
+an Advisor, and persistent follow-up, see
+[Coordinate a specialist team](../examples/multi-agent-team.md).
+
 ## Prerequisites
 
 - Complete [Getting started](../getting-started.md).

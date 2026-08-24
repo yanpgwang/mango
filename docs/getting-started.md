@@ -194,18 +194,25 @@ scripts/with-dev-env make test-coding-agent-live
 # Runs the public-HTTP expense gate example. The real model generates the
 # decide/escalate calls and the terminal prompts for the human decision.
 scripts/with-dev-env make demo-hitl-gate
+
+# Runs a real coordinator, two specialist Agents, one Advisor consultation,
+# and an interactive follow-up on a persistent child Thread.
+scripts/with-dev-env make demo-multi-agent-team
 ```
 
 The [coding-agent iteration example](examples/coding-agent-iterate.md) explains the
 corresponding user workflow and the Mango resources involved. It is a design
 walkthrough rather than a second test runner. The
 [HITL gate example](examples/hitl-gate.md) documents the interactive public-HTTP
-example and its application-owned action boundary.
+example and its application-owned action boundary. The
+[specialist-team example](examples/multi-agent-team.md) verifies real-model
+delegation, Advisor usage, and persistent Thread follow-up.
 
 These commands never print the API key. The model-only smoke test does not
 enable tools; the platform tests use an isolated Docker sandbox, the coding
 scenario excludes Web Search/Fetch from its least-privilege toolset, and the
-HITL example removes provider credentials from its client process. Live checks
+interactive examples remove provider credentials from their client processes.
+Live checks
 are excluded from public CI because external credentials, availability,
 latency, user input, and cost are not deterministic.
 Use a newly issued key if a credential has ever appeared in chat, logs, or shell
