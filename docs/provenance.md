@@ -142,12 +142,19 @@ support, so they run the same offline and opt-in live conformance suites.
   Mango's S3-compatible object lifecycle, and restores it offline through one
   adapter-neutral pending/ready marker protocol. The sandbox worktree is an
   independent writable copy.
+- CMA's public [scheduled Deployments guide](https://platform.claude.com/docs/en/managed-agents/scheduled-deployments)
+  and Deployment resource union informed Mango's decision to reuse the same
+  high-level repository template across direct Sessions and Deployments.
+  Mango retains only the generic URL, optional checkout, and optional mount
+  path. Each Run resolves a branch or default checkout afresh and then reuses
+  the existing Session snapshot lifecycle; commit checkouts remain fixed. The
+  Deployment itself therefore has no misleading `resolved_commit`.
 - Mango rejected raw authorization tokens, vendor authentication/header
   semantics, hosted clone caches, provider-side repository APIs, and automatic
   `.claude/skills` discovery. Private credentials require a future Mango secret
-  reference. Submodules, LFS objects, runtime attach/detach, Deployment
-  templates, push/PR workflows, and repository Skill discovery remain separate
-  product decisions with their own acceptance criteria.
+  reference. Submodules, LFS objects, runtime attach/detach, push/PR workflows,
+  and repository Skill discovery remain separate product decisions with their
+  own acceptance criteria.
 - `github.com/go-git/go-git/v5` is a replaceable control-plane implementation
   dependency. It does not define Mango's HTTP contract, and no hosted agent
   credentials or services are required by development, CI, or production.

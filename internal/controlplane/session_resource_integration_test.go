@@ -380,6 +380,100 @@ func TestPostgresGitRepositoryResourceFreezesSnapshotAndMaterializesOffline(t *t
 	}
 }
 
+func TestPostgresDeploymentResolvesGitRepositoryForEachRun(t *testing.T) {
+	fixture := newPostgresFixture(t)
+	ctx := context.Background()
+	blobs := newResourceBlobStore()
+	fileRepository := pg.NewFileRepository(fixture.store)
+	resources := NewSessionResourceService(
+		fixture.store, fileRepository, blobs, fixture.ids, fixture.clock, true,
+	)
+	snapshotter := &staticGitRepositorySnapshotter{
+		commit:  "0123456789abcdef0123456789abcdef01234567",
+		archive: []byte("first repository snapshot"),
+	}
+	resources.EnableGitRepositoryResources(snapshotter)
+	sessions := NewSessionService(
+		fixture.store, fixture.agentRepo, fixture.environmentRepo,
+		temporalpkg.NewOrchestrator(fixture.store, nil), fixture.ids, fixture.clock,
+		nil, resources,
+	)
+	handler := httpapi.NewServer(httpapi.Deps{
+		Agents: app.NewAgentService(fixture.agentRepo, fixture.ids, fixture.clock),
+		Envs: app.NewEnvironmentService(
+			fixture.environmentRepo, fixture.ids, fixture.clock,
+			app.EnvironmentCapabilities{},
+		),
+	}, httpapi.Config{}).Handler()
+	agentID := createResource(t, handler, "/v1/agents",
+		`{"name":"deployment-repo-coder","model":"claude-test"}`)
+	environmentID := createResource(t, handler, "/v1/environments",
+		`{"name":"deployment-repo-cloud","config":{"type":"cloud"}}`)
+	deployments := app.NewDeploymentService(app.DeploymentServiceConfig{
+		Repository: pg.NewDeploymentRepository(fixture.store),
+		Agents:     fixture.agentRepo, Environments: fixture.environmentRepo,
+		Sessions: sessions, IDGenerator: fixture.ids, Clock: fixture.clock,
+	})
+	deployment, err := deployments.Create(ctx, app.DeploymentCreateInput{
+		AgentID: agentID, EnvironmentID: environmentID, Name: "Repository deployment",
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+		Resources: []domain.DeploymentResource{{
+			Type:                    domain.SessionResourceTypeGitRepository,
+			RepositoryURL:           "https://github.com/acme/widgets.git",
+			RepositoryCheckoutType:  domain.GitRepositoryCheckoutBranch,
+			RepositoryCheckoutValue: "main",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create Deployment: %v", err)
+	}
+	firstRun, err := deployments.Run(ctx, deployment.ID)
+	if err != nil || firstRun.SessionID == nil {
+		t.Fatalf("first Deployment Run = %+v, %v", firstRun, err)
+	}
+	firstResources, err := fixture.store.ListSessionResources(
+		ctx, *firstRun.SessionID, app.SessionResourceListQuery{Limit: 500},
+	)
+	if err != nil || len(firstResources.Resources) != 1 ||
+		firstResources.Resources[0].RepositoryResolvedCommit != snapshotter.commit {
+		t.Fatalf("first Run resources = %+v, %v", firstResources.Resources, err)
+	}
+
+	snapshotter.commit = "89abcdef0123456789abcdef0123456789abcdef"
+	snapshotter.archive = []byte("second repository snapshot")
+	secondRun, err := deployments.Run(ctx, deployment.ID)
+	if err != nil || secondRun.SessionID == nil {
+		t.Fatalf("second Deployment Run = %+v, %v", secondRun, err)
+	}
+	secondResources, err := fixture.store.ListSessionResources(
+		ctx, *secondRun.SessionID, app.SessionResourceListQuery{Limit: 500},
+	)
+	if err != nil || len(secondResources.Resources) != 1 ||
+		secondResources.Resources[0].RepositoryResolvedCommit != snapshotter.commit {
+		t.Fatalf("second Run resources = %+v, %v", secondResources.Resources, err)
+	}
+	if len(snapshotter.requests) != 2 ||
+		snapshotter.requests[0].CheckoutType != domain.GitRepositoryCheckoutBranch ||
+		snapshotter.requests[1].CheckoutValue != "main" {
+		t.Fatalf("Deployment snapshot requests = %+v", snapshotter.requests)
+	}
+
+	materializer := app.NewSessionResourceMaterializer(fixture.store, fileRepository, blobs)
+	firstBox, secondBox := newResourceSandbox(), newResourceSandbox()
+	if err := materializer.Reconcile(ctx, *firstRun.SessionID, firstBox); err != nil {
+		t.Fatal(err)
+	}
+	if err := materializer.Reconcile(ctx, *secondRun.SessionID, secondBox); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(firstBox.repositories["/workspace/widgets"]); got != "first repository snapshot" {
+		t.Fatalf("first Run materialized snapshot = %q", got)
+	}
+	if got := string(secondBox.repositories["/workspace/widgets"]); got != "second repository snapshot" {
+		t.Fatalf("second Run materialized snapshot = %q", got)
+	}
+}
+
 func TestPostgresSessionMemoryStoreResourceSnapshotsAndOwnsNoStore(t *testing.T) {
 	fixture := newPostgresFixture(t)
 	ctx := context.Background()

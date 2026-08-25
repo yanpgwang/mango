@@ -21,10 +21,23 @@ func TestDeploymentSessionAndRunCommitAtomically(t *testing.T) {
 		InitialEvents: []domain.EventDraft{{
 			Type: domain.EvUserMessage, Payload: map[string]any{"content": "run"},
 		}},
+		Resources: []domain.DeploymentResource{{
+			Type:                    domain.SessionResourceTypeGitRepository,
+			RepositoryURL:           "https://github.com/acme/widgets.git",
+			RepositoryCheckoutType:  domain.GitRepositoryCheckoutBranch,
+			RepositoryCheckoutValue: "main",
+		}},
 		Metadata: map[string]string{}, CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("create Deployment: %v", err)
+	}
+	storedDeployment, err := repo.Get(ctx, deployment.ID)
+	if err != nil || len(storedDeployment.Resources) != 1 ||
+		storedDeployment.Resources[0].RepositoryURL != "https://github.com/acme/widgets.git" ||
+		storedDeployment.Resources[0].RepositoryCheckoutType != domain.GitRepositoryCheckoutBranch ||
+		storedDeployment.Resources[0].RepositoryCheckoutValue != "main" {
+		t.Fatalf("persisted Deployment repository template = %+v, %v", storedDeployment.Resources, err)
 	}
 	if err := NewEnvironmentRepository(store).DeleteIfUnreferenced(ctx, deployment.EnvironmentID); err == nil {
 		t.Fatal("delete Deployment Environment succeeded; want conflict")

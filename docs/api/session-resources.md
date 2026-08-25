@@ -40,12 +40,13 @@ removed after Session creation.
 
 ## Git repository attachments
 
-A `git_repository` attachment is accepted only in `POST /v1/sessions`. Mango
-clones an anonymous public HTTPS remote in the control plane, resolves the
-requested checkout once, and stores a bounded tar snapshot containing the
-worktree and `.git` metadata. The sandbox restores that immutable source as an
-independent writable directory; Agent edits never change the stored snapshot
-or the upstream repository.
+A `git_repository` attachment is accepted when creating a Session directly or
+as a Deployment resource template. Mango clones an anonymous public HTTPS
+remote in the control plane, resolves the requested checkout once per Session,
+and stores a bounded tar snapshot containing the worktree and `.git` metadata.
+The sandbox restores that immutable source as an independent writable
+directory; Agent edits never change the stored snapshot or the upstream
+repository.
 
 ```json
 {
@@ -74,12 +75,17 @@ outside `/workspace`, paths overlapping `/workspace/skills`, special archive
 entries, and symlinks escaping the repository. Outbound clone connections use
 the same public-network-only dialer as other tenant-configured endpoints.
 
-The first slice intentionally does not support private repositories, raw
+Deployment resources retain only the requested URL, checkout, and mount path.
+Every Run resolves a branch or default checkout again and freezes a new Session
+snapshot; an explicit commit stays fixed. Updating a Deployment changes future
+Runs only.
+
+The current slice intentionally does not support private repositories, raw
 tokens, push/PR credentials, recursive submodule checkout, Git LFS object
-download, repository Skill discovery, Deployment templates, runtime attach,
-runtime detach, or in-place updates. Submodule directories remain
-uninitialized and LFS files remain pointer files. Deleting the Session removes
-the stored snapshot through the normal crash-recoverable File lifecycle.
+download, repository Skill discovery, runtime attach, runtime detach, or
+in-place Session updates. Submodule directories remain uninitialized and LFS
+files remain pointer files. Deleting the Session removes the stored snapshot
+through the normal crash-recoverable File lifecycle.
 
 ## Availability
 

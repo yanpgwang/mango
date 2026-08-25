@@ -35,3 +35,11 @@ func MemoryPrecondition(msg string) *DomainError {
 		Kind: KindConflict, Code: "memory_precondition_failed_error", Message: msg,
 	}
 }
+
+// SessionResourceNotFound identifies a source that disappeared or cannot be
+// resolved while admitting a new immutable Session resource snapshot.
+func SessionResourceNotFound(msg string) *DomainError {
+	return &DomainError{
+		Kind: KindValidation, Code: "session_resource_not_found_error", Message: msg,
+	}
+}

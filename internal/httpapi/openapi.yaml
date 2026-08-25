@@ -2678,9 +2678,10 @@ components:
       oneOf:
         - $ref: '#/components/schemas/FileSessionResourceInput'
         - $ref: '#/components/schemas/MemoryStoreSessionResourceInput'
+        - $ref: '#/components/schemas/GitRepositorySessionResourceInput'
       discriminator:
         propertyName: type
-      description: Deployment templates currently accept File and Memory Store resources only.
+      description: Resource templates copied into each Run's Session. Git branch and default checkouts are resolved separately for every Run.
     DeploymentMetadata:
       type: object
       maxProperties: 16
@@ -2789,8 +2790,29 @@ components:
             memory_store_id: {type: string, pattern: '^memstore_'}
             access: {type: [string, 'null'], enum: [read_write, read_only, null]}
             instructions: {type: [string, 'null']}
+        - $ref: '#/components/schemas/GitRepositoryDeploymentResource'
       discriminator:
         propertyName: type
+    GitRepositoryDeploymentResource:
+      type: object
+      additionalProperties: false
+      required: [type, url, checkout, mount_path]
+      properties:
+        type:
+          type: string
+          const: git_repository
+        url:
+          type: string
+          format: uri
+          description: Anonymous public HTTPS Git remote retained as a Deployment template.
+        checkout:
+          oneOf:
+            - $ref: '#/components/schemas/GitRepositoryCheckout'
+            - type: 'null'
+          description: Requested branch or commit, or null to resolve the remote default branch on each Run.
+        mount_path:
+          type: [string, 'null']
+          description: Requested path, or null to derive /workspace/<repository> independently for each Run.
     Deployment:
       type: object
       additionalProperties: false

@@ -132,7 +132,7 @@ func (s *Snapshotter) OpenSnapshot(
 		resolved = plumbing.NewHash(checkoutValue)
 		if _, err := repository.CommitObject(resolved); err != nil {
 			cleanup()
-			return app.GitRepositorySnapshot{}, domain.Validation(
+			return app.GitRepositorySnapshot{}, domain.SessionResourceNotFound(
 				"checkout.sha is not reachable from the repository's advertised refs",
 			)
 		}
@@ -149,7 +149,7 @@ func (s *Snapshotter) OpenSnapshot(
 		head, err := repository.Head()
 		if err != nil {
 			cleanup()
-			return app.GitRepositorySnapshot{}, domain.Validation(
+			return app.GitRepositorySnapshot{}, domain.SessionResourceNotFound(
 				"repository has no resolvable default commit",
 			)
 		}
@@ -184,7 +184,9 @@ func mapCloneError(ctx context.Context, err error) error {
 	if errors.Is(err, errCloneWriteBudget) {
 		return domain.TooLarge("Git repository exceeds the clone safety limit")
 	}
-	return domain.Validation("public Git repository could not be cloned: " + err.Error())
+	return domain.SessionResourceNotFound(
+		"public Git repository could not be cloned: " + err.Error(),
+	)
 }
 
 func writeSnapshotArchive(ctx context.Context, root, archivePath string) error {

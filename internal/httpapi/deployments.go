@@ -398,11 +398,6 @@ func parseDeploymentResources(
 	if err != nil {
 		return nil, err
 	}
-	if len(repositories) > 0 {
-		return nil, domain.Unsupported(
-			"Git repository resources are not supported by Deployments",
-		)
-	}
 	out := make([]domain.DeploymentResource, 0, len(raw))
 	for _, file := range files {
 		out = append(out, domain.DeploymentResource{
@@ -415,6 +410,17 @@ func parseDeploymentResources(
 			MemoryStoreID: memory.MemoryStoreID, Access: memory.Access,
 			Instructions: memory.Instructions,
 		})
+	}
+	for _, repository := range repositories {
+		resource := domain.DeploymentResource{
+			Type:          domain.SessionResourceTypeGitRepository,
+			RepositoryURL: repository.URL, MountPath: repository.MountPath,
+		}
+		if repository.Checkout != nil {
+			resource.RepositoryCheckoutType = repository.Checkout.Type
+			resource.RepositoryCheckoutValue = repository.Checkout.Value
+		}
+		out = append(out, resource)
 	}
 	return out, nil
 }
@@ -469,6 +475,28 @@ func deploymentToJSON(item domain.Deployment) map[string]any {
 			}
 			if resource.Instructions != "" {
 				value["instructions"] = resource.Instructions
+			}
+			resources = append(resources, value)
+		case domain.SessionResourceTypeGitRepository:
+			var checkout any
+			switch resource.RepositoryCheckoutType {
+			case domain.GitRepositoryCheckoutBranch:
+				checkout = map[string]any{
+					"type": domain.GitRepositoryCheckoutBranch,
+					"name": resource.RepositoryCheckoutValue,
+				}
+			case domain.GitRepositoryCheckoutCommit:
+				checkout = map[string]any{
+					"type": domain.GitRepositoryCheckoutCommit,
+					"sha":  resource.RepositoryCheckoutValue,
+				}
+			}
+			value := map[string]any{
+				"type": domain.SessionResourceTypeGitRepository,
+				"url":  resource.RepositoryURL, "checkout": checkout, "mount_path": nil,
+			}
+			if resource.MountPath != nil {
+				value["mount_path"] = *resource.MountPath
 			}
 			resources = append(resources, value)
 		}

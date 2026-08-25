@@ -9,7 +9,19 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/yanpgwang/mango/internal/domain"
 )
+
+func TestMapCloneErrorClassifiesMissingSessionResource(t *testing.T) {
+	err := mapCloneError(context.Background(), errors.New("repository not found"))
+	var domainErr *domain.DomainError
+	if !errors.As(err, &domainErr) ||
+		domainErr.Code != "session_resource_not_found_error" ||
+		domainErr.Kind != domain.KindValidation {
+		t.Fatalf("mapped clone error = %#v", err)
+	}
+}
 
 func TestWriteSnapshotArchivePreservesGitMetadataAndExecutableFiles(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "repository")
