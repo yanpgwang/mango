@@ -34,7 +34,8 @@ type DeploymentRepository interface {
 	GetRun(context.Context, string) (domain.DeploymentRun, error)
 	GetScheduledRun(context.Context, string, time.Time) (domain.DeploymentRun, error)
 	ListRuns(context.Context, DeploymentRunListQuery) (DeploymentRunListPage, error)
-	ClaimDue(context.Context, time.Time, time.Time, int) ([]DeploymentScheduleClaim, error)
+	ClaimDue(context.Context, time.Time, time.Time, string, int) ([]DeploymentScheduleClaim, error)
+	RenewScheduleClaim(context.Context, string, time.Time, string, time.Time) error
 	CompleteSchedule(
 		context.Context,
 		string,
@@ -153,6 +154,7 @@ type DeploymentScheduleClaim struct {
 	WorkspaceID  string
 	DeploymentID string
 	ScheduledAt  time.Time
+	Token        string
 }
 
 func (s *DeploymentService) Create(
@@ -163,13 +165,17 @@ func (s *DeploymentService) Create(
 	if err != nil {
 		return domain.Deployment{}, err
 	}
+	resources, err := normalizeDeploymentResources(input.Resources)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
 	now := s.clock.Now().UTC()
 	item := domain.Deployment{
 		ID: s.ids.NewID(domain.PrefixDeployment), AgentID: agent.ID,
 		AgentVersion: agent.Version, EnvironmentID: input.EnvironmentID,
 		Name: input.Name, Description: input.Description,
 		InitialEvents: cloneEventDrafts(input.InitialEvents),
-		Resources:     cloneDeploymentResources(input.Resources),
+		Resources:     resources,
 		VaultIDs:      append([]string(nil), input.VaultIDs...),
 		Budget:        cloneSessionBudget(input.Budget),
 		Metadata:      cloneDeploymentStringMap(input.Metadata), Schedule: cloneDeploymentSchedule(input.Schedule),
@@ -241,7 +247,10 @@ func (s *DeploymentService) Update(
 		next.InitialEvents = cloneEventDrafts(*patch.InitialEvents)
 	}
 	if patch.Resources != nil {
-		next.Resources = cloneDeploymentResources(*patch.Resources)
+		next.Resources, err = normalizeDeploymentResources(*patch.Resources)
+		if err != nil {
+			return domain.Deployment{}, err
+		}
 	}
 	if patch.VaultIDs != nil {
 		next.VaultIDs = append([]string(nil), (*patch.VaultIDs)...)
@@ -398,16 +407,17 @@ func (s *DeploymentService) run(
 		AgentID: item.AgentID, AgentVersion: item.AgentVersion,
 		TriggerType: trigger, ScheduledAt: scheduledAt, CreatedAt: now,
 	}
-	files, memories := deploymentSessionResources(item.Resources)
+	files, memories, repositories := deploymentSessionResources(item.Resources)
 	session, createErr := s.sessions.Create(ctx, CreateSessionInput{
 		AgentID: item.AgentID, AgentVersion: &item.AgentVersion,
 		EnvironmentID: item.EnvironmentID, Title: item.Name,
 		Metadata:      deploymentSessionMetadata(item.Metadata),
 		InitialEvents: cloneEventDrafts(item.InitialEvents),
 		Resources:     files, MemoryResources: memories,
-		VaultIDs:     append([]string(nil), item.VaultIDs...),
-		Budget:       cloneSessionBudget(item.Budget),
-		DeploymentID: &item.ID, DeploymentRun: &run,
+		RepositoryResources: repositories,
+		VaultIDs:            append([]string(nil), item.VaultIDs...),
+		Budget:              cloneSessionBudget(item.Budget),
+		DeploymentID:        &item.ID, DeploymentRun: &run,
 	})
 	if createErr == nil {
 		run.SessionID = &session.ID
@@ -428,7 +438,7 @@ func (s *DeploymentService) run(
 		}
 		return domain.DeploymentRun{}, err
 	}
-	if shouldPauseDeployment(run.ErrorType) {
+	if trigger == domain.DeploymentTriggerSchedule && shouldPauseDeployment(run.ErrorType) {
 		_, _ = s.pauseForError(ctx, item.ID, run.ErrorType)
 	}
 	return created, nil
@@ -456,7 +466,29 @@ func (s *DeploymentService) ClaimDue(
 	limit int,
 ) ([]DeploymentScheduleClaim, error) {
 	now := s.clock.Now().UTC()
-	return s.repo.ClaimDue(ctx, now, now.Add(-ScheduleClaimLease), limit)
+	token := s.ids.NewID(domain.PrefixDeploymentClaim)
+	return s.repo.ClaimDue(ctx, now, now.Add(-ScheduleClaimLease), token, limit)
+}
+
+func (s *DeploymentService) RenewClaim(
+	ctx context.Context,
+	claim DeploymentScheduleClaim,
+) error {
+	err := s.repo.RenewScheduleClaim(
+		ctx, claim.DeploymentID, claim.ScheduledAt, claim.Token, s.clock.Now().UTC(),
+	)
+	if err == nil {
+		return nil
+	}
+	// A successful scheduled Run fences all duplicate admission through its
+	// unique occurrence row. Treat a heartbeat racing schedule completion as
+	// success rather than canceling work that already committed.
+	if _, getErr := s.repo.GetScheduledRun(
+		ctx, claim.DeploymentID, claim.ScheduledAt,
+	); getErr == nil {
+		return nil
+	}
+	return err
 }
 
 func (s *DeploymentService) completeSchedule(
@@ -621,6 +653,7 @@ func (s *DeploymentService) validate(ctx context.Context, item domain.Deployment
 		}
 	}
 	seenFiles, seenMemories := map[string]struct{}{}, map[string]struct{}{}
+	var repositoryMountPaths []string
 	for _, resource := range item.Resources {
 		switch resource.Type {
 		case domain.SessionResourceTypeFile:
@@ -653,8 +686,29 @@ func (s *DeploymentService) validate(ctx context.Context, item domain.Deployment
 			if err != nil || store.ArchivedAt != nil {
 				return domain.Validation("memory store is missing or archived")
 			}
+		case domain.SessionResourceTypeGitRepository:
+			if err := domain.ValidateGitRepositoryURL(resource.RepositoryURL); err != nil {
+				return err
+			}
+			if _, _, err := domain.NormalizeGitRepositoryCheckout(
+				resource.RepositoryCheckoutType, resource.RepositoryCheckoutValue,
+			); err != nil {
+				return err
+			}
+			mountPath, err := domain.NormalizeGitRepositoryMountPath(
+				resource.RepositoryURL, resource.MountPath,
+			)
+			if err != nil {
+				return err
+			}
+			for _, existing := range repositoryMountPaths {
+				if domain.SessionFileMountPathsConflict(existing, mountPath) {
+					return domain.Validation("Git repository mount paths must not overlap")
+				}
+			}
+			repositoryMountPaths = append(repositoryMountPaths, mountPath)
 		default:
-			return domain.Unsupported("Git repository resources are not available for Deployments")
+			return domain.Unsupported("unsupported Deployment Resource type")
 		}
 	}
 	return nil
@@ -693,9 +747,10 @@ func deploymentOccurrences(
 
 func deploymentSessionResources(
 	resources []domain.DeploymentResource,
-) ([]FileSessionResourceInput, []MemorySessionResourceInput) {
+) ([]FileSessionResourceInput, []MemorySessionResourceInput, []GitRepositorySessionResourceInput) {
 	var files []FileSessionResourceInput
 	var memories []MemorySessionResourceInput
+	var repositories []GitRepositorySessionResourceInput
 	for _, resource := range resources {
 		switch resource.Type {
 		case domain.SessionResourceTypeFile:
@@ -707,14 +762,32 @@ func deploymentSessionResources(
 				MemoryStoreID: resource.MemoryStoreID, Access: resource.Access,
 				Instructions: resource.Instructions,
 			})
+		case domain.SessionResourceTypeGitRepository:
+			var checkout *GitRepositoryCheckoutInput
+			if resource.RepositoryCheckoutType != "" {
+				checkout = &GitRepositoryCheckoutInput{
+					Type: resource.RepositoryCheckoutType, Value: resource.RepositoryCheckoutValue,
+				}
+			}
+			repositories = append(repositories, GitRepositorySessionResourceInput{
+				URL: resource.RepositoryURL, Checkout: checkout, MountPath: resource.MountPath,
+			})
 		}
 	}
-	return files, memories
+	return files, memories, repositories
 }
 
 func classifyDeploymentRunError(err error) (string, string) {
 	message := err.Error()
 	lower := strings.ToLower(message)
+	var classified interface{ DeploymentRunErrorType() string }
+	if errors.As(err, &classified) {
+		return classified.DeploymentRunErrorType(), message
+	}
+	var domainErr *domain.DomainError
+	if errors.As(err, &domainErr) && domainErr.Code != "" {
+		return domainErr.Code, message
+	}
 	switch {
 	case strings.Contains(lower, "agent") && strings.Contains(lower, "archiv"):
 		return "agent_archived_error", message
@@ -735,7 +808,6 @@ func classifyDeploymentRunError(err error) (string, string) {
 	case strings.Contains(lower, "mcp") && strings.Contains(lower, "egress"):
 		return "mcp_egress_blocked_error", message
 	}
-	var domainErr *domain.DomainError
 	if errors.As(err, &domainErr) && domainErr.Kind == domain.KindValidation {
 		return "session_creation_rejected_error", message
 	}
@@ -837,6 +909,35 @@ func cloneDeploymentResources(resources []domain.DeploymentResource) []domain.De
 		}
 	}
 	return out
+}
+
+func normalizeDeploymentResources(
+	resources []domain.DeploymentResource,
+) ([]domain.DeploymentResource, error) {
+	out := cloneDeploymentResources(resources)
+	for index := range out {
+		resource := &out[index]
+		if resource.Type != domain.SessionResourceTypeGitRepository {
+			continue
+		}
+		if err := domain.ValidateGitRepositoryURL(resource.RepositoryURL); err != nil {
+			return nil, err
+		}
+		checkoutType, checkoutValue, err := domain.NormalizeGitRepositoryCheckout(
+			resource.RepositoryCheckoutType, resource.RepositoryCheckoutValue,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := domain.NormalizeGitRepositoryMountPath(
+			resource.RepositoryURL, resource.MountPath,
+		); err != nil {
+			return nil, err
+		}
+		resource.RepositoryCheckoutType = checkoutType
+		resource.RepositoryCheckoutValue = checkoutValue
+	}
+	return out, nil
 }
 
 func cloneDeploymentStringMap(input map[string]string) map[string]string {

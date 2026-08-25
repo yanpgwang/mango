@@ -175,6 +175,7 @@ func (s *sdkDeploymentService) Create(
 	in app.DeploymentCreateInput,
 ) (domain.Deployment, error) {
 	s.item.Budget = in.Budget
+	s.item.Resources = in.Resources
 	return s.item, nil
 }
 

@@ -21,10 +21,23 @@ func TestDeploymentSessionAndRunCommitAtomically(t *testing.T) {
 		InitialEvents: []domain.EventDraft{{
 			Type: domain.EvUserMessage, Payload: map[string]any{"content": "run"},
 		}},
+		Resources: []domain.DeploymentResource{{
+			Type:                    domain.SessionResourceTypeGitRepository,
+			RepositoryURL:           "https://github.com/acme/widgets.git",
+			RepositoryCheckoutType:  domain.GitRepositoryCheckoutBranch,
+			RepositoryCheckoutValue: "main",
+		}},
 		Metadata: map[string]string{}, CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("create Deployment: %v", err)
+	}
+	storedDeployment, err := repo.Get(ctx, deployment.ID)
+	if err != nil || len(storedDeployment.Resources) != 1 ||
+		storedDeployment.Resources[0].RepositoryURL != "https://github.com/acme/widgets.git" ||
+		storedDeployment.Resources[0].RepositoryCheckoutType != domain.GitRepositoryCheckoutBranch ||
+		storedDeployment.Resources[0].RepositoryCheckoutValue != "main" {
+		t.Fatalf("persisted Deployment repository template = %+v, %v", storedDeployment.Resources, err)
 	}
 	if err := NewEnvironmentRepository(store).DeleteIfUnreferenced(ctx, deployment.EnvironmentID); err == nil {
 		t.Fatal("delete Deployment Environment succeeded; want conflict")
@@ -105,12 +118,14 @@ func TestDeploymentScheduleClaimsAreLeasedAndAdvanced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claims, err := repo.ClaimDue(ctx, now, now.Add(-2*time.Minute), 10)
+	claims, err := repo.ClaimDue(ctx, now, now.Add(-2*time.Minute), "dclaim_first", 10)
 	if err != nil || len(claims) != 1 || claims[0].DeploymentID != item.ID ||
-		!claims[0].ScheduledAt.Equal(dueAt) {
+		!claims[0].ScheduledAt.Equal(dueAt) || claims[0].Token != "dclaim_first" {
 		t.Fatalf("claims = %+v, %v", claims, err)
 	}
-	claimedAgain, err := repo.ClaimDue(ctx, now.Add(time.Second), now.Add(-2*time.Minute), 10)
+	claimedAgain, err := repo.ClaimDue(
+		ctx, now.Add(time.Second), now.Add(-2*time.Minute), "dclaim_second", 10,
+	)
 	if err != nil || len(claimedAgain) != 0 {
 		t.Fatalf("claim before lease expiry = %+v, %v", claimedAgain, err)
 	}
@@ -122,6 +137,11 @@ func TestDeploymentScheduleClaimsAreLeasedAndAdvanced(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := repo.RenewScheduleClaim(
+		ctx, item.ID, dueAt, "dclaim_first", now.Add(45*time.Second),
+	); err != nil {
+		t.Fatalf("ordinary update released the in-flight schedule claim: %v", err)
+	}
 	next := now.Add(time.Minute)
 	if err := repo.CompleteSchedule(ctx, item.ID, dueAt, now, []time.Time{next}); err != nil {
 		t.Fatal(err)
@@ -131,6 +151,54 @@ func TestDeploymentScheduleClaimsAreLeasedAndAdvanced(t *testing.T) {
 		len(stored.Schedule.UpcomingRunsAt) != 1 || !stored.Schedule.UpcomingRunsAt[0].Equal(next) ||
 		!stored.UpdatedAt.Equal(laterUpdate) {
 		t.Fatalf("advanced Deployment = %+v, %v", stored, err)
+	}
+}
+
+func TestDeploymentScheduleClaimRenewalFencesStaleOwner(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	seedDeploymentDependencies(t, store, now)
+	repo := NewDeploymentRepository(store)
+	dueAt := now.Add(-time.Minute)
+	item, err := repo.Create(ctx, domain.Deployment{
+		ID: "depl_renew", AgentID: "agent_deployment", AgentVersion: 1,
+		EnvironmentID: "env_deployment", Name: "Renew", Status: domain.DeploymentStatusActive,
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+		Schedule: &domain.DeploymentSchedule{
+			Expression: "* * * * *", Timezone: "UTC", UpcomingRunsAt: []time.Time{dueAt},
+		},
+		Metadata: map[string]string{}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := repo.ClaimDue(ctx, now, now.Add(-2*time.Minute), "dclaim_old", 1)
+	if err != nil || len(claims) != 1 {
+		t.Fatalf("initial claim = %+v, %v", claims, err)
+	}
+	renewedAt := now.Add(90 * time.Second)
+	if err := repo.RenewScheduleClaim(
+		ctx, item.ID, dueAt, "dclaim_old", renewedAt,
+	); err != nil {
+		t.Fatalf("renew claim: %v", err)
+	}
+	claims, err = repo.ClaimDue(
+		ctx, now.Add(3*time.Minute), now.Add(time.Minute), "dclaim_early", 1,
+	)
+	if err != nil || len(claims) != 0 {
+		t.Fatalf("renewed claim was reclaimed early = %+v, %v", claims, err)
+	}
+	claims, err = repo.ClaimDue(
+		ctx, now.Add(5*time.Minute), now.Add(3*time.Minute), "dclaim_new", 1,
+	)
+	if err != nil || len(claims) != 1 || claims[0].Token != "dclaim_new" {
+		t.Fatalf("stale claim replacement = %+v, %v", claims, err)
+	}
+	if err := repo.RenewScheduleClaim(
+		ctx, item.ID, dueAt, "dclaim_old", now.Add(6*time.Minute),
+	); err == nil {
+		t.Fatal("stale claim owner renewed after replacement")
 	}
 }
 
