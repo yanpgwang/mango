@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 	"testing"
@@ -141,7 +142,7 @@ func TestDeploymentServiceNormalizesAndValidatesGitRepositoryTemplates(t *testin
 func TestClassifyDeploymentRunGitRepositoryFailure(t *testing.T) {
 	t.Parallel()
 	errorType, _ := classifyDeploymentRunError(
-		domain.SessionResourceNotFound("public Git repository could not be cloned or read"),
+		SessionResourceNotFoundError("public Git repository could not be cloned or read"),
 	)
 	if errorType != "session_resource_not_found_error" {
 		t.Fatalf("Git repository error type = %q", errorType)
@@ -188,6 +189,55 @@ func TestDeploymentServiceRecordsAndPausesOnScheduledCreationFailure(t *testing.
 	if got, err := repo.GetScheduledRun(context.Background(), item.ID, scheduledAt); err != nil ||
 		got.ID != run.ID {
 		t.Fatalf("stored scheduled run = %+v err=%v", got, err)
+	}
+}
+
+func TestDeploymentServiceDoesNotPauseAfterManualRunFailure(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	repo := newMemoryDeploymentRepository()
+	service := newTestDeploymentService(t, repo, &deploymentSessionCreatorFake{
+		err: SessionResourceNotFoundError("repository no longer exists"),
+	}, now)
+	item, err := service.Create(context.Background(), DeploymentCreateInput{
+		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Manual test",
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.Run(context.Background(), item.ID)
+	if err != nil || run.ErrorType != "session_resource_not_found_error" {
+		t.Fatalf("manual failed Run = %+v, %v", run, err)
+	}
+	stored, err := service.Get(context.Background(), item.ID)
+	if err != nil || stored.Status != domain.DeploymentStatusActive || stored.PausedReason != nil {
+		t.Fatalf("Deployment after manual failure = %+v, %v", stored, err)
+	}
+}
+
+func TestDeploymentServiceDoesNotPauseAfterTemporaryScheduledFailure(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	repo := newMemoryDeploymentRepository()
+	service := newTestDeploymentService(t, repo, &deploymentSessionCreatorFake{
+		err: errors.New("git repository: temporary clone failure: connection reset"),
+	}, now)
+	item, err := service.Create(context.Background(), DeploymentCreateInput{
+		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Scheduled test",
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+		Schedule:      &domain.DeploymentSchedule{Expression: "0 * * * *", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.RunScheduled(context.Background(), item.ID, item.Schedule.UpcomingRunsAt[0])
+	if err != nil || run.ErrorType != "unknown_error" {
+		t.Fatalf("temporary scheduled Run = %+v, %v", run, err)
+	}
+	stored, err := service.Get(context.Background(), item.ID)
+	if err != nil || stored.Status != domain.DeploymentStatusActive || stored.PausedReason != nil {
+		t.Fatalf("Deployment after temporary failure = %+v, %v", stored, err)
 	}
 }
 
@@ -387,9 +437,20 @@ func (r *memoryDeploymentRepository) ClaimDue(
 	context.Context,
 	time.Time,
 	time.Time,
+	string,
 	int,
 ) ([]DeploymentScheduleClaim, error) {
 	return nil, nil
+}
+
+func (r *memoryDeploymentRepository) RenewScheduleClaim(
+	context.Context,
+	string,
+	time.Time,
+	string,
+	time.Time,
+) error {
+	return nil
 }
 
 func (r *memoryDeploymentRepository) CompleteSchedule(

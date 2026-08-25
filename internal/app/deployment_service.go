@@ -34,7 +34,8 @@ type DeploymentRepository interface {
 	GetRun(context.Context, string) (domain.DeploymentRun, error)
 	GetScheduledRun(context.Context, string, time.Time) (domain.DeploymentRun, error)
 	ListRuns(context.Context, DeploymentRunListQuery) (DeploymentRunListPage, error)
-	ClaimDue(context.Context, time.Time, time.Time, int) ([]DeploymentScheduleClaim, error)
+	ClaimDue(context.Context, time.Time, time.Time, string, int) ([]DeploymentScheduleClaim, error)
+	RenewScheduleClaim(context.Context, string, time.Time, string, time.Time) error
 	CompleteSchedule(
 		context.Context,
 		string,
@@ -153,6 +154,7 @@ type DeploymentScheduleClaim struct {
 	WorkspaceID  string
 	DeploymentID string
 	ScheduledAt  time.Time
+	Token        string
 }
 
 func (s *DeploymentService) Create(
@@ -436,7 +438,7 @@ func (s *DeploymentService) run(
 		}
 		return domain.DeploymentRun{}, err
 	}
-	if shouldPauseDeployment(run.ErrorType) {
+	if trigger == domain.DeploymentTriggerSchedule && shouldPauseDeployment(run.ErrorType) {
 		_, _ = s.pauseForError(ctx, item.ID, run.ErrorType)
 	}
 	return created, nil
@@ -464,7 +466,29 @@ func (s *DeploymentService) ClaimDue(
 	limit int,
 ) ([]DeploymentScheduleClaim, error) {
 	now := s.clock.Now().UTC()
-	return s.repo.ClaimDue(ctx, now, now.Add(-ScheduleClaimLease), limit)
+	token := s.ids.NewID(domain.PrefixDeploymentClaim)
+	return s.repo.ClaimDue(ctx, now, now.Add(-ScheduleClaimLease), token, limit)
+}
+
+func (s *DeploymentService) RenewClaim(
+	ctx context.Context,
+	claim DeploymentScheduleClaim,
+) error {
+	err := s.repo.RenewScheduleClaim(
+		ctx, claim.DeploymentID, claim.ScheduledAt, claim.Token, s.clock.Now().UTC(),
+	)
+	if err == nil {
+		return nil
+	}
+	// A successful scheduled Run fences all duplicate admission through its
+	// unique occurrence row. Treat a heartbeat racing schedule completion as
+	// success rather than canceling work that already committed.
+	if _, getErr := s.repo.GetScheduledRun(
+		ctx, claim.DeploymentID, claim.ScheduledAt,
+	); getErr == nil {
+		return nil
+	}
+	return err
 }
 
 func (s *DeploymentService) completeSchedule(
@@ -756,6 +780,10 @@ func deploymentSessionResources(
 func classifyDeploymentRunError(err error) (string, string) {
 	message := err.Error()
 	lower := strings.ToLower(message)
+	var classified interface{ DeploymentRunErrorType() string }
+	if errors.As(err, &classified) {
+		return classified.DeploymentRunErrorType(), message
+	}
 	var domainErr *domain.DomainError
 	if errors.As(err, &domainErr) && domainErr.Code != "" {
 		return domainErr.Code, message

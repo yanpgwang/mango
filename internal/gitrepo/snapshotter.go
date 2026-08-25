@@ -21,6 +21,7 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/cache"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitstorage "github.com/go-git/go-git/v5/storage/filesystem"
@@ -132,7 +133,7 @@ func (s *Snapshotter) OpenSnapshot(
 		resolved = plumbing.NewHash(checkoutValue)
 		if _, err := repository.CommitObject(resolved); err != nil {
 			cleanup()
-			return app.GitRepositorySnapshot{}, domain.SessionResourceNotFound(
+			return app.GitRepositorySnapshot{}, app.SessionResourceNotFoundError(
 				"checkout.sha is not reachable from the repository's advertised refs",
 			)
 		}
@@ -149,7 +150,7 @@ func (s *Snapshotter) OpenSnapshot(
 		head, err := repository.Head()
 		if err != nil {
 			cleanup()
-			return app.GitRepositorySnapshot{}, domain.SessionResourceNotFound(
+			return app.GitRepositorySnapshot{}, app.SessionResourceNotFoundError(
 				"repository has no resolvable default commit",
 			)
 		}
@@ -184,9 +185,15 @@ func mapCloneError(ctx context.Context, err error) error {
 	if errors.Is(err, errCloneWriteBudget) {
 		return domain.TooLarge("Git repository exceeds the clone safety limit")
 	}
-	return domain.SessionResourceNotFound(
-		"public Git repository could not be cloned: " + err.Error(),
-	)
+	if errors.Is(err, transport.ErrRepositoryNotFound) ||
+		errors.Is(err, transport.ErrEmptyRemoteRepository) ||
+		errors.Is(err, transport.ErrAuthenticationRequired) ||
+		errors.Is(err, git.NoMatchingRefSpecError{}) {
+		return app.SessionResourceNotFoundError(
+			"public Git repository or requested branch is unavailable",
+		)
+	}
+	return fmt.Errorf("git repository: temporary clone failure: %w", err)
 }
 
 func writeSnapshotArchive(ctx context.Context, root, archivePath string) error {

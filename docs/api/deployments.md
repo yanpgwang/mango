@@ -70,7 +70,9 @@ snapshot, so later upstream changes cannot alter an admitted Run. An explicit
 commit remains fixed across Runs. Updating the Deployment affects only future
 Runs; the Deployment response retains the requested checkout and deliberately
 does not expose a `resolved_commit` of its own. A missing remote, branch, or
-commit records `session_resource_not_found_error`.
+commit records `session_resource_not_found_error`. Temporary clone transport
+failures record `unknown_error`, do not pause the schedule, and leave the next
+scheduled occurrence eligible to run.
 
 `budget: null` explicitly stores no Session spend ceiling. A non-null limit uses
 the same integer-USD-cent shape and model-price validation as direct Session
@@ -128,9 +130,10 @@ manual Runs do not emit `deployment_run.*`. See [Webhooks](webhooks.md).
 ## Scheduling and capabilities
 
 The `orchestrate` worker role executes schedules. Due occurrences are claimed
-with expiring PostgreSQL leases, and a unique Deployment/occurrence key makes a
-recovered claim idempotent. Running only the API `serve` role exposes the HTTP
-surface but does not execute scheduled work.
+in small concurrent batches with token-fenced, renewable PostgreSQL leases. A
+lost claim cancels its in-flight admission, while a unique
+Deployment/occurrence key remains the final commit fence. Running only the API
+`serve` role exposes the HTTP surface but does not execute scheduled work.
 
 File and Memory Store resources require their existing Session sandbox
 capabilities. File-backed outcome rubrics require configured Files storage but

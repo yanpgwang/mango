@@ -27,6 +27,7 @@ const (
 	PrefixVaultCredential = "vcrd_"
 	PrefixDeployment      = "depl_"
 	PrefixDeploymentRun   = "drun_"
+	PrefixDeploymentClaim = "dclaim_"
 	PrefixEnvironmentWork = "work_"
 	PrefixWebhook         = "wh_"
 	PrefixWebhookEvent    = "whe_"

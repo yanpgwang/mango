@@ -149,6 +149,11 @@ support, so they run the same offline and opt-in live conformance suites.
   path. Each Run resolves a branch or default checkout afresh and then reuses
   the existing Session snapshot lifecycle; commit checkouts remain fixed. The
   Deployment itself therefore has no misleading `resolved_commit`.
+- Mango retained CMA's `session_resource_not_found_error` only for a
+  deterministically unavailable repository or checkout. Temporary DNS, TLS,
+  transport, and upstream failures remain `unknown_error` Runs and do not
+  auto-pause a schedule. This Run classification is deliberately separate from
+  Mango's ordinary Session HTTP error envelope.
 - Mango rejected raw authorization tokens, vendor authentication/header
   semantics, hosted clone caches, provider-side repository APIs, and automatic
   `.claude/skills` discovery. Private credentials require a future Mango secret
