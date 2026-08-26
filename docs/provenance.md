@@ -33,6 +33,19 @@ release is never an automatic roadmap.
   SDK are optional research evidence; raw HTTP and OpenAPI tests define Mango's
   transport contract.
 
+## Built-in Agent tools
+
+- The public Agent Toolset shapes and executable cases in the pinned Anthropic
+  Go SDK informed Mango's line-oriented `read.view_range` behavior: ranges are
+  1-based and inclusive, and a non-positive end reads through EOF.
+- Mango retains its existing `path`, `file_text`, `old_str`, and `new_str`
+  fields where they remain clear. The public SDK is design evidence, not a
+  field-for-field compatibility target or a runtime executor dependency.
+- Mango does not advertise `bash.restart` because sandbox commands currently
+  execute independently and there is no persistent shell session to restart.
+  A future persistent-shell lifecycle must work through Mango's sandbox
+  abstraction before that capability can be exposed honestly.
+
 ## Outbound Webhooks
 
 - The public [Claude Managed Agents Webhook guide](https://platform.claude.com/docs/en/managed-agents/webhooks),

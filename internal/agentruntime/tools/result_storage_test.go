@@ -57,3 +57,23 @@ func TestMaterializeLargeResult_LeavesThresholdInline(t *testing.T) {
 		t.Fatal("threshold-sized result should not be written")
 	}
 }
+
+func TestMaterializeLargeResult_CanBeReadByLineRange(t *testing.T) {
+	sb := newSB(t)
+	full := strings.Repeat("line\n", MaxInlineResultChars/5+1)
+	if _, err := MaterializeLargeResult(
+		context.Background(),
+		sb,
+		"sevt_chunked",
+		textResult(full, false),
+	); err != nil {
+		t.Fatal(err)
+	}
+	got := Registry()["read"](context.Background(), sb, map[string]any{
+		"path":       "tool-results/sevt_chunked.txt",
+		"view_range": []any{float64(2), float64(3)},
+	})
+	if got.IsError || resultText(t, got) != "line\nline" {
+		t.Fatalf("ranged stored output = %#v", got)
+	}
+}
