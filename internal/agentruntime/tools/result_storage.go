@@ -49,12 +49,16 @@ func MaterializeLargeResult(
 	message := fmt.Sprintf(
 		"<persisted-output>\n"+
 			"Tool output exceeded %d characters. The full output was saved to %s (%d characters).\n"+
-			"Use the read tool with view_range to inspect it in chunks.\n\n"+
+			"Use bash to inspect it in byte chunks. For example:\n"+
+			"dd if=%s bs=%d skip=0 count=1 2>/dev/null\n"+
+			"Increase skip by 1 to continue without emitting another oversized result.\n\n"+
 			"Preview:\n%s\n"+
 			"</persisted-output>",
 		MaxInlineResultChars,
 		resultPath,
 		characters,
+		resultPath,
+		MaxReadFileBytes,
 		preview,
 	)
 	return textResult(message, result.IsError), nil

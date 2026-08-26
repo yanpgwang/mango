@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/yanpgwang/mango/internal/domain"
@@ -139,6 +140,55 @@ type Sandbox interface {
 	// Destroy is idempotent. Repeating it after the resource is already gone
 	// must succeed so deletion workflows can safely retry a lost acknowledgement.
 	Destroy(ctx context.Context) error
+}
+
+// BoundedFileReader is the file-tool data plane for reads that must not scale
+// worker memory with an untrusted sandbox file. All Mango providers implement
+// it by validating the same path authority as ReadFile, then returning at most
+// maxBytes and reporting whether more bytes exist.
+type BoundedFileReader interface {
+	ReadFileBounded(
+		ctx context.Context,
+		path string,
+		maxBytes int64,
+	) (data []byte, truncated bool, err error)
+}
+
+func readFileBoundedByCommand(
+	ctx context.Context,
+	executor interface {
+		Exec(context.Context, Command) (*Result, error)
+	},
+	resolvedPath string,
+	maxBytes int64,
+) ([]byte, bool, error) {
+	if maxBytes <= 0 || maxBytes >= maxOutput {
+		return nil, false, fmt.Errorf(
+			"sandbox: bounded read limit must be between 1 and %d bytes",
+			maxOutput-1,
+		)
+	}
+	result, err := executor.Exec(ctx, Command{
+		Path: "head",
+		Args: []string{"-c", fmt.Sprintf("%d", maxBytes+1), "--", resolvedPath},
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if result.TimedOut {
+		return nil, false, fmt.Errorf("sandbox: bounded read timed out")
+	}
+	if result.ExitCode != 0 {
+		message := strings.TrimSpace(string(result.Stderr))
+		if message == "" {
+			message = fmt.Sprintf("head exited with code %d", result.ExitCode)
+		}
+		return nil, false, fmt.Errorf("sandbox: bounded read: %s", message)
+	}
+	if int64(len(result.Stdout)) > maxBytes {
+		return append([]byte(nil), result.Stdout[:maxBytes]...), true, nil
+	}
+	return append([]byte(nil), result.Stdout...), false, nil
 }
 
 // Provider owns sandbox resources outside the agent loop. Create must expose a

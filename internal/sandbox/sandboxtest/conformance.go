@@ -473,6 +473,29 @@ func Run(t *testing.T, cfg Config) {
 		if !bytes.Equal(got, content) {
 			t.Fatalf("file round trip = %q, want %q", got, content)
 		}
+		bounded, ok := box.(sandbox.BoundedFileReader)
+		if !ok {
+			t.Fatal("sandbox does not implement bounded file reads")
+		}
+		prefix, truncated, err := bounded.ReadFileBounded(ctx, "nested/state.bin", 4)
+		if err != nil {
+			t.Fatalf("ReadFileBounded: %v", err)
+		}
+		if !truncated || !bytes.Equal(prefix, content[:4]) {
+			t.Fatalf("bounded file read = %q, %v; want %q, true", prefix, truncated, content[:4])
+		}
+		exact, truncated, err := bounded.ReadFileBounded(
+			ctx, "nested/state.bin", int64(len(content)),
+		)
+		if err != nil {
+			t.Fatalf("exact ReadFileBounded: %v", err)
+		}
+		if truncated || !bytes.Equal(exact, content) {
+			t.Fatalf("exact bounded file read = %q, %v; want %q, false", exact, truncated, content)
+		}
+		if _, _, err := bounded.ReadFileBounded(ctx, "../escape", 4); err == nil {
+			t.Fatal("ReadFileBounded accepted a path outside the workspace")
+		}
 
 		result, err := box.Exec(ctx, sandbox.Command{
 			Path: cfg.ShellPath,

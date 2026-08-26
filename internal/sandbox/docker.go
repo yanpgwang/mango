@@ -785,6 +785,18 @@ func (s *dockerSandbox) ReadFile(ctx context.Context, path string) ([]byte, erro
 	return content, nil
 }
 
+func (s *dockerSandbox) ReadFileBounded(
+	ctx context.Context,
+	value string,
+	maxBytes int64,
+) ([]byte, bool, error) {
+	containerPath, err := s.toolFilePath(value, false)
+	if err != nil {
+		return nil, false, err
+	}
+	return readFileBoundedByCommand(ctx, s, containerPath, maxBytes)
+}
+
 // OpenSessionOutputs snapshots the provider-owned writable output mount as a
 // stream. Docker serializes the directory through its archive API, so worker
 // memory never scales with deliverable size. The application layer validates
