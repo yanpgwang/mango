@@ -175,7 +175,7 @@ Temporal Task Queue. Keep credentials in the environment and never commit them.
 Only this model endpoint is called; Mango does not call a separate hosted agent
 service. Whether a credential is usable depends on whether its gateway permits
 authenticated `POST /v1/messages` requests with streaming. The following
-opt-in smoke tests answer that directly:
+explicit live checks and examples exercise that endpoint:
 
 ```bash
 # Checks the external Messages endpoint only. This makes a real, potentially
@@ -185,12 +185,38 @@ make test-model-live
 # With the local PostgreSQL and Temporal services running, checks one complete
 # durable platform turn against the same model endpoint.
 make test-platform-live
+
+# Runs the longer File Resource -> coding loop -> Session Output scenario.
+# The wrapper loads ~/.config/mango/dev.env without copying secrets into the
+# repository or evaluating their contents as shell syntax.
+scripts/with-dev-env make test-coding-agent-live
+
+# Runs the public-HTTP expense gate example. The real model generates the
+# decide/escalate calls and the terminal prompts for the human decision.
+scripts/with-dev-env make demo-hitl-gate
+
+# Runs a real coordinator, two specialist Agents, one Advisor consultation,
+# and an interactive follow-up on a persistent child Thread.
+scripts/with-dev-env make demo-multi-agent-team
 ```
 
-These tests run only when invoked through the live targets, do not enable tools,
-and never print the API key. They are excluded from public CI because external
-credentials, availability, latency, and cost are not deterministic. Use a newly
-issued key if a credential has ever appeared in chat, logs, or shell history.
+The [coding-agent iteration example](examples/coding-agent-iterate.md) explains the
+corresponding user workflow and the Mango resources involved. It is a design
+walkthrough rather than a second test runner. The
+[HITL gate example](examples/hitl-gate.md) documents the interactive public-HTTP
+example and its application-owned action boundary. The
+[specialist-team example](examples/multi-agent-team.md) verifies real-model
+delegation, Advisor usage, and persistent Thread follow-up.
+
+These commands never print the API key. The model-only smoke test does not
+enable tools; the platform tests use an isolated Docker sandbox, the coding
+scenario excludes Web Search/Fetch from its least-privilege toolset, and the
+interactive examples remove provider credentials from their client processes.
+Live checks
+are excluded from public CI because external credentials, availability,
+latency, user input, and cost are not deterministic.
+Use a newly issued key if a credential has ever appeared in chat, logs, or shell
+history.
 
 If you understand the risk and deliberately want a real model against the local
 sandbox during development, set `MANGO_ALLOW_UNSAFE_LOCAL_SANDBOX=1` to

@@ -123,8 +123,15 @@ SET agent_id = $2,
     environment_id = $4,
     status = $5,
     body = $6,
+    schedule_claimed_at = CASE
+        WHEN next_run_at IS NOT DISTINCT FROM $7 THEN schedule_claimed_at
+        ELSE NULL
+    END,
+    schedule_claim_token = CASE
+        WHEN next_run_at IS NOT DISTINCT FROM $7 THEN schedule_claim_token
+        ELSE NULL
+    END,
     next_run_at = $7,
-    schedule_claimed_at = NULL,
     updated_at = $8,
     archived_at = $9
 WHERE id = $1`
@@ -224,7 +231,8 @@ func (r *DeploymentRepository) CreateRun(
 	ctx context.Context,
 	run domain.DeploymentRun,
 ) (domain.DeploymentRun, error) {
-	if _, err := r.Get(ctx, run.DeploymentID); err != nil {
+	workspaceID, scoped, err := r.store.workspaceForRead(ctx)
+	if err != nil {
 		return domain.DeploymentRun{}, err
 	}
 	run = normalizeDeploymentRunTimes(run)
@@ -232,14 +240,38 @@ func (r *DeploymentRepository) CreateRun(
 	if err != nil {
 		return domain.DeploymentRun{}, err
 	}
-	_, err = r.store.pool.Exec(ctx, `
+	err = r.store.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
+		query := `SELECT workspace_id FROM deployments WHERE id = $1`
+		args := []any{run.DeploymentID}
+		if scoped {
+			query += ` AND workspace_id = $2`
+			args = append(args, workspaceID)
+		}
+		var ownerWorkspaceID string
+		if err := tx.QueryRow(ctx, query, args...).Scan(&ownerWorkspaceID); errors.Is(err, pgx.ErrNoRows) {
+			return domain.NotFound("deployment not found")
+		} else if err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `
 INSERT INTO deployment_runs (
     id, deployment_id, session_id, error_type, trigger_type,
     scheduled_at, body, created_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		run.ID, run.DeploymentID, run.SessionID, nullString(run.ErrorType),
-		run.TriggerType, run.ScheduledAt, body, run.CreatedAt,
-	)
+			run.ID, run.DeploymentID, run.SessionID, nullString(run.ErrorType),
+			run.TriggerType, run.ScheduledAt, body, run.CreatedAt,
+		)
+		if err != nil {
+			return err
+		}
+		if run.TriggerType != domain.DeploymentTriggerSchedule || run.ErrorType == "" {
+			return nil
+		}
+		return r.store.enqueueWebhookEvent(
+			ctx, q, ownerWorkspaceID, domain.WebhookEventDeploymentRunFailed,
+			run.ID, run.CreatedAt, nil,
+		)
+	})
 	if isUniqueViolation(err) {
 		return domain.DeploymentRun{}, domain.Conflict("deployment schedule occurrence already ran")
 	}
@@ -385,10 +417,14 @@ func (r *DeploymentRepository) ClaimDue(
 	ctx context.Context,
 	now time.Time,
 	staleBefore time.Time,
+	claimToken string,
 	limit int,
 ) ([]app.DeploymentScheduleClaim, error) {
 	if limit <= 0 {
 		limit = 20
+	}
+	if claimToken == "" {
+		return nil, errors.New("pg: deployment schedule claim token is required")
 	}
 	rows, err := r.store.pool.Query(ctx, `
 WITH due AS (
@@ -403,10 +439,11 @@ WITH due AS (
     LIMIT $3
 )
 UPDATE deployments AS deployment
-SET schedule_claimed_at = $1
+SET schedule_claimed_at = $1,
+    schedule_claim_token = $4
 FROM due
 WHERE deployment.id = due.id
-RETURNING deployment.workspace_id, deployment.id, deployment.next_run_at`, now.UTC(), staleBefore.UTC(), limit)
+RETURNING deployment.workspace_id, deployment.id, deployment.next_run_at`, now.UTC(), staleBefore.UTC(), limit, claimToken)
 	if err != nil {
 		return nil, err
 	}
@@ -418,9 +455,44 @@ RETURNING deployment.workspace_id, deployment.id, deployment.next_run_at`, now.U
 			return nil, err
 		}
 		claim.ScheduledAt = claim.ScheduledAt.UTC()
+		claim.Token = claimToken
 		claims = append(claims, claim)
 	}
 	return claims, rows.Err()
+}
+
+func (r *DeploymentRepository) RenewScheduleClaim(
+	ctx context.Context,
+	id string,
+	scheduledAt time.Time,
+	claimToken string,
+	claimedAt time.Time,
+) error {
+	workspaceID, scoped, err := r.store.workspaceForRead(ctx)
+	if err != nil {
+		return err
+	}
+	query := `
+UPDATE deployments
+SET schedule_claimed_at = $4
+WHERE id = $1
+  AND next_run_at = $2
+  AND schedule_claim_token = $3
+  AND archived_at IS NULL
+  AND status = 'active'`
+	args := []any{id, scheduledAt.UTC(), claimToken, claimedAt.UTC()}
+	if scoped {
+		query += ` AND workspace_id = $5`
+		args = append(args, workspaceID)
+	}
+	result, err := r.store.pool.Exec(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return domain.Conflict("deployment schedule claim is no longer owned")
+	}
+	return nil
 }
 
 func (r *DeploymentRepository) CompleteSchedule(
@@ -479,7 +551,8 @@ WHERE id = $1`
 		}
 		updateQuery := `
 UPDATE deployments
-SET body = $2, next_run_at = $3, schedule_claimed_at = NULL, updated_at = $4
+SET body = $2, next_run_at = $3, schedule_claimed_at = NULL,
+    schedule_claim_token = NULL, updated_at = $4
 WHERE id = $1`
 		updateArgs := []any{id, updatedBody, next, item.UpdatedAt}
 		if scoped {

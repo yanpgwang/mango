@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -11,31 +13,35 @@ import (
 
 const (
 	defaultDeploymentPollInterval = time.Second
-	defaultDeploymentClaimBatch   = 20
+	defaultDeploymentClaimBatch   = 4
+	defaultDeploymentClaimRenewal = ScheduleClaimLease / 3
 )
 
 type ScheduledDeploymentRunner interface {
 	ClaimDue(context.Context, int) ([]DeploymentScheduleClaim, error)
+	RenewClaim(context.Context, DeploymentScheduleClaim) error
 	RunScheduled(context.Context, string, time.Time) (domain.DeploymentRun, error)
 }
 
 type DeploymentReconciler struct {
-	runner       ScheduledDeploymentRunner
-	pollInterval time.Duration
-	batchSize    int
+	runner        ScheduledDeploymentRunner
+	pollInterval  time.Duration
+	batchSize     int
+	renewInterval time.Duration
 }
 
 func NewDeploymentReconciler(runner ScheduledDeploymentRunner) *DeploymentReconciler {
 	return &DeploymentReconciler{
 		runner: runner, pollInterval: defaultDeploymentPollInterval,
-		batchSize: defaultDeploymentClaimBatch,
+		batchSize: defaultDeploymentClaimBatch, renewInterval: defaultDeploymentClaimRenewal,
 	}
 }
 
 // Run claims due cron occurrences through PostgreSQL and creates their
-// Sessions. Claims are leased and scheduled run rows are unique per occurrence,
-// so multiple worker replicas can run this loop safely and a crashed worker is
-// retried without exposing duplicate successful Sessions.
+// Sessions. Token-fenced claims are renewed during admission and scheduled run
+// rows are unique per occurrence, so multiple worker replicas can run this loop
+// safely and a crashed worker is retried without exposing duplicate successful
+// Sessions.
 func (r *DeploymentReconciler) Run(ctx context.Context) error {
 	ticker := time.NewTicker(r.pollInterval)
 	defer ticker.Stop()
@@ -59,19 +65,55 @@ func (r *DeploymentReconciler) reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var firstErr error
+	results := make(chan error, len(claims))
 	for _, claim := range claims {
-		claimCtx := workspace.WithScope(ctx, claim.WorkspaceID)
-		if _, err := r.runner.RunScheduled(
-			claimCtx, claim.DeploymentID, claim.ScheduledAt,
-		); err != nil {
-			// Claim a batch to amortize the database lock, but do not let one
-			// malformed Deployment strand every later claim until its lease
-			// expires. The failed occurrence remains retryable.
-			if firstErr == nil {
-				firstErr = err
+		claim := claim
+		go func() {
+			claimCtx := workspace.WithScope(ctx, claim.WorkspaceID)
+			results <- r.runClaim(claimCtx, claim)
+		}()
+	}
+	var combined error
+	for range claims {
+		combined = errors.Join(combined, <-results)
+	}
+	return combined
+}
+
+func (r *DeploymentReconciler) runClaim(
+	ctx context.Context,
+	claim DeploymentScheduleClaim,
+) error {
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+	heartbeatDone := make(chan error, 1)
+	stopHeartbeat := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(r.renewInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-runCtx.Done():
+				heartbeatDone <- nil
+				return
+			case <-stopHeartbeat:
+				heartbeatDone <- nil
+				return
+			case <-ticker.C:
+				if err := r.runner.RenewClaim(runCtx, claim); err != nil {
+					cancelRun()
+					heartbeatDone <- fmt.Errorf(
+						"renew Deployment %s schedule claim: %w", claim.DeploymentID, err,
+					)
+					return
+				}
 			}
 		}
-	}
-	return firstErr
+	}()
+	_, runErr := r.runner.RunScheduled(
+		runCtx, claim.DeploymentID, claim.ScheduledAt,
+	)
+	close(stopHeartbeat)
+	heartbeatErr := <-heartbeatDone
+	return errors.Join(runErr, heartbeatErr)
 }

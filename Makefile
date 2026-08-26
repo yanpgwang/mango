@@ -21,6 +21,8 @@ MANGO_TEST_S3_BUCKET ?= mango-test
 MANGO_TEST_S3_ACCESS_KEY ?= minioadmin
 MANGO_TEST_S3_SECRET_KEY ?= minioadmin
 TERMINAL_UI_DIR ?= examples/terminal-ui
+MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
+MANGO_EXAMPLE_ADVISOR_MODEL_ID ?= $(MANGO_EXAMPLE_MODEL_ID)
 
 DOCKER_BUILD_ARGS := --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION)
 ifneq ($(strip $(GOPROXY)),)
@@ -30,6 +32,8 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help build lint test test-race test-service test-model-live test-platform-live \
+	test-coding-agent test-coding-agent-live test-hitl-gate demo-hitl-gate \
+	demo-multi-agent-team \
 	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
 	terminal-ui-build terminal-ui-verify security docs-check image image-smoke dev-env-init \
 	local-config local-up local-down local-health local-ps local-logs
@@ -43,6 +47,11 @@ help:
 	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, MinIO, and Docker"
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"
 	@echo "  make test-platform-live  run durable text and Docker tool turns against that live model"
+	@echo "  make test-coding-agent   run the offline iterate coding scenario in Docker"
+	@echo "  make test-coding-agent-live  run the iterate scenario against the live model"
+	@echo "  make test-hitl-gate      run the durable custom-tool HITL scenario"
+	@echo "  make demo-hitl-gate      run the interactive HITL example over public HTTP"
+	@echo "  make demo-multi-agent-team  run the interactive multi-agent example over public HTTP"
 	@echo "  make vet            run go vet"
 	@echo "  make verify         run the core Go checks"
 	@echo "  make terminal-ui-verify  verify the terminal UI example"
@@ -94,6 +103,36 @@ test-platform-live:
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
 	$(GO) test ./internal/temporal -run '^TestVerticalSlice_LiveModel(EndToEnd|ToolStepEndToEnd)$$' -count=1
+
+test-coding-agent:
+	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
+	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
+	$(GO) test ./internal/temporal \
+		-run '^TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd$$' -count=1
+
+test-coding-agent-live:
+	MANGO_TEST_LIVE_MODEL=1 \
+	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
+	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
+	$(GO) test ./internal/temporal \
+		-run '^TestVerticalSlice_LiveModelIterateFixFailingTestsEndToEnd$$' -count=1
+
+test-hitl-gate:
+	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
+	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
+	$(GO) test ./internal/temporal \
+		-run '^TestVerticalSlice_HITLGateSurvivesWorkerRestart$$' -count=1
+
+demo-hitl-gate:
+	MANGO_EXAMPLE_MODEL_ID='$(MANGO_EXAMPLE_MODEL_ID)' \
+	env -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
+		$(GO) run ./examples/hitl-gate
+
+demo-multi-agent-team:
+	MANGO_EXAMPLE_MODEL_ID='$(MANGO_EXAMPLE_MODEL_ID)' \
+	MANGO_EXAMPLE_ADVISOR_MODEL_ID='$(MANGO_EXAMPLE_ADVISOR_MODEL_ID)' \
+	env -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
+		$(GO) run ./examples/multi-agent-team
 
 vet:
 	$(GO) vet ./...

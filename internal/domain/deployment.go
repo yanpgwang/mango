@@ -35,15 +35,18 @@ type Deployment struct {
 }
 
 // DeploymentResource is the write-safe subset of a Session resource retained
-// by a deployment. Create-time Git repository snapshots are not Deployment
-// templates in the current product slice.
+// by a deployment. Git repositories retain only their requested source and
+// checkout; each Run resolves and snapshots them into its own Session.
 type DeploymentResource struct {
-	Type          string
-	FileID        string
-	MountPath     *string
-	MemoryStoreID string
-	Access        string
-	Instructions  string
+	Type                    string
+	FileID                  string
+	MountPath               *string
+	MemoryStoreID           string
+	Access                  string
+	Instructions            string
+	RepositoryURL           string
+	RepositoryCheckoutType  string
+	RepositoryCheckoutValue string
 }
 
 type DeploymentSchedule struct {

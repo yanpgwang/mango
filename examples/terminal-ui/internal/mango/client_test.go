@@ -23,17 +23,15 @@ func TestClientRejectsCredentialsInEndpointURL(t *testing.T) {
 	}
 }
 
-func TestClientUsesManagedAgentsEventContract(t *testing.T) {
+func TestClientUsesMangoEventContract(t *testing.T) {
 	var posted []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("anthropic-beta") != managedAgentsBeta {
-			t.Errorf("beta = %q", r.Header.Get("anthropic-beta"))
+		if r.Header.Get("authorization") != "Bearer test-key" {
+			t.Errorf("authorization = %q", r.Header.Get("authorization"))
 		}
-		if r.Header.Get("anthropic-version") != anthropicVersion {
-			t.Errorf("version = %q", r.Header.Get("anthropic-version"))
-		}
-		if r.Header.Get("x-api-key") != "test-key" {
-			t.Errorf("key = %q", r.Header.Get("x-api-key"))
+		if r.Header.Get("anthropic-beta") != "" || r.Header.Get("anthropic-version") != "" ||
+			r.Header.Get("x-api-key") != "" {
+			t.Errorf("provider-specific headers leaked to Mango: %v", r.Header)
 		}
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/sessions/sesn_1/events" {
 			http.NotFound(w, r)

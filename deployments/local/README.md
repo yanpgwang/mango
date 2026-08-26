@@ -69,7 +69,7 @@ export MANGO_FILE_S3_SECRET_KEY="minioadmin"
 export MANGO_FILE_S3_PATH_STYLE="true"
 export MANGO_FILE_S3_CREATE_BUCKET="true"
 
-# Vault API keyring (the Compose stack mounts its development-only keyring).
+# Vault and Webhook keyring (the Compose stack mounts its development-only keyring).
 export MANGO_VAULT_KEYRING_FILE="$PWD/deployments/local/vault-keyring.json"
 ```
 
@@ -88,8 +88,10 @@ make test-service
 This is the same suite run by CI. It covers real PostgreSQL migrations and
 transactions, Temporal workflows and Activities, NATS reconciliation and
 previews, the Files lifecycle through real MinIO, the HTTP-to-service vertical
-slice, and a Docker sandbox tool step. Each database test uses an isolated
-schema; workflow, object, and sandbox cleanup is part of the assertions.
+slice, a Docker sandbox tool step, and an offline coding-agent scenario that
+observes failing assertions, fixes a mounted fixture, and publishes the verified
+source through Session Outputs. Each database test uses an isolated schema;
+workflow, object, and sandbox cleanup is part of the assertions.
 
 ## Health checks
 

@@ -169,6 +169,13 @@ func (s *Store) CompleteThreadWorkflowTurn(
 				return err
 			}
 		}
+		if status == domain.StatusTerminated {
+			if err := s.interruptSessionThreadAttemptsLocked(
+				ctx, tx, q, sessionID, threadID,
+			); err != nil {
+				return err
+			}
+		}
 		resolvedPending, err := s.resolvePendingBarrierLocked(
 			ctx, q, sessionID, threadID, triggerEventID, resolutionEventIDs,
 		)

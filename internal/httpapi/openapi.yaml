@@ -4,8 +4,8 @@ info:
   version: 0.1.0
   description: >-
     Mango's current HTTP API for durable Sessions, Deployments, self-hosted
-    Environment Work, conditional Files and Memory APIs, Vaults, and File- and
-    Memory-backed Session Resources. Mango is an independent, self-hosted
+    Environment Work, conditional Files and Memory APIs, Vaults, Webhooks, and
+    File- and Memory-backed Session Resources. Mango is an independent, self-hosted
     runtime licensed under Apache-2.0.
   license:
     name: Apache-2.0
@@ -40,6 +40,8 @@ tags:
     description: Persistent path-addressed Memory Stores with immutable audit Versions.
   - name: Vaults
     description: Encrypted credential storage for Managed Agent Sessions.
+  - name: Webhooks
+    description: Durable, signed outbound notifications for lifecycle changes.
   - name: Deployments
     description: Autonomous Session templates and their execution records.
 paths:
@@ -1369,6 +1371,79 @@ paths:
         '422':
           $ref: '#/components/responses/UnsupportedRequest'
 
+  /v1/webhooks:
+    post:
+      operationId: createWebhook
+      tags: [Webhooks]
+      summary: Create a Webhook endpoint
+      description: The signing_secret is returned only by this response and explicit rotation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/WebhookCreateRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/WebhookSecretResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnsupportedRequest'}
+    get:
+      operationId: listWebhooks
+      tags: [Webhooks]
+      summary: List Webhook endpoints
+      parameters:
+        - $ref: '#/components/parameters/WebhookListLimit'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200': {$ref: '#/components/responses/WebhookListResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '422': {$ref: '#/components/responses/UnsupportedRequest'}
+  /v1/webhooks/{webhook_id}:
+    parameters:
+      - $ref: '#/components/parameters/WebhookID'
+    get:
+      operationId: getWebhook
+      tags: [Webhooks]
+      summary: Get a Webhook endpoint without its signing secret
+      responses:
+        '200': {$ref: '#/components/responses/WebhookResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnsupportedRequest'}
+    post:
+      operationId: updateWebhook
+      tags: [Webhooks]
+      summary: Update a Webhook endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/WebhookUpdateRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/WebhookResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnsupportedRequest'}
+    delete:
+      operationId: deleteWebhook
+      tags: [Webhooks]
+      summary: Delete a Webhook endpoint and its pending deliveries
+      responses:
+        '200': {$ref: '#/components/responses/WebhookDeletedResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnsupportedRequest'}
+  /v1/webhooks/{webhook_id}/regenerate_signing_secret:
+    parameters:
+      - $ref: '#/components/parameters/WebhookID'
+    post:
+      operationId: regenerateWebhookSigningSecret
+      tags: [Webhooks]
+      summary: Replace and reveal a Webhook signing secret
+      description: Newly claimed attempts use the replacement; an already claimed attempt may finish with the previous secret.
+      responses:
+        '200': {$ref: '#/components/responses/WebhookSecretResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnsupportedRequest'}
+
   /v1/deployments:
     post:
       operationId: createDeployment
@@ -1528,6 +1603,21 @@ components:
       scheme: bearer
 
   parameters:
+    WebhookID:
+      name: webhook_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^wh_'
+    WebhookListLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
     VaultID:
       name: vault_id
       in: path
@@ -2414,6 +2504,34 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/VaultDeleted'
+    WebhookResponse:
+      description: Webhook endpoint without its write-only signing secret
+      headers:
+        request-id: {$ref: '#/components/headers/RequestID'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Webhook'}
+    WebhookSecretResponse:
+      description: Webhook endpoint with a newly generated write-only signing secret
+      headers:
+        request-id: {$ref: '#/components/headers/RequestID'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/WebhookWithSigningSecret'}
+    WebhookListResponse:
+      description: Webhook endpoint page
+      headers:
+        request-id: {$ref: '#/components/headers/RequestID'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/WebhookList'}
+    WebhookDeletedResponse:
+      description: Webhook endpoint deletion confirmation
+      headers:
+        request-id: {$ref: '#/components/headers/RequestID'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/WebhookDeleted'}
     VaultCredentialResponse:
       description: Credential resource with all sensitive fields omitted
       headers:
@@ -2560,9 +2678,10 @@ components:
       oneOf:
         - $ref: '#/components/schemas/FileSessionResourceInput'
         - $ref: '#/components/schemas/MemoryStoreSessionResourceInput'
+        - $ref: '#/components/schemas/GitRepositorySessionResourceInput'
       discriminator:
         propertyName: type
-      description: Deployment templates currently accept File and Memory Store resources only.
+      description: Resource templates copied into each Run's Session. Git branch and default checkouts are resolved separately for every Run.
     DeploymentMetadata:
       type: object
       maxProperties: 16
@@ -2671,8 +2790,29 @@ components:
             memory_store_id: {type: string, pattern: '^memstore_'}
             access: {type: [string, 'null'], enum: [read_write, read_only, null]}
             instructions: {type: [string, 'null']}
+        - $ref: '#/components/schemas/GitRepositoryDeploymentResource'
       discriminator:
         propertyName: type
+    GitRepositoryDeploymentResource:
+      type: object
+      additionalProperties: false
+      required: [type, url, checkout, mount_path]
+      properties:
+        type:
+          type: string
+          const: git_repository
+        url:
+          type: string
+          format: uri
+          description: Anonymous public HTTPS Git remote retained as a Deployment template.
+        checkout:
+          oneOf:
+            - $ref: '#/components/schemas/GitRepositoryCheckout'
+            - type: 'null'
+          description: Requested branch or commit, or null to resolve the remote default branch on each Run.
+        mount_path:
+          type: [string, 'null']
+          description: Requested path, or null to derive /workspace/<repository> independently for each Run.
     Deployment:
       type: object
       additionalProperties: false
@@ -5905,6 +6045,113 @@ components:
         type:
           type: string
           const: vault_deleted
+
+    WebhookEventType:
+      type: string
+      enum:
+        - session.status_scheduled
+        - session.status_run_started
+        - session.status_idled
+        - session.status_rescheduled
+        - session.status_terminated
+        - session.budget_reached
+        - session.thread_created
+        - session.thread_idled
+        - session.thread_terminated
+        - session.outcome_evaluation_ended
+        - session.updated
+        - session.archived
+        - session.deleted
+        - deployment_run.succeeded
+        - deployment_run.failed
+    WebhookCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [url, event_types]
+      properties:
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+          maxLength: 2048
+        event_types:
+          type: array
+          minItems: 1
+          maxItems: 64
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/WebhookEventType'}
+    WebhookUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+          maxLength: 2048
+        event_types:
+          type: array
+          minItems: 1
+          maxItems: 64
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/WebhookEventType'}
+        status:
+          type: string
+          enum: [enabled, disabled]
+    Webhook:
+      type: object
+      additionalProperties: false
+      required: [id, type, url, event_types, status, disabled_reason, created_at, updated_at]
+      properties:
+        id: {type: string, pattern: '^wh_'}
+        type: {type: string, const: webhook}
+        url: {type: string, format: uri}
+        event_types:
+          type: array
+          items: {$ref: '#/components/schemas/WebhookEventType'}
+        status:
+          type: string
+          enum: [enabled, disabled]
+        disabled_reason: {type: [string, 'null']}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    WebhookWithSigningSecret:
+      type: object
+      additionalProperties: false
+      required: [id, type, url, event_types, status, disabled_reason, signing_secret, created_at, updated_at]
+      properties:
+        id: {type: string, pattern: '^wh_'}
+        type: {type: string, const: webhook}
+        url: {type: string, format: uri}
+        event_types:
+          type: array
+          items: {$ref: '#/components/schemas/WebhookEventType'}
+        status:
+          type: string
+          enum: [enabled, disabled]
+        disabled_reason: {type: [string, 'null']}
+        signing_secret:
+          type: string
+          pattern: '^whsec_'
+          description: Returned only by endpoint creation and explicit rotation.
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    WebhookList:
+      type: object
+      additionalProperties: false
+      required: [data, next_page]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/Webhook'}
+        next_page: {$ref: '#/components/schemas/Cursor'}
+    WebhookDeleted:
+      type: object
+      additionalProperties: false
+      required: [id, type]
+      properties:
+        id: {type: string, pattern: '^wh_'}
+        type: {type: string, const: webhook_deleted}
 
     OAuthTokenEndpointAuthNoneCreate:
       type: object

@@ -33,6 +33,42 @@ release is never an automatic roadmap.
   SDK are optional research evidence; raw HTTP and OpenAPI tests define Mango's
   transport contract.
 
+## Outbound Webhooks
+
+- The public [Claude Managed Agents Webhook guide](https://platform.claude.com/docs/en/managed-agents/webhooks),
+  current public API reference, and generated Go SDK types supplied the
+  high-level event envelope, useful event names, thin-resource notification
+  model, one-time `whsec_` secret, and delivery edge cases.
+- Mango adopted the Standard Webhooks `webhook-id`, `webhook-timestamp`, and
+  `webhook-signature` headers and HMAC input. It also adopted stable IDs across
+  retries, a fresh attempt timestamp, any-`2xx` acknowledgement, three jittered
+  attempts bounded to 5–120 seconds, transactional subscription scope, no
+  backfill, no ordering guarantee, and immediate redirect/private-address
+  disable semantics. The public
+  [Standard Webhooks specification](https://www.standardwebhooks.com/) defines
+  the signing convention; Mango's leased PostgreSQL dispatcher is independent
+  implementation code.
+- Mango changed endpoint management for its self-hosted boundary. `/v1/webhooks`
+  provides Workspace-scoped CRUD and explicit secret rotation because Mango
+  has no hosted Console. Secrets use the operator-mounted AES-GCM keyring,
+  deliveries and exact signed bytes survive worker replacement, public egress
+  is checked again at connect time, and terminal delivery state is retained
+  internally for bounded cleanup.
+- Mango retains `workspace_id` in notifications but omits the hosted
+  `organization_id` because no equivalent Organization resource exists. It
+  supports the Session and scheduled Deployment Run event subset backed by a
+  current Mango lifecycle; it does not advertise broader CMA resource events
+  merely because their names exist externally. Manual Runs emit no Run
+  notifications, matching the useful scheduled-only distinction.
+- Mango rejected Anthropic authentication and beta headers, Console-only
+  management, hosted rollout constraints, SDK compatibility as a success
+  criterion, and an invented duration for sustained-failure auto-disable. CMA
+  publicly describes that trigger but not its threshold; Mango records the
+  continuous-failure window and leaves a concrete operator policy as follow-up
+  work. It also defers `deployment_run.started` until Mango has a real
+  in-progress Run lifecycle rather than synthesizing an event around an
+  immutable final record.
+
 ## File-backed Session messages
 
 - The [Managed Agents event API](https://platform.claude.com/docs/en/api/beta/sessions/events)
@@ -106,15 +142,104 @@ support, so they run the same offline and opt-in live conformance suites.
   Mango's S3-compatible object lifecycle, and restores it offline through one
   adapter-neutral pending/ready marker protocol. The sandbox worktree is an
   independent writable copy.
+- CMA's public [scheduled Deployments guide](https://platform.claude.com/docs/en/managed-agents/scheduled-deployments)
+  and Deployment resource union informed Mango's decision to reuse the same
+  high-level repository template across direct Sessions and Deployments.
+  Mango retains only the generic URL, optional checkout, and optional mount
+  path. Each Run resolves a branch or default checkout afresh and then reuses
+  the existing Session snapshot lifecycle; commit checkouts remain fixed. The
+  Deployment itself therefore has no misleading `resolved_commit`.
+- Mango retained CMA's `session_resource_not_found_error` only for a
+  deterministically unavailable repository or checkout. Temporary DNS, TLS,
+  transport, and upstream failures remain `unknown_error` Runs and do not
+  auto-pause a schedule. This Run classification is deliberately separate from
+  Mango's ordinary Session HTTP error envelope.
 - Mango rejected raw authorization tokens, vendor authentication/header
   semantics, hosted clone caches, provider-side repository APIs, and automatic
   `.claude/skills` discovery. Private credentials require a future Mango secret
-  reference. Submodules, LFS objects, runtime attach/detach, Deployment
-  templates, push/PR workflows, and repository Skill discovery remain separate
-  product decisions with their own acceptance criteria.
+  reference. Submodules, LFS objects, runtime attach/detach, push/PR workflows,
+  and repository Skill discovery remain separate product decisions with their
+  own acceptance criteria.
 - `github.com/go-git/go-git/v5` is a replaceable control-plane implementation
   dependency. It does not define Mango's HTTP contract, and no hosted agent
   credentials or services are required by development, CI, or production.
+
+## Coding-agent scenario fixtures
+
+- Anthropic's public
+  [`CMA_iterate_fix_failing_tests` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_iterate_fix_failing_tests.ipynb)
+  supplied the MIT-licensed `calc.py` and `test_calc.py` fixture and the useful
+  do-observe-fix workflow. A copy of the source license is retained beside the
+  test fixture in `internal/temporal/testdata/coding_agent_iterate`.
+- Mango adopted the user problem and acceptance outcome: expose immutable input
+  files, let a coding Agent iterate in a writable sandbox, independently verify
+  the fix, and publish the final source as a durable Session output.
+- Mango changed the execution to its own PostgreSQL, Temporal, Docker, File
+  Resource, tool-journal, event, and Session Output lifecycle. The service test
+  uses a retry-safe deterministic model; a separate opt-in test runs the same
+  outcome against the configured Messages endpoint.
+- The live scenario enables only local coding tools (`bash`, `read`, `write`,
+  `edit`, `glob`, and `grep`). It deliberately rejects Web Search/Fetch for this
+  offline task at the Agent configuration boundary instead of relying on prompt
+  instructions as a security control.
+- Mango did not adopt CMA API calls, hosted sandbox behavior, exact event names,
+  archive semantics, or field-level compatibility. The external notebook is a
+  scenario reference, while Mango's observable outcome and executable tests
+  define success.
+- The [coding-agent iteration example](examples/coding-agent-iterate.md) describes the
+  Mango workflow without introducing a second runner. The `internal/temporal`
+  scenario test keeps the durable outcome deterministic in public CI; the
+  explicit live tier checks the same outcome against a configured model
+  endpoint.
+
+## Human-in-the-loop custom-tool gate
+
+- Anthropic's public
+  [`CMA_gate_human_in_the_loop` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_gate_human_in_the_loop.ipynb)
+  supplied the expense-approval user problem, the useful `decide` versus
+  `escalate` split, and the custom-tool result round trip as design evidence.
+- Mango adopted the application-owned action boundary: the model proposes a
+  typed custom call, the Session becomes idle, and an application or human
+  returns the correlated result before inference continues.
+- The example's expense flow is a runnable public-HTTP program exercised against
+  a real model. Its client represents the external expense system and prompts
+  a terminal user for the review decision, while the deterministic scenario
+  separately proves crash and concurrency invariants.
+- Mango changed the hosted presentation behavior. One idle event exposes every
+  action in the current barrier rather than a sliding window. Partial results
+  are durably claimed without waking execution; the final result resumes the
+  complete result round exactly once, including after worker replacement.
+- The scenario uses Mango-owned synthetic inputs and copies no Cookbook
+  fixture. Its executable contract is PostgreSQL atomic admission, Temporal
+  recovery, duplicate-result rejection, and persisted Event ordering.
+- Mango's Webhook slice can now wake the application on
+  `session.status_idled`, but the example retains stream-plus-history recovery:
+  an at-least-once notification is not the authoritative custom-tool barrier.
+
+## Multi-agent specialist team
+
+- Anthropic's public
+  [`CMA_coordinate_specialist_team` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_coordinate_specialist_team.ipynb)
+  supplied the useful specialist-team user problem: a coordinator delegates
+  role-scoped work, waits for reports, consults an Advisor, and synthesizes a
+  final decision.
+- Mango's real-model example adopts that high-level workflow but uses synthetic
+  release-readiness facts and no Web, hosted data, or third-party integration.
+  The client exercises Mango's public HTTP resources and inspects its persisted
+  Event and Session Thread projections.
+- Mango changes child completion semantics deliberately. Ordinary child Agents
+  finish a turn and the runtime projects their report to the coordinator; they
+  do not receive or need a hosted `send_to_parent` tool. Persistent follow-up is
+  addressed through Mango's runtime-owned `send_to_agent` tool and the existing
+  `session_thread_id`.
+- The scenario verifies one real provider run with two ordinary children, a
+  primary-only Advisor consultation, per-Thread usage, a final synthesis
+  barrier, and an interactive follow-up. Deterministic service tests remain
+  authoritative for retry, interruption, recovery, archive, and deletion
+  invariants.
+- Mango did not adopt the Cookbook's SDK calls, cloud Environment fields,
+  bundled sales collateral, web-search dependency, hosted model restrictions,
+  or exact response text.
 
 ## Custom Skills
 

@@ -221,6 +221,11 @@ WHERE session_id = $1 AND id = $2`, sessionID, threadID).Scan(&threadKind); err 
 				"cannot archive a running session Thread; interrupt first",
 			)
 		}
+		if err := s.interruptSessionThreadAttemptsLocked(
+			ctx, tx, q, sessionID, threadID,
+		); err != nil {
+			return err
+		}
 
 		pendingResult, err := tx.Exec(ctx, `
 DELETE FROM pending_actions
@@ -384,6 +389,165 @@ ORDER BY created_at, id`, sessionID)
 		}
 	}
 	return nil
+}
+
+// interruptSessionThreadAttemptsLocked closes every active execution journal
+// owned by one Thread. The caller holds the Session and Thread lifecycle locks;
+// locking each attempt establishes the final ordering with StartToolStep.
+func (s *Store) interruptSessionThreadAttemptsLocked(
+	ctx context.Context,
+	tx pgx.Tx,
+	q *pgstore.Queries,
+	sessionID string,
+	threadID string,
+) error {
+	rows, err := tx.Query(ctx, `
+SELECT attempt.id, attempt.trigger_event_id
+FROM turn_attempts AS attempt
+JOIN events AS trigger
+  ON trigger.session_id = attempt.session_id
+ AND trigger.id = attempt.trigger_event_id
+WHERE attempt.session_id = $1
+  AND trigger.thread_id = $2
+  AND attempt.state = 'active'
+ORDER BY attempt.id
+FOR UPDATE OF attempt`, sessionID, threadID)
+	if err != nil {
+		return err
+	}
+	type activeAttempt struct {
+		id             string
+		triggerEventID string
+	}
+	attempts := make([]activeAttempt, 0)
+	for rows.Next() {
+		var attempt activeAttempt
+		if err := rows.Scan(&attempt.id, &attempt.triggerEventID); err != nil {
+			rows.Close()
+			return err
+		}
+		attempts = append(attempts, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, attempt := range attempts {
+		if err := s.finishAttemptLocked(
+			ctx, q, attempt.id, domain.RunAttemptInterrupted, nil,
+			sessionID, attempt.triggerEventID,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// terminateChildSessionThreadsLocked fences every persistent child when its
+// primary owner reaches a terminal state. Child completion takes the same
+// Session row lock, so either it commits before this transition or observes the
+// terminated projection and becomes a no-op. Lifecycle events and durable
+// Workflow termination intents commit in this same transaction.
+func (s *Store) terminateChildSessionThreadsLocked(
+	ctx context.Context,
+	tx pgx.Tx,
+	q *pgstore.Queries,
+	sessionID string,
+	primaryThreadID string,
+	triggerEventID string,
+	maxSeq int64,
+	now time.Time,
+) ([]domain.Event, int64, error) {
+	rows, err := tx.Query(ctx, `
+SELECT body
+FROM session_threads
+WHERE session_id = $1
+  AND kind = 'child'
+  AND archived_at IS NULL
+  AND status <> 'terminated'
+ORDER BY created_at, id
+FOR UPDATE`, sessionID)
+	if err != nil {
+		return nil, maxSeq, err
+	}
+	children := make([]domain.SessionThread, 0)
+	for rows.Next() {
+		var body []byte
+		if err := rows.Scan(&body); err != nil {
+			rows.Close()
+			return nil, maxSeq, err
+		}
+		var thread domain.SessionThread
+		if err := json.Unmarshal(body, &thread); err != nil {
+			rows.Close()
+			return nil, maxSeq, err
+		}
+		children = append(children, thread)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, maxSeq, err
+	}
+	rows.Close()
+
+	committed := make([]domain.Event, 0, len(children)*2)
+	for _, thread := range children {
+		if err := s.interruptSessionThreadAttemptsLocked(
+			ctx, tx, q, sessionID, thread.ID,
+		); err != nil {
+			return nil, maxSeq, err
+		}
+		if _, err := tx.Exec(ctx, `
+DELETE FROM pending_actions
+WHERE session_id = $1 AND thread_id = $2 AND resolved_at IS NULL`,
+			sessionID, thread.ID,
+		); err != nil {
+			return nil, maxSeq, err
+		}
+		if _, err := tx.Exec(ctx, `
+UPDATE events
+SET processed_at = COALESCE(processed_at, $3)
+WHERE session_id = $1 AND thread_id = $2 AND processed_at IS NULL`,
+			sessionID, thread.ID, now,
+		); err != nil {
+			return nil, maxSeq, err
+		}
+
+		thread.TransitionStatus(domain.StatusTerminated, now)
+		if err := putSessionThreadTx(ctx, tx, thread); err != nil {
+			return nil, maxSeq, err
+		}
+		lifecycle := domain.EventDraft{
+			Type:    domain.EvSessionThreadStatusTerminated,
+			Payload: threadLifecyclePayload(thread),
+		}
+		childEvents, next, err := s.appendThreadDraftsAt(
+			ctx, q, sessionID, thread.ID,
+			[]domain.EventDraft{lifecycle}, maxSeq, nil, now,
+		)
+		if err != nil {
+			return nil, maxSeq, err
+		}
+		maxSeq = next
+		committed = append(committed, childEvents...)
+		primaryEvents, next, err := s.appendThreadDraftsAt(
+			ctx, q, sessionID, primaryThreadID,
+			[]domain.EventDraft{lifecycle}, maxSeq, &triggerEventID, now,
+		)
+		if err != nil {
+			return nil, maxSeq, err
+		}
+		maxSeq = next
+		committed = append(committed, primaryEvents...)
+	}
+	if err := enqueueChildThreadTerminationsLocked(
+		ctx, tx, q, sessionID, maxSeq, now,
+	); err != nil {
+		return nil, maxSeq, err
+	}
+	return committed, maxSeq, nil
 }
 
 // CreateChildSessionThread atomically captures a callable Agent from the

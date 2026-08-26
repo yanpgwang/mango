@@ -13,11 +13,6 @@ import (
 	"time"
 )
 
-const (
-	managedAgentsBeta = "managed-agents-2026-04-01"
-	anthropicVersion  = "2023-06-01"
-)
-
 type Config struct {
 	BaseURL    string
 	APIKey     string
@@ -376,10 +371,8 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body io.Re
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("anthropic-beta", managedAgentsBeta)
-	request.Header.Set("anthropic-version", anthropicVersion)
 	if c.apiKey != "" {
-		request.Header.Set("x-api-key", c.apiKey)
+		request.Header.Set("authorization", "Bearer "+c.apiKey)
 	}
 	if body != nil {
 		request.Header.Set("content-type", "application/json")

@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 func TestDeploymentServicePinsAgentAndCreatesDeploymentSession(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	repositoryMount := "/workspace/audit"
 	repo := newMemoryDeploymentRepository()
 	sessions := &deploymentSessionCreatorFake{}
 	service := newTestDeploymentService(t, repo, sessions, now)
@@ -19,6 +22,12 @@ func TestDeploymentServicePinsAgentAndCreatesDeploymentSession(t *testing.T) {
 	item, err := service.Create(context.Background(), DeploymentCreateInput{
 		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Hourly audit",
 		Budget: &domain.SessionBudget{MaxListCostCents: 500},
+		Resources: []domain.DeploymentResource{{
+			Type:                    domain.SessionResourceTypeGitRepository,
+			RepositoryURL:           "https://github.com/acme/widgets.git",
+			RepositoryCheckoutType:  domain.GitRepositoryCheckoutBranch,
+			RepositoryCheckoutValue: "main", MountPath: &repositoryMount,
+		}},
 		InitialEvents: []domain.EventDraft{{
 			Type: domain.EvUserMessage,
 			Payload: map[string]any{"content": []any{map[string]any{
@@ -81,6 +90,63 @@ func TestDeploymentServicePinsAgentAndCreatesDeploymentSession(t *testing.T) {
 		sessions.last.Budget.MaxListCostCents != 500 {
 		t.Fatalf("Session create input = %+v", sessions.last)
 	}
+	if len(sessions.last.RepositoryResources) != 1 ||
+		sessions.last.RepositoryResources[0].URL != "https://github.com/acme/widgets.git" ||
+		sessions.last.RepositoryResources[0].Checkout == nil ||
+		sessions.last.RepositoryResources[0].Checkout.Type != domain.GitRepositoryCheckoutBranch ||
+		sessions.last.RepositoryResources[0].Checkout.Value != "main" ||
+		sessions.last.RepositoryResources[0].MountPath == nil ||
+		*sessions.last.RepositoryResources[0].MountPath != repositoryMount {
+		t.Fatalf("Session repository resources = %+v", sessions.last.RepositoryResources)
+	}
+}
+
+func TestDeploymentServiceNormalizesAndValidatesGitRepositoryTemplates(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	service := newTestDeploymentService(
+		t, newMemoryDeploymentRepository(), &deploymentSessionCreatorFake{}, now,
+	)
+	uppercaseCommit := "0123456789ABCDEF0123456789ABCDEF01234567"
+	item, err := service.Create(context.Background(), DeploymentCreateInput{
+		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Pinned repository",
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+		Resources: []domain.DeploymentResource{{
+			Type:                    domain.SessionResourceTypeGitRepository,
+			RepositoryURL:           "https://github.com/acme/widgets.git",
+			RepositoryCheckoutType:  domain.GitRepositoryCheckoutCommit,
+			RepositoryCheckoutValue: uppercaseCommit,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create Deployment: %v", err)
+	}
+	if got := item.Resources[0].RepositoryCheckoutValue; got != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("normalized commit = %q", got)
+	}
+
+	left, right := "/workspace/project", "/workspace/project/generated"
+	_, err = service.Create(context.Background(), DeploymentCreateInput{
+		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Overlapping repositories",
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+		Resources: []domain.DeploymentResource{
+			{Type: domain.SessionResourceTypeGitRepository, RepositoryURL: "https://github.com/acme/one.git", MountPath: &left},
+			{Type: domain.SessionResourceTypeGitRepository, RepositoryURL: "https://github.com/acme/two.git", MountPath: &right},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "must not overlap") {
+		t.Fatalf("overlapping repository mounts = %v", err)
+	}
+}
+
+func TestClassifyDeploymentRunGitRepositoryFailure(t *testing.T) {
+	t.Parallel()
+	errorType, _ := classifyDeploymentRunError(
+		SessionResourceNotFoundError("public Git repository could not be cloned or read"),
+	)
+	if errorType != "session_resource_not_found_error" {
+		t.Fatalf("Git repository error type = %q", errorType)
+	}
 }
 
 func TestDeploymentServiceRecordsAndPausesOnScheduledCreationFailure(t *testing.T) {
@@ -123,6 +189,55 @@ func TestDeploymentServiceRecordsAndPausesOnScheduledCreationFailure(t *testing.
 	if got, err := repo.GetScheduledRun(context.Background(), item.ID, scheduledAt); err != nil ||
 		got.ID != run.ID {
 		t.Fatalf("stored scheduled run = %+v err=%v", got, err)
+	}
+}
+
+func TestDeploymentServiceDoesNotPauseAfterManualRunFailure(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	repo := newMemoryDeploymentRepository()
+	service := newTestDeploymentService(t, repo, &deploymentSessionCreatorFake{
+		err: SessionResourceNotFoundError("repository no longer exists"),
+	}, now)
+	item, err := service.Create(context.Background(), DeploymentCreateInput{
+		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Manual test",
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.Run(context.Background(), item.ID)
+	if err != nil || run.ErrorType != "session_resource_not_found_error" {
+		t.Fatalf("manual failed Run = %+v, %v", run, err)
+	}
+	stored, err := service.Get(context.Background(), item.ID)
+	if err != nil || stored.Status != domain.DeploymentStatusActive || stored.PausedReason != nil {
+		t.Fatalf("Deployment after manual failure = %+v, %v", stored, err)
+	}
+}
+
+func TestDeploymentServiceDoesNotPauseAfterTemporaryScheduledFailure(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	repo := newMemoryDeploymentRepository()
+	service := newTestDeploymentService(t, repo, &deploymentSessionCreatorFake{
+		err: errors.New("git repository: temporary clone failure: connection reset"),
+	}, now)
+	item, err := service.Create(context.Background(), DeploymentCreateInput{
+		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Scheduled test",
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+		Schedule:      &domain.DeploymentSchedule{Expression: "0 * * * *", Timezone: "UTC"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.RunScheduled(context.Background(), item.ID, item.Schedule.UpcomingRunsAt[0])
+	if err != nil || run.ErrorType != "unknown_error" {
+		t.Fatalf("temporary scheduled Run = %+v, %v", run, err)
+	}
+	stored, err := service.Get(context.Background(), item.ID)
+	if err != nil || stored.Status != domain.DeploymentStatusActive || stored.PausedReason != nil {
+		t.Fatalf("Deployment after temporary failure = %+v, %v", stored, err)
 	}
 }
 
@@ -322,9 +437,20 @@ func (r *memoryDeploymentRepository) ClaimDue(
 	context.Context,
 	time.Time,
 	time.Time,
+	string,
 	int,
 ) ([]DeploymentScheduleClaim, error) {
 	return nil, nil
+}
+
+func (r *memoryDeploymentRepository) RenewScheduleClaim(
+	context.Context,
+	string,
+	time.Time,
+	string,
+	time.Time,
+) error {
+	return nil
 }
 
 func (r *memoryDeploymentRepository) CompleteSchedule(

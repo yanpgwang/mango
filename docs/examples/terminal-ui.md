@@ -1,16 +1,16 @@
 ---
-title: Explore the terminal UI example
-slug: /guides/terminal-ui
+title: Try the terminal UI demo
+slug: /examples/terminal-ui
 ---
 
-# Explore the terminal UI example
+# Try the terminal UI demo
 
 Mango includes a reference terminal UI that exercises the HTTP and
 event-stream APIs as an interactive client. It shows durable Sessions,
 streaming Agent output, child Threads, action gates, and lifecycle operations
 in one place.
 
-The UI is a complete example rather than a supported operator console or a
+The UI is an executable demo rather than a supported operator console or a
 stable client API. Its source lives in an isolated Go module under
 [`examples/terminal-ui`](https://github.com/yanpgwang/mango/tree/main/examples/terminal-ui),
 so terminal-specific dependencies do not become dependencies of the Mango
@@ -53,6 +53,10 @@ MANGO_API_KEY=your-key \
 
 The equivalent flags are `--url` and `--api-key`. Credentials in endpoint
 URLs are rejected, and API keys are not persisted by the client.
+
+The connection screen shows discovered local and remembered endpoints. Select
+**Enter another endpoint…** or press `e` to enter a different URL with the
+Bubble Tea input control.
 
 ## What the example demonstrates
 

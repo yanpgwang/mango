@@ -559,6 +559,12 @@ func (s *Store) ArchiveSession(ctx context.Context, sessionID string) (domain.Se
 			if err := s.putPrimarySessionThreadProjection(ctx, q, session); err != nil {
 				return err
 			}
+			if err := s.enqueueWebhookEvent(
+				ctx, q, row.WorkspaceID, domain.WebhookEventSessionArchived,
+				sessionID, now, nil,
+			); err != nil {
+				return err
+			}
 		}
 		result = session
 		return nil
@@ -658,6 +664,13 @@ SELECT EXISTS (
 		}
 		if outputsRemain {
 			return domain.Conflict("session output cleanup is incomplete")
+		}
+		now := s.clock.Now().UTC()
+		if err := s.enqueueWebhookEvent(
+			ctx, q, row.WorkspaceID, domain.WebhookEventSessionDeleted,
+			sessionID, now, nil,
+		); err != nil {
+			return err
 		}
 		affected, err := q.DeleteMarkedSession(ctx, sessionID)
 		if err != nil {

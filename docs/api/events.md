@@ -42,6 +42,47 @@ stream. The event reference is authoritative for routing; the hint is optional
 and a conflicting value is rejected. The persisted response and any companion
 `system.message` belong to the child Thread.
 
+### Handle required client actions
+
+A model response may emit multiple custom tools or confirmation-gated tools in
+one round. Mango commits every action and one `session.status_idle` whose
+`stop_reason` contains the complete barrier:
+
+```json
+{
+  "type": "session.status_idle",
+  "stop_reason": {
+    "type": "requires_action",
+    "event_ids": ["sevt_action_1", "sevt_action_2"]
+  }
+}
+```
+
+Answer an `agent.custom_tool_use` by copying its event ID into
+`custom_tool_use_id`:
+
+```json
+{
+  "events": [{
+    "type": "user.custom_tool_result",
+    "custom_tool_use_id": "sevt_action_1",
+    "content": [{"type": "text", "text": "{\"recorded\":true}"}]
+  }]
+}
+```
+
+Results may be submitted separately or in one batch. A partial submission is
+durably claimed but leaves the Session idle; Mango resumes the model exactly
+once only after every ID in that barrier has a matching result. A duplicate
+result returns `409` and commits none of the failing request. If a client loses
+the HTTP response, it should list persisted events and correlate the action ID
+before retrying rather than assuming the result was rejected.
+
+The barrier lives in PostgreSQL and is selected before ordinary queued input.
+Worker or API replacement does not discard it, and a message accepted during
+the wait cannot overtake the complete result round. See the
+[human-in-the-loop gate example](../examples/hitl-gate.md) for the full workflow.
+
 An interrupt without `session_thread_id` is admitted to the primary and every
 active, non-archived child Thread. Supplying `session_thread_id` admits it only
 to that Thread and wakes only its Workflow. An unknown or cross-Session Thread

@@ -434,6 +434,27 @@ func TestAnthropic_SerializesToolsAndToolBlocks(t *testing.T) {
 	}
 }
 
+func TestAnthropic_SerializesEmptyToolUseInputAsObject(t *testing.T) {
+	for _, input := range []map[string]any{nil, {}} {
+		raw, err := marshalTypedBlock(domain.ContentBlock{
+			Type: "tool_use", ToolUseID: "toolu_advisor",
+			ToolName: "advisor", Input: input,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var block map[string]any
+		if err := json.Unmarshal(raw, &block); err != nil {
+			t.Fatal(err)
+		}
+		value, present := block["input"]
+		object, objectOK := value.(map[string]any)
+		if !present || !objectOK || len(object) != 0 {
+			t.Fatalf("tool_use.input = %#v (present=%v), want required empty object; raw=%s", value, present, raw)
+		}
+	}
+}
+
 func TestAnthropic_SerializesRichToolResultContent(t *testing.T) {
 	image := json.RawMessage(`{"type":"image","source":{"type":"url","url":"https://example.com/result.png"}}`)
 	raw, err := marshalTypedBlock(domain.ContentBlock{

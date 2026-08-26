@@ -20,6 +20,9 @@ SELECT id, status, body, created_at, updated_at, workspace_id
 FROM sessions
 WHERE id = @id;
 
+-- name: GetSessionWorkspaceID :one
+SELECT workspace_id FROM sessions WHERE id = @id;
+
 -- LockSession takes the per-session admission lock. Every admission and
 -- completion for a session serializes on this row, which is what makes receipt
 -- sequence assignment and the coalescing outbox upsert race-free.
@@ -82,6 +85,34 @@ VALUES (
     @id, @session_id, @thread_id, @seq, @type, @payload,
     @turn_event_id, @created_at, @processed_at
 );
+
+-- EnqueueWebhookEvent snapshots the enabled subscriptions in the same
+-- transaction as the source lifecycle change. No event row is retained when
+-- no endpoint is subscribed, and later subscriptions never backfill it.
+-- name: EnqueueWebhookEvent :exec
+WITH subscribers AS (
+    SELECT id
+    FROM webhooks
+    WHERE webhooks.workspace_id = sqlc.arg(workspace_id)
+      AND webhooks.status = 'enabled'
+      AND sqlc.arg(event_type)::text = ANY(webhooks.event_types)
+    ORDER BY webhooks.id
+    FOR UPDATE
+), inserted_event AS (
+    INSERT INTO webhook_events (
+        id, workspace_id, event_type, resource_id, payload, created_at
+    )
+    SELECT sqlc.arg(id), sqlc.arg(workspace_id), sqlc.arg(event_type),
+           sqlc.arg(resource_id), sqlc.arg(payload), sqlc.arg(created_at)
+    WHERE EXISTS (SELECT 1 FROM subscribers)
+    RETURNING id, created_at
+)
+INSERT INTO webhook_deliveries (
+    webhook_id, event_id, next_attempt_at, created_at
+)
+SELECT subscribers.id, inserted_event.id,
+       inserted_event.created_at, inserted_event.created_at
+FROM subscribers CROSS JOIN inserted_event;
 
 -- ListEventsAfter returns events with seq strictly greater than a cursor, in
 -- ascending receipt order. This is how the SessionWorkflow consumes the ledger

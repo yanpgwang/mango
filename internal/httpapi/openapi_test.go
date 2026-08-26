@@ -248,8 +248,8 @@ func TestOpenAPIFullManagedAgentsOperationInventory(t *testing.T) {
 			count++
 		}
 	}
-	if count != 89 {
-		t.Fatalf("Mango operation count = %d, want 89", count)
+	if count != 95 {
+		t.Fatalf("Mango operation count = %d, want 95", count)
 	}
 }
 
@@ -442,8 +442,8 @@ func TestOpenAPICoreOperationInventory(t *testing.T) {
 			}
 		}
 	}
-	if count != 21 {
-		t.Fatalf("core operation count = %d, want 21", count)
+	if count != 27 {
+		t.Fatalf("core operation count = %d, want 27", count)
 	}
 }
 
@@ -514,6 +514,19 @@ func TestOpenAPIDeploymentContract(t *testing.T) {
 	if count != 10 {
 		t.Fatalf("Deployment operation count = %d, want 10", count)
 	}
+	schemas := openAPIMap(t, openAPIMap(t, doc["components"], "components")["schemas"], "schemas")
+	resourceInput := openAPIMap(t, schemas["DeploymentResourceInput"], "DeploymentResourceInput")
+	variants, ok := resourceInput["oneOf"].([]any)
+	if !ok || len(variants) != 3 {
+		t.Fatalf("Deployment Resource input variants = %#v, want 3", resourceInput["oneOf"])
+	}
+	assertOpenAPIRef(t, variants[2], "#/components/schemas/GitRepositorySessionResourceInput")
+	resource := openAPIMap(t, schemas["DeploymentResource"], "DeploymentResource")
+	variants, ok = resource["oneOf"].([]any)
+	if !ok || len(variants) != 3 {
+		t.Fatalf("Deployment Resource variants = %#v, want 3", resource["oneOf"])
+	}
+	assertOpenAPIRef(t, variants[2], "#/components/schemas/GitRepositoryDeploymentResource")
 	validateOpenAPIRefs(t, doc, doc)
 }
 

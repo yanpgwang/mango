@@ -39,6 +39,7 @@ const (
 	memoryStoreListCursorKind     = "memory_store_list"
 	memoryVersionListCursorKind   = "memory_version_list"
 	vaultListCursorKind           = "vault_list"
+	webhookListCursorKind         = "webhook_list"
 	credentialListCursorKind      = "vault_credential_list"
 	deploymentListCursorKind      = "deployment_list"
 	deploymentRunListCursorKind   = "deployment_run_list"

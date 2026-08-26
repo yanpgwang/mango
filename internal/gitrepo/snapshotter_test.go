@@ -9,7 +9,34 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/yanpgwang/mango/internal/domain"
 )
+
+func TestMapCloneErrorSeparatesPermanentAndTemporaryFailures(t *testing.T) {
+	missing := mapCloneError(context.Background(), transport.ErrRepositoryNotFound)
+	var classified interface{ DeploymentRunErrorType() string }
+	var domainErr *domain.DomainError
+	if !errors.As(missing, &classified) ||
+		classified.DeploymentRunErrorType() != "session_resource_not_found_error" ||
+		!errors.As(missing, &domainErr) || domainErr.Kind != domain.KindValidation ||
+		domainErr.Code != "" {
+		t.Fatalf("mapped missing repository error = %#v", missing)
+	}
+
+	for _, cause := range []error{
+		errors.New("connection reset"),
+		transport.ErrAuthorizationFailed,
+	} {
+		temporary := mapCloneError(context.Background(), cause)
+		classified = nil
+		domainErr = nil
+		if errors.As(temporary, &classified) || errors.As(temporary, &domainErr) {
+			t.Fatalf("temporary clone error was made permanent = %#v", temporary)
+		}
+	}
+}
 
 func TestWriteSnapshotArchivePreservesGitMetadataAndExecutableFiles(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "repository")
