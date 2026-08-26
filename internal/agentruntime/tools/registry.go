@@ -70,7 +70,8 @@ func Names() []string {
 }
 
 // Schema returns the model-facing JSON input_schema for the named tool, or nil
-// if the tool is unknown. Shapes follow Anthropic's public tool conventions.
+// if the tool is unknown. Shapes adapt useful public tool conventions to the
+// semantics Mango actually implements.
 //
 // web_fetch/web_search are declared to the model through their native routing
 // path, but still need legal local schema objects for shared configuration and
@@ -88,10 +89,6 @@ func Schema(name string) map[string]any {
 					"type":        "string",
 					"description": "The shell command to run.",
 				},
-				"restart": map[string]any{
-					"type":        "boolean",
-					"description": "Restart the shell session before running.",
-				},
 			},
 			"required": []any{"command"},
 		}
@@ -105,7 +102,7 @@ func Schema(name string) map[string]any {
 				},
 				"view_range": map[string]any{
 					"type":        "array",
-					"description": "Optional [start, end] 1-based line range to view.",
+					"description": "Optional [start, end] 1-based inclusive line range to view; a non-positive end reads through EOF.",
 					"items":       map[string]any{"type": "integer"},
 					"minItems":    2,
 					"maxItems":    2,

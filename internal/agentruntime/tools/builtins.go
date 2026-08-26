@@ -2,12 +2,17 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/yanpgwang/mango/internal/sandbox"
 )
+
+const MaxReadFileBytes = 64 << 10
 
 // execBash runs a shell command inside the sandbox and returns its combined
 // stdout+stderr as text. A non-zero exit code is reported as a tool error.
@@ -33,11 +38,92 @@ func execRead(ctx context.Context, sb sandbox.Sandbox, in map[string]any) Result
 	if path == "" {
 		return textResult("read: path is required", true)
 	}
-	data, err := sb.ReadFile(ctx, path)
+	reader, ok := sb.(sandbox.BoundedFileReader)
+	if !ok {
+		return textResult("read: sandbox provider does not support bounded file reads", true)
+	}
+	data, truncated, err := reader.ReadFileBounded(ctx, path, MaxReadFileBytes)
 	if err != nil {
 		return textResult("read: "+err.Error(), true)
 	}
-	return textResult(string(data), false)
+	if truncated {
+		return textResult(fmt.Sprintf(
+			"read: file exceeds the %d-byte read limit; use bash with dd, head, tail, or sed to print a bounded slice",
+			MaxReadFileBytes,
+		), true)
+	}
+	startLine, endLine, ranged, err := parseViewRange(in["view_range"])
+	if err != nil {
+		return textResult("read: "+err.Error(), true)
+	}
+	if !ranged {
+		return textResult(string(data), false)
+	}
+	lines := strings.Split(string(data), "\n")
+	start := 0
+	if startLine > 1 {
+		start = startLine - 1
+	}
+	if start >= len(lines) {
+		return textResult("", false)
+	}
+	end := len(lines)
+	if endLine > 0 && endLine < end {
+		end = endLine
+	}
+	if end < start {
+		return textResult("", false)
+	}
+	return textResult(strings.Join(lines[start:end], "\n"), false)
+}
+
+func parseViewRange(raw any) (start, end int, present bool, err error) {
+	if raw == nil {
+		return 0, 0, false, nil
+	}
+	values, ok := raw.([]any)
+	if !ok || len(values) != 2 {
+		return 0, 0, true, fmt.Errorf("view_range must be [start_line, end_line]")
+	}
+	start, err = inputInteger(values[0])
+	if err != nil {
+		return 0, 0, true, fmt.Errorf("view_range start_line: %w", err)
+	}
+	end, err = inputInteger(values[1])
+	if err != nil {
+		return 0, 0, true, fmt.Errorf("view_range end_line: %w", err)
+	}
+	return start, end, true, nil
+}
+
+func inputInteger(raw any) (int, error) {
+	switch value := raw.(type) {
+	case int:
+		return value, nil
+	case int64:
+		converted := int(value)
+		if int64(converted) != value {
+			return 0, fmt.Errorf("must fit in an integer")
+		}
+		return converted, nil
+	case json.Number:
+		value64, err := value.Int64()
+		if err != nil {
+			return 0, fmt.Errorf("must be an integer")
+		}
+		return inputInteger(value64)
+	case float64:
+		if math.IsNaN(value) || math.IsInf(value, 0) || math.Trunc(value) != value {
+			return 0, fmt.Errorf("must be an integer")
+		}
+		converted := int(value)
+		if float64(converted) != value {
+			return 0, fmt.Errorf("must fit in an integer")
+		}
+		return converted, nil
+	default:
+		return 0, fmt.Errorf("must be an integer")
+	}
 }
 
 // execWrite writes file_text to a file in the sandbox, creating or truncating.

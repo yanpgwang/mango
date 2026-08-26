@@ -191,6 +191,18 @@ func (s *localSandbox) ReadFile(ctx context.Context, path string) ([]byte, error
 	return os.ReadFile(full)
 }
 
+func (s *localSandbox) ReadFileBounded(
+	ctx context.Context,
+	path string,
+	maxBytes int64,
+) ([]byte, bool, error) {
+	full, err := s.resolve(path)
+	if err != nil {
+		return nil, false, err
+	}
+	return readFileBoundedByCommand(ctx, s, full, maxBytes)
+}
+
 func (s *localSandbox) WriteFile(ctx context.Context, path string, data []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -265,8 +265,12 @@ For a large tool result:
 2. when serialized output exceeds the documented 100,000-character threshold
    (about 25,000 tokens), create a bounded model projection containing a
    truncated preview, size, media type, and sandbox path;
-3. create the documented public event projection;
-4. record the sandbox path on the same durable tool step where applicable.
+3. tell the Agent to inspect the exact saved file with bounded `bash` byte
+   slices; the line-oriented `read` tool is capped at 64 KiB inside every
+   sandbox provider and never downloads an arbitrarily large file into worker
+   memory;
+4. create the documented public event projection;
+5. record the sandbox path on the same durable tool step where applicable.
 
 If the sandbox disappears unexpectedly, the Session workspace has been lost and
 the runtime must surface that failure; it must not silently provision an empty

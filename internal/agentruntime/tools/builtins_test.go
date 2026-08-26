@@ -39,6 +39,67 @@ func TestBuiltins_WriteReadEditBash(t *testing.T) {
 	}
 }
 
+func TestBuiltins_ReadViewRange(t *testing.T) {
+	sb := newSB(t)
+	reg := Registry()
+	if r := reg["write"](context.Background(), sb, map[string]any{
+		"path": "lines.txt", "file_text": "line1\nline2\nline3",
+	}); r.IsError {
+		t.Fatalf("write: %+v", r)
+	}
+	tests := []struct {
+		name    string
+		rangeIn any
+		want    string
+		wantErr bool
+	}{
+		{name: "inclusive", rangeIn: []any{float64(2), float64(2)}, want: "line2"},
+		{name: "through eof", rangeIn: []any{float64(2), float64(0)}, want: "line2\nline3"},
+		{name: "inverted", rangeIn: []any{float64(3), float64(1)}, want: ""},
+		{name: "past eof", rangeIn: []any{float64(10), float64(12)}, want: ""},
+		{name: "wrong arity", rangeIn: []any{float64(2)}, wantErr: true},
+		{name: "fractional", rangeIn: []any{1.5, float64(2)}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := reg["read"](context.Background(), sb, map[string]any{
+				"path": "lines.txt", "view_range": tt.rangeIn,
+			})
+			if r.IsError != tt.wantErr {
+				t.Fatalf("read = %+v, want error %v", r, tt.wantErr)
+			}
+			if !tt.wantErr && resultText(t, r) != tt.want {
+				t.Fatalf("read text = %q, want %q", resultText(t, r), tt.want)
+			}
+		})
+	}
+}
+
+func TestBuiltins_ReadRejectsOversizedFileWithoutReturningItsContents(t *testing.T) {
+	sb := newSB(t)
+	full := strings.Repeat("secret", MaxReadFileBytes/6+1)
+	if err := sb.WriteFile(context.Background(), "large.txt", []byte(full)); err != nil {
+		t.Fatal(err)
+	}
+	r := Registry()["read"](context.Background(), sb, map[string]any{
+		"path": "large.txt", "view_range": []any{float64(1), float64(1)},
+	})
+	if !r.IsError || !contains(r, "use bash") || contains(r, "secret") {
+		t.Fatalf("oversized read = %#v", r)
+	}
+}
+
+func TestBuiltinSchemasOnlyAdvertiseImplementedSemantics(t *testing.T) {
+	bashProperties := Schema("bash")["properties"].(map[string]any)
+	if _, advertised := bashProperties["restart"]; advertised {
+		t.Fatal("bash schema advertises a persistent-shell restart that the executor does not implement")
+	}
+	readProperties := Schema("read")["properties"].(map[string]any)
+	if _, advertised := readProperties["view_range"]; !advertised {
+		t.Fatal("read schema omitted the implemented view_range")
+	}
+}
+
 func TestBuiltins_EditMissingStringIsError(t *testing.T) {
 	sb := newSB(t)
 	Registry()["write"](context.Background(), sb, map[string]any{"path": "y.txt", "file_text": "abc"})
@@ -151,4 +212,20 @@ func contains(r Result, s string) bool {
 		}
 	}
 	return false
+}
+
+func resultText(t *testing.T, r Result) string {
+	t.Helper()
+	if len(r.Content) != 1 {
+		t.Fatalf("result content = %#v", r.Content)
+	}
+	block, ok := r.Content[0].(map[string]any)
+	if !ok {
+		t.Fatalf("result block = %#v", r.Content[0])
+	}
+	text, ok := block["text"].(string)
+	if !ok {
+		t.Fatalf("result text = %#v", block["text"])
+	}
+	return text
 }
