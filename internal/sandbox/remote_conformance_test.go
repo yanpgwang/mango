@@ -1182,6 +1182,14 @@ func runFakeRemoteContract(t *testing.T, open func() Provider) {
 	if err != nil || !bytes.Equal(got, content) {
 		t.Fatalf("file round trip = %q, %v", got, err)
 	}
+	bounded, ok := first.(BoundedFileReader)
+	if !ok {
+		t.Fatal("remote sandbox does not implement bounded file reads")
+	}
+	prefix, truncated, err := bounded.ReadFileBounded(ctx, "nested/state.bin", 4)
+	if err != nil || !truncated || !bytes.Equal(prefix, content[:4]) {
+		t.Fatalf("bounded file read = %q, %v, %v", prefix, truncated, err)
+	}
 	result, err := first.Exec(ctx, Command{
 		Path: "/bin/sh",
 		Args: []string{"-c", "printf conformance-exec"},
@@ -1435,6 +1443,8 @@ func (h *fakeRemoteHandle) exec(
 	command = strings.ReplaceAll(command, gitRepositoryControlRoot, repositoryControl)
 	workspace, _ := h.fullPath(SessionRepositoryRoot)
 	command = strings.ReplaceAll(command, SessionRepositoryRoot, workspace)
+	daytonaRoot, _ := h.fullPath(defaultDaytonaRoot)
+	command = strings.ReplaceAll(command, defaultDaytonaRoot, daytonaRoot)
 	process := exec.CommandContext(ctx, "/bin/sh", "-c", command)
 	process.Dir = h.resource.root
 	process.Env = []string{"PATH=/usr/bin:/bin", "COPYFILE_DISABLE=1"}

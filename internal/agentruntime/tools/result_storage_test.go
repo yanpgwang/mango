@@ -58,22 +58,45 @@ func TestMaterializeLargeResult_LeavesThresholdInline(t *testing.T) {
 	}
 }
 
-func TestMaterializeLargeResult_CanBeReadByLineRange(t *testing.T) {
+func TestMaterializeLargeResult_CanBeInspectedInBoundedBashChunks(t *testing.T) {
 	sb := newSB(t)
-	full := strings.Repeat("line\n", MaxInlineResultChars/5+1)
-	if _, err := MaterializeLargeResult(
+	full := strings.Repeat("0123456789", MaxInlineResultChars/10+1)
+	materialized, err := MaterializeLargeResult(
 		context.Background(),
 		sb,
 		"sevt_chunked",
 		textResult(full, false),
-	); err != nil {
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
-	got := Registry()["read"](context.Background(), sb, map[string]any{
+	message := resultText(t, materialized)
+	if !strings.Contains(message, "dd if=tool-results/sevt_chunked.txt") ||
+		!strings.Contains(message, "bs=65536 skip=0 count=1") {
+		t.Fatalf("materialized guidance = %q", message)
+	}
+
+	readResult := Registry()["read"](context.Background(), sb, map[string]any{
 		"path":       "tool-results/sevt_chunked.txt",
-		"view_range": []any{float64(2), float64(3)},
+		"view_range": []any{float64(1), float64(1)},
 	})
-	if got.IsError || resultText(t, got) != "line\nline" {
-		t.Fatalf("ranged stored output = %#v", got)
+	if !readResult.IsError || !strings.Contains(resultText(t, readResult), "use bash") {
+		t.Fatalf("oversized line read = %#v", readResult)
+	}
+	rematerialized, err := MaterializeLargeResult(
+		context.Background(), sb, "sevt_read_retry", readResult,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resultText(t, rematerialized) != resultText(t, readResult) {
+		t.Fatalf("read error was materialized again: %#v", rematerialized)
+	}
+
+	chunk := Registry()["bash"](context.Background(), sb, map[string]any{
+		"command": "dd if=tool-results/sevt_chunked.txt bs=65536 skip=1 count=1 2>/dev/null",
+	})
+	if chunk.IsError || resultText(t, chunk) != full[65536:] {
+		t.Fatalf("bounded bash chunk = %#v", chunk)
 	}
 }

@@ -12,6 +12,8 @@ import (
 	"github.com/yanpgwang/mango/internal/sandbox"
 )
 
+const MaxReadFileBytes = 64 << 10
+
 // execBash runs a shell command inside the sandbox and returns its combined
 // stdout+stderr as text. A non-zero exit code is reported as a tool error.
 func execBash(ctx context.Context, sb sandbox.Sandbox, in map[string]any) Result {
@@ -36,9 +38,19 @@ func execRead(ctx context.Context, sb sandbox.Sandbox, in map[string]any) Result
 	if path == "" {
 		return textResult("read: path is required", true)
 	}
-	data, err := sb.ReadFile(ctx, path)
+	reader, ok := sb.(sandbox.BoundedFileReader)
+	if !ok {
+		return textResult("read: sandbox provider does not support bounded file reads", true)
+	}
+	data, truncated, err := reader.ReadFileBounded(ctx, path, MaxReadFileBytes)
 	if err != nil {
 		return textResult("read: "+err.Error(), true)
+	}
+	if truncated {
+		return textResult(fmt.Sprintf(
+			"read: file exceeds the %d-byte read limit; use bash with dd, head, tail, or sed to print a bounded slice",
+			MaxReadFileBytes,
+		), true)
 	}
 	startLine, endLine, ranged, err := parseViewRange(in["view_range"])
 	if err != nil {

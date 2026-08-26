@@ -45,6 +45,12 @@ release is never an automatic roadmap.
   execute independently and there is no persistent shell session to restart.
   A future persistent-shell lifecycle must work through Mango's sandbox
   abstraction before that capability can be exposed honestly.
+- Mango caps each built-in `read` at 64 KiB inside the sandbox so untrusted
+  files cannot make worker memory scale without bound. Larger files and
+  persisted tool outputs use ordinary `bash` byte slicing (`dd`, `head`,
+  `tail`, or `sed`), following the established coding-agent split between a
+  line-oriented file viewer and a general shell rather than inventing a
+  Mango-specific character-pagination field.
 
 ## Outbound Webhooks
 

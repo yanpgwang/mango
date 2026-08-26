@@ -439,6 +439,21 @@ func (s *e2bLikeSandbox) ReadFile(
 	return s.remote.ReadFile(ctx, full)
 }
 
+func (s *e2bLikeSandbox) ReadFileBounded(
+	ctx context.Context,
+	value string,
+	maxBytes int64,
+) ([]byte, bool, error) {
+	full, err := remoteToolPath(
+		s.root, value, SessionUploadsRoot, SessionOutputsRoot, SessionSkillsRoot,
+		SessionRepositoryRoot,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	return readFileBoundedByCommand(ctx, s, full, maxBytes)
+}
+
 func (s *e2bLikeSandbox) WriteFile(
 	ctx context.Context,
 	value string,

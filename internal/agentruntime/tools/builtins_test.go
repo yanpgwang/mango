@@ -75,6 +75,20 @@ func TestBuiltins_ReadViewRange(t *testing.T) {
 	}
 }
 
+func TestBuiltins_ReadRejectsOversizedFileWithoutReturningItsContents(t *testing.T) {
+	sb := newSB(t)
+	full := strings.Repeat("secret", MaxReadFileBytes/6+1)
+	if err := sb.WriteFile(context.Background(), "large.txt", []byte(full)); err != nil {
+		t.Fatal(err)
+	}
+	r := Registry()["read"](context.Background(), sb, map[string]any{
+		"path": "large.txt", "view_range": []any{float64(1), float64(1)},
+	})
+	if !r.IsError || !contains(r, "use bash") || contains(r, "secret") {
+		t.Fatalf("oversized read = %#v", r)
+	}
+}
+
 func TestBuiltinSchemasOnlyAdvertiseImplementedSemantics(t *testing.T) {
 	bashProperties := Schema("bash")["properties"].(map[string]any)
 	if _, advertised := bashProperties["restart"]; advertised {

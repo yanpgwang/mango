@@ -288,6 +288,21 @@ func (s *daytonaBox) ReadFile(
 	return s.remote.ReadFile(ctx, full)
 }
 
+func (s *daytonaBox) ReadFileBounded(
+	ctx context.Context,
+	value string,
+	maxBytes int64,
+) ([]byte, bool, error) {
+	full, err := remoteToolPath(
+		s.root, value, SessionUploadsRoot, SessionOutputsRoot, SessionSkillsRoot,
+		SessionRepositoryRoot,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	return readFileBoundedByCommand(ctx, s, full, maxBytes)
+}
+
 func (s *daytonaBox) WriteFile(
 	ctx context.Context,
 	value string,
