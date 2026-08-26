@@ -69,9 +69,6 @@ func NewDaytonaProvider(cfg DaytonaConfig) (Provider, error) {
 		)
 	}
 	autoPause := cfg.AutoPauseMinutes
-	if autoPause <= 0 {
-		autoPause = 15
-	}
 	image := strings.TrimSpace(cfg.Image)
 	if image == "" {
 		image = defaultDaytonaImage
@@ -442,13 +439,12 @@ func (s *daytonaSDKService) Create(
 	sessionKey string,
 	spec Spec,
 ) (daytonaResource, error) {
-	autoPause := s.autoPauseMinutes
 	neverDelete := -1
 	noTTL := 0
 	base := daytonatypes.SandboxBaseParams{
 		Name:               name,
 		Labels:             remoteMetadata(sessionKey),
-		AutoPauseInterval:  &autoPause,
+		AutoPauseInterval:  daytonaAutoPauseInterval(s.autoPauseMinutes),
 		AutoDeleteInterval: &neverDelete,
 		TtlMinutes:         &noTTL,
 		NetworkBlockAll:    spec.Network == "" || spec.Network == "none",
@@ -479,6 +475,13 @@ func (s *daytonaSDKService) Create(
 		labels: box.Labels,
 		remote: &daytonaSDKRemote{sandbox: box},
 	}, nil
+}
+
+func daytonaAutoPauseInterval(minutes int) *int {
+	if minutes <= 0 {
+		return nil
+	}
+	return &minutes
 }
 
 type daytonaSDKRemote struct {
