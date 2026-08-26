@@ -46,6 +46,10 @@ Equivalent flags are `--url` and `--api-key`. The selected endpoint is saved
 in `mango/connection.json` under the user configuration directory; API keys
 are never written there.
 
+The bearer key selects the Mango Workspace for every request. The example
+does not send or persist a separate Workspace ID; use a key for another
+Workspace to switch resource scopes.
+
 ## Controls
 
 - `/` opens the Session filter; `Esc` clears it.

@@ -147,7 +147,7 @@ and sandbox lifecycle.
 | I want to… | Read |
 | --- | --- |
 | Run my first agent session | [Getting started](https://yanpgwang.github.io/mango/getting-started) |
-| Explore Mango in a terminal UI | [Terminal UI example](https://yanpgwang.github.io/mango/guides/terminal-ui) |
+| Explore Mango in a terminal UI | [Terminal UI example](https://yanpgwang.github.io/mango/examples/terminal-ui) |
 | Connect a real model endpoint | [Use a real model endpoint](https://yanpgwang.github.io/mango/getting-started#use-a-real-model-endpoint) |
 | Choose an execution backend | [Sandbox backends](https://yanpgwang.github.io/mango/sandboxes) |
 | Run a coordinator and child Agents | [Multi-agent guide](https://yanpgwang.github.io/mango/guides/multi-agent) |

@@ -180,7 +180,7 @@ func (m Model) sessionCreated(msg creationSessionCreated) (tea.Model, tea.Cmd) {
 	m.editor.Focus()
 	m.loading, m.loadingLabel = true, "Opening Session"
 	m.status = "Session created"
-	return m, m.attach(msg.session.ID)
+	return m, m.beginAttach(msg.session.ID)
 }
 
 func (m Model) updateNewSession(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {

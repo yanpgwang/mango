@@ -119,22 +119,38 @@ func PendingActions(primaryThreadID string, events map[string][]mango.Event) []m
 	ledger := events[primaryThreadID]
 	byID := make(map[string]mango.Event, len(ledger))
 	var required []string
+	resolved := map[string]bool{}
 	for _, event := range ledger {
 		if event.ID() != "" {
 			byID[event.ID()] = event
 		}
 		if event.Type() != "session.status_idle" {
+			reference := ""
+			switch event.Type() {
+			case "user.tool_confirmation", "user.tool_result":
+				reference = stringValue(event["tool_use_id"])
+			case "user.custom_tool_result":
+				reference = stringValue(event["custom_tool_use_id"])
+			}
+			if reference != "" {
+				resolved[reference] = true
+			}
 			continue
 		}
 		stop, _ := event["stop_reason"].(map[string]any)
 		if stringValue(stop["type"]) == "requires_action" {
 			required = stringSlice(stop["event_ids"])
+			resolved = map[string]bool{}
 		} else {
 			required = nil
+			resolved = map[string]bool{}
 		}
 	}
 	actions := make([]mango.Action, 0, len(required))
 	for _, id := range required {
+		if resolved[id] {
+			continue
+		}
 		event, ok := byID[id]
 		if !ok {
 			continue

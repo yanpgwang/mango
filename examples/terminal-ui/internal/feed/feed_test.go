@@ -36,6 +36,21 @@ func TestPendingActionsUsesCrossPostedThreadHint(t *testing.T) {
 	}
 }
 
+func TestPendingActionsDropsResolvedItemsBeforeNextIdleBoundary(t *testing.T) {
+	events := map[string][]mango.Event{"sthr_primary": {
+		{"id": "sevt_action_1", "type": "agent.tool_use", "name": "bash", "evaluated_permission": "ask"},
+		{"id": "sevt_action_2", "type": "agent.custom_tool_use", "name": "review"},
+		{"id": "sevt_idle", "type": "session.status_idle", "stop_reason": map[string]any{
+			"type": "requires_action", "event_ids": []any{"sevt_action_1", "sevt_action_2"},
+		}},
+		{"id": "sevt_resolution", "type": "user.tool_confirmation", "tool_use_id": "sevt_action_1", "result": "allow"},
+	}}
+	pending := PendingActions("sthr_primary", events)
+	if len(pending) != 1 || pending[0].ID != "sevt_action_2" {
+		t.Fatalf("pending = %#v", pending)
+	}
+}
+
 func TestProjectMarksFormerBarrierActionResolved(t *testing.T) {
 	thread := mango.Thread{ID: "sthr_primary"}
 	events := []mango.Event{

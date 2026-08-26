@@ -202,7 +202,10 @@ func (b *Backend) CreateSession(_ context.Context, input mango.CreateSessionInpu
 		session.Title = "New Session"
 	}
 	threadID := fmt.Sprintf("sthr_demo_%d", b.nextID)
-	primary := mango.Thread{ID: threadID, SessionID: sessionID, Status: "idle", Agent: selected}
+	primary := mango.Thread{
+		ID: threadID, SessionID: sessionID, Status: "idle",
+		Agent: mango.ThreadAgentFromAgent(selected),
+	}
 	logs := map[string][]mango.Event{threadID: {}}
 	if input.InitialPrompt != "" {
 		logs[threadID] = append(logs[threadID], b.event("user.message", map[string]any{

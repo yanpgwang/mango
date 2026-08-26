@@ -22,6 +22,57 @@ func (f failingSendBackend) SendMessage(context.Context, string, string) ([]mang
 	return nil, errors.New("control plane unavailable")
 }
 
+type cancelAwareAttachBackend struct {
+	mango.Backend
+	started  chan struct{}
+	canceled chan struct{}
+}
+
+func (b *cancelAwareAttachBackend) Attach(ctx context.Context, _ string) (mango.Attachment, error) {
+	close(b.started)
+	<-ctx.Done()
+	close(b.canceled)
+	return mango.Attachment{}, ctx.Err()
+}
+
+func TestNewAttachCancelsAndRejectsOlderAttach(t *testing.T) {
+	backend := &cancelAwareAttachBackend{
+		Backend: demo.New(), started: make(chan struct{}), canceled: make(chan struct{}),
+	}
+	model := New(backend, "")
+	oldCommand := model.beginAttach("sesn_old")
+	oldResult := make(chan tea.Msg, 1)
+	go func() { oldResult <- oldCommand() }()
+	<-backend.started
+	_ = model.beginAttach("sesn_new")
+	select {
+	case <-backend.canceled:
+	case <-time.After(time.Second):
+		t.Fatal("starting a new attach did not cancel the older request")
+	}
+	updated, _ := model.Update(<-oldResult)
+	model = updated.(Model)
+	if model.session != nil || model.attachTarget != "sesn_new" || model.activeAttach == 0 {
+		t.Fatalf("stale attach mutated model: session=%#v target=%q generation=%d", model.session, model.attachTarget, model.activeAttach)
+	}
+	model.cancelAttach()
+}
+
+func TestStaleSuccessfulAttachIsClosedWithoutReplacingSelection(t *testing.T) {
+	model := New(demo.New(), "")
+	model.session = &mango.Session{ID: "sesn_current"}
+	model.activeAttach, model.attachTarget = 2, "sesn_new"
+	canceled := false
+	updated, _ := model.Update(attachedLoaded{
+		sessionID: "sesn_old", attachID: 1,
+		attachment: mango.Attachment{Session: mango.Session{ID: "sesn_old"}, Cancel: func() { canceled = true }},
+	})
+	model = updated.(Model)
+	if !canceled || model.session == nil || model.session.ID != "sesn_current" {
+		t.Fatalf("canceled=%v session=%#v", canceled, model.session)
+	}
+}
+
 func TestThreadSelectionIsExplicit(t *testing.T) {
 	model := New(demo.New(), "")
 	model.loading = false
@@ -76,8 +127,8 @@ func TestAttachedSessionShowsConversationWithSubagentWorkspace(t *testing.T) {
 	model.session = &mango.Session{ID: "sesn_1", Title: "Launch"}
 	parent := "sthr_primary"
 	model.threads = []mango.Thread{
-		{ID: parent, Status: "idle", Agent: mango.Agent{Name: "coordinator"}},
-		{ID: "sthr_child", ParentThreadID: &parent, Status: "idle", Agent: mango.Agent{Name: "researcher"}},
+		{ID: parent, Status: "idle", Agent: mango.ThreadAgent{Name: "coordinator"}},
+		{ID: "sthr_child", ParentThreadID: &parent, Status: "idle", Agent: mango.ThreadAgent{Name: "researcher"}},
 	}
 	model.threadCursor = 0
 	model.resize()
@@ -183,8 +234,8 @@ func TestCompactSessionCollapsesWorkspaceIntoAgentStrip(t *testing.T) {
 	parent := "sthr_primary"
 	model.session = &mango.Session{ID: "sesn_1", Title: "Compact review"}
 	model.threads = []mango.Thread{
-		{ID: parent, Agent: mango.Agent{Name: "coordinator"}},
-		{ID: "sthr_child", ParentThreadID: &parent, Agent: mango.Agent{Name: "researcher"}},
+		{ID: parent, Agent: mango.ThreadAgent{Name: "coordinator"}},
+		{ID: "sthr_child", ParentThreadID: &parent, Agent: mango.ThreadAgent{Name: "researcher"}},
 	}
 	model.resize()
 	model.renderChat()
@@ -471,8 +522,8 @@ func TestSubagentWorkspaceShowsGhostRosterAndPendingAction(t *testing.T) {
 	}}
 	parent := "sthr_primary"
 	model.threads = []mango.Thread{
-		{ID: parent, Agent: mango.Agent{ID: "agent_main", Name: "coordinator"}},
-		{ID: "sthr_child", ParentThreadID: &parent, Agent: mango.Agent{ID: "agent_researcher", Name: "researcher"}},
+		{ID: parent, Agent: mango.ThreadAgent{ID: "agent_main", Name: "coordinator"}},
+		{ID: "sthr_child", ParentThreadID: &parent, Agent: mango.ThreadAgent{ID: "agent_researcher", Name: "researcher"}},
 	}
 	model.pending = []mango.Action{{ID: "sevt_action", ThreadID: "sthr_child", Name: "bash"}}
 	model.resize()
@@ -488,12 +539,12 @@ func TestSubagentWorkspaceKeepsSelectedAgentVisibleInLongRoster(t *testing.T) {
 	model := New(demo.New(), "")
 	model.width, model.height, model.screen = 140, 30, screenChat
 	model.session = &mango.Session{ID: "sesn_1"}
-	model.threads = []mango.Thread{{ID: "sthr_primary", Agent: mango.Agent{Name: "coordinator"}}}
+	model.threads = []mango.Thread{{ID: "sthr_primary", Agent: mango.ThreadAgent{Name: "coordinator"}}}
 	parent := model.threads[0].ID
 	for index := 1; index <= 9; index++ {
 		model.threads = append(model.threads, mango.Thread{
 			ID: fmt.Sprintf("sthr_%d", index), ParentThreadID: &parent,
-			Agent: mango.Agent{Name: fmt.Sprintf("agent-%d", index)},
+			Agent: mango.ThreadAgent{Name: fmt.Sprintf("agent-%d", index)},
 		})
 	}
 	model.focus, model.railCursor = focusAgents, 9
@@ -506,7 +557,7 @@ func TestSubagentWorkspaceKeepsSelectedAgentVisibleInLongRoster(t *testing.T) {
 
 func TestCoordinatorActivityIgnoresChildActionCrosspost(t *testing.T) {
 	model := New(demo.New(), "")
-	parent := mango.Thread{ID: "sthr_primary", Agent: mango.Agent{Name: "coordinator"}}
+	parent := mango.Thread{ID: "sthr_primary", Agent: mango.ThreadAgent{Name: "coordinator"}}
 	model.events[parent.ID] = []mango.Event{
 		{"id": "sevt_report", "type": "agent.thread_message_received", "from_agent_name": "researcher", "content": "cohort report ready"},
 		{"id": "sevt_child_tool", "type": "agent.tool_use", "name": "bash", "session_thread_id": "sthr_child"},
@@ -519,7 +570,7 @@ func TestCoordinatorActivityIgnoresChildActionCrosspost(t *testing.T) {
 
 func TestRunningAgentActivitySupersedesHistoricalReport(t *testing.T) {
 	model := New(demo.New(), "")
-	thread := mango.Thread{ID: "sthr_child", Status: "running", Agent: mango.Agent{Name: "researcher"}}
+	thread := mango.Thread{ID: "sthr_child", Status: "running", Agent: mango.ThreadAgent{Name: "researcher"}}
 	model.events[thread.ID] = []mango.Event{
 		{"id": "sevt_report", "type": "agent.thread_message_received", "from_agent_name": "researcher", "content": "previous report"},
 	}
@@ -856,6 +907,140 @@ func TestPendingActionOpensDecisionDialog(t *testing.T) {
 	}})
 	if model.dialog != dialogNone || len(model.pending) != 0 || !model.editor.Focused() {
 		t.Fatalf("resolved dialog=%v pending=%#v focused=%v", model.dialog, model.pending, model.editor.Focused())
+	}
+}
+
+func TestSessionLifecycleEventsDriveActionsAndClearBarrier(t *testing.T) {
+	model := New(demo.New(), "")
+	model.screen = screenChat
+	model.session = &mango.Session{ID: "sesn_1", Status: "idle"}
+	model.sessions = []mango.Session{{ID: "sesn_1", Status: "idle"}}
+	model.sessionAction = mango.Session{ID: "sesn_1", Status: "idle"}
+	model.threads = []mango.Thread{{ID: "sthr_primary", Status: "idle"}}
+	model.pending = []mango.Action{{ID: "sevt_tool", Kind: mango.ActionConfirmation}}
+	model.pendingSignature = "tool_confirmation:sevt_tool"
+	model.dialog = dialogAction
+
+	model.applyStream(mango.StreamUpdate{ThreadID: "sthr_primary", Frame: mango.Event{
+		"id": "sevt_running", "type": "session.status_running",
+	}})
+	if model.session.Status != "running" || model.sessions[0].Status != "running" || model.sessionAction.Status != "running" {
+		t.Fatalf("statuses session=%q list=%q action=%q", model.session.Status, model.sessions[0].Status, model.sessionAction.Status)
+	}
+	if len(model.pending) != 0 || model.dialog != dialogNone {
+		t.Fatalf("running barrier pending=%#v dialog=%v", model.pending, model.dialog)
+	}
+	actions := model.sessionActions()
+	if actions[1].disabled || !actions[2].disabled || !actions[3].disabled {
+		t.Fatalf("running actions = %#v", actions)
+	}
+
+	model.applyStream(mango.StreamUpdate{ThreadID: "sthr_primary", Frame: mango.Event{
+		"id": "sevt_idle", "type": "session.status_idle", "stop_reason": map[string]any{"type": "end_turn"},
+	}})
+	if model.session.Status != "idle" || model.sessionAction.Status != "idle" {
+		t.Fatalf("idle statuses session=%q action=%q", model.session.Status, model.sessionAction.Status)
+	}
+	actions = model.sessionActions()
+	if !actions[1].disabled || actions[2].disabled || actions[3].disabled {
+		t.Fatalf("idle actions = %#v", actions)
+	}
+}
+
+func TestChildPartialActionResolutionAdvancesToRemainingAction(t *testing.T) {
+	model := New(demo.New(), "")
+	model.screen = screenChat
+	model.session = &mango.Session{ID: "sesn_1", Status: "idle"}
+	parent := "sthr_primary"
+	model.threads = []mango.Thread{
+		{ID: parent, Status: "idle"},
+		{ID: "sthr_child", ParentThreadID: &parent, Status: "idle"},
+	}
+	model.events[parent] = []mango.Event{
+		{"id": "sevt_action_1", "type": "agent.tool_use", "name": "bash", "evaluated_permission": "ask", "session_thread_id": "sthr_child"},
+		{"id": "sevt_action_2", "type": "agent.tool_use", "name": "write", "evaluated_permission": "ask", "session_thread_id": "sthr_child"},
+		{"id": "sevt_idle", "type": "session.status_idle", "stop_reason": map[string]any{
+			"type": "requires_action", "event_ids": []any{"sevt_action_1", "sevt_action_2"},
+		}},
+	}
+	model.refreshPending()
+	model.dialog = dialogAction
+	model.activeOperation = 1
+
+	updated, _ := model.Update(operationDone{
+		sessionID: "sesn_1", operationID: 1, label: "action resolved", resolvedID: "sevt_action_1",
+		events: []mango.Event{{
+			"id": "sevt_resolution_1", "type": "user.tool_confirmation", "tool_use_id": "sevt_action_1",
+			"result": "allow", "session_thread_id": "sthr_child",
+		}},
+	})
+	model = updated.(Model)
+	if len(model.pending) != 1 || model.pending[0].ID != "sevt_action_2" || model.dialog != dialogAction {
+		t.Fatalf("partial pending=%#v dialog=%v", model.pending, model.dialog)
+	}
+	if len(model.events["sthr_child"]) != 1 || model.events["sthr_child"][0].ID() != "sevt_resolution_1" {
+		t.Fatalf("child events = %#v", model.events["sthr_child"])
+	}
+
+	model.activeOperation = 2
+	updated, _ = model.Update(operationDone{
+		sessionID: "sesn_1", operationID: 2, label: "action resolved", resolvedID: "sevt_action_2",
+		events: []mango.Event{{
+			"id": "sevt_resolution_2", "type": "user.tool_confirmation", "tool_use_id": "sevt_action_2",
+			"result": "allow", "session_thread_id": "sthr_child",
+		}},
+	})
+	model = updated.(Model)
+	if len(model.pending) != 0 || model.dialog != dialogNone || model.session.Status != "idle" {
+		t.Fatalf("resolved pending=%#v dialog=%v status=%q", model.pending, model.dialog, model.session.Status)
+	}
+	model.applyStream(mango.StreamUpdate{ThreadID: parent, Frame: mango.Event{
+		"id": "sevt_running", "type": "session.status_running",
+	}})
+	if model.session.Status != "running" || len(model.pending) != 0 || model.dialog != dialogNone {
+		t.Fatalf("SSE status=%q pending=%#v dialog=%v", model.session.Status, model.pending, model.dialog)
+	}
+}
+
+func TestExternalSessionDeletionReturnsToInbox(t *testing.T) {
+	model := New(demo.New(), "")
+	updates := make(chan mango.StreamUpdate)
+	streamCanceled := false
+	model.screen = screenChat
+	model.session = &mango.Session{ID: "sesn_deleted"}
+	model.sessions = []mango.Session{{ID: "sesn_deleted"}}
+	model.threads = []mango.Thread{{ID: "sthr_primary"}}
+	model.stream = updates
+	model.streamCancel = func() { streamCanceled = true }
+	model.reconnecting = true
+
+	updated, command := model.Update(streamUpdate{
+		source: updates, open: true,
+		update: mango.StreamUpdate{ThreadID: "sthr_primary", Frame: mango.Event{"id": "sevt_deleted", "type": "session.deleted"}},
+	})
+	model = updated.(Model)
+	if command == nil || !streamCanceled || model.session != nil || model.screen != screenInbox || model.reconnecting {
+		t.Fatalf("command=%v canceled=%v session=%#v screen=%v reconnecting=%v", command, streamCanceled, model.session, model.screen, model.reconnecting)
+	}
+	if len(model.sessions) != 0 || model.status != "Session deleted by another client" {
+		t.Fatalf("sessions=%#v status=%q", model.sessions, model.status)
+	}
+}
+
+func TestReconnectNotFoundStopsRetryLoop(t *testing.T) {
+	model := New(demo.New(), "")
+	model.session = &mango.Session{ID: "sesn_deleted"}
+	model.reconnecting = true
+	model.activeAttach, model.attachTarget = 7, "sesn_deleted"
+	requestCanceled := false
+	model.attachCancel = func() { requestCanceled = true }
+	updated, command := model.Update(attachedLoaded{
+		sessionID: "sesn_deleted", attachID: 7,
+		err: &mango.APIError{StatusCode: 404, Status: "404 Not Found", Detail: "not found"},
+	})
+	model = updated.(Model)
+	if command == nil || !requestCanceled || model.session != nil || model.reconnecting || model.screen != screenInbox {
+		t.Fatalf("command=%v canceled=%v session=%#v reconnecting=%v screen=%v", command, requestCanceled, model.session, model.reconnecting, model.screen)
 	}
 }
 
@@ -1488,7 +1673,7 @@ func TestLongNamesStayInsideMinimumTerminalDialogs(t *testing.T) {
 			name: "Agent picker",
 			setup: func(model *Model) {
 				model.dialog = dialogAgents
-				model.threads = []mango.Thread{{ID: "sthr_1", Status: "idle", Agent: mango.Agent{Name: longName}}}
+				model.threads = []mango.Thread{{ID: "sthr_1", Status: "idle", Agent: mango.ThreadAgent{Name: longName}}}
 			},
 		},
 		{
@@ -1503,7 +1688,7 @@ func TestLongNamesStayInsideMinimumTerminalDialogs(t *testing.T) {
 			name: "interrupt",
 			setup: func(model *Model) {
 				model.dialog = dialogInterrupt
-				model.threads = []mango.Thread{{ID: "sthr_1", Agent: mango.Agent{Name: longName}}}
+				model.threads = []mango.Thread{{ID: "sthr_1", Agent: mango.ThreadAgent{Name: longName}}}
 			},
 		},
 	}

@@ -58,9 +58,12 @@ type inboxLoaded struct {
 	err      error
 }
 type attachedLoaded struct {
+	sessionID  string
+	attachID   uint64
 	attachment mango.Attachment
 	err        error
 }
+type attachRequested struct{ sessionID string }
 type summaryLoaded struct {
 	summary mango.Summary
 	err     error
@@ -73,6 +76,7 @@ type streamUpdate struct {
 type operationDone struct {
 	sessionID    string
 	operationID  uint64
+	resolvedID   string
 	label        string
 	events       []mango.Event
 	draft        string
@@ -158,6 +162,10 @@ type Model struct {
 	err             error
 	stream          <-chan mango.StreamUpdate
 	streamCancel    context.CancelFunc
+	attachCancel    context.CancelFunc
+	attachSeq       uint64
+	activeAttach    uint64
+	attachTarget    string
 	operationCancel context.CancelFunc
 	operationSeq    uint64
 	activeOperation uint64
@@ -234,7 +242,7 @@ func NewWithOptions(backend mango.Backend, directAttach string, options Options)
 
 func (m Model) Init() tea.Cmd {
 	if m.directAttach != "" {
-		return tea.Batch(m.attach(m.directAttach), m.spinner.Tick)
+		return tea.Batch(func() tea.Msg { return attachRequested{sessionID: m.directAttach} }, m.spinner.Tick)
 	}
 	commands := append([]tea.Cmd{m.spinner.Tick}, m.endpointProbeCommands()...)
 	return tea.Batch(commands...)
@@ -300,6 +308,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen, m.status = screenConnect, "connection failed"
 		}
 		return m, nil
+	case attachRequested:
+		return m, m.beginAttach(msg.sessionID)
 	case creationResourcesLoaded:
 		if m.dialog != dialogNewSession {
 			return m, nil
@@ -323,8 +333,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionMutationDone:
 		return m.handleSessionMutation(msg)
 	case attachedLoaded:
+		if msg.attachID != m.activeAttach || msg.sessionID != m.attachTarget {
+			if msg.attachment.Cancel != nil {
+				msg.attachment.Cancel()
+			}
+			return m, nil
+		}
+		requestCancel := m.attachCancel
+		m.attachCancel, m.activeAttach, m.attachTarget = nil, 0, ""
 		m.loading, m.err = false, msg.err
 		if msg.err != nil {
+			if requestCancel != nil {
+				requestCancel()
+			}
+			if m.reconnecting && mango.IsNotFound(msg.err) {
+				return m, m.handleRemoteSessionDeleted()
+			}
 			if m.reconnecting {
 				m.status = "reconnect failed"
 				return m, m.reconnectAfter()
@@ -341,7 +365,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.events = msg.attachment.Events
 		m.previews = map[string]*preview{}
 		m.rebuildSeen()
-		m.stream, m.streamCancel = msg.attachment.Updates, msg.attachment.Cancel
+		m.stream = msg.attachment.Updates
+		m.streamCancel = func() {
+			if msg.attachment.Cancel != nil {
+				msg.attachment.Cancel()
+			}
+			if requestCancel != nil {
+				requestCancel()
+			}
+		}
 		m.refreshPending()
 		m.screen, m.focus, m.status, m.dialog = screenChat, focusEditor, "attached", dialogNone
 		m.railCursor = m.threadCursor
@@ -365,7 +397,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			ordered := orderThreads(msg.summary.Threads)
 			if !sameRoster(m.threads, ordered) {
 				m.loading, m.loadingLabel = true, "Syncing Agents"
-				return m, m.attach(m.session.ID)
+				return m, m.beginAttach(m.session.ID)
 			}
 			m.threads = ordered
 			m.threadCursor = max(0, slices.IndexFunc(m.threads, func(t mango.Thread) bool { return t.ID == selected }))
@@ -387,6 +419,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.update.Err != nil {
 			m.err = fmt.Errorf("%s stream: %w", shortID(msg.update.ThreadID), msg.update.Err)
 			return m, m.waitStream(msg.source)
+		}
+		if msg.update.Frame.Type() == "session.deleted" {
+			return m, m.handleRemoteSessionDeleted()
 		}
 		notification := m.notificationFor(msg.update)
 		rosterChanged := m.applyStream(msg.update)
@@ -429,18 +464,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.applyStream(mango.StreamUpdate{ThreadID: threadID, Frame: event})
 			}
+			if msg.resolvedID != "" {
+				m.removePendingAction(msg.resolvedID)
+			}
 			m.status = msg.label
 			m.closeActionDialog()
 			m.dialog = dialogNone
 			if msg.clearDraft && strings.TrimSpace(m.editor.Value()) == msg.draft {
 				m.editor.Reset()
 			}
-			m.setFocus(focusEditor)
-			m.refreshPending()
-			if msg.label == "action resolved" && len(m.pending) > 0 {
-				// The response arrives before the next durable idle boundary. Do
-				// not reopen the just-resolved barrier while that boundary is stale.
-				m.pendingDismissed = true
+			if msg.resolvedID != "" && len(m.pending) > 0 {
+				m.openActionDialog(false)
+			} else {
+				m.setFocus(focusEditor)
 			}
 			m.resize()
 		}
@@ -448,7 +484,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case reconnectTick:
 		if m.session != nil && m.stream == nil {
 			m.loading, m.loadingLabel = true, "Reconnecting"
-			return m, m.attach(m.session.ID)
+			return m, m.beginAttach(m.session.ID)
 		}
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" || msg.String() == "ctrl+q" {
@@ -584,7 +620,7 @@ func (m Model) updateInbox(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.loading, m.loadingLabel, m.err = true, "Opening Session", nil
-			return m, m.attach(session.ID)
+			return m, m.beginAttach(session.ID)
 		}
 	case "/":
 		return m, m.beginInboxFilter()
@@ -898,7 +934,7 @@ func (m Model) updateDialog(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if len(filtered) > 0 {
 				m.loading, m.loadingLabel = true, "Opening Session"
-				return m, m.attach(filtered[clamp(m.inboxCursor, 0, len(filtered)-1)].ID)
+				return m, m.beginAttach(filtered[clamp(m.inboxCursor, 0, len(filtered)-1)].ID)
 			}
 		default:
 			var command tea.Cmd
@@ -1048,12 +1084,14 @@ func (m *Model) closeQuitDialog() {
 
 func (m Model) confirmQuit() (tea.Model, tea.Cmd) {
 	m.cancel()
+	m.cancelAttach()
 	m.stopStream()
 	return m, tea.Quit
 }
 
 func (m Model) returnToInbox() (tea.Model, tea.Cmd) {
 	m.cancelOperation()
+	m.cancelAttach()
 	m.stopStream()
 	m.reconnecting, m.reconnectTry = false, 0
 	if m.session != nil {
@@ -1341,11 +1379,8 @@ func (m *Model) applyStream(update mango.StreamUpdate) bool {
 		if update.ThreadID != m.currentThreadID() {
 			m.unread[update.ThreadID]++
 		}
-		pendingChanged := frame.Type() == "session.status_idle" && update.ThreadID == m.primaryThreadID()
-		if pendingChanged {
-			m.refreshPending()
-		}
 		m.applyStatusEvent(update.ThreadID, frame)
+		pendingChanged := m.applyActionBarrierEvent(update.ThreadID, frame)
 		rosterChanged = frame.Type() == "session.thread_created" || frame.Type() == "session.updated"
 		if pendingChanged && len(m.pending) == 0 && (m.dialog == dialogAction || m.dialog == dialogResult) {
 			m.closeActionDialog()
@@ -1471,7 +1506,10 @@ func (m Model) terminalNotify(title, message string) tea.Cmd {
 }
 
 func (m *Model) refreshPending() {
-	pending := feed.PendingActions(m.primaryThreadID(), m.events)
+	m.setPending(feed.PendingActions(m.primaryThreadID(), m.events))
+}
+
+func (m *Model) setPending(pending []mango.Action) {
 	parts := make([]string, 0, len(pending))
 	for _, action := range pending {
 		parts = append(parts, string(action.Kind)+":"+action.ID)
@@ -1483,6 +1521,36 @@ func (m *Model) refreshPending() {
 	m.pending, m.pendingSignature = pending, signature
 	m.actionCursor = clamp(m.actionCursor, 0, len(m.pending)-1)
 	m.railCursor = clamp(m.railCursor, 0, max(0, m.railItemCount()-1))
+}
+
+func (m *Model) removePendingAction(id string) {
+	remaining := make([]mango.Action, 0, len(m.pending))
+	for _, action := range m.pending {
+		if action.ID != id {
+			remaining = append(remaining, action)
+		}
+	}
+	m.setPending(remaining)
+}
+
+func (m *Model) applyActionBarrierEvent(threadID string, event mango.Event) bool {
+	if threadID != m.primaryThreadID() {
+		return false
+	}
+	switch event.Type() {
+	case "session.status_idle", "user.tool_confirmation", "user.tool_result", "user.custom_tool_result":
+		m.refreshPending()
+		return true
+	case "session.status_running", "session.status_rescheduled", "session.status_terminated":
+		changed := len(m.pending) > 0 || m.dialog == dialogAction || m.dialog == dialogResult
+		m.pending = nil
+		m.pendingSignature = ""
+		m.pendingDismissed = false
+		m.actionCursor = 0
+		return changed
+	default:
+		return false
+	}
 }
 
 func (m *Model) openActionDialog(async bool) {
@@ -1515,6 +1583,14 @@ func (m Model) actionDialogInGrace() bool {
 func (m *Model) applyStatusEvent(threadID string, event mango.Event) {
 	status := ""
 	switch event.Type() {
+	case "session.status_running":
+		status = "running"
+	case "session.status_idle":
+		status = "idle"
+	case "session.status_rescheduled":
+		status = "rescheduling"
+	case "session.status_terminated":
+		status = "terminated"
 	case "session.thread_status_running":
 		status = "running"
 	case "session.thread_status_idle":
@@ -1525,6 +1601,20 @@ func (m *Model) applyStatusEvent(threadID string, event mango.Event) {
 		status = "terminated"
 	}
 	if status == "" {
+		return
+	}
+	if strings.HasPrefix(event.Type(), "session.status_") {
+		if m.session != nil {
+			m.session.Status = status
+		}
+		for index := range m.sessions {
+			if m.session != nil && m.sessions[index].ID == m.session.ID {
+				m.sessions[index].Status = status
+			}
+		}
+		if m.session != nil && m.sessionAction.ID == m.session.ID {
+			m.sessionAction.Status = status
+		}
 		return
 	}
 	target := stringAny(event["session_thread_id"])
@@ -1593,10 +1683,20 @@ func (m Model) loadInbox() tea.Cmd {
 	return func() tea.Msg { sessions, err := m.backend.ListSessions(m.ctx); return inboxLoaded{sessions, err} }
 }
 
-func (m Model) attach(sessionID string) tea.Cmd {
+func (m *Model) beginAttach(sessionID string) tea.Cmd {
+	m.cancelAttach()
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.attachCancel = cancel
+	m.attachSeq++
+	m.activeAttach = m.attachSeq
+	m.attachTarget = sessionID
+	return m.attach(ctx, sessionID, m.activeAttach)
+}
+
+func (m Model) attach(ctx context.Context, sessionID string, attachID uint64) tea.Cmd {
 	return func() tea.Msg {
-		attachment, err := m.backend.Attach(m.ctx, sessionID)
-		return attachedLoaded{attachment, err}
+		attachment, err := m.backend.Attach(ctx, sessionID)
+		return attachedLoaded{sessionID: sessionID, attachID: attachID, attachment: attachment, err: err}
 	}
 }
 
@@ -1632,7 +1732,8 @@ func (m Model) resolveAction(ctx context.Context, operationID uint64, action man
 		events, err := m.backend.ResolveAction(ctx, sessionID, action, response)
 		return operationDone{
 			sessionID: sessionID, operationID: operationID, label: "action resolved", events: events,
-			draft: response.Content, clearDraft: action.Kind != mango.ActionConfirmation, err: err,
+			resolvedID: action.ID, draft: response.Content,
+			clearDraft: action.Kind != mango.ActionConfirmation, err: err,
 		}
 	}
 }
@@ -1652,6 +1753,43 @@ func (m *Model) stopStream() {
 		m.streamCancel()
 	}
 	m.streamCancel, m.stream = nil, nil
+}
+
+func (m *Model) cancelAttach() {
+	if m.attachCancel != nil {
+		m.attachCancel()
+	}
+	m.attachCancel, m.activeAttach, m.attachTarget = nil, 0, ""
+}
+
+func (m *Model) handleRemoteSessionDeleted() tea.Cmd {
+	deletedID := ""
+	if m.session != nil {
+		deletedID = m.session.ID
+	}
+	m.cancelOperation()
+	m.cancelAttach()
+	m.stopStream()
+	listCommand := m.removeSessionSnapshot(deletedID)
+	m.session = nil
+	m.threads = nil
+	m.events = map[string][]mango.Event{}
+	m.seen = map[string]map[string]bool{}
+	m.previews = map[string]*preview{}
+	m.unread = map[string]int{}
+	m.pending = nil
+	m.pendingSignature = ""
+	m.pendingDismissed = false
+	m.screen, m.dialog = screenInbox, dialogNone
+	m.reconnecting, m.reconnectTry = false, 0
+	m.loading, m.loadingLabel = true, "Refreshing Sessions"
+	m.lastAttachedID = ""
+	m.editor.Reset()
+	m.editor.Placeholder = landingPlaceholder(screenChat)
+	m.editor.Blur()
+	m.status, m.err = "Session deleted by another client", nil
+	m.resize()
+	return tea.Batch(listCommand, m.loadInbox())
 }
 
 func (m *Model) beginOperation() (context.Context, uint64) {

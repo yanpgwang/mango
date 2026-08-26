@@ -204,7 +204,7 @@ func TestAttachOpensStreamBeforeListingHistory(t *testing.T) {
 		case "/v1/sessions/sesn_1":
 			writeJSON(t, w, map[string]any{"id": "sesn_1", "title": "Demo", "status": "idle", "agent": map[string]any{"name": "coordinator"}})
 		case "/v1/sessions/sesn_1/threads":
-			writeJSON(t, w, map[string]any{"data": []any{map[string]any{"id": "sthr_primary", "session_id": "sesn_1", "parent_thread_id": nil, "status": "idle", "agent": map[string]any{"name": "coordinator"}}}, "next_page": nil})
+			writeJSON(t, w, map[string]any{"data": []any{map[string]any{"id": "sthr_primary", "session_id": "sesn_1", "parent_thread_id": nil, "status": "idle", "agent": map[string]any{"type": "agent", "id": "agent_1", "name": "coordinator", "version": 1, "model": map[string]any{"id": "model_1"}}}}, "next_page": nil})
 		case "/v1/sessions/sesn_1/events/stream":
 			if !strings.Contains(r.URL.RawQuery, "event_deltas") {
 				t.Errorf("query = %q", r.URL.RawQuery)
@@ -238,6 +238,52 @@ func TestAttachOpensStreamBeforeListingHistory(t *testing.T) {
 	}
 	attachment.Cancel()
 	close(streamRelease)
+}
+
+func TestRefreshDecodesAdvisorThreadUnion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/sessions/sesn_1":
+			writeJSON(t, w, map[string]any{
+				"id": "sesn_1", "title": "Review", "status": "running",
+				"agent": map[string]any{
+					"name": "coordinator", "multiagent": map[string]any{
+						"type": "coordinator", "agents": []any{map[string]any{"type": "advisor", "model": "claude-opus-5"}},
+					},
+				},
+			})
+		case "/v1/sessions/sesn_1/threads":
+			writeJSON(t, w, map[string]any{"data": []any{
+				map[string]any{
+					"id": "sthr_primary", "session_id": "sesn_1", "parent_thread_id": nil, "status": "running",
+					"agent": map[string]any{"type": "agent", "id": "agent_1", "name": "coordinator", "version": 1, "model": map[string]any{"id": "model_1"}},
+				},
+				map[string]any{
+					"id": "sthr_advisor", "session_id": "sesn_1", "parent_thread_id": "sthr_primary", "status": "terminated",
+					"agent": map[string]any{"type": "advisor", "model": "claude-opus-5"},
+				},
+			}, "next_page": nil})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, _ := New(Config{BaseURL: server.URL})
+	summary, err := client.Refresh(context.Background(), "sesn_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summary.Threads) != 2 {
+		t.Fatalf("threads = %#v", summary.Threads)
+	}
+	advisor := summary.Threads[1].Agent
+	if advisor.Type != "advisor" || advisor.Name != "anthropic.advisor" || advisor.Model.ID != "claude-opus-5" {
+		t.Fatalf("advisor = %#v", advisor)
+	}
+	roster := summary.Session.Agent.Multiagent.Agents
+	if len(roster) != 1 || roster[0].Name != "anthropic.advisor" || roster[0].Model.ID != "claude-opus-5" {
+		t.Fatalf("advisor roster = %#v", roster)
+	}
 }
 
 func TestStreamDecodesPreviewAndPersistedFrames(t *testing.T) {

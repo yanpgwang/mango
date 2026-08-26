@@ -54,6 +54,10 @@ MANGO_API_KEY=your-key \
 The equivalent flags are `--url` and `--api-key`. Credentials in endpoint
 URLs are rejected, and API keys are not persisted by the client.
 
+The bearer key selects the Mango Workspace for every request; the client does
+not send or persist a separate Workspace ID. Restart the example with a key
+for another Workspace to switch resource scopes.
+
 The connection screen shows discovered local and remembered endpoints. Select
 **Enter another endpoint…** or press `e` to enter a different URL with the
 Bubble Tea input control.

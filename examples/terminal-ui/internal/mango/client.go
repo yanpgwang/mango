@@ -37,6 +37,11 @@ type APIError struct {
 
 func (e *APIError) Error() string { return fmt.Sprintf("Mango API %s: %s", e.Status, e.Detail) }
 
+func IsNotFound(err error) bool {
+	var apiError *APIError
+	return errors.As(err, &apiError) && apiError.StatusCode == http.StatusNotFound
+}
+
 func New(config Config) (*Client, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(config.BaseURL), "/")
 	parsed, err := url.Parse(baseURL)
