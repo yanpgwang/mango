@@ -183,7 +183,6 @@ type ModelRequestUsage struct {
 	ThreadID        string
 	RequestEventID  string
 	ModelID         string
-	InferenceGeo    string
 	StopReason      string
 	Usage           []byte
 	ListCostNanoUsd *int64

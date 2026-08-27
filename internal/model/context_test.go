@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -65,6 +66,25 @@ func TestMeasureRequestContextUsesLatestExactUsagePlusDelta(t *testing.T) {
 		24+domain.EstimateMessagesTokens([]domain.Message{toolResult}),
 		measurement.Tokens,
 	)
+}
+
+func TestAnchoredAssistantMessageExcludesPricingAndRoutingUsage(t *testing.T) {
+	anchored := AnchoredAssistantMessage(Request{Model: "claude-sonnet-5"}, Response{
+		Content: []domain.ContentBlock{{Type: "text", Text: "answer"}},
+		Usage: domain.TokenUsage{
+			InputTokens: 10, OutputTokens: 2, Speed: "fast", ProviderRegion: "us",
+			ServerToolUse: domain.ServerToolUsage{WebSearchRequests: 1},
+		},
+	})
+	require.NotNil(t, anchored.ContextUsage)
+	require.Equal(t, int64(12), anchored.ContextUsage.Usage.ContextTokens())
+
+	encoded, err := json.Marshal(anchored)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "ProviderRegion")
+	require.NotContains(t, string(encoded), "ServerToolUse")
+	require.NotContains(t, string(encoded), `"Speed"`)
+	require.NotContains(t, string(encoded), `"us"`)
 }
 
 func TestMeasureRequestContextRejectsStaleRequestAndPrefixAnchors(t *testing.T) {

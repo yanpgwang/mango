@@ -9,10 +9,9 @@ import (
 )
 
 type Model struct {
-	ID           string
-	Effort       string
-	Speed        string
-	InferenceGeo string
+	ID     string
+	Effort string
+	Speed  string
 	// EffortExplicit and SpeedExplicit distinguish an explicit Agent setting
 	// from the Mango defaults echoed in the resolved resource. The
 	// Messages adapter uses this distinction to avoid sending preview fields to
@@ -53,9 +52,6 @@ func ValidateModel(model Model) error {
 	case "", "standard", "fast":
 	default:
 		return Validation("model speed must be standard or fast")
-	}
-	if model.InferenceGeo != "" && strings.TrimSpace(model.InferenceGeo) == "" {
-		return Validation("model inference_geo must be a non-empty string")
 	}
 	return nil
 }
@@ -433,9 +429,6 @@ func (a Agent) SessionSnapshotJSON() map[string]any {
 	}
 	if a.Model.Speed != "" {
 		model["speed"] = a.Model.Speed
-	}
-	if a.Model.InferenceGeo != "" {
-		model["inference_geo"] = a.Model.InferenceGeo
 	}
 	system, description := "", ""
 	if a.System != nil {

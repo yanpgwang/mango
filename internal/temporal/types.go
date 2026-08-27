@@ -157,7 +157,6 @@ type EvaluateOutcomeInput struct {
 	Model        string             `json:"model"`
 	Effort       string             `json:"effort,omitempty"`
 	Speed        string             `json:"speed,omitempty"`
-	InferenceGeo string             `json:"inference_geo,omitempty"`
 	Outcome      domain.OutcomeSpec `json:"outcome"`
 	Candidate    []domain.Message   `json:"candidate"`
 	Iteration    int                `json:"iteration"`

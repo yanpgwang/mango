@@ -32,6 +32,16 @@ release is never an automatic roadmap.
   outbound endpoint requires. Tests that exercise Mango through an Anthropic
   SDK are optional research evidence; raw HTTP and OpenAPI tests define Mango's
   transport contract.
+- Claude Managed Agents' agent-level `inference_geo` and the public
+  [Claude data-residency design](https://platform.claude.com/docs/en/manage-claude/data-residency)
+  prompted a focused review on 2026-08-27. Mango rejected request-time
+  geography from its Agent and Session model configuration: it is a hosted
+  provider routing policy, other model platforms express placement through
+  different endpoints or deployment resources, and Mango's replaceable model
+  boundary cannot enforce a portable meaning for it. Operators select and
+  govern the configured model endpoint outside the Agent contract. The current
+  Anthropic adapter reads a provider-reported response region only as an
+  internal list-cost input; it never sends a geography request field.
 
 ## Built-in Agent tools
 

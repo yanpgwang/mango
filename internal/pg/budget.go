@@ -166,12 +166,12 @@ func (s *Store) AccountModelRequest(
 		}
 		command, err := tx.Exec(ctx, `
 INSERT INTO model_request_usage (
-    session_id, thread_id, request_event_id, model_id, inference_geo, stop_reason,
+    session_id, thread_id, request_event_id, model_id, stop_reason,
     usage, list_cost_nano_usd, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (session_id, request_event_id) DO NOTHING`,
-			sessionID, threadID, requestEventID, model.ID, model.InferenceGeo,
-			stopReason, usageJSON, storedCost, pricedAt,
+			sessionID, threadID, requestEventID, model.ID, stopReason,
+			usageJSON, storedCost, pricedAt,
 		)
 		if err != nil {
 			return err

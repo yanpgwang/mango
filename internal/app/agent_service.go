@@ -149,13 +149,6 @@ func (s *AgentService) Update(ctx context.Context, id string, patch domain.Agent
 			// version used to perform semantic no-op detection.
 			next.Multiagent = next.Multiagent.RebindAgentVersion(cur.ID, cur.Version+1)
 		}
-		if patch.Model != nil && patch.Multiagent == nil &&
-			next.Model.InferenceGeo != cur.Model.InferenceGeo &&
-			cur.Multiagent.HasExternalAgent(cur.ID) {
-			return domain.Agent{}, false, domain.Validation(
-				"model.inference_geo must match every independently referenced multiagent roster member",
-			)
-		}
 		if changed && next.Multiagent != nil && !next.Multiagent.IsResolved() {
 			return domain.Agent{}, false, domain.Validation(
 				"legacy multiagent configuration must be replaced before updating the Agent",
@@ -305,11 +298,6 @@ func (s *AgentService) resolveMultiagent(
 			if target.Multiagent != nil {
 				return nil, domain.Validation("multiagent references are limited to one coordinator level")
 			}
-		}
-		if target.Model.InferenceGeo != ownerModel.InferenceGeo {
-			return nil, domain.Validation(
-				"model.inference_geo must match every multiagent roster member",
-			)
 		}
 		if _, duplicate := seen[target.ID]; duplicate {
 			return nil, domain.Validation("multiagent.agents must reference distinct agents")

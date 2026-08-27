@@ -418,12 +418,6 @@ func (s *testSessionService) Create(
 	if input.Overrides != nil {
 		snapshot = snapshot.WithOverrides(*input.Overrides)
 	}
-	if snapshot.Model.InferenceGeo != agent.Model.InferenceGeo &&
-		agent.Multiagent.HasExternalAgent(agent.ID) {
-		return domain.Session{}, domain.Validation(
-			"agent override model.inference_geo must match every independently referenced multiagent roster member",
-		)
-	}
 	snapshot.Skills, err = app.ResolveAgentSkillReferences(ctx, s.skillRef, snapshot.Skills)
 	if err != nil {
 		return domain.Session{}, err

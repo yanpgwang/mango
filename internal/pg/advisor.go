@@ -135,9 +135,8 @@ SELECT EXISTS(
 			if usageModel == "" {
 				usageModel = configured.Model
 			}
-			inferenceGeo := session.AgentSnapshot.Model.InferenceGeo
 			listCost, priceErr := domain.ModelResponseListCostNanoUSDAt(
-				domain.Model{ID: usageModel, InferenceGeo: inferenceGeo}, consultation.Usage,
+				domain.Model{ID: usageModel}, consultation.Usage,
 				consultation.StopReason, recordedAt,
 			)
 			listCostKnown := consultation.UsageKnown && priceErr == nil
@@ -173,11 +172,11 @@ INSERT INTO session_threads (
 			}
 			if _, err := tx.Exec(ctx, `
 INSERT INTO model_request_usage (
-    session_id, thread_id, request_event_id, model_id, inference_geo,
+    session_id, thread_id, request_event_id, model_id,
     stop_reason, usage, list_cost_nano_usd, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 				sessionID, thread.ID, consultation.UsageRequestID, usageModel,
-				inferenceGeo, consultation.StopReason, usageJSON, storedCost, recordedAt,
+				consultation.StopReason, usageJSON, storedCost, recordedAt,
 			); err != nil {
 				return err
 			}

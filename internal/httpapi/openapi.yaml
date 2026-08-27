@@ -3515,10 +3515,6 @@ components:
             speed:
               type: string
               enum: [standard, fast]
-            inference_geo:
-              type: string
-              minLength: 1
-              description: Geographic region pinned for every inference request made by this Agent.
     ModelEffortLevel:
       type: string
       enum: [low, medium, high, xhigh, max]
@@ -3541,9 +3537,6 @@ components:
         speed:
           type: string
           enum: [standard, fast]
-        inference_geo:
-          type: string
-          minLength: 1
 
     MonetaryAmount:
       type: object

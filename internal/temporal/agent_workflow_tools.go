@@ -279,7 +279,6 @@ func (t *workflowTurnState) accountOutcomeEvaluation(
 		input.EndEventID,
 		model.Request{
 			Model: input.Model, Effort: input.Effort, Speed: input.Speed,
-			InferenceGeo: input.InferenceGeo,
 		},
 		evaluated.Usage,
 		evaluated.StopReason,
@@ -300,7 +299,6 @@ func (t *workflowTurnState) accountModelRequest(
 			RequestEventID: requestEventID,
 			Model: domain.Model{
 				ID: request.Model, Effort: request.Effort, Speed: request.Speed,
-				InferenceGeo: request.InferenceGeo,
 			},
 			Usage: usage, StopReason: stopReason,
 		},

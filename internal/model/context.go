@@ -180,16 +180,15 @@ func estimateFullRequestTokens(request Request) int {
 // can be estimated as a delta.
 func RequestContextFingerprint(request Request) string {
 	value := struct {
-		Model        string
-		Effort       string
-		Speed        string
-		InferenceGeo string
-		System       string
-		MaxTokens    int
-		Tools        []ToolSchema
+		Model     string
+		Effort    string
+		Speed     string
+		System    string
+		MaxTokens int
+		Tools     []ToolSchema
 	}{
 		Model: request.Model, Effort: request.Effort, Speed: request.Speed,
-		InferenceGeo: request.InferenceGeo, System: request.System,
+		System:    request.System,
 		MaxTokens: RequestContextLimits(request).MaxOutputTokens,
 		Tools:     request.Tools,
 	}
@@ -201,13 +200,14 @@ func RequestContextFingerprint(request Request) string {
 // the precise merged-message boundary that the next provider request sees.
 func AnchoredAssistantMessage(request Request, response Response) domain.Message {
 	message := domain.Message{Role: domain.RoleAssistant, Content: response.Content}
-	if response.Usage.ContextTokens() <= 0 {
+	contextUsage := response.Usage.ForContextWindow()
+	if contextUsage.ContextTokens() <= 0 {
 		return message
 	}
 	anchored := appendAssistantForContext(request.Messages, message)
 	last := len(anchored) - 1
 	message.ContextUsage = &domain.ContextUsageAnchor{
-		Usage:              response.Usage,
+		Usage:              contextUsage,
 		RequestFingerprint: RequestContextFingerprint(request),
 		PrefixFingerprint: messagePrefixFingerprint(
 			anchored, last, len(anchored[last].Content),

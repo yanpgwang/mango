@@ -28,7 +28,7 @@ func TestAnthropic_SendsMessagesAndParsesResponse(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(b, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"hi back"}],"stop_reason":"end_turn","usage":{"cache_creation":{"ephemeral_1h_input_tokens":3,"ephemeral_5m_input_tokens":4},"cache_read_input_tokens":5,"input_tokens":11,"output_tokens":7,"server_tool_use":{"web_fetch_requests":2,"web_search_requests":1},"speed":"standard"}}`))
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"hi back"}],"stop_reason":"end_turn","usage":{"cache_creation":{"ephemeral_1h_input_tokens":3,"ephemeral_5m_input_tokens":4},"cache_read_input_tokens":5,"input_tokens":11,"output_tokens":7,"server_tool_use":{"web_fetch_requests":2,"web_search_requests":1},"speed":"standard","inference_geo":"us"}}`))
 	}))
 	defer srv.Close()
 
@@ -39,12 +39,11 @@ func TestAnthropic_SendsMessagesAndParsesResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, err := c.CreateMessage(context.Background(), Request{
-		Model:        "claude-x",
-		Effort:       "max",
-		Speed:        "fast",
-		InferenceGeo: "us",
-		System:       "sys",
-		Messages:     []domain.Message{{Role: domain.RoleUser, Content: []domain.ContentBlock{{Type: "text", Text: "hi"}}}},
+		Model:    "claude-x",
+		Effort:   "max",
+		Speed:    "fast",
+		System:   "sys",
+		Messages: []domain.Message{{Role: domain.RoleUser, Content: []domain.ContentBlock{{Type: "text", Text: "hi"}}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -64,8 +63,8 @@ func TestAnthropic_SendsMessagesAndParsesResponse(t *testing.T) {
 	if gotBody["speed"] != "fast" {
 		t.Errorf("body speed = %v, want fast", gotBody["speed"])
 	}
-	if gotBody["inference_geo"] != "us" {
-		t.Errorf("body inference_geo = %v, want us", gotBody["inference_geo"])
+	if _, present := gotBody["inference_geo"]; present {
+		t.Errorf("provider-specific inference_geo leaked into request: %#v", gotBody)
 	}
 	outputConfig, ok := gotBody["output_config"].(map[string]any)
 	if !ok || outputConfig["effort"] != "max" {
@@ -80,7 +79,7 @@ func TestAnthropic_SendsMessagesAndParsesResponse(t *testing.T) {
 		resp.Usage.CacheCreation.Ephemeral5mInputTokens != 4 ||
 		resp.Usage.ServerToolUse.WebFetchRequests != 2 ||
 		resp.Usage.ServerToolUse.WebSearchRequests != 1 ||
-		resp.Usage.Speed != "standard" {
+		resp.Usage.Speed != "standard" || resp.Usage.ProviderRegion != "us" {
 		t.Fatalf("usage = %#v", resp.Usage)
 	}
 }
@@ -172,13 +171,13 @@ func TestAnthropic_OmitsSemanticModelDefaults(t *testing.T) {
 		t.Fatalf("default speed must be omitted for compatible endpoints: %s", encoded)
 	}
 	if _, present := wire["inference_geo"]; present {
-		t.Fatalf("unset inference_geo must be omitted: %s", encoded)
+		t.Fatalf("provider-specific inference_geo must not be configurable: %s", encoded)
 	}
 }
 
 func TestDecodeMessageStream_AccumulatesUsage(t *testing.T) {
 	stream := strings.NewReader(
-		"data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"cache_creation\":{\"ephemeral_1h_input_tokens\":2,\"ephemeral_5m_input_tokens\":3},\"cache_read_input_tokens\":4,\"input_tokens\":10,\"output_tokens\":1}}}\n\n" +
+		"data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"cache_creation\":{\"ephemeral_1h_input_tokens\":2,\"ephemeral_5m_input_tokens\":3},\"cache_read_input_tokens\":4,\"input_tokens\":10,\"output_tokens\":1,\"inference_geo\":\"us\"}}}\n\n" +
 			"data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n" +
 			"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n" +
 			"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":10,\"output_tokens\":6,\"server_tool_use\":{\"web_fetch_requests\":2,\"web_search_requests\":1}}}\n\n" +
@@ -193,7 +192,8 @@ func TestDecodeMessageStream_AccumulatesUsage(t *testing.T) {
 		resp.Usage.CacheCreation.Ephemeral1hInputTokens != 2 ||
 		resp.Usage.CacheCreation.Ephemeral5mInputTokens != 3 ||
 		resp.Usage.ServerToolUse.WebFetchRequests != 2 ||
-		resp.Usage.ServerToolUse.WebSearchRequests != 1 {
+		resp.Usage.ServerToolUse.WebSearchRequests != 1 ||
+		resp.Usage.ProviderRegion != "us" {
 		t.Fatalf("stream usage = %#v", resp.Usage)
 	}
 }

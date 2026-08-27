@@ -49,11 +49,9 @@ Session-local overrides:
 
 Overrides replace model, system, tools, MCP servers, or skills for this session
 only. They do not mutate or renumber the agent. A model override may change the
-model ID, speed, or inference geography; effort remains an Agent-level setting
-and a session override does not replace it. Overrides also apply to `self`
-copies in a coordinator roster. Independently referenced Agents are unaffected,
-so a geography override that would make the coordinator disagree with one of
-those pinned Agents is rejected.
+model ID or speed; effort remains an Agent-level setting and a session override
+does not replace it. Overrides also apply to `self` copies in a coordinator
+roster. Independently referenced Agents are unaffected.
 
 For a coordinator, `session.agent.multiagent.agents` expands the Agent
 resource's Version references into full immutable Agent definitions. The
@@ -249,12 +247,13 @@ File and Memory Store Resource objects. Ordered `vault_ids` are resolved at
 creation; update-time vault replacement is rejected.
 `usage` aggregates provider-reported token, prompt-cache, Web Fetch, and Web
 Search counters across every Session Thread. `usage.list_cost` is calculated
-from Mango's current built-in price catalog, the Web Search request rate, and
-$0.08 per Session active hour, then rounded to the nearest cent for the public
-monetary projection. Thread list cost excludes Session runtime. Accounting
-remains exact internally, and model-request admission checks the shared ceiling
-before every request; an already in-flight request may take the Session over its
-limit.
+from Mango's current built-in price catalog, provider-reported execution facts
+that affect that catalog's rates, the Web Search request rate, and $0.08 per
+Session active hour, then rounded to the nearest cent for the public monetary
+projection. Provider routing is not Agent configuration. Thread list cost
+excludes Session runtime. Accounting remains exact internally, and
+model-request admission checks the shared ceiling before every request; an
+already in-flight request may take the Session over its limit.
 Provider-reported tokens remain visible even when a response-level billing rule
 makes their list cost zero, such as an unbilled Claude Fable 5 refusal.
 

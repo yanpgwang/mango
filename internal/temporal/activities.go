@@ -901,10 +901,9 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 		IsChild:          executionThread != nil && executionThread.ParentThreadID != nil,
 		SkillRuntimeRoot: runtimeSkills.Root,
 		Request: model.Request{
-			Model:        executionAgent.Model.ID,
-			InferenceGeo: executionAgent.Model.InferenceGeo,
-			System:       system,
-			Tools:        toolSchemas,
+			Model:  executionAgent.Model.ID,
+			System: system,
+			Tools:  toolSchemas,
 		},
 	}
 	result.SessionOutputsEnabled = !selfHosted && !result.IsChild &&
@@ -1442,7 +1441,7 @@ func (a *Activities) EvaluateOutcome(
 		return EvaluateOutcomeResult{FatalError: err.Error()}, nil
 	}
 	graderRequest := model.Request{
-		Model: in.Model, Effort: in.Effort, Speed: in.Speed, InferenceGeo: in.InferenceGeo,
+		Model: in.Model, Effort: in.Effort, Speed: in.Speed,
 		System: outcomeGraderSystem + " Return exactly one JSON object with " +
 			`{"result":"satisfied|needs_revision|failed","explanation":"..."}.`,
 		MaxTokens: 1024,

@@ -147,9 +147,7 @@ func TestWorkflowTurn_AdmitsAndAccountsEveryModelRequestBeforeCompletion(t *test
 		func(context.Context, PrepareTurnInput) (PrepareTurnResult, error) {
 			return PrepareTurnResult{
 				ThreadID: "sthr_usage",
-				Request: model.Request{
-					Model: "claude-opus-4-8", InferenceGeo: "us",
-				},
+				Request:  model.Request{Model: "claude-opus-4-8"},
 			}, nil
 		},
 		activity.RegisterOptions{Name: ActivityPrepareTurn},
@@ -225,7 +223,6 @@ func TestWorkflowTurn_AdmitsAndAccountsEveryModelRequestBeforeCompletion(t *test
 	require.Equal(t, "sthr_usage", accounted.ThreadID)
 	require.NotEmpty(t, accounted.RequestEventID)
 	require.Equal(t, "claude-opus-4-8", accounted.Model.ID)
-	require.Equal(t, "us", accounted.Model.InferenceGeo)
 	require.Equal(t, "end_turn", accounted.StopReason)
 	require.Equal(t, int64(7), accounted.Usage.InputTokens)
 	require.Equal(t, int64(1), accounted.Usage.ServerToolUse.WebSearchRequests)
@@ -247,7 +244,7 @@ func TestWorkflowTurn_AdvisorIsPrivatePortableToolWithIndependentRequest(t *test
 			return PrepareTurnResult{
 				AttemptID: "ratm_advisor_workflow", ThreadID: "sthr_primary",
 				Request: model.Request{
-					Model: "executor-model", InferenceGeo: "us",
+					Model:  "executor-model",
 					System: "executor system",
 					Tools:  []model.ToolSchema{agentruntime.AdvisorToolSchema()},
 					Messages: []domain.Message{{
@@ -323,7 +320,6 @@ func TestWorkflowTurn_AdvisorIsPrivatePortableToolWithIndependentRequest(t *test
 	require.Equal(t, 2, modelCalls)
 	require.Equal(t, TurnToolAdvisor, advisorInput.ToolKind)
 	require.Equal(t, "reviewer-model", advisorInput.AdvisorRequest.Model)
-	require.Equal(t, "us", advisorInput.AdvisorRequest.InferenceGeo)
 	require.Empty(t, advisorInput.AdvisorRequest.Tools)
 	require.Contains(
 		t,

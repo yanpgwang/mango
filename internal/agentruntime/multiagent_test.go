@@ -26,7 +26,7 @@ func TestAdvisorRequestQuotesExecutorContextWithoutReplayingReasoning(t *testing
 	require.Equal(t, false, schema.InputSchema["additionalProperties"])
 
 	executor := model.Request{
-		Model: "executor-model", InferenceGeo: "us", System: "executor system",
+		Model: "executor-model", System: "executor system",
 		Tools: []model.ToolSchema{{
 			Name: "read", Description: "Read a file.",
 			InputSchema: map[string]any{"type": "object"},
@@ -49,7 +49,6 @@ func TestAdvisorRequestQuotesExecutorContextWithoutReplayingReasoning(t *testing
 	)
 	require.NoError(t, err)
 	require.Equal(t, "advisor-model", request.Model)
-	require.Equal(t, "us", request.InferenceGeo)
 	require.Empty(t, request.Tools)
 	require.Equal(t, 2048, request.MaxTokens)
 	require.Len(t, request.Messages, 1)

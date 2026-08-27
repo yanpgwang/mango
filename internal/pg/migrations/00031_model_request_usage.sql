@@ -6,11 +6,10 @@
 -- idempotent while Session and Thread projections are updated atomically.
 CREATE TABLE model_request_usage (
     session_id          text        NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
-    thread_id           text        NOT NULL,
-    request_event_id    text        NOT NULL,
-    model_id            text        NOT NULL,
-    inference_geo       text        NOT NULL DEFAULT '',
-    stop_reason         text        NOT NULL DEFAULT '',
+	thread_id           text        NOT NULL,
+	request_event_id    text        NOT NULL,
+	model_id            text        NOT NULL,
+	stop_reason         text        NOT NULL DEFAULT '',
     usage               jsonb       NOT NULL,
     list_cost_nano_usd  bigint,
     created_at          timestamptz NOT NULL,

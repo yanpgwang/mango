@@ -112,10 +112,10 @@ func RuntimeListCostNanoUSD(activeSeconds float64) int64 {
 }
 
 type modelListPrice struct {
-	inputPerToken  int64
-	outputPerToken int64
-	geoSurcharge   bool
-	fastEligible   bool
+	inputPerToken     int64
+	outputPerToken    int64
+	usRegionSurcharge bool
+	fastEligible      bool
 }
 
 var datedModelSuffix = regexp.MustCompile(`^(.*?)(?:-[0-9]{8})?$`)
@@ -151,18 +151,18 @@ func ModelUsageListCostNanoUSDAt(
 		// Fast mode for currently supported Opus models is $10/$50 per MTok.
 		inputRate, outputRate = 10_000, 50_000
 	}
-	geoNumerator, geoDenominator := int64(1), int64(1)
-	if strings.EqualFold(model.InferenceGeo, "us") && price.geoSurcharge {
-		geoNumerator, geoDenominator = 11, 10
+	regionNumerator, regionDenominator := int64(1), int64(1)
+	if strings.EqualFold(usage.ProviderRegion, "us") && price.usRegionSurcharge {
+		regionNumerator, regionDenominator = 11, 10
 	}
 	scaled := func(tokens, rate, numerator, denominator int64) int64 {
 		return tokens * rate * numerator / denominator
 	}
-	cost := scaled(usage.InputTokens, inputRate, geoNumerator, geoDenominator)
-	cost += scaled(usage.OutputTokens, outputRate, geoNumerator, geoDenominator)
-	cost += scaled(usage.CacheCreation.Ephemeral5mInputTokens, inputRate*5, geoNumerator, geoDenominator*4)
-	cost += scaled(usage.CacheCreation.Ephemeral1hInputTokens, inputRate*2, geoNumerator, geoDenominator)
-	cost += scaled(usage.CacheReadInputTokens, inputRate, geoNumerator, geoDenominator*10)
+	cost := scaled(usage.InputTokens, inputRate, regionNumerator, regionDenominator)
+	cost += scaled(usage.OutputTokens, outputRate, regionNumerator, regionDenominator)
+	cost += scaled(usage.CacheCreation.Ephemeral5mInputTokens, inputRate*5, regionNumerator, regionDenominator*4)
+	cost += scaled(usage.CacheCreation.Ephemeral1hInputTokens, inputRate*2, regionNumerator, regionDenominator)
+	cost += scaled(usage.CacheReadInputTokens, inputRate, regionNumerator, regionDenominator*10)
 	cost += usage.ServerToolUse.WebSearchRequests * webSearchRequestNanoUSD
 	return cost, nil
 }
@@ -192,19 +192,19 @@ func anthropicModelListPrice(id string) (modelListPrice, bool) {
 	id = canonicalAnthropicModelID(id)
 	switch id {
 	case "claude-fable-5", "claude-mythos-5":
-		return modelListPrice{inputPerToken: 10_000, outputPerToken: 50_000, geoSurcharge: true}, true
+		return modelListPrice{inputPerToken: 10_000, outputPerToken: 50_000, usRegionSurcharge: true}, true
 	case "claude-opus-5":
-		return modelListPrice{inputPerToken: 5_000, outputPerToken: 25_000, geoSurcharge: true, fastEligible: true}, true
+		return modelListPrice{inputPerToken: 5_000, outputPerToken: 25_000, usRegionSurcharge: true, fastEligible: true}, true
 	case "claude-sonnet-5":
-		return modelListPrice{inputPerToken: 2_000, outputPerToken: 10_000, geoSurcharge: true}, true
+		return modelListPrice{inputPerToken: 2_000, outputPerToken: 10_000, usRegionSurcharge: true}, true
 	case "claude-opus-4-8":
-		return modelListPrice{inputPerToken: 5_000, outputPerToken: 25_000, geoSurcharge: true, fastEligible: true}, true
+		return modelListPrice{inputPerToken: 5_000, outputPerToken: 25_000, usRegionSurcharge: true, fastEligible: true}, true
 	case "claude-opus-4-7", "claude-opus-4-6", "claude-opus-4-5":
-		return modelListPrice{inputPerToken: 5_000, outputPerToken: 25_000, geoSurcharge: id == "claude-opus-4-7" || id == "claude-opus-4-6"}, true
+		return modelListPrice{inputPerToken: 5_000, outputPerToken: 25_000, usRegionSurcharge: id == "claude-opus-4-7" || id == "claude-opus-4-6"}, true
 	case "claude-opus-4-1", "claude-opus-4":
 		return modelListPrice{inputPerToken: 15_000, outputPerToken: 75_000}, true
 	case "claude-sonnet-4-6":
-		return modelListPrice{inputPerToken: 3_000, outputPerToken: 15_000, geoSurcharge: true}, true
+		return modelListPrice{inputPerToken: 3_000, outputPerToken: 15_000, usRegionSurcharge: true}, true
 	case "claude-sonnet-4-5", "claude-sonnet-4":
 		return modelListPrice{inputPerToken: 3_000, outputPerToken: 15_000}, true
 	case "claude-haiku-4-5":
