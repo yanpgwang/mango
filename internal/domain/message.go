@@ -69,10 +69,10 @@ type Message struct {
 // provider usage had measured. ContentBlocks marks the response boundary when
 // adjacent assistant messages are merged to preserve role alternation.
 type ContextUsageAnchor struct {
-	Usage              TokenUsage `json:"usage"`
-	RequestFingerprint string     `json:"request_fingerprint"`
-	PrefixFingerprint  string     `json:"prefix_fingerprint"`
-	ContentBlocks      int        `json:"content_blocks"`
+	Usage              ContextWindowUsage `json:"usage"`
+	RequestFingerprint string             `json:"request_fingerprint"`
+	PrefixFingerprint  string             `json:"prefix_fingerprint"`
+	ContentBlocks      int                `json:"content_blocks"`
 }
 
 // ProviderToolUseMapping keeps provider-private tool ids separate from the

@@ -200,13 +200,14 @@ func RequestContextFingerprint(request Request) string {
 // the precise merged-message boundary that the next provider request sees.
 func AnchoredAssistantMessage(request Request, response Response) domain.Message {
 	message := domain.Message{Role: domain.RoleAssistant, Content: response.Content}
-	if response.Usage.ContextTokens() <= 0 {
+	contextUsage := response.Usage.ForContextWindow()
+	if contextUsage.ContextTokens() <= 0 {
 		return message
 	}
 	anchored := appendAssistantForContext(request.Messages, message)
 	last := len(anchored) - 1
 	message.ContextUsage = &domain.ContextUsageAnchor{
-		Usage:              response.Usage,
+		Usage:              contextUsage,
 		RequestFingerprint: RequestContextFingerprint(request),
 		PrefixFingerprint: messagePrefixFingerprint(
 			anchored, last, len(anchored[last].Content),

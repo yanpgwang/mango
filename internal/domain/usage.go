@@ -34,11 +34,30 @@ type TokenUsage struct {
 	ProviderRegion string
 }
 
+// ContextWindowUsage is the provider usage subset needed to anchor context
+// measurements. Pricing, routing, execution-mode, and server-tool facts do not
+// belong in persisted conversation messages or subsequent model prompts.
+type ContextWindowUsage struct {
+	CacheCreation        CacheCreationUsage
+	CacheReadInputTokens int64
+	InputTokens          int64
+	OutputTokens         int64
+}
+
+func (u TokenUsage) ForContextWindow() ContextWindowUsage {
+	return ContextWindowUsage{
+		CacheCreation:        u.CacheCreation,
+		CacheReadInputTokens: u.CacheReadInputTokens,
+		InputTokens:          u.InputTokens,
+		OutputTokens:         u.OutputTokens,
+	}
+}
+
 // ContextTokens returns the provider-measured context immediately after one
 // response. Anthropic reports uncached input, cache creation, and cache reads
 // as disjoint input buckets; all occupy the request context. Output is included
 // because the assistant response becomes input to the next request.
-func (u TokenUsage) ContextTokens() int64 {
+func (u ContextWindowUsage) ContextTokens() int64 {
 	return u.InputTokens +
 		u.CacheCreation.Ephemeral1hInputTokens +
 		u.CacheCreation.Ephemeral5mInputTokens +

@@ -183,13 +183,13 @@ func TestProviderTranscriptContextIsIsolatedByThread(t *testing.T) {
 
 func TestAppendProviderMessagesPreservesLatestContextUsage(t *testing.T) {
 	first := &domain.ContextUsageAnchor{
-		Usage:              domain.TokenUsage{InputTokens: 10},
+		Usage:              domain.ContextWindowUsage{InputTokens: 10},
 		RequestFingerprint: "request-1",
 		PrefixFingerprint:  "prefix-1",
 		ContentBlocks:      1,
 	}
 	latest := &domain.ContextUsageAnchor{
-		Usage:              domain.TokenUsage{InputTokens: 20},
+		Usage:              domain.ContextWindowUsage{InputTokens: 20},
 		RequestFingerprint: "request-2",
 		PrefixFingerprint:  "prefix-2",
 		ContentBlocks:      2,
@@ -222,7 +222,7 @@ func TestAppendProviderMessagesPreservesLatestContextUsage(t *testing.T) {
 
 func TestCloseInterruptedProviderTranscript_PairsDanglingTools(t *testing.T) {
 	anchor := &domain.ContextUsageAnchor{
-		Usage:              domain.TokenUsage{InputTokens: 25},
+		Usage:              domain.ContextWindowUsage{InputTokens: 25},
 		RequestFingerprint: "request",
 		PrefixFingerprint:  "prefix",
 		ContentBlocks:      3,
