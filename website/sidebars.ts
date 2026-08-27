@@ -41,6 +41,7 @@ const sidebars: SidebarsConfig = {
         description: 'End-to-end scenarios backed by executable verification.',
       },
       items: [
+        'examples/terminal-ui',
         'examples/coding-agent-iterate',
         'examples/hitl-gate',
         'examples/multi-agent-team',

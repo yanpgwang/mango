@@ -20,6 +20,7 @@ MANGO_TEST_S3_ENDPOINT ?= http://localhost:9000
 MANGO_TEST_S3_BUCKET ?= mango-test
 MANGO_TEST_S3_ACCESS_KEY ?= minioadmin
 MANGO_TEST_S3_SECRET_KEY ?= minioadmin
+TERMINAL_UI_DIR ?= examples/terminal-ui
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
 MANGO_EXAMPLE_ADVISOR_MODEL_ID ?= $(MANGO_EXAMPLE_MODEL_ID)
 
@@ -33,7 +34,8 @@ endif
 .PHONY: help build lint test test-race test-service test-model-live test-platform-live \
 	test-coding-agent test-coding-agent-live test-hitl-gate demo-hitl-gate \
 	demo-multi-agent-team \
-	vet verify security docs-check image image-smoke dev-env-init \
+	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
+	terminal-ui-build terminal-ui-verify security docs-check image image-smoke dev-env-init \
 	local-config local-up local-down local-health local-ps local-logs
 
 help:
@@ -52,6 +54,7 @@ help:
 	@echo "  make demo-multi-agent-team  run the interactive multi-agent example over public HTTP"
 	@echo "  make vet            run go vet"
 	@echo "  make verify         run the core Go checks"
+	@echo "  make terminal-ui-verify  verify the terminal UI example"
 	@echo "  make security       scan reachable Go code and high-severity npm issues"
 	@echo "  make docs-check     install and verify documentation dependencies"
 	@echo "  make dev-env-init   create ~/.config/mango/dev.env with mode 0600"
@@ -134,10 +137,25 @@ demo-multi-agent-team:
 vet:
 	$(GO) vet ./...
 
-verify: lint test test-race vet
+terminal-ui-test:
+	cd $(TERMINAL_UI_DIR) && $(GO) test ./...
+
+terminal-ui-test-race:
+	cd $(TERMINAL_UI_DIR) && $(GO) test -race ./...
+
+terminal-ui-vet:
+	cd $(TERMINAL_UI_DIR) && $(GO) vet ./...
+
+terminal-ui-build:
+	cd $(TERMINAL_UI_DIR) && mkdir -p bin && $(GO) build -trimpath -o bin/mango-tui ./cmd/mango-tui
+
+terminal-ui-verify: terminal-ui-test terminal-ui-test-race terminal-ui-vet terminal-ui-build
+
+verify: lint test test-race vet terminal-ui-verify
 
 security:
 	$(GOVULNCHECK) ./...
+	cd $(TERMINAL_UI_DIR) && $(GOVULNCHECK) ./...
 	node scripts/check-npm-audit.mjs
 
 docs-check:
