@@ -15,9 +15,10 @@ func TestModelUsageListCostNanoUSD(t *testing.T) {
 		CacheReadInputTokens: 400,
 		ServerToolUse:        ServerToolUsage{WebSearchRequests: 2, WebFetchRequests: 7},
 		Speed:                "standard",
+		ProviderRegion:       "us",
 	}
 	cost, err := ModelUsageListCostNanoUSD(
-		Model{ID: "claude-opus-4-8-20260801", InferenceGeo: "us"},
+		Model{ID: "claude-opus-4-8-20260801"},
 		usage,
 	)
 	if err != nil {
@@ -28,6 +29,13 @@ func TestModelUsageListCostNanoUSD(t *testing.T) {
 	}
 	if amount := MonetaryAmountJSON(cost)["amount"]; amount != "3" {
 		t.Fatalf("rounded monetary amount = %v, want 3 cents", amount)
+	}
+	usage.ProviderRegion = ""
+	baseCost, err := ModelUsageListCostNanoUSD(
+		Model{ID: "claude-opus-4-8-20260801"}, usage,
+	)
+	if err != nil || baseCost != 31_950_000 {
+		t.Fatalf("base list cost = %d nanoUSD, err=%v", baseCost, err)
 	}
 }
 

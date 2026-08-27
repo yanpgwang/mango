@@ -36,7 +36,7 @@ and service test suites.
 
 | Capability | Status | Supported scope and important constraints |
 | --- | --- | --- |
-| Agents and Versions | Supported | Create, get, list, update, immutable Version history, archive, filters, and pagination. Model ID, effort, speed, and `inference_geo` reach working and grader requests. |
+| Agents and Versions | Supported | Create, get, list, update, immutable Version history, archive, filters, and pagination. Model ID, effort, and speed reach working and grader requests. Provider routing policy remains outside the Agent contract. |
 | Environments | Supported | Cloud and self-hosted lifecycle, package configuration, limited-network declarations, filters, and pagination. Package execution requires a capable sandbox; limited egress is currently enforced only by OpenSandbox. |
 | Sessions | Supported | Create from immutable Agent snapshots, get/list/update/archive/delete, metadata, filters, exact shared public-list-cost budgets, usage, timing, and resource projections. Deletion fences admission and durably releases the Workflow and sandbox. |
 | Events and client actions | Limited | System context, messages, thinking, tool events, confirmation/custom/self-hosted result barriers, outcomes, retries, interrupts, and the budget-boundary `session.usage`/`budget_reached` idle sequence are implemented. File-backed message documents are limited to bounded UTF-8 text; File-sourced images and File documents in tool results are not supported. |

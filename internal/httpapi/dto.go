@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/yanpgwang/mango/internal/domain"
 )
@@ -25,7 +24,7 @@ func parseModel(raw any) (domain.Model, error) {
 		m := domain.Model{}
 		for key := range v {
 			switch key {
-			case "id", "effort", "speed", "inference_geo":
+			case "id", "effort", "speed":
 			default:
 				return domain.Model{}, domain.Validation(fmt.Sprintf("unknown model field %q", key))
 			}
@@ -59,13 +58,6 @@ func parseModel(raw any) (domain.Model, error) {
 			}
 			m.Speed = sp
 			m.SpeedExplicit = true
-		}
-		if rawGeo, present := v["inference_geo"]; present {
-			geo, ok := rawGeo.(string)
-			if !ok || strings.TrimSpace(geo) == "" {
-				return domain.Model{}, domain.Validation("model inference_geo must be a non-empty string")
-			}
-			m.InferenceGeo = geo
 		}
 		if m.ID == "" {
 			return domain.Model{}, domain.Validation("model id is required")
@@ -122,9 +114,6 @@ func agentToJSON(a domain.Agent) map[string]any {
 	}
 	if a.Model.Speed != "" {
 		model["speed"] = a.Model.Speed
-	}
-	if a.Model.InferenceGeo != "" {
-		model["inference_geo"] = a.Model.InferenceGeo
 	}
 	out := map[string]any{
 		"id": a.ID, "type": "agent", "version": a.Version, "name": a.Name,

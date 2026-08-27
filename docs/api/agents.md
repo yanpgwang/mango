@@ -29,13 +29,9 @@ Required fields:
 - `name`: non-empty string;
 - `model`: model ID string or an object with a non-empty `id`.
 
-The object model form also preserves supported `effort`, `speed`, and
-`inference_geo` values.
+The object model form also preserves supported `effort` and `speed` values.
 `effort` accepts either a level string such as `"high"` or the tagged object
 `{"type":"high"}`; responses use the tagged object form.
-An explicit non-empty `inference_geo` is forwarded on every working and outcome
-grader request. On Agent update, `model` is whole-object replacement for this
-field: omitting `inference_geo` clears a previous pin.
 Optional collection and metadata fields may be omitted or supplied with their
 documented array/object shape; explicit `null` is not a create-time default.
 
@@ -62,10 +58,6 @@ Creating a Session expands those pins into the full immutable definitions
 returned in `session.agent.multiagent.agents`; child Threads will execute those
 Session-owned snapshots rather than re-resolving Agent resources.
 Archived, missing, duplicate, and nested coordinator references are rejected.
-If the coordinator pins `model.inference_geo`, every independently referenced
-Agent must pin the same value; if the coordinator leaves it unset, every member
-must also leave it unset. A model change that would violate this invariant must
-replace or clear the roster in the same Agent update.
 Ordinary roster entries can execute as persistent child Session Threads with
 independent context, events, usage, and Workflow state. See the
 [multi-agent guide](../guides/multi-agent.md) for an end-to-end example and

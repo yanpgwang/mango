@@ -107,7 +107,6 @@ type wireTool struct {
 type wireRequest struct {
 	Model        string            `json:"model"`
 	Speed        string            `json:"speed,omitempty"`
-	InferenceGeo string            `json:"inference_geo,omitempty"`
 	OutputConfig *wireOutputConfig `json:"output_config,omitempty"`
 	System       string            `json:"system,omitempty"`
 	MaxTokens    int               `json:"max_tokens"`
@@ -129,6 +128,7 @@ type wireUsage struct {
 	OutputTokens         int64                  `json:"output_tokens"`
 	ServerToolUse        wireServerToolUsage    `json:"server_tool_use"`
 	Speed                string                 `json:"speed"`
+	InferenceGeo         string                 `json:"inference_geo"`
 }
 type wireServerToolUsage struct {
 	WebFetchRequests  int64 `json:"web_fetch_requests"`
@@ -149,6 +149,7 @@ type wireUsagePatch struct {
 	OutputTokens         *int64                       `json:"output_tokens"`
 	ServerToolUse        *wireServerToolUsagePatch    `json:"server_tool_use"`
 	Speed                *string                      `json:"speed"`
+	InferenceGeo         *string                      `json:"inference_geo"`
 }
 type wireResponse struct {
 	Content    []json.RawMessage `json:"content"`
@@ -169,7 +170,7 @@ func (a *Anthropic) buildWireRequest(req Request, stream bool) (wireRequest, err
 		maxTokens = defaultMaxTokens
 	}
 	body := wireRequest{
-		Model: model, InferenceGeo: req.InferenceGeo, System: req.System,
+		Model: model, System: req.System,
 		MaxTokens: maxTokens, Stream: stream,
 	}
 	// high and standard are the Managed Agents and Messages defaults. Omitting
@@ -607,6 +608,9 @@ func applyWireUsagePatch(usage *wireUsage, patch wireUsagePatch) {
 	if patch.Speed != nil {
 		usage.Speed = *patch.Speed
 	}
+	if patch.InferenceGeo != nil {
+		usage.InferenceGeo = *patch.InferenceGeo
+	}
 }
 
 func usageFromWire(usage wireUsage) domain.TokenUsage {
@@ -622,7 +626,8 @@ func usageFromWire(usage wireUsage) domain.TokenUsage {
 			WebFetchRequests:  usage.ServerToolUse.WebFetchRequests,
 			WebSearchRequests: usage.ServerToolUse.WebSearchRequests,
 		},
-		Speed: usage.Speed,
+		Speed:          usage.Speed,
+		ProviderRegion: usage.InferenceGeo,
 	}
 }
 

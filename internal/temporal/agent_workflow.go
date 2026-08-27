@@ -648,7 +648,6 @@ func runWorkflowTurnInternal(
 					Model:        prepared.Request.Model,
 					Effort:       prepared.Request.Effort,
 					Speed:        prepared.Request.Speed,
-					InferenceGeo: prepared.Request.InferenceGeo,
 					Outcome:      *prepared.Outcome,
 					Candidate:    candidate,
 					Iteration:    outcomeIteration,

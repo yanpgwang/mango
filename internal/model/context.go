@@ -180,16 +180,15 @@ func estimateFullRequestTokens(request Request) int {
 // can be estimated as a delta.
 func RequestContextFingerprint(request Request) string {
 	value := struct {
-		Model        string
-		Effort       string
-		Speed        string
-		InferenceGeo string
-		System       string
-		MaxTokens    int
-		Tools        []ToolSchema
+		Model     string
+		Effort    string
+		Speed     string
+		System    string
+		MaxTokens int
+		Tools     []ToolSchema
 	}{
 		Model: request.Model, Effort: request.Effort, Speed: request.Speed,
-		InferenceGeo: request.InferenceGeo, System: request.System,
+		System:    request.System,
 		MaxTokens: RequestContextLimits(request).MaxOutputTokens,
 		Tools:     request.Tools,
 	}

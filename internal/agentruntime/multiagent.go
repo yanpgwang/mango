@@ -143,10 +143,9 @@ func AdvisorRequest(
 		return model.Request{}, fmt.Errorf("encode advisor context: %w", err)
 	}
 	return model.Request{
-		Model:        advisorModel,
-		InferenceGeo: executor.InferenceGeo,
-		System:       advisorReviewerSystem,
-		MaxTokens:    advisorMaxTokens,
+		Model:     advisorModel,
+		System:    advisorReviewerSystem,
+		MaxTokens: advisorMaxTokens,
 		Messages: []domain.Message{{
 			Role: domain.RoleUser,
 			Content: []domain.ContentBlock{{

@@ -24,8 +24,6 @@ an Advisor, and persistent follow-up, see
   tools. The deterministic local
   model is useful for platform smoke tests but does not make open-ended
   delegation decisions.
-- Keep every roster Agent on the same `inference_geo` value, or leave it unset
-  everywhere.
 
 The examples use the local API at `http://localhost:8080`.
 

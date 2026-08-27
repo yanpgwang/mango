@@ -17,9 +17,7 @@ func TestAdvisorConsultationsProjectThreadsEventsAndUsageIdempotently(t *testing
 	session := newSession("sesn_advisor")
 	session.AgentSnapshot = domain.Agent{
 		ID: session.AgentID, Version: session.AgentVersion, Name: "coordinator",
-		Model: domain.NormalizeModel(domain.Model{
-			ID: "claude-sonnet-5", InferenceGeo: "us",
-		}),
+		Model: domain.NormalizeModel(domain.Model{ID: "claude-sonnet-5"}),
 		Multiagent: &domain.Multiagent{Type: "coordinator", Agents: []domain.AgentReference{{
 			Type: "advisor", Model: "claude-opus-5",
 		}}},
@@ -63,7 +61,7 @@ INSERT INTO agents (
 		t.Fatalf("primary Threads = %+v, err=%v", threads, err)
 	}
 	primary := threads[0]
-	executorUsage := domain.TokenUsage{InputTokens: 500, OutputTokens: 50}
+	executorUsage := domain.TokenUsage{InputTokens: 500, OutputTokens: 50, ProviderRegion: "us"}
 	if err := store.AccountModelRequest(
 		ctx,
 		session.ID,
@@ -79,13 +77,13 @@ INSERT INTO agents (
 	consultations := []domain.AdvisorConsultation{
 		advisorConsultationFixture(
 			"sthr_advisor_plain", "sevt_advisor_usage_plain", "plain",
-			domain.TokenUsage{InputTokens: 1_000, OutputTokens: 100},
+			domain.TokenUsage{InputTokens: 1_000, OutputTokens: 100, ProviderRegion: "us"},
 			[]any{map[string]any{"type": "text", "text": "check the shutdown race"}},
 			true,
 		),
 		advisorConsultationFixture(
 			"sthr_advisor_second", "sevt_advisor_usage_second", "second",
-			domain.TokenUsage{InputTokens: 2_000, OutputTokens: 200},
+			domain.TokenUsage{InputTokens: 2_000, OutputTokens: 200, ProviderRegion: "us"},
 			[]any{map[string]any{"type": "text", "text": "challenge the locking assumption"}},
 			true,
 		),
@@ -190,11 +188,11 @@ INSERT INTO agents (
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantAdvisorUsage := domain.TokenUsage{InputTokens: 3_000, OutputTokens: 300}
+	wantAdvisorUsage := domain.TokenUsage{InputTokens: 3_000, OutputTokens: 300, ProviderRegion: "us"}
 	wantUsage := executorUsage
 	wantUsage.Add(wantAdvisorUsage)
 	wantAdvisorCost, err := domain.ModelUsageListCostNanoUSD(
-		domain.Model{ID: "claude-opus-5", InferenceGeo: "us"}, wantAdvisorUsage,
+		domain.Model{ID: "claude-opus-5"}, wantAdvisorUsage,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -281,25 +279,16 @@ INSERT INTO agents (
 	}
 
 	var usageRows, terminationOutbox int
-	var inferenceGeo string
 	if err := store.pool.QueryRow(ctx, `
 SELECT count(*) FROM model_request_usage WHERE session_id = $1`, session.ID).Scan(&usageRows); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.pool.QueryRow(ctx, `
-SELECT inference_geo FROM model_request_usage
-WHERE session_id = $1 AND thread_id = 'sthr_advisor_plain'`, session.ID).Scan(&inferenceGeo); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.pool.QueryRow(ctx, `
 SELECT count(*) FROM thread_orchestration_outbox WHERE session_id = $1`, session.ID).Scan(&terminationOutbox); err != nil {
 		t.Fatal(err)
 	}
-	if usageRows != 4 || terminationOutbox != 0 || inferenceGeo != "us" {
-		t.Fatalf(
-			"Advisor persistence rows usage=%d outbox=%d inference_geo=%q",
-			usageRows, terminationOutbox, inferenceGeo,
-		)
+	if usageRows != 4 || terminationOutbox != 0 {
+		t.Fatalf("Advisor persistence rows usage=%d outbox=%d", usageRows, terminationOutbox)
 	}
 	if _, err := store.pool.Exec(ctx, `
 INSERT INTO provider_transcript_turns (

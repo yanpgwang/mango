@@ -387,6 +387,29 @@ func TestAgents_ModelEffortAcceptsOfficialInputShapes(t *testing.T) {
 	}
 }
 
+func TestAgents_InferenceGeoIsNotPartOfModelConfiguration(t *testing.T) {
+	srv := newTestServer(t)
+	rec := do(srv, http.MethodPost, "/v1/agents",
+		`{"name":"Agent","model":{"id":"claude-opus-4-8","inference_geo":"us"}}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	var body struct {
+		Type  string `json:"type"`
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Type != "error" || body.Error.Type != "invalid_request_error" ||
+		body.Error.Message != `unknown model field "inference_geo"` {
+		t.Fatalf("error envelope = %+v", body)
+	}
+}
+
 func TestAgents_MetadataValidationUsesResultingBag(t *testing.T) {
 	srv := newTestServer(t)
 	rec := do(srv, "POST", "/v1/agents",

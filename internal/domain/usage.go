@@ -28,6 +28,10 @@ type TokenUsage struct {
 	// intentionally not accumulated into Session usage; span events use it to
 	// report the actual mode (which may differ from a requested fast fallback).
 	Speed string
+	// ProviderRegion is the provider-reported region for one model request. It is
+	// retained only for internal list-cost accounting and is not accumulated or
+	// exposed through Mango's public Agent, Session, or usage resources.
+	ProviderRegion string
 }
 
 // ContextTokens returns the provider-measured context immediately after one
