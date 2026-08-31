@@ -63,6 +63,8 @@ model credentials, provider requests, or remote font downloads.
 Keep snippets in the runnable examples under `sdk/*/examples/quickstart*` and
 `examples/sdk-quickstart.sh`. Name regions with `# region` / `# endregion`
 (Python/shell) or `// #region` / `// #endregion` (Go/TypeScript).
+The coding-agent guide also includes regions from
+`examples/coding-agent/main.py` and `verify.py`.
 
 Include regions in Markdown rather than copying code:
 
@@ -80,6 +82,10 @@ After modifying SDK examples, run `make sdk-test` and `make sdk-conformance`
 from the repository root. The latter runs the exact rendered example files
 against real HTTP handlers with test-only repositories and model behavior;
 it is not production, recovery-service, or live-model evidence.
+For the coding-agent guide, also run `make test-coding-agent-example-unit` and
+`make test-coding-agent-example`. The latter executes its exact Python program
+against real backing services with deterministic inference; see the guide for
+dependencies and the explicitly opt-in live-model target.
 
 ## Publishing
 

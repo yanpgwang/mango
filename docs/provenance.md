@@ -220,7 +220,9 @@ support, so they run the same offline and opt-in live conformance suites.
   [`CMA_iterate_fix_failing_tests` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_iterate_fix_failing_tests.ipynb)
   supplied the MIT-licensed `calc.py` and `test_calc.py` fixture and the useful
   do-observe-fix workflow. A copy of the source license is retained beside the
-  test fixture in `internal/temporal/testdata/coding_agent_iterate`.
+  shared fixture in `examples/coding-agent/fixtures`. Mango changed the checks
+  from `pytest` to standard-library `unittest` so the example needs no sandbox
+  package installation; the original assertions are retained.
 - Mango adopted the user problem and acceptance outcome: expose immutable input
   files, let a coding Agent iterate in a writable sandbox, independently verify
   the fix, and publish the final source as a durable Session output.
@@ -236,11 +238,32 @@ support, so they run the same offline and opt-in live conformance suites.
   archive semantics, or field-level compatibility. The external notebook is a
   scenario reference, while Mango's observable outcome and executable tests
   define success.
-- The [coding-agent iteration example](examples/coding-agent-iterate.md) describes the
-  Mango workflow without introducing a second runner. The `internal/temporal`
-  scenario test keeps the durable outcome deterministic in public CI; the
-  explicit live tier checks the same outcome against a configured model
-  endpoint.
+- On 2026-08-31, Mango reviewed the current public notebook again while turning
+  the [coding-agent example](examples/coding-agent-iterate.md) into a runnable
+  Python SDK tutorial. The user problem is to run, inspect, and independently
+  accept a complete coding task through the same public client used by an
+  application, without translating HTTP snippets or depending on Go internals.
+- Mango adopted stream-before-send observation, explicit input mounts, narrow
+  tool configuration, downloaded-artifact acceptance, and resource cleanup.
+  Mango changed recovery to merge persisted event history with a fresh stream
+  by event ID; recovery never retries a mutation. A distinct output filename
+  avoids confusing downloadable Session input copies with the repaired result.
+- The application checks the download against the original local tests in a
+  separate restricted Docker container, with no model/Mango credentials and no
+  generated-code execution on the host. Session deletion, not archival,
+  releases execution resources. Kept Sessions support read-only resume and
+  require explicit cleanup. Docker is not a hostile multi-tenant security claim.
+- Acceptance requires an observed failing check, an `end_turn` idle boundary,
+  one bounded published artifact, and passing independent tests. A real-service
+  harness executes the exact Python program against authenticated HTTP,
+  PostgreSQL, Temporal, NATS, MinIO, and Docker; deterministic tests also inject
+  a disconnected stream and restart the client without resubmitting the task.
+  The opt-in real-model SDK journey passed on 2026-08-31. This is scenario
+  evidence, not a general model-reliability or production-readiness claim.
+- The runtime loop remains server-owned. No hosted credentials, helper DSL,
+  public SDK runner, API change, or storage migration was adopted. The existing
+  internal durable scenario and the public SDK example share fixtures, while
+  retaining separate verification of runtime and application boundaries.
 
 ## Human-in-the-loop custom-tool gate
 

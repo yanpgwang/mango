@@ -81,6 +81,13 @@ Capability changes use raw HTTP/OpenAPI tests, PostgreSQL transaction tests,
 Temporal replay and integration tests, and real
 PostgreSQL/Temporal/NATS/MinIO/Docker service tests.
 
+The [Python SDK coding-agent example](examples/coding-agent-iterate.md) also runs
+as an external client against those real services, including authenticated
+HTTP, File upload/download, stream interruption and read-only resume, and
+independent checks on its downloaded artifact. CI uses deterministic inference;
+a separate opt-in target checks the exact example with a configured real model.
+This does not expand the capability or security claims of its sandbox provider.
+
 The Mango runtime has not published a versioned release. Runtime versions will
 appear in [GitHub Releases](https://github.com/yanpgwang/mango/releases). Follow Mango's
 [API reference](api/overview.md) for the current wire surface, this page for
