@@ -120,6 +120,14 @@ users. The API has no socket. Session containers receive their own input,
 output, Skill, and Memory mounts, never the daemon socket or model credentials.
 They share the host kernel and are not a hardened hostile multi-tenant boundary.
 
+For a native Linux worker using a rootful Docker daemon, use the same trusted
+root-worker deployment model. Docker socket group membership alone does not
+grant host filesystem access to container-created bind-mount files. Mango does
+not remap image users or repair arbitrary ownership and permissions: an
+unprivileged native worker can fail to synchronize Memory or clean up nested
+outputs. Docker Desktop's host-file ownership mapping can hide this limitation.
+The API does not need elevated privileges.
+
 `MANGO_SANDBOX_RESOURCE_DIR` defaults to `$HOME/mango-resources` in Compose.
 Its bind source and target are the same absolute path so the worker and host
 daemon resolve generated mount paths identically. A custom value must be an

@@ -1,10 +1,8 @@
 // Package sandbox provides isolated execution for agent tools.
 //
-// The local provider is a DEV-GRADE GUARDRAIL, NOT A SECURITY BOUNDARY: it
-// confines file paths to a working directory, clears the environment, applies a
-// timeout, and caps output — but it shares the host kernel and filesystem
-// namespace. Do NOT run untrusted code with it. Use an isolated Docker or remote
-// provider for untrusted workloads.
+// Docker is the default. Remote providers are optional infrastructure adapters.
+// There is no host-process executor. Each provider's documented trust boundary
+// still applies; container execution is not a hostile multi-tenant guarantee.
 package sandbox
 
 import (
@@ -53,13 +51,10 @@ func IsPermanent(err error) bool {
 
 // Spec describes the sandbox to provision.
 type Spec struct {
-	// WorkDir is the sandbox root. If empty, a temp dir is created.
-	WorkDir string
 	// Timeout bounds each Exec call. Zero means no per-command timeout.
 	Timeout time.Duration
 
-	// The following are used by container-backed providers (e.g. Docker) and
-	// ignored by the local-process provider.
+	// Resource settings are interpreted by the selected provider.
 	Image     string // container image ref; empty uses the provider default
 	Memory    string // e.g. "512m"; empty uses the provider/daemon default
 	CPUs      string // e.g. "1.0"; empty uses the default
@@ -207,7 +202,7 @@ type Provider interface {
 
 // PackageSetupProvider declares that package-manager commands execute inside
 // the provider's isolation boundary rather than on the worker host. Providers
-// must opt in explicitly; an unknown or local-process provider is denied.
+// must opt in explicitly; an undeclared capability is denied.
 type PackageSetupProvider interface {
 	SupportsPackageSetup() bool
 }

@@ -6,11 +6,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 type captureSink struct {
@@ -382,15 +382,7 @@ func TestEnabledSelfHostedToolSchemasDeclaresWebAsClientTool(t *testing.T) {
 }
 
 func TestAgentCore_ExecutesBuiltinToolLoop(t *testing.T) {
-	_, sb, err := sandbox.NewLocalProvider().Create(
-		context.Background(),
-		t.Name(),
-		sandbox.Spec{Timeout: 5 * time.Second},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sb.Destroy(context.Background())
+	sb := sandboxtest.Docker(t)
 	if err := sb.WriteFile(context.Background(), "note.txt", []byte("hi")); err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +396,7 @@ func TestAgentCore_ExecutesBuiltinToolLoop(t *testing.T) {
 		DefaultPolicy:  domain.PermissionPolicy{Type: "always_allow"},
 		Configs:        []domain.BuiltinConfig{{Name: "bash", Enabled: &enabled}},
 	}}
-	_, err = core.Run(context.Background(), RunRequest{
+	_, err := core.Run(context.Background(), RunRequest{
 		Trigger:       domain.Event{Type: domain.EvUserMessage},
 		Messages:      []domain.Message{{Role: domain.RoleUser, Content: []domain.ContentBlock{{Type: "text", Text: "cat note.txt"}}}},
 		ToolSet:       ts,

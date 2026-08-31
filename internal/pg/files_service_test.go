@@ -21,6 +21,7 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 func TestFileService_PostgresS3RestartReconciliation(t *testing.T) {
@@ -177,12 +178,7 @@ func TestFileHTTP_PostgresS3SDKLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	publisher := app.NewSessionOutputPublisher(repo, blobs, ids, fixedClock{})
-	provider, err := sandbox.NewDockerProvider(sandbox.DockerConfig{
-		DefaultImage: "alpine:latest", ResourceBaseDir: t.TempDir(),
-	})
-	if err != nil {
-		t.Fatalf("NewDockerProvider: %v", err)
-	}
+	provider := sandboxtest.DockerProvider(t)
 	_, outputBox, err := provider.Create(ctx, t.Name(), sandbox.Spec{
 		Timeout: 30 * time.Second,
 	})

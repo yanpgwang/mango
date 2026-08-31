@@ -3,7 +3,7 @@ package sandbox
 import (
 	"context"
 	"errors"
-	"os"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -28,12 +28,12 @@ func (s *failBindingCommitStore) PutSandboxBinding(
 
 func TestSessionManager_ReconcilesCreateBeforeBindingCrash(t *testing.T) {
 	ctx := context.Background()
-	provider := NewLocalProvider()
+	provider := newStateProvider()
 	store := &failBindingCommitStore{
 		memoryBindingStore: newMemoryBindingStore(),
 		failures:           1,
 	}
-	spec := Spec{WorkDir: t.TempDir(), Timeout: time.Second}
+	spec := Spec{Timeout: time.Second}
 
 	first := NewSessionManager(provider, store)
 	if _, err := first.Acquire(ctx, "sesn_orphan_recover", spec); err == nil {
@@ -52,7 +52,13 @@ func TestSessionManager_ReconcilesCreateBeforeBindingCrash(t *testing.T) {
 	// The provider resource exists even though its binding did not commit. A
 	// marker proves reconciliation attaches the same workspace rather than
 	// silently replacing it.
-	if err := os.WriteFile(spec.WorkDir+"/survives-crash", []byte("present"), 0o600); err != nil {
+	orphan, err := provider.Attach(ctx, "sesn_orphan_recover", Ref{
+		Provider: provider.Name(), ID: "sesn_orphan_recover",
+	}, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orphan.WriteFile(ctx, "survives-crash", []byte("present")); err != nil {
 		t.Fatalf("write crash marker: %v", err)
 	}
 	restarted := NewSessionManager(provider, store)
@@ -81,9 +87,9 @@ func TestSessionManager_ReconcilesCreateBeforeBindingCrash(t *testing.T) {
 
 func TestSessionManager_ReleaseRecoversUnboundResource(t *testing.T) {
 	ctx := context.Background()
-	provider := NewLocalProvider()
+	provider := newStateProvider()
 	store := newMemoryBindingStore()
-	spec := Spec{WorkDir: t.TempDir(), Timeout: time.Second}
+	spec := Spec{Timeout: time.Second}
 	intent := ProvisioningIntent{
 		SessionID: "sesn_orphan_delete",
 		Provider:  provider.Name(),
@@ -94,18 +100,17 @@ func TestSessionManager_ReleaseRecoversUnboundResource(t *testing.T) {
 	if _, err := store.PutSandboxProvisioningIntent(ctx, intent); err != nil {
 		t.Fatalf("put intent: %v", err)
 	}
-	_, box, err := provider.Create(ctx, intent.SessionID, spec)
+	ref, _, err := provider.Create(ctx, intent.SessionID, spec)
 	if err != nil {
 		t.Fatalf("create unbound resource: %v", err)
 	}
-	root := box.Root()
 
 	manager := NewSessionManager(provider, store)
 	if err := manager.Release(ctx, intent.SessionID); err != nil {
 		t.Fatalf("release unbound resource: %v", err)
 	}
-	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("orphan root still exists or stat failed unexpectedly: %v", err)
+	if _, err := provider.Attach(ctx, intent.SessionID, ref, spec); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("orphan resource still exists: %v", err)
 	}
 	if _, found, err := store.GetSandboxProvisioningIntent(ctx, intent.SessionID); err != nil || found {
 		t.Fatalf("intent survived orphan release: found=%v err=%v", found, err)
@@ -114,7 +119,7 @@ func TestSessionManager_ReleaseRecoversUnboundResource(t *testing.T) {
 
 func TestSessionManager_ReleaseClearsStaleIntentAlongsideBinding(t *testing.T) {
 	ctx := context.Background()
-	provider := NewLocalProvider()
+	provider := newStateProvider()
 	store := newMemoryBindingStore()
 	spec := Spec{Timeout: time.Second}
 	sessionID := "sesn_stale_intent_delete"
@@ -159,7 +164,7 @@ func TestSessionManager_ReleaseClearsStaleIntentAlongsideBinding(t *testing.T) {
 
 func TestSessionManager_ReconcileClearsStaleIntentAlongsideBinding(t *testing.T) {
 	ctx := context.Background()
-	provider := NewLocalProvider()
+	provider := newStateProvider()
 	store := newMemoryBindingStore()
 	spec := Spec{Timeout: time.Second}
 	sessionID := "sesn_stale_intent_active"
@@ -291,7 +296,7 @@ func (p *destroyCountingProvider) Attach(
 }
 
 func TestSessionManager_ReusesSandboxPerSession(t *testing.T) {
-	cp := &countingProvider{inner: NewLocalProvider()}
+	cp := &countingProvider{inner: newStateProvider()}
 	m := NewSessionManager(cp, newMemoryBindingStore())
 	ctx := context.Background()
 
@@ -315,7 +320,7 @@ func TestSessionManager_ReusesSandboxPerSession(t *testing.T) {
 }
 
 func TestSessionManager_AcquireExistingNeverProvisions(t *testing.T) {
-	provider := &countingProvider{inner: NewLocalProvider()}
+	provider := &countingProvider{inner: newStateProvider()}
 	bindings := newMemoryBindingStore()
 	manager := NewSessionManager(provider, bindings)
 
@@ -332,7 +337,7 @@ func TestSessionManager_AcquireExistingNeverProvisions(t *testing.T) {
 
 func TestSessionManager_AcquireExistingReattachesDurableBinding(t *testing.T) {
 	ctx := context.Background()
-	provider := &countingProvider{inner: NewLocalProvider()}
+	provider := &countingProvider{inner: newStateProvider()}
 	bindings := newMemoryBindingStore()
 	first := NewSessionManager(provider, bindings)
 	box, err := first.Acquire(ctx, "sesn_existing", Spec{})
@@ -369,11 +374,11 @@ func TestNewSessionManager_RequiresBindingStore(t *testing.T) {
 			t.Fatal("NewSessionManager accepted a nil BindingStore")
 		}
 	}()
-	NewSessionManager(NewLocalProvider(), nil)
+	NewSessionManager(newStateProvider(), nil)
 }
 
 func TestSessionManager_IsolatesSessions(t *testing.T) {
-	m := NewSessionManager(NewLocalProvider(), newMemoryBindingStore())
+	m := NewSessionManager(newStateProvider(), newMemoryBindingStore())
 	ctx := context.Background()
 
 	a, err := m.Acquire(ctx, "sesn_a", Spec{})
@@ -399,7 +404,7 @@ func TestSessionManager_IsolatesSessions(t *testing.T) {
 }
 
 func TestSessionManager_ReleaseDestroysExactlyOnce(t *testing.T) {
-	dp := &destroyCountingProvider{inner: NewLocalProvider()}
+	dp := &destroyCountingProvider{inner: newStateProvider()}
 	m := NewSessionManager(dp, newMemoryBindingStore())
 	ctx := context.Background()
 
@@ -425,7 +430,7 @@ func TestSessionManager_ReleaseDestroysExactlyOnce(t *testing.T) {
 }
 
 func TestSessionManager_ConcurrentAcquireProvisionsOnce(t *testing.T) {
-	cp := &countingProvider{inner: NewLocalProvider()}
+	cp := &countingProvider{inner: newStateProvider()}
 	m := NewSessionManager(cp, newMemoryBindingStore())
 	ctx := context.Background()
 
@@ -458,7 +463,7 @@ func TestSessionManager_ConcurrentAcquireProvisionsOnce(t *testing.T) {
 }
 
 func TestSessionManager_ProvisionFailureIsNotCached(t *testing.T) {
-	cp := &countingProvider{inner: NewLocalProvider(), provisionErr: errors.New("boom")}
+	cp := &countingProvider{inner: newStateProvider(), provisionErr: errors.New("boom")}
 	m := NewSessionManager(cp, newMemoryBindingStore())
 	ctx := context.Background()
 
@@ -479,7 +484,7 @@ func TestSessionManager_ProvisionFailureIsNotCached(t *testing.T) {
 func TestSessionManager_ReattachesPersistedBindingAfterRestart(t *testing.T) {
 	ctx := context.Background()
 	bindings := newMemoryBindingStore()
-	provider := &countingProvider{inner: NewLocalProvider()}
+	provider := &countingProvider{inner: newStateProvider()}
 
 	firstManager := NewSessionManager(provider, bindings)
 	first, err := firstManager.Acquire(ctx, "sesn_restart", Spec{})
@@ -515,7 +520,7 @@ func TestSessionManager_ReattachesPersistedBindingAfterRestart(t *testing.T) {
 func TestSessionManager_MissingPersistedResourceFailsWithoutReplacement(t *testing.T) {
 	ctx := context.Background()
 	bindings := newMemoryBindingStore()
-	provider := &countingProvider{inner: NewLocalProvider()}
+	provider := &countingProvider{inner: newStateProvider()}
 	firstManager := NewSessionManager(provider, bindings)
 	box, err := firstManager.Acquire(ctx, "sesn_missing", Spec{})
 	if err != nil {
@@ -582,7 +587,7 @@ func (p *blockingProvider) Attach(
 // once rather than a half-provisioned entry.
 func TestSessionManager_ReleaseWaitsForInflightProvision(t *testing.T) {
 	p := &blockingProvider{
-		inner:   NewLocalProvider(),
+		inner:   newStateProvider(),
 		entered: make(chan struct{}),
 		proceed: make(chan struct{}),
 	}
@@ -695,7 +700,8 @@ func (*authoritativeBindingStore) DeleteSandboxBinding(context.Context, Binding)
 
 type createTrackingProvider struct {
 	inner       Provider
-	createdRoot string
+	createdRef  Ref
+	creates     int
 	attachments atomic.Int64
 }
 
@@ -709,17 +715,10 @@ func (p *createTrackingProvider) Create(
 	// This resilience double deliberately returns a distinct resource for each
 	// Create so the manager's losing-bind cleanup path remains testable even
 	// though conforming production providers are idempotent by session key.
-	root, err := os.MkdirTemp("", "mango-bind-election-*")
-	if err != nil {
-		return Ref{}, nil, err
-	}
-	spec.WorkDir = root
-	ref, box, err := p.inner.Create(ctx, sessionKey, spec)
-	if err != nil {
-		_ = os.RemoveAll(root)
-	}
+	p.creates++
+	ref, box, err := p.inner.Create(ctx, fmt.Sprintf("%s-resource-%d", sessionKey, p.creates), spec)
 	if box != nil {
-		p.createdRoot = box.Root()
+		p.createdRef = ref
 	}
 	return ref, box, err
 }
@@ -731,14 +730,13 @@ func (p *createTrackingProvider) Attach(
 	spec Spec,
 ) (Sandbox, error) {
 	p.attachments.Add(1)
-	// The test double's unique local path is its ownership record.
-	spec.WorkDir = ref.ID
-	return p.inner.Attach(ctx, sessionKey, ref, spec)
+	// This deliberately non-idempotent double keys its resources by identity.
+	return p.inner.Attach(ctx, ref.ID, ref, spec)
 }
 
 func TestSessionManager_DestroysLosingCreateAndAttachesBindingWinner(t *testing.T) {
 	ctx := context.Background()
-	inner := NewLocalProvider()
+	inner := newStateProvider()
 	provider := &createTrackingProvider{inner: inner}
 	winnerRef, winnerBox, err := provider.Create(ctx, "sesn_election", Spec{})
 	if err != nil {
@@ -749,7 +747,7 @@ func TestSessionManager_DestroysLosingCreateAndAttachesBindingWinner(t *testing.
 		t.Fatal(err)
 	}
 
-	provider.createdRoot = ""
+	provider.createdRef = Ref{}
 	bindings := &authoritativeBindingStore{winner: Binding{
 		SessionID: "sesn_election",
 		Ref:       winnerRef,
@@ -760,11 +758,11 @@ func TestSessionManager_DestroysLosingCreateAndAttachesBindingWinner(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if provider.createdRoot == "" {
+	if provider.createdRef.ID == "" {
 		t.Fatal("provider did not create a losing resource")
 	}
-	if _, err := os.Stat(provider.createdRoot); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("losing workspace still exists: %q err=%v", provider.createdRoot, err)
+	if _, err := inner.Attach(ctx, provider.createdRef.ID, provider.createdRef, Spec{}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("losing resource still exists: %+v err=%v", provider.createdRef, err)
 	}
 	data, err := box.ReadFile(ctx, "winner.txt")
 	if err != nil || string(data) != "winner" {
@@ -817,7 +815,7 @@ func (s *destroyFailingSandbox) Destroy(context.Context) error { return s.err }
 func TestSessionManager_DestroyFailureRetainsBindingForRetry(t *testing.T) {
 	ctx := context.Background()
 	bindings := newMemoryBindingStore()
-	inner := NewLocalProvider()
+	inner := newStateProvider()
 	provider := &destroyFailingProvider{
 		inner: inner,
 		err:   errors.New("provider unavailable"),

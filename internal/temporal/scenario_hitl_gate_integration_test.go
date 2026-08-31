@@ -14,7 +14,7 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 	"go.temporal.io/sdk/client"
 )
@@ -50,7 +50,7 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 		TemporalClient:  temporalClient,
 		Store:           store,
 		ModelClient:     probe,
-		SandboxProvider: sandbox.NewLocalProvider(),
+		SandboxProvider: sandboxtest.NoProvision(t),
 		IDGenerator:     ids,
 		RelayConfig:     temporalpkg.RelayConfig{PollInterval: 50 * time.Millisecond},
 		TaskQueue:       taskQueue,

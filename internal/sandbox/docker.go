@@ -42,8 +42,7 @@ const (
 
 // Docker provider notes on isolation:
 //
-// Unlike the local provider, the Docker provider gives REAL isolation: each
-// sandbox is a container with its own kernel view via Linux namespaces and
+// Each sandbox is a container with its own kernel view via Linux namespaces and
 // cgroups, its filesystem is separate from the host, and networking defaults to
 // --network none. This is a genuine security boundary for ordinary untrusted
 // code, not merely a dev-grade guardrail.
@@ -854,9 +853,9 @@ func (s *dockerSandbox) WriteFile(ctx context.Context, filePath string, data []b
 	var archive bytes.Buffer
 	writer := tar.NewWriter(&archive)
 	if err := writer.WriteHeader(&tar.Header{
-		// Memory mounts are synchronized by the non-root worker after container
-		// execution. Keep archive writes worker-readable on a Linux bind mount;
-		// path authority still prevents writes outside approved roots.
+		// Keep archive writes readable for Memory synchronization; path
+		// authority still prevents writes outside approved roots. Directory
+		// ownership still follows the image user on native Linux bind mounts.
 		Name: path.Base(containerPath), Mode: 0o644, Size: int64(len(data)),
 		Typeflag: tar.TypeReg, ModTime: time.Now(),
 	}); err != nil {

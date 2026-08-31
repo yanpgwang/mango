@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	opensandbox "github.com/alibaba/OpenSandbox/sdks/sandbox/go"
 	daytonaerrors "github.com/daytona/clients/sdk-go/pkg/errors"
 	cubesandbox "github.com/tencentcloud/CubeSandbox/sdk/go"
+	"github.com/yanpgwang/mango/internal/testutil/dockertest"
 )
 
 func TestRemoteProviderConformance(t *testing.T) {
@@ -69,7 +69,7 @@ func TestRemoteProviderConformance(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := newFakeRemoteStore(t.TempDir())
+			store := newDockerRemoteStore(t)
 			runFakeRemoteContract(t, func() Provider { return test.open(store) })
 		})
 	}
@@ -119,7 +119,7 @@ func TestRemoteFileResourceConformance(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := newFakeRemoteStore(t.TempDir())
+			store := newDockerRemoteStore(t)
 			runFakeRemoteFileResourceContract(
 				t, store, func() Provider { return test.open(store) },
 			)
@@ -171,7 +171,7 @@ func TestRemoteSessionOutputConformance(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := newFakeRemoteStore(t.TempDir())
+			store := newDockerRemoteStore(t)
 			runFakeRemoteSessionOutputContract(
 				t, store, func() Provider { return test.open(store) },
 			)
@@ -223,7 +223,7 @@ func TestRemoteSkillBundleConformance(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := newFakeRemoteStore(t.TempDir())
+			store := newDockerRemoteStore(t)
 			runFakeRemoteSkillBundleContract(
 				t, store, func() Provider { return test.open(store) },
 			)
@@ -271,7 +271,7 @@ func TestRemoteGitRepositoryConformance(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := newFakeRemoteStore(t.TempDir())
+			store := newDockerRemoteStore(t)
 			runFakeRemoteGitRepositoryContract(
 				t, func() Provider { return test.open(store) },
 			)
@@ -500,48 +500,48 @@ func assertFakeRemoteSkillLayoutRepairs(
 	}
 	assertMode := func(filePath string, want os.FileMode) {
 		t.Helper()
-		info, statErr := os.Lstat(filePath)
+		info, statErr := store.fixture.Lstat(filePath)
 		if statErr != nil || info.Mode().Perm() != want {
 			t.Fatalf("fake remote Skill path %s mode = %v, %v", filePath, info, statErr)
 		}
 	}
 
 	controlRoot := localPath(remoteSkillControlRoot)
-	if err := os.Chmod(controlRoot, 0); err != nil {
+	if err := store.fixture.Chmod(controlRoot, 0); err != nil {
 		t.Fatalf("remove fake remote Skill control access: %v", err)
 	}
 	assertFakeRemoteSkill(t, ctx, box, skills, primary, "Analyze reports")
 	assertMode(controlRoot, 0o700)
 
 	skillsRoot := localPath(SessionSkillsRoot)
-	if err := os.Chmod(skillsRoot, 0); err != nil {
+	if err := store.fixture.Chmod(skillsRoot, 0); err != nil {
 		t.Fatalf("remove fake remote Skill root access: %v", err)
 	}
 	assertFakeRemoteSkill(t, ctx, box, skills, primary, "Analyze reports")
 	assertMode(skillsRoot, 0o755)
 
 	childParent := localPath(path.Dir(child.RuntimePath))
-	if err := makeFakeRemoteTreeWritable(childParent); err != nil {
+	if err := store.fixture.MakeWritable(childParent); err != nil {
 		t.Fatalf("make fake child Skill layout removable: %v", err)
 	}
-	if err := os.RemoveAll(childParent); err != nil {
+	if err := store.fixture.RemoveAll(childParent); err != nil {
 		t.Fatalf("remove fake child Skill layout: %v", err)
 	}
 	symlinkTarget := filepath.Join(resource.root, "skill-layout-symlink-target")
-	if err := os.Mkdir(symlinkTarget, 0o700); err != nil {
+	if err := store.fixture.Mkdir(symlinkTarget, 0o700); err != nil {
 		t.Fatalf("create fake Skill layout symlink target: %v", err)
 	}
 	sentinel := filepath.Join(symlinkTarget, "sentinel")
-	if err := os.WriteFile(sentinel, []byte("unchanged"), 0o600); err != nil {
+	if err := store.fixture.WriteFile(sentinel, []byte("unchanged"), 0o600); err != nil {
 		t.Fatalf("write fake Skill layout sentinel: %v", err)
 	}
-	if err := os.Chmod(sentinel, 0o400); err != nil {
+	if err := store.fixture.Chmod(sentinel, 0o400); err != nil {
 		t.Fatalf("harden fake Skill layout sentinel: %v", err)
 	}
-	if err := os.Chmod(symlinkTarget, 0o500); err != nil {
+	if err := store.fixture.Chmod(symlinkTarget, 0o500); err != nil {
 		t.Fatalf("harden fake Skill layout symlink target: %v", err)
 	}
-	if err := os.Symlink(symlinkTarget, childParent); err != nil {
+	if err := store.fixture.Symlink(symlinkTarget, childParent); err != nil {
 		t.Fatalf("replace fake child Skill layout with symlink: %v", err)
 	}
 	present, err := skills.HasReadOnlySkill(ctx, child)
@@ -554,20 +554,20 @@ func assertFakeRemoteSkillLayoutRepairs(
 		t.Fatalf("repair symlinked child Skill layout: %v", err)
 	}
 	assertFakeRemoteSkill(t, ctx, box, skills, child, "Child reports")
-	parentInfo, err := os.Lstat(childParent)
+	parentInfo, err := store.fixture.Lstat(childParent)
 	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 ||
 		parentInfo.Mode().Perm() != 0o755 {
 		t.Fatalf("repaired child Skill parent = %v, %v", parentInfo, err)
 	}
 	assertMode(symlinkTarget, 0o500)
 	assertMode(sentinel, 0o400)
-	body, err := os.ReadFile(sentinel)
+	body, err := store.fixture.ReadFile(sentinel)
 	if err != nil || string(body) != "unchanged" {
 		t.Fatalf("fake Skill layout symlink target = %q, %v", body, err)
 	}
 
 	// A missing marker after control-root repair must remain rematerializable.
-	if err := os.Remove(localPath(remoteSkillMarkerPath(primary))); err != nil {
+	if err := store.fixture.Remove(localPath(remoteSkillMarkerPath(primary))); err != nil {
 		t.Fatalf("remove primary Skill marker after layout recovery: %v", err)
 	}
 	if err := skills.ImportReadOnlySkill(
@@ -575,19 +575,6 @@ func assertFakeRemoteSkillLayoutRepairs(
 	); err != nil {
 		t.Fatalf("rematerialize primary Skill after layout recovery: %v", err)
 	}
-}
-
-func makeFakeRemoteTreeWritable(root string) error {
-	return filepath.Walk(root, func(filePath string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		mode := os.FileMode(0o600)
-		if info.IsDir() {
-			mode = 0o700
-		}
-		return os.Chmod(filePath, mode)
-	})
 }
 
 func assertFakeRemoteSkillMarkerRepairs(
@@ -621,13 +608,13 @@ func assertFakeRemoteSkillMarkerRepairs(
 		{
 			name: "empty",
 			corrupt: func(marker string) error {
-				return os.WriteFile(marker, nil, 0o600)
+				return store.fixture.WriteFile(marker, nil, 0o600)
 			},
 		},
 		{
 			name: "oversized",
 			corrupt: func(marker string) error {
-				return os.WriteFile(
+				return store.fixture.WriteFile(
 					marker, bytes.Repeat([]byte("x"), remoteSkillMarkerLimit+1), 0o600,
 				)
 			},
@@ -635,39 +622,39 @@ func assertFakeRemoteSkillMarkerRepairs(
 		{
 			name: "invalid-json",
 			corrupt: func(marker string) error {
-				return os.WriteFile(marker, []byte("not-json\n"), 0o600)
+				return store.fixture.WriteFile(marker, []byte("not-json\n"), 0o600)
 			},
 		},
 		{
 			name: "directory",
 			corrupt: func(marker string) error {
-				if err := os.Mkdir(marker, 0o700); err != nil {
+				if err := store.fixture.Mkdir(marker, 0o700); err != nil {
 					return err
 				}
-				return os.WriteFile(filepath.Join(marker, "partial"), []byte("x"), 0o600)
+				return store.fixture.WriteFile(filepath.Join(marker, "partial"), []byte("x"), 0o600)
 			},
 		},
 		{
 			name: "symlink",
 			corrupt: func(marker string) error {
-				if err := os.WriteFile(symlinkTarget, []byte("unchanged"), 0o600); err != nil {
+				if err := store.fixture.WriteFile(symlinkTarget, []byte("unchanged"), 0o600); err != nil {
 					return err
 				}
-				if err := os.Chmod(symlinkTarget, 0o400); err != nil {
+				if err := store.fixture.Chmod(symlinkTarget, 0o400); err != nil {
 					return err
 				}
-				if err := os.Symlink(symlinkTarget, marker); err != nil {
+				if err := store.fixture.Symlink(symlinkTarget, marker); err != nil {
 					return err
 				}
-				return os.Symlink(symlinkTarget, stagingPath)
+				return store.fixture.Symlink(symlinkTarget, stagingPath)
 			},
 			verify: func(t *testing.T) {
 				t.Helper()
-				body, err := os.ReadFile(symlinkTarget)
+				body, err := store.fixture.ReadFile(symlinkTarget)
 				if err != nil || string(body) != "unchanged" {
 					t.Fatalf("Skill marker symlink target = %q, %v", body, err)
 				}
-				info, err := os.Stat(symlinkTarget)
+				info, err := store.fixture.Stat(symlinkTarget)
 				if err != nil || info.Mode().Perm() != 0o400 {
 					t.Fatalf("Skill marker symlink target mode = %v, %v", info, err)
 				}
@@ -678,7 +665,7 @@ func assertFakeRemoteSkillMarkerRepairs(
 	for _, corruption := range corruptions {
 		t.Run("repairs-marker-"+corruption.name, func(t *testing.T) {
 			for _, item := range []string{markerPath, stagingPath, symlinkTarget} {
-				if err := os.RemoveAll(item); err != nil {
+				if err := store.fixture.RemoveAll(item); err != nil {
 					t.Fatalf("clear fake remote Skill marker fixture: %v", err)
 				}
 			}
@@ -695,11 +682,11 @@ func assertFakeRemoteSkillMarkerRepairs(
 				t.Fatalf("repair fake remote Skill marker: %v", err)
 			}
 			assertFakeRemoteSkill(t, ctx, box, skills, mount, "Analyze reports")
-			info, err := os.Lstat(markerPath)
+			info, err := store.fixture.Lstat(markerPath)
 			if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
 				t.Fatalf("repaired Skill marker mode = %v, %v", info, err)
 			}
-			if _, err := os.Lstat(stagingPath); !errors.Is(err, os.ErrNotExist) {
+			if _, err := store.fixture.Lstat(stagingPath); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("repaired Skill marker left staging entry: %v", err)
 			}
 			if corruption.verify != nil {
@@ -845,7 +832,7 @@ func TestRemoteSessionOutputUsesOperationDeadline(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := newFakeRemoteStore(t.TempDir())
+			store := newDockerRemoteStore(t)
 			resource := store.create("", nil)
 			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 			defer cancel()
@@ -866,17 +853,29 @@ func TestRemoteSessionOutputUsesOperationDeadline(t *testing.T) {
 	}
 }
 
-func TestRemoteSessionOutputArchiveTimeoutIsRetryable(t *testing.T) {
-	store := newFakeRemoteStore(t.TempDir())
-	resource := store.create("", nil)
-	handle := &fakeRemoteHandle{store: store, resource: resource}
-	resources := newRemoteFileResources("test", handle)
+type snapshotCleanupDouble struct {
+	remoteFileResourceDataPlane
+	removed string
+}
 
+func (*snapshotCleanupDouble) ResourceStat(context.Context, string) (remoteFileInfo, error) {
+	return remoteFileInfo{Directory: true}, nil
+}
+func (f *snapshotCleanupDouble) ResourceRemoveFile(_ context.Context, name string) error {
+	f.removed = name
+	return nil
+}
+
+func TestRemoteSessionOutputArchiveTimeoutIsRetryable(t *testing.T) {
+	handle := &snapshotCleanupDouble{}
+	resources := newRemoteFileResources("test", handle)
+	var archivePath string
 	stream, err := openRemoteSessionOutputs(
 		context.Background(),
 		"test",
 		resources,
-		func(context.Context, Command) (*Result, error) {
+		func(_ context.Context, command Command) (*Result, error) {
+			archivePath = command.Args[3]
 			return &Result{ExitCode: -1, TimedOut: true}, nil
 		},
 	)
@@ -887,16 +886,8 @@ func TestRemoteSessionOutputArchiveTimeoutIsRetryable(t *testing.T) {
 	if err == nil || IsPermanent(err) || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("timed-out Session output archive error = %v, want retryable timeout", err)
 	}
-	controlPath, pathErr := handle.fullPath(remoteSessionOutputControlRoot)
-	if pathErr != nil {
-		t.Fatal(pathErr)
-	}
-	entries, readErr := os.ReadDir(controlPath)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("timed-out Session output archive retained %d snapshot(s)", len(entries))
+	if archivePath == "" || handle.removed != archivePath {
+		t.Fatalf("timed-out archive cleanup = %q, want %q", handle.removed, archivePath)
 	}
 }
 
@@ -961,7 +952,7 @@ func runFakeRemoteSessionOutputContract(
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries, err := os.ReadDir(controlPath)
+	entries, err := store.fixture.ReadDir(controlPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1273,11 +1264,20 @@ func runFakeRemoteContract(t *testing.T, open func() Provider) {
 }
 
 type fakeRemoteStore struct {
+	fixture   *dockertest.Fixture
 	mu        sync.Mutex
 	baseDir   string
 	nextID    int
 	resources map[string]*fakeRemoteResource
 	names     map[string]string
+}
+
+// Remote service APIs remain simulated; file operations and shell scripts share
+// a private Linux filesystem in Docker, independent of host sharing semantics.
+func newDockerRemoteStore(t *testing.T) *fakeRemoteStore {
+	t.Helper()
+	fixture := dockertest.NewFixture(t, "")
+	return &fakeRemoteStore{baseDir: fixture.Root, fixture: fixture, resources: map[string]*fakeRemoteResource{}, names: map[string]string{}}
 }
 
 type fakeRemoteResource struct {
@@ -1290,14 +1290,6 @@ type fakeRemoteResource struct {
 	destroyed       bool
 }
 
-func newFakeRemoteStore(baseDir string) *fakeRemoteStore {
-	return &fakeRemoteStore{
-		baseDir:   baseDir,
-		resources: map[string]*fakeRemoteResource{},
-		names:     map[string]string{},
-	}
-}
-
 func (s *fakeRemoteStore) create(
 	name string,
 	metadata map[string]string,
@@ -1307,7 +1299,7 @@ func (s *fakeRemoteStore) create(
 	s.nextID++
 	id := fmt.Sprintf("sbx-%04d", s.nextID)
 	root := filepath.Join(s.baseDir, id)
-	if err := os.MkdirAll(root, 0o700); err != nil {
+	if err := s.fixture.MkdirAll(root, 0o700); err != nil {
 		panic(err)
 	}
 	resource := &fakeRemoteResource{
@@ -1383,22 +1375,7 @@ func (s *fakeRemoteStore) destroy(id string) error {
 		return errFakeRemoteNotFound
 	}
 	resource.destroyed = true
-	_ = filepath.Walk(resource.root, func(
-		filePath string,
-		info os.FileInfo,
-		err error,
-	) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			_ = os.Chmod(filePath, 0o700)
-		} else {
-			_ = os.Chmod(filePath, 0o600)
-		}
-		return nil
-	})
-	return os.RemoveAll(resource.root)
+	return s.fixture.RemoveAll(resource.root)
 }
 
 var errFakeRemoteNotFound = errors.New("fake remote not found")
@@ -1445,25 +1422,8 @@ func (h *fakeRemoteHandle) exec(
 	command = strings.ReplaceAll(command, SessionRepositoryRoot, workspace)
 	daytonaRoot, _ := h.fullPath(defaultDaytonaRoot)
 	command = strings.ReplaceAll(command, defaultDaytonaRoot, daytonaRoot)
-	process := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	process.Dir = h.resource.root
-	process.Env = []string{"PATH=/usr/bin:/bin", "COPYFILE_DISABLE=1"}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	process.Stdout = &stdout
-	process.Stderr = &stderr
-	err := process.Run()
-	if ctx.Err() != nil {
-		return stdout.String(), stderr.String(), -1, ctx.Err()
-	}
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return stdout.String(), stderr.String(), exitErr.ExitCode(), nil
-		}
-		return stdout.String(), stderr.String(), -1, err
-	}
-	return stdout.String(), stderr.String(), process.ProcessState.ExitCode(), nil
+	stdout, stderr, code, err := h.store.fixture.Exec(ctx, h.resource.root, []string{"/bin/sh", "-c", command}, nil)
+	return string(stdout), string(stderr), code, err
 }
 
 func (h *fakeRemoteHandle) readFile(value string) ([]byte, error) {
@@ -1471,7 +1431,7 @@ func (h *fakeRemoteHandle) readFile(value string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return os.ReadFile(filepath.Join(h.resource.root, filepath.FromSlash(relative)))
+	return h.store.fixture.ReadFile(filepath.Join(h.resource.root, filepath.FromSlash(relative)))
 }
 
 func (h *fakeRemoteHandle) writeFile(value string, data []byte) error {
@@ -1480,10 +1440,10 @@ func (h *fakeRemoteHandle) writeFile(value string, data []byte) error {
 		return err
 	}
 	full := filepath.Join(h.resource.root, filepath.FromSlash(relative))
-	if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+	if err := h.store.fixture.MkdirAll(filepath.Dir(full), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(full, data, 0o600)
+	return h.store.fixture.WriteFile(full, data, 0o600)
 }
 
 func (h *fakeRemoteHandle) fullPath(value string) (string, error) {
@@ -1503,16 +1463,16 @@ func (h *fakeRemoteHandle) ResourceCreateDirectory(
 	if err != nil {
 		return err
 	}
-	if err := fakePrivilegedMkdirAll(h.resource.root, full); err != nil {
+	if err := fakePrivilegedMkdirAll(h.store.fixture, h.resource.root, full); err != nil {
 		return err
 	}
-	if err := os.Chmod(full, os.FileMode(permissions.Mode)); err != nil {
+	if err := h.store.fixture.Chmod(full, os.FileMode(permissions.Mode)); err != nil {
 		return err
 	}
 	return nil
 }
 
-func fakePrivilegedMkdirAll(root string, directory string) error {
+func fakePrivilegedMkdirAll(files *dockertest.Fixture, root string, directory string) error {
 	relative, err := filepath.Rel(root, directory)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return errors.New("fake remote directory escapes resource root")
@@ -1522,20 +1482,20 @@ func fakePrivilegedMkdirAll(root string, directory string) error {
 		if component == "" || component == "." {
 			continue
 		}
-		parentInfo, err := os.Stat(current)
+		parentInfo, err := files.Stat(current)
 		if err != nil {
 			return err
 		}
 		parentMode := parentInfo.Mode().Perm()
 		if parentMode&0o200 == 0 {
-			if err := os.Chmod(current, parentMode|0o200); err != nil {
+			if err := files.Chmod(current, parentMode|0o200); err != nil {
 				return err
 			}
 		}
 		next := filepath.Join(current, component)
-		mkdirErr := os.Mkdir(next, 0o755)
+		mkdirErr := files.Mkdir(next, 0o755)
 		if parentMode&0o200 == 0 {
-			if err := os.Chmod(current, parentMode); err != nil {
+			if err := files.Chmod(current, parentMode); err != nil {
 				return err
 			}
 		}
@@ -1557,25 +1517,16 @@ func (h *fakeRemoteHandle) ResourceUpload(
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+	if err := h.store.fixture.MkdirAll(filepath.Dir(full), 0o700); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(full, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(permissions.Mode))
-	if err != nil {
+	// Preserve interrupted-upload semantics: bytes accepted before a stream
+	// error remain visible, so recovery tests exercise partial remote files.
+	data, readErr := io.ReadAll(content)
+	if err := h.store.fixture.WriteFile(full, data, os.FileMode(permissions.Mode)); err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(file, content)
-	closeErr := file.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if err := os.Chmod(full, os.FileMode(permissions.Mode)); err != nil {
-		return err
-	}
-	return nil
+	return readErr
 }
 
 func (h *fakeRemoteHandle) ResourceOpen(
@@ -1586,7 +1537,11 @@ func (h *fakeRemoteHandle) ResourceOpen(
 	if err != nil {
 		return nil, err
 	}
-	return os.Open(full)
+	data, err := h.store.fixture.ReadFile(full)
+	if err != nil {
+		return nil, err
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
 func (h *fakeRemoteHandle) ResourceStat(
@@ -1597,7 +1552,7 @@ func (h *fakeRemoteHandle) ResourceStat(
 	if err != nil {
 		return remoteFileInfo{}, err
 	}
-	info, err := os.Lstat(full)
+	info, err := h.store.fixture.Lstat(full)
 	if err != nil {
 		return remoteFileInfo{}, err
 	}
@@ -1616,7 +1571,7 @@ func (h *fakeRemoteHandle) ResourceRemoveFile(
 	if err != nil {
 		return err
 	}
-	return os.Remove(full)
+	return h.store.fixture.Remove(full)
 }
 
 func (*fakeRemoteHandle) ResourceIsNotFound(err error) bool {

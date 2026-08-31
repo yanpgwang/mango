@@ -9,15 +9,17 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yanpgwang/mango/internal/testutil/dockertest"
 )
 
 func TestCommandGitRepositoriesRestoresWritableSnapshotIdempotently(t *testing.T) {
 	root := t.TempDir()
+	fixture := dockertest.NewFixture(t, root)
 	workspace := filepath.Join(root, "workspace")
 	control := filepath.Join(root, "control")
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
@@ -35,24 +37,15 @@ func TestCommandGitRepositoriesRestoresWritableSnapshotIdempotently(t *testing.T
 		for index := range args {
 			args[index] = mapPath(args[index])
 		}
-		process := exec.CommandContext(ctx, command.Path, args...)
-		process.Stdin = bytes.NewReader(command.Stdin)
-		var stdout, stderr bytes.Buffer
-		process.Stdout, process.Stderr = &stdout, &stderr
-		err := process.Run()
-		exitCode := 0
+		stdout, stderr, exitCode, err := fixture.Exec(ctx, root, append([]string{command.Path}, args...), command.Stdin)
 		if err != nil {
-			var exitErr *exec.ExitError
-			if !errors.As(err, &exitErr) {
-				return nil, err
-			}
-			exitCode = exitErr.ExitCode()
+			return nil, err
 		}
 		if restore && exitCode == 0 && loseRestoreAcknowledgement {
 			loseRestoreAcknowledgement = false
 			return nil, errors.New("simulated lost restore acknowledgement")
 		}
-		return &Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: exitCode}, nil
+		return &Result{Stdout: stdout, Stderr: stderr, ExitCode: exitCode}, nil
 	}
 	upload := func(_ context.Context, destination string, content io.Reader, _ int64) error {
 		destination = mapPath(destination)
@@ -125,6 +118,7 @@ func TestCommandGitRepositoriesRestoresWritableSnapshotIdempotently(t *testing.T
 
 func TestCommandGitRepositoriesCleansStagingAfterTargetCollision(t *testing.T) {
 	root := t.TempDir()
+	fixture := dockertest.NewFixture(t, root)
 	workspace := filepath.Join(root, "workspace")
 	control := filepath.Join(root, "control")
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
@@ -144,20 +138,11 @@ func TestCommandGitRepositoriesCleansStagingAfterTargetCollision(t *testing.T) {
 				return nil, err
 			}
 		}
-		process := exec.CommandContext(ctx, command.Path, args...)
-		process.Stdin = bytes.NewReader(command.Stdin)
-		var stdout, stderr bytes.Buffer
-		process.Stdout, process.Stderr = &stdout, &stderr
-		err := process.Run()
-		exitCode := 0
+		stdout, stderr, exitCode, err := fixture.Exec(ctx, root, append([]string{command.Path}, args...), command.Stdin)
 		if err != nil {
-			var exitErr *exec.ExitError
-			if !errors.As(err, &exitErr) {
-				return nil, err
-			}
-			exitCode = exitErr.ExitCode()
+			return nil, err
 		}
-		return &Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: exitCode}, nil
+		return &Result{Stdout: stdout, Stderr: stderr, ExitCode: exitCode}, nil
 	}
 	upload := func(_ context.Context, destination string, content io.Reader, _ int64) error {
 		destination = mapPath(destination)
@@ -239,6 +224,7 @@ func TestValidateGitRepositoryArchiveRejectsEscapingSymlink(t *testing.T) {
 
 func TestCommandGitRepositoriesRejectsSymlinkedWorkspaceAncestor(t *testing.T) {
 	root := t.TempDir()
+	fixture := dockertest.NewFixture(t, root)
 	workspace := filepath.Join(root, "workspace")
 	control := filepath.Join(root, "control")
 	outside := filepath.Join(root, "outside")
@@ -260,20 +246,11 @@ func TestCommandGitRepositoriesRejectsSymlinkedWorkspaceAncestor(t *testing.T) {
 		for index := range args {
 			args[index] = mapPath(args[index])
 		}
-		process := exec.CommandContext(ctx, command.Path, args...)
-		process.Stdin = bytes.NewReader(command.Stdin)
-		var stdout, stderr bytes.Buffer
-		process.Stdout, process.Stderr = &stdout, &stderr
-		err := process.Run()
-		exitCode := 0
+		stdout, stderr, exitCode, err := fixture.Exec(ctx, root, append([]string{command.Path}, args...), command.Stdin)
 		if err != nil {
-			var exitErr *exec.ExitError
-			if !errors.As(err, &exitErr) {
-				return nil, err
-			}
-			exitCode = exitErr.ExitCode()
+			return nil, err
 		}
-		return &Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: exitCode}, nil
+		return &Result{Stdout: stdout, Stderr: stderr, ExitCode: exitCode}, nil
 	}
 	archive := repositoryArchiveForTest(t, map[string]string{
 		".git/HEAD": "ref: refs/heads/main\n",

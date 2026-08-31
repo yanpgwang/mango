@@ -171,19 +171,19 @@ func TestSessionManagerPublishesBindingOnlyAfterPackageSetup(t *testing.T) {
 	}
 }
 
-func TestSessionManagerRejectsHostPackageSetupBeforeProvisioning(t *testing.T) {
+func TestSessionManagerRejectsUndeclaredPackageSetupBeforeProvisioning(t *testing.T) {
 	bindings := newMemoryBindingStore()
-	manager := NewSessionManager(NewLocalProvider(), bindings)
-	_, err := manager.Acquire(context.Background(), "sess_local_packages", Spec{
+	manager := NewSessionManager(newStateProvider(), bindings)
+	_, err := manager.Acquire(context.Background(), "sess_unsupported_packages", Spec{
 		Packages: PackageSet{Pip: []string{"httpx==0.28.1"}},
 	})
 	if err == nil || !IsPermanent(err) {
-		t.Fatalf("local package setup error = %v, want permanent rejection", err)
+		t.Fatalf("unsupported package setup error = %v, want permanent rejection", err)
 	}
 	if _, found, loadErr := bindings.GetSandboxProvisioningIntent(
-		context.Background(), "sess_local_packages",
+		context.Background(), "sess_unsupported_packages",
 	); loadErr != nil || found {
-		t.Fatalf("local package setup created intent: found=%v err=%v", found, loadErr)
+		t.Fatalf("unsupported package setup created intent: found=%v err=%v", found, loadErr)
 	}
 }
 
@@ -296,15 +296,15 @@ func TestSessionManagerEnforcesLimitedNetworkAcrossProvisioningAndAttach(t *test
 
 func TestSessionManagerRejectsUnsupportedLimitedNetworkBeforeProvisioning(t *testing.T) {
 	bindings := newMemoryBindingStore()
-	manager := NewSessionManager(NewLocalProvider(), bindings)
-	_, err := manager.Acquire(context.Background(), "sess_local_limited", Spec{
+	manager := NewSessionManager(newStateProvider(), bindings)
+	_, err := manager.Acquire(context.Background(), "sess_unsupported_limited", Spec{
 		Network: "limited", NetworkAllowedHosts: []string{"example.com"},
 	})
 	if err == nil || !IsPermanent(err) {
-		t.Fatalf("local limited network error = %v, want permanent rejection", err)
+		t.Fatalf("unsupported limited network error = %v, want permanent rejection", err)
 	}
 	if _, found, loadErr := bindings.GetSandboxProvisioningIntent(
-		context.Background(), "sess_local_limited",
+		context.Background(), "sess_unsupported_limited",
 	); loadErr != nil || found {
 		t.Fatalf("limited network created intent: found=%v err=%v", found, loadErr)
 	}

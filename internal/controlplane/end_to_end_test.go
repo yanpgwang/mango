@@ -18,7 +18,7 @@ import (
 	"github.com/yanpgwang/mango/internal/live"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 	enumspb "go.temporal.io/api/enums/v1"
 )
@@ -51,7 +51,7 @@ func TestHTTPPostgresTemporalNATSEndToEnd(t *testing.T) {
 		TemporalClient:   temporalClient,
 		Store:            fixture.store,
 		ModelClient:      modelClient,
-		SandboxProvider:  sandbox.NewLocalProvider(),
+		SandboxProvider:  sandboxtest.NoProvision(t),
 		IDGenerator:      fixture.ids,
 		RelayConfig:      temporalpkg.RelayConfig{PollInterval: 20 * time.Millisecond},
 		TaskQueue:        "mango-test-" + domain.NewRandomIDGen().NewID(""),

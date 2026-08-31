@@ -10,6 +10,7 @@ import (
 
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 func TestSandboxProvisioningIntentSerializesWithDeletionFence(t *testing.T) {
@@ -78,7 +79,7 @@ func TestSandboxReleaseRepairsLegacyBindingAndIntentCoexistence(t *testing.T) {
 	if _, err := store.CreateSession(ctx, session, nil); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	provider := sandbox.NewLocalProvider()
+	provider := sandboxtest.DockerProvider(t)
 	spec := sandbox.Spec{}
 	ref, _, err := provider.Create(ctx, session.ID, spec)
 	if err != nil {

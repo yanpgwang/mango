@@ -54,7 +54,7 @@ func (p *dockerProvider) reapStaleResourceRoots(
 	ctx context.Context,
 	staleBefore time.Time,
 ) error {
-	base, err := canonicalLocalPath(p.resourceBaseDir)
+	base, err := canonicalHostPath(p.resourceBaseDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -127,7 +127,7 @@ func (p *dockerProvider) activeDockerResourceRoots(
 			default:
 				continue
 			}
-			mountedRoot, err := canonicalLocalPath(mount.Source)
+			mountedRoot, err := canonicalHostPath(mount.Source)
 			if err != nil || filepath.Base(mountedRoot) != directory {
 				continue
 			}
@@ -266,7 +266,7 @@ func (p *dockerProvider) inspectSkillMount(
 			"sandbox: Docker Skill mount is not a recognized read-only bind mount",
 		))
 	}
-	skillsRoot, err := canonicalLocalPath(actual.Source)
+	skillsRoot, err := canonicalHostPath(actual.Source)
 	if err != nil {
 		return false, fmt.Errorf("sandbox: resolve Docker Skill mount: %w", err)
 	}
@@ -305,7 +305,7 @@ func (p *dockerProvider) inspectOutputMount(
 			"sandbox: Docker output mount is not a recognized writable bind mount",
 		))
 	}
-	outputsRoot, err := canonicalLocalPath(actual.Source)
+	outputsRoot, err := canonicalHostPath(actual.Source)
 	if err != nil {
 		return false, fmt.Errorf("sandbox: resolve Docker output mount: %w", err)
 	}
@@ -345,7 +345,7 @@ func (p *dockerProvider) inspectResourceMount(
 			"sandbox: Docker File Resource mount is not a recognized read-only bind mount",
 		))
 	}
-	filesRoot, err := canonicalLocalPath(actual.Source)
+	filesRoot, err := canonicalHostPath(actual.Source)
 	if err != nil {
 		return "", false, fmt.Errorf("sandbox: resolve Docker File Resource mount: %w", err)
 	}
@@ -355,7 +355,7 @@ func (p *dockerProvider) inspectResourceMount(
 		))
 	}
 	resourceRoot := filepath.Dir(filesRoot)
-	base, err := canonicalLocalPath(p.resourceBaseDir)
+	base, err := canonicalHostPath(p.resourceBaseDir)
 	if err != nil {
 		return "", false, fmt.Errorf("sandbox: resolve Docker File Resource base directory: %w", err)
 	}
