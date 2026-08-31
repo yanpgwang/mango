@@ -94,17 +94,8 @@ never print or persist API keys.
 
 The deterministic form of the coding-agent scenario runs in the ordinary
 service suite and can also be selected directly with `make test-coding-agent`.
-Keep its documented example, fixture, and deterministic/live outcome assertions
-aligned.
-
-The runnable Python SDK coding-agent tutorial shares those fixtures. Install
-the checkout SDK with `uv sync --project sdk/python --frozen`, then run
-`make test-coding-agent-example-unit` and `make test-coding-agent-example`.
-The latter runs the exact tutorial against isolated PostgreSQL state, real
-Temporal, NATS, MinIO, and Docker with deterministic inference, including stream
-loss and read-only client resumption. The opt-in
-`scripts/with-dev-env make test-coding-agent-example-live` runs the same SDK
-program against the configured real model without changing the running stack.
+Its fixtures and deterministic/live outcome assertions belong to the system
+test suite, independently of the coding-agent tutorial.
 
 The durable custom-tool gate scenario can be selected with
 `make test-hitl-gate`; its credentialed user journey runs with
@@ -117,13 +108,15 @@ The specialist-team user journey runs with
 ordinary-child, Advisor, real-usage, completion-barrier, and persistent-follow-up
 contracts covered by the multi-agent service and runtime tests.
 
-Cookbook-derived examples describe real Mango user journeys, not probe-only
-demos. Keep an offline deterministic test for exact runtime and recovery
-invariants, and a runnable public-API example for the documented live-model
-behavior. Run that example locally with a real model and its documented user
-interaction before claiming that an example is verified, and record the result in
-the pull request. A simulated external application or service boundary must be
-named as such; never present it as a real third-party integration.
+Cookbook-derived examples are standalone public-API/SDK applications. Keep their
+scripts and input data in `examples/`; system tests own their fixtures and
+setup and must not execute cookbook examples or import their data. Do not add a
+dedicated system-test or CI harness just to run a tutorial. Runtime and recovery
+invariants remain covered by independent system tests. Run an example against
+a running Mango deployment with a real model and its documented user interaction
+before claiming it is verified, and record the result in the pull request.
+A simulated external application or service boundary must be named as such;
+never present it as a real third-party integration.
 
 ## Public API changes
 

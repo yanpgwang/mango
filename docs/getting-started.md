@@ -235,9 +235,9 @@ scripts/with-dev-env make demo-hitl-gate
 scripts/with-dev-env make demo-multi-agent-team
 ```
 
-The [coding-agent iteration example](examples/coding-agent-iterate.md) explains the
-corresponding user workflow and the Mango resources involved. It is a design
-walkthrough rather than a second test runner. The
+The [coding-agent iteration example](examples/coding-agent-iterate.md) is a
+standalone Python SDK application that connects to a running Mango deployment.
+It owns its inputs and is independent of the system-test commands above. The
 [HITL gate example](examples/hitl-gate.md) documents the interactive public-HTTP
 example and its application-owned action boundary. The
 [specialist-team example](examples/multi-agent-team.md) verifies real-model

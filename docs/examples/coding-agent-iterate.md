@@ -24,34 +24,6 @@ uv sync --project sdk/python --frozen
 docker pull python:3.12-alpine
 ```
 
-### Reproducible local run
-
-Use the repository's Go toolchain and backing services to run the exact Python
-program through an isolated Mango API and worker:
-
-```sh
-docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
-make test-coding-agent-example
-```
-
-This uses real authenticated HTTP, PostgreSQL, Temporal, NATS, MinIO, and Docker.
-Only inference is deterministic; no model credentials are needed. The harness
-creates isolated test state and cleans up its resources and downloaded files.
-It also disconnects the event stream and resumes a kept Session from a new
-client process, checking that neither recovery path sends the task again.
-
-To run the same program with your configured model, first configure the private
-development environment as described in [Getting started](../getting-started.md),
-then explicitly opt in to potentially billable requests:
-
-```sh
-scripts/with-dev-env make test-coding-agent-example-live
-```
-
-The live harness starts its own API and worker; it does not change an already
-running stack. The model credential stays server-side. The Python program
-receives only a Mango API key and model ID.
-
 ### Connect to your Mango deployment
 
 The deployment must have [Files enabled](../deployment.md), a Python-capable
@@ -61,6 +33,10 @@ and worker, and `MANGO_SANDBOX_IMAGE=python:3.12-alpine` on the worker. They mus
 share PostgreSQL, Temporal, NATS, and object-store configuration. The worker's
 Docker daemon must be able to bind its resource staging directory; see
 [Deployment model](../deployment.md) and [Sandbox backends](../sandboxes.md).
+
+The example connects to an already running Mango server; it does not start
+internal services or invoke Mango's test suite. Model credentials stay on the
+server. Running the example with a real model may incur provider charges.
 
 The default `make local-up` stack uses the local-process sandbox, which rejects
 File Resources and Session Outputs. Its `offline-fake` model is a text demo,
@@ -111,7 +87,7 @@ sandbox: `bash` still has the selected provider's network access. The prompt's
 
 ## 2. Upload source and original checks
 
-The shared fixtures contain an off-by-one addition bug and a missing
+The example's own fixtures contain an off-by-one addition bug and a missing
 divide-by-zero guard. Checks use Python's standard-library `unittest`; no
 package installation is needed inside the sandbox.
 
@@ -195,14 +171,13 @@ must be cleaned up explicitly. If a create request loses its response, the
 client cannot know that resource's ID; inspect Mango before creating another
 job rather than assuming the write failed.
 
-## Verification tiers and design boundary
+## Design boundary
 
-`make test-coding-agent-example-unit` checks event interpretation, bounded
-recovery, artifact rejection, cleanup, Python typing, and lint without services.
-`make test-coding-agent-example` adds the real-service SDK journey and runs in
-CI; `make test-coding-agent-example-live` adds explicitly configured real-model
-inference. The existing `make test-coding-agent` internal durable scenario
-continues to share the same fixtures.
+This tutorial owns its inputs and validates its downloaded result as part of
+the user workflow. It is not a system test: Mango's runtime test suite owns
+separate fixtures and setup, and does not launch this program. Running the
+tutorial requires only its SDK dependencies, the local Docker verifier, and a
+capable Mango deployment; it does not require the Go test toolchain.
 
 The broken-calculator scenario is adapted from Anthropic's public CMA iterate
 cookbook. Mango adopts the user problem and lifecycle lessons, not a hosted

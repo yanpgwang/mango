@@ -82,10 +82,10 @@ After modifying SDK examples, run `make sdk-test` and `make sdk-conformance`
 from the repository root. The latter runs the exact rendered example files
 against real HTTP handlers with test-only repositories and model behavior;
 it is not production, recovery-service, or live-model evidence.
-For the coding-agent guide, also run `make test-coding-agent-example-unit` and
-`make test-coding-agent-example`. The latter executes its exact Python program
-against real backing services with deterministic inference; see the guide for
-dependencies and the explicitly opt-in live-model target.
+Cookbook-style examples such as the coding-agent guide are separate applications,
+not system-test entrypoints. Run them against a configured Mango deployment as
+described in their guides. Documentation builds resolve their source snippets
+without executing the applications.
 
 ## Publishing
 

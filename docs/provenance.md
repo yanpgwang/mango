@@ -219,10 +219,11 @@ support, so they run the same offline and opt-in live conformance suites.
 - Anthropic's public
   [`CMA_iterate_fix_failing_tests` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_iterate_fix_failing_tests.ipynb)
   supplied the MIT-licensed `calc.py` and `test_calc.py` fixture and the useful
-  do-observe-fix workflow. A copy of the source license is retained beside the
-  shared fixture in `examples/coding-agent/fixtures`. Mango changed the checks
-  from `pytest` to standard-library `unittest` so the example needs no sandbox
-  package installation; the original assertions are retained.
+  do-observe-fix workflow. System tests own the fixture under
+  `internal/temporal/testdata/coding_agent_iterate`; the standalone example owns
+  separate inputs under `examples/coding-agent/fixtures`. Both retain the source
+  license. The example adapts the checks to standard-library `unittest` so it
+  needs no sandbox package installation; the original assertions are retained.
 - Mango adopted the user problem and acceptance outcome: expose immutable input
   files, let a coding Agent iterate in a writable sandbox, independently verify
   the fix, and publish the final source as a durable Session output.
@@ -253,17 +254,18 @@ support, so they run the same offline and opt-in live conformance suites.
   generated-code execution on the host. Session deletion, not archival,
   releases execution resources. Kept Sessions support read-only resume and
   require explicit cleanup. Docker is not a hostile multi-tenant security claim.
-- Acceptance requires an observed failing check, an `end_turn` idle boundary,
-  one bounded published artifact, and passing independent tests. A real-service
-  harness executes the exact Python program against authenticated HTTP,
-  PostgreSQL, Temporal, NATS, MinIO, and Docker; deterministic tests also inject
-  a disconnected stream and restart the client without resubmitting the task.
-  The opt-in real-model SDK journey passed on 2026-08-31. This is scenario
-  evidence, not a general model-reliability or production-readiness claim.
+- The example accepts an observed failing check, an `end_turn` idle boundary,
+  one bounded published artifact, and passing independent calculator checks.
+  Its real-model Docker-backed journey passed on 2026-08-31 during the work
+  recorded in [PR #188](https://github.com/yanpgwang/mango/pull/188). This is
+  scenario evidence, not a general model-reliability or production-readiness claim.
+- Mango deliberately separates cookbook applications from system tests. The
+  example connects to a running deployment through the public SDK; it is not
+  launched by Temporal tests or a dedicated example CI harness. System tests
+  own their runtime/recovery assertions, setup, and fixtures. A few duplicated
+  calculator inputs are preferable to coupling internal tests to a tutorial.
 - The runtime loop remains server-owned. No hosted credentials, helper DSL,
-  public SDK runner, API change, or storage migration was adopted. The existing
-  internal durable scenario and the public SDK example share fixtures, while
-  retaining separate verification of runtime and application boundaries.
+  public SDK runner, API change, or storage migration was adopted.
 
 ## Human-in-the-loop custom-tool gate
 
