@@ -18,29 +18,64 @@ scheduling, and sandboxes.
 | Python | `mango-sdk` (import `mango_sdk`) | [Python SDK](https://github.com/yanpgwang/mango/tree/main/sdk/python) |
 | TypeScript / JavaScript | `mango-sdk` | [TypeScript SDK](https://github.com/yanpgwang/mango/tree/main/sdk/typescript) |
 
+Start with the [multi-language quickstart](getting-started.md), or read the
+language-specific guides: [Go](sdk/go.md), [Python](sdk/python.md), and
+[TypeScript / JavaScript](sdk/typescript.md).
+
+## Install an alpha
+
 The packages cover the current OpenAPI operation inventory, including Memory,
 Skills, Files, multi-agent Threads and Environment Work. Coverage means API
 access, not an expansion of the [server capabilities](capabilities.md).
-These are alpha SDKs; a stable SDK contract has not been established. The package
-READMEs document exact-version registry installation for published versions
-and local installation from this checkout. Release preparation is tracked in
-the [release guide](https://github.com/yanpgwang/mango/blob/main/sdk/RELEASING.md).
-Package metadata does not by itself confirm a registry release. Match the SDK
-version to the server revision you deploy.
+These are alpha SDKs; a stable SDK contract has not been established. Match the
+SDK version to the server revision you deploy.
 
-The TypeScript/JavaScript alpha is published on
-[npm](https://www.npmjs.com/package/mango-sdk/v/0.1.0-alpha.1):
+Python and TypeScript/JavaScript are published on
+[PyPI](https://pypi.org/project/mango-sdk/0.1.0a1/) and
+[npm](https://www.npmjs.com/package/mango-sdk/v/0.1.0-alpha.1). Install by exact
+version; Go has no independently tagged release yet and uses source installation.
 
-```sh
+```sh tab="TypeScript" tab-group="mango-language"
 npm install mango-sdk@0.1.0-alpha.1
 ```
 
-The Python alpha is published on
-[PyPI](https://pypi.org/project/mango-sdk/0.1.0a1/). With Python 3.11 or newer,
-install it in a virtual environment:
+```sh tab="Python" tab-group="mango-language"
+python3 -m venv .venv
+.venv/bin/python -m pip install 'mango-sdk==0.1.0a1'
+```
 
-```sh
-python -m pip install 'mango-sdk==0.1.0a1'
+The TypeScript package includes compiled JavaScript and declarations; consuming
+it does not require building the SDK. The alpha is not a stable release even if
+npm displays it under `latest`. See the
+[release record](https://github.com/yanpgwang/mango/blob/main/sdk/releases/0.1.0-alpha.1.md)
+for verified artifacts and the
+[release guide](https://github.com/yanpgwang/mango/blob/main/sdk/RELEASING.md)
+for the publishing process. Package metadata alone is not evidence of publication.
+
+## Install from source
+
+Use source installation when developing against this checkout, running the
+repository examples, or using the Go SDK before a tagged release. Run from the
+Mango repository root unless a command says to use your application directory.
+
+```sh tab="TypeScript" tab-group="mango-language"
+npm --prefix sdk/typescript ci
+npm --prefix sdk/typescript run build
+# Then, in your application directory:
+npm install /absolute/path/to/mango/sdk/typescript
+```
+
+```sh tab="Python" tab-group="mango-language"
+python3 -m venv .venv
+.venv/bin/python -m pip install ./sdk/python
+```
+
+```sh tab="Go" tab-group="mango-language"
+# In your application module (run go mod init first if needed):
+go mod edit -require=github.com/yanpgwang/mango/sdk/go@v0.0.0
+go mod edit -replace=github.com/yanpgwang/mango/sdk/go=/absolute/path/to/mango/sdk/go
+# Add your Mango import before running tidy.
+go mod tidy
 ```
 
 ## Authentication and errors
@@ -79,6 +114,12 @@ HTTP conformance exercises real Mango handlers with test-only storage and
 model implementations. Service recovery and real-model workflows remain
 separate validation tiers.
 
-The SDKs and code samples do not depend on a documentation-site framework.
-A future documentation migration can reuse the OpenAPI document and samples
-without changing the server or clients.
+The SDKs do not depend on the documentation framework. Fumadocs includes named
+regions from the runnable quickstart files under each SDK's `examples/`
+directory; it does not maintain a second copy of those snippets. `sdk-test`
+checks their language types, and `sdk-conformance` runs those exact files against
+Mango's HTTP handlers with deterministic test-only repositories and model behavior.
+
+The API reference keeps HTTP routes, request/response schemas, and lifecycle
+constraints visible. SDK tabs explain how to invoke that same contract, not a
+second contract or a promise that every server capability is production-ready.

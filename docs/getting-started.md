@@ -12,8 +12,8 @@ message through the full environment → agent → session → event flow.
 ## Requirements
 
 - Docker with Compose
-- `curl`
-- `jq` for the shell examples
+- Go 1.24+, Python 3.11+, or Node.js 22+ for the selected SDK
+- `curl` for the readiness check; `jq` for the HTTP-only example
 
 ## Run the server
 
@@ -40,100 +40,135 @@ for the protected examples below:
 export MANGO_API_KEY=sk-mango-local-development
 ```
 
-## Create an environment
+## Choose a client
 
-Environment records identify where sandbox-routed tools run. A `cloud` record
-routes them to the Temporal worker:
+The examples below show the same workflow in TypeScript, Python, Go, and HTTP.
+The selected language is shared across code groups. Python and TypeScript have
+[published alpha packages](sdk.md#install-an-alpha); Go currently uses source
+installation. These SDKs do not yet have a stable API contract. The HTTP variant
+needs `curl` and `jq`.
 
-```bash
-ENV_ID=$(
-  curl -sS http://localhost:8080/v1/environments \
-    -H "Authorization: Bearer $MANGO_API_KEY" \
-    -H 'content-type: application/json' \
-    -d '{"name":"local","config":{"type":"cloud"}}' |
-  jq -r .id
-)
+The complete repository examples below install/build the SDK from this checkout
+so it matches the server source. Run them from the repository root. For your own
+application, use the published alpha or [install from source](sdk.md#install-from-source).
+
+```sh tab="TypeScript" tab-group="mango-language"
+npm --prefix sdk/typescript ci
+npm --prefix sdk/typescript run build
+node --experimental-strip-types sdk/typescript/examples/quickstart.ts
 ```
 
-With `{"type":"self_hosted"}`, built-in calls instead park for a client
-`user.tool_result`.
+```sh tab="Python" tab-group="mango-language"
+python3 -m venv .venv
+.venv/bin/python -m pip install ./sdk/python
+.venv/bin/python sdk/python/examples/quickstart.py
+```
+
+```sh tab="Go" tab-group="mango-language"
+(cd sdk/go && go run ./examples/quickstart)
+```
+
+```sh tab="HTTP" tab-group="mango-language"
+bash examples/sdk-quickstart.sh
+```
+
+Each complete example creates its own resources and cleans them up on exit.
+The following sections explain excerpts from those exact executable files; they
+share variables and are not separate standalone programs. In Go, the excerpts
+run inside a function returning `error`; the full file includes its imports.
+
+### Configure the client
+
+`MANGO_BASE_URL` defaults to `http://localhost:8080`. Do not append `/v1`.
+The Workspace key authenticates to Mango, not to the model provider.
+
+::include[../sdk/typescript/examples/quickstart.ts#client]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../sdk/python/examples/quickstart.py#client]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../sdk/go/examples/quickstart/main.go#client]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../examples/sdk-quickstart.sh#client]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
+
+## Create an environment
+
+A cloud Environment routes sandbox tools to the Mango worker. A
+`self_hosted` Environment instead parks built-in calls for a client's
+`user.tool_result`; it is not required for ordinary self-hosted Mango deployment.
+
+::include[../sdk/typescript/examples/quickstart.ts#environment]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../sdk/python/examples/quickstart.py#environment]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../sdk/go/examples/quickstart/main.go#environment]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../examples/sdk-quickstart.sh#environment]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
 
 ## Create an agent
 
-```bash
-AGENT_ID=$(
-  curl -sS http://localhost:8080/v1/agents \
-    -H "Authorization: Bearer $MANGO_API_KEY" \
-    -H 'content-type: application/json' \
-    -d '{
-      "name": "Example agent",
-      "model": "offline-fake",
-      "system": "Be concise."
-    }' |
-  jq -r .id
-)
-```
+The offline stack uses `offline-fake`. Agents are versioned; each Session keeps
+the resolved definition captured at creation.
 
-An agent is versioned. Updating it creates a new version; sessions retain the
-resolved version and configuration captured at creation time.
+::include[../sdk/typescript/examples/quickstart.ts#agent]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../sdk/python/examples/quickstart.py#agent]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../sdk/go/examples/quickstart/main.go#agent]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../examples/sdk-quickstart.sh#agent]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
 
 ## Create a session
 
-```bash
-SESSION_ID=$(
-  curl -sS http://localhost:8080/v1/sessions \
-    -H "Authorization: Bearer $MANGO_API_KEY" \
-    -H 'content-type: application/json' \
-    -d "{
-      \"agent\": \"$AGENT_ID\",
-      \"environment_id\": \"$ENV_ID\",
-      \"title\": \"First session\"
-    }" |
-  jq -r .id
-)
+Creating the Session without initial events does not start a model turn.
+
+::include[../sdk/typescript/examples/quickstart.ts#session]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../sdk/python/examples/quickstart.py#session]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../sdk/go/examples/quickstart/main.go#session]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../examples/sdk-quickstart.sh#session]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
+
+## Send a message and observe the turn
+
+Sending an event admits durable work; the response contains accepted input,
+not the eventual agent reply. The SDK variants subscribe **before** sending,
+then wait for `session.status_idle` with `stop_reason.type = end_turn`.
+The HTTP-only variant polls persisted history for this fresh Session's first turn.
+
+::include[../sdk/typescript/examples/quickstart.ts#stream]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../sdk/python/examples/quickstart.py#stream]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../sdk/go/examples/quickstart/main.go#stream]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../examples/sdk-quickstart.sh#stream]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
+
+The examples fail if the stream ends early or the turn needs attention.
+They do not blindly retry a message after an ambiguous network failure. For an
+existing or reconnected Session, [open a stream and reconcile history](api/events.md#stream-events)
+before deciding whether to send again. Preview deltas are ephemeral, not durable output.
+
+## Read persisted history
+
+SDK iterators follow pagination. With raw HTTP, follow `next_page` until it is
+null; the first-turn example is small enough for one page.
+
+::include[../sdk/typescript/examples/quickstart.ts#history]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../sdk/python/examples/quickstart.py#history]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../sdk/go/examples/quickstart/main.go#history]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../examples/sdk-quickstart.sh#history]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
+
+To inspect live events with raw HTTP, open this in a separate terminal **before**
+sending the next message; substitute the ID of a Session you have kept alive:
+
+```sh
+curl -N -H "Authorization: Bearer $MANGO_API_KEY" \
+  "http://localhost:8080/v1/sessions/$SESSION_ID/events/stream"
 ```
-
-## Send a message
-
-```bash
-curl -sS "http://localhost:8080/v1/sessions/$SESSION_ID/events" \
-  -H "Authorization: Bearer $MANGO_API_KEY" \
-  -H 'content-type: application/json' \
-  -d '{
-    "events": [{
-      "type": "user.message",
-      "content": [{"type":"text","text":"hello"}]
-    }]
-  }' | jq
-```
-
-Sending an event admits durable work and returns the accepted input events. The
-agent response is asynchronous. Poll history:
-
-```bash
-curl -sS \
-  -H "Authorization: Bearer $MANGO_API_KEY" \
-  "http://localhost:8080/v1/sessions/$SESSION_ID/events?order=asc" |
-  jq
-```
-
-A completed turn includes `agent.message` followed by
-`session.status_idle`.
-
-## Stream events
-
-Open the stream before sending the next message:
-
-```bash
-curl -N \
-  -H "Authorization: Bearer $MANGO_API_KEY" \
-  "http://localhost:8080/v1/sessions/$SESSION_ID/events/stream?event_deltas%5B%5D=agent.message"
-```
-
-The opt-in adds ephemeral `event_start` and `event_delta` frames while text is
-generated. The final `agent.message` is authoritative and persisted; preview
-frames are not. NATS carries low-latency wakeups and previews, while every
-persisted event is reconciled from PostgreSQL by sequence.
 
 ## Use a real model endpoint
 

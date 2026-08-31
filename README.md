@@ -152,6 +152,7 @@ including local source setup. No hosted agent service is required.
 | I want to… | Read |
 | --- | --- |
 | Run my first agent session | [Getting started](https://yanpgwang.github.io/mango/getting-started) |
+| Use Go, Python, or TypeScript | [SDK guides and installation](https://yanpgwang.github.io/mango/sdk) |
 | Explore Mango in a terminal UI | [Terminal UI example](https://yanpgwang.github.io/mango/examples/terminal-ui) |
 | Connect a real model endpoint | [Use a real model endpoint](https://yanpgwang.github.io/mango/getting-started#use-a-real-model-endpoint) |
 | Choose an execution backend | [Sandbox backends](https://yanpgwang.github.io/mango/sandboxes) |

@@ -1,5 +1,6 @@
 ---
 title: Mango
+description: A self-hosted runtime for durable AI agents.
 slug: /
 sidebar_label: Overview
 sidebar_position: 1
@@ -12,7 +13,7 @@ written in Go. It persists server-owned sessions, delegates inference to a
 configured model endpoint, executes tools in replaceable sandboxes, and exposes
 its own HTTP API for durable agent work.
 
-:::caution[Experimental project]
+:::warning[Experimental project]
 
 This is a pre-release project with no customers and no supported stable API.
 `/v1` is the single development API namespace. Routes, fields, schemas, and
@@ -28,6 +29,8 @@ workflow, and do not treat the default local sandbox as a security boundary.
 
 - Server-owned **Agents, Environments, Sessions, and Events** over a `/v1` HTTP
   API, with cursor pagination and SSE streaming.
+- First-party **Go, Python, and TypeScript/JavaScript SDKs**, with a
+  [multi-language quickstart](getting-started.md) and [language guides](sdk.md).
 - A durable **model-and-tool loop**: multi-round inference, custom-tool and
   confirmation waits, single- and multi-Thread interrupts, and outcome
   evaluation.
@@ -49,7 +52,8 @@ The default deployment separates API and worker roles around three backends:
   are repaired from PostgreSQL sequence cursors.
 
 The local Compose stack runs this complete architecture with a deterministic
-offline model and needs no credentials. The runtime and its native API are the
+offline model and needs no external model credentials; examples use a documented
+development-only Mango Workspace key. The runtime and its native API are the
 product. External contracts may supply useful routes, resource models, schemas,
 events, and public SDK types that Mango intentionally reuses or adapts. The
 adopted result is Mango-owned: Mango's own documentation, OpenAPI definition,
@@ -59,6 +63,7 @@ implementation, and tests define current behavior and may evolve independently.
 
 - **[Get started](getting-started.md)** — run the full stack and complete a
   first Session turn.
+- **[SDKs](sdk.md)** — install a client and work in your preferred language.
 - **[Product direction](product.md)** — what Mango optimizes for and how work is
   selected.
 - **[Concepts](architecture.md)** — how the server owns history, and how

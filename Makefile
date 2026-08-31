@@ -185,7 +185,7 @@ sdk-test: sdk-check
 
 sdk-conformance:
 	npm --prefix sdk/typescript run build
-	MANGO_TEST_SDK=1 $(GO) test ./internal/httpapi -run '^TestFirstPartySDKHTTPConformance$$' -count=1 -v
+	MANGO_TEST_SDK=1 $(GO) test ./internal/httpapi -run '^Test(FirstPartySDKHTTPConformance|DocumentationSDKQuickstart)$$' -count=1 -v
 
 security:
 	$(GOVULNCHECK) ./...
@@ -195,6 +195,7 @@ security:
 docs-check:
 	npm --prefix website ci
 	npm --prefix website run typecheck
+	npm --prefix website test
 	npm --prefix website run build
 
 dev-env-init:

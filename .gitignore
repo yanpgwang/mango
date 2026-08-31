@@ -16,9 +16,11 @@
 /vendor/
 /bin/
 /website/node_modules/
-/website/build/
-/website/.docusaurus/
-/website/.cache-loader/
+/website/out/
+/website/.next/
+/website/.source/
+/website/next-env.d.ts
+/website/tsconfig.tsbuildinfo
 
 # Editor/OS
 .DS_Store
