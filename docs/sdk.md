@@ -12,18 +12,21 @@ scheduling, and sandboxes.
 
 ## Packages
 
-| Language | Source, local installation and examples |
-| --- | --- |
-| Go | [Go SDK](https://github.com/yanpgwang/mango/tree/main/sdk/go) |
-| Python | [Python SDK](https://github.com/yanpgwang/mango/tree/main/sdk/python) |
-| TypeScript / JavaScript | [TypeScript SDK](https://github.com/yanpgwang/mango/tree/main/sdk/typescript) |
+| Language | Package / module | Installation and examples |
+| --- | --- | --- |
+| Go | `github.com/yanpgwang/mango/sdk/go` | [Go SDK](https://github.com/yanpgwang/mango/tree/main/sdk/go) |
+| Python | `mango-sdk` (import `mango_sdk`) | [Python SDK](https://github.com/yanpgwang/mango/tree/main/sdk/python) |
+| TypeScript / JavaScript | `mango-sdk` | [TypeScript SDK](https://github.com/yanpgwang/mango/tree/main/sdk/typescript) |
 
 The packages cover the current OpenAPI operation inventory, including Memory,
 Skills, Files, multi-agent Threads and Environment Work. Coverage means API
 access, not an expansion of the [server capabilities](capabilities.md).
-These are pre-release source packages; registry releases and a stable SDK
-contract have not been established. Install locally as the package README
-describes.
+These are alpha SDKs; a stable SDK contract has not been established. The package
+READMEs document exact-version registry installation for published candidates
+and local installation from this checkout. Release preparation is tracked in
+the [release guide](https://github.com/yanpgwang/mango/blob/main/sdk/RELEASING.md).
+Package metadata does not by itself confirm a registry release. Match the SDK
+version to the server revision you deploy.
 
 ## Authentication and errors
 

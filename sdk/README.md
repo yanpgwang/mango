@@ -14,10 +14,14 @@ Environments, Environment Work, Sessions, Events, Threads, Resources, Files,
 Skills, Memory, Vaults, Webhooks, Deployments and public diagnostics. An SDK
 method does not remove a server capability restriction.
 
-The SDKs are pre-release source packages. Package names in the language READMEs
-are local development names, not a claim of publication to PyPI, npm or a
-versioned Go release. Install from this checkout. There is no third-party SDK
-compatibility promise or independently stable SDK API.
+Python and TypeScript use the distribution name `mango-sdk`. Python imports
+`mango_sdk`; TypeScript imports `mango-sdk`. Their initial release candidates are
+`0.1.0a1` (Python) and `0.1.0-alpha.1` (npm, under the `alpha` dist-tag).
+The Go module remains `github.com/yanpgwang/mango/sdk/go`, without an independent
+version tag. Source installation remains available for every language.
+There is no third-party SDK compatibility promise or independently stable SDK
+API. See [release preparation and verification](RELEASING.md) for the first
+registry release; candidate metadata alone does not mean a package is published.
 
 ## One contract, three packages
 

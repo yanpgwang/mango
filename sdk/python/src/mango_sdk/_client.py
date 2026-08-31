@@ -12,6 +12,7 @@ import httpx
 from ._errors import APIError, PaginationError, ResponseDecodeError, read_api_error, read_async_api_error
 from ._streaming import AsyncBinaryStream, AsyncSSEStream, BinaryStream, SSEStream
 from ._types import NOT_GIVEN, NotGiven, Upload
+from ._version import __version__
 
 
 def _url(base_url: str, path: str, values: Mapping[str, Any]) -> str:
@@ -165,7 +166,7 @@ class BaseClient(_RequestBuilder):
         self._stream_timeout = stream_timeout or httpx.Timeout(30.0, read=None)
         self._http = httpx.Client(
             timeout=timeout, transport=transport, follow_redirects=False,
-            headers={"User-Agent": "mango-agent-sdk-python/0.1.0"},
+            headers={"User-Agent": f"mango-sdk-python/{__version__}"},
         )
 
     def __enter__(self) -> BaseClient:
@@ -234,7 +235,7 @@ class AsyncBaseClient(_RequestBuilder):
         self._stream_timeout = stream_timeout or httpx.Timeout(30.0, read=None)
         self._http = httpx.AsyncClient(
             timeout=timeout, transport=transport, follow_redirects=False,
-            headers={"User-Agent": "mango-agent-sdk-python/0.1.0"},
+            headers={"User-Agent": f"mango-sdk-python/{__version__}"},
         )
 
     async def __aenter__(self) -> AsyncBaseClient:

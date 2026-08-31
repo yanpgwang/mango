@@ -1,4 +1,4 @@
-import { Mango, type Agent, type AgentCreateRequest, type SessionEvent, type FileUploadRequest, type EventStream, type EventStreamFrame } from '../src/index.js';
+import { Mango, type Agent, type AgentCreateRequest, type SessionEvent, type FileUploadRequest, type EventStream, type EventStreamFrame } from 'mango-sdk';
 
 const client = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only' });
 const body: AgentCreateRequest = { name: 'analyst', model: 'model', system: null, tools: [] };

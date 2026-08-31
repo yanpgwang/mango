@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 from collections.abc import AsyncIterator, Iterator
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, get_type_hints
 
@@ -20,6 +21,7 @@ from mango_sdk import (
     PaginationError,
     ResponseDecodeError,
     Upload,
+    __version__,
     models,
 )
 from mango_sdk._generated import OPERATIONS
@@ -27,6 +29,23 @@ from mango_sdk._generated import OPERATIONS
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = json.loads((ROOT.parent / "operations.json").read_text())
 OPERATION_BY_ID = {item["id"]: item for item in MANIFEST["operations"]}
+
+
+def test_distribution_name_version_and_user_agent() -> None:
+    assert version("mango-sdk") == __version__
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.headers["User-Agent"] == f"mango-sdk-python/{__version__}"
+        return httpx.Response(200, json={"id": "agent_test"})
+
+    with Mango(transport=httpx.MockTransport(handle)) as client:
+        assert client.get_agent("agent_test")["id"] == "agent_test"
+
+    async def run() -> None:
+        async with AsyncMango(transport=httpx.MockTransport(handle)) as client:
+            assert (await client.get_agent("agent_test"))["id"] == "agent_test"
+
+    asyncio.run(run())
 
 
 class Chunks(httpx.SyncByteStream):

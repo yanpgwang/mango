@@ -5,13 +5,25 @@ and 279 schema types. It uses native `fetch`, supports Node.js 22+, and has no
 runtime dependencies. JavaScript uses the same package; TypeScript gets generated
 request/response types and discriminated event unions.
 
-This is a local, pre-release package, not a published npm release. Its contract is
-Mango's `/v1`; it does not use hosted agent services or provider SDKs. Deployment,
+The npm package is `mango-sdk`. This is an alpha SDK with no stable API contract.
+Its contract is Mango's `/v1`; it does not use hosted agent services or provider SDKs. Deployment,
 Memory, Files, Skills, Vaults, Webhooks, self-hosted Work, Threads, and all other
 documented resources are included. Wrapping a route does not enable a server
 capability that the operator has not configured.
 
-## Build and install locally
+## Install
+
+For a published alpha version, install by its exact version:
+
+```sh
+npm install mango-sdk@0.1.0-alpha.1
+```
+
+The release uses the `alpha` dist-tag rather than `latest`. Registry packages
+include compiled JavaScript and type declarations; consumers do not need to
+compile the SDK. Use an SDK version built for your Mango server revision.
+
+### Build and install from source
 
 From this directory:
 
@@ -33,7 +45,7 @@ building. CommonJS `require` is not a supported entry point.
 ## Create an Agent and Session
 
 ```ts
-import { Mango } from '@mango-agents/sdk';
+import { Mango } from 'mango-sdk';
 
 const client = new Mango({
   baseURL: process.env.MANGO_BASE_URL ?? 'http://localhost:8080',
@@ -73,7 +85,7 @@ await client.updateAgent({ agent_id: agent.id, body: { system: null, tools: [] }
 ## Pagination and errors
 
 ```ts
-import { APIError } from '@mango-agents/sdk';
+import { APIError } from 'mango-sdk';
 
 for await (const item of client.listSessionsItems({
   'statuses[]': ['idle', 'running'],

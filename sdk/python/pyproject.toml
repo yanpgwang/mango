@@ -3,20 +3,36 @@ requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mango-agent-sdk"
-version = "0.1.0"
+name = "mango-sdk"
+version = "0.1.0a1"
 description = "Typed synchronous and asynchronous client for the Mango development API"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = ["httpx>=0.28.1,<0.29"]
+keywords = ["mango", "agents", "sdk", "self-hosted"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/yanpgwang/mango"
+Documentation = "https://yanpgwang.github.io/mango/sdk"
+Repository = "https://github.com/yanpgwang/mango/tree/main/sdk/python"
+Issues = "https://github.com/yanpgwang/mango/issues"
 
 [dependency-groups]
 dev = ["pytest==8.4.2", "mypy==1.18.2", "ruff==0.13.3"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mango_sdk"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/mango_sdk", "pyproject.toml", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
