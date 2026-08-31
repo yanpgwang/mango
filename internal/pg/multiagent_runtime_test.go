@@ -558,6 +558,15 @@ func TestCoordinatorCanAcceptChildReport(t *testing.T) {
 }
 
 func TestChildPendingActionCrossPostsAndRoutesResolution(t *testing.T) {
+	runChildPendingActionRouting(t, false)
+}
+
+func TestChildExternalApprovalCrossPostsAndRoutesResolution(t *testing.T) {
+	runChildPendingActionRouting(t, true)
+}
+
+func runChildPendingActionRouting(t *testing.T, external bool) {
+	t.Helper()
 	store := testStore(t)
 	ctx := context.Background()
 	session := newSession("sesn_child_pending_route")
@@ -664,6 +673,9 @@ func TestChildPendingActionCrossPostsAndRoutesResolution(t *testing.T) {
 				"type": "requires_action", "event_ids": []string{actionID, customActionID},
 			}},
 		},
+	}
+	if external {
+		childPendingDrafts[0].Payload[domain.InternalToolExecutionOwner] = "self_hosted"
 	}
 	parked, err := store.CompleteThreadWorkflowTurn(
 		ctx, session.ID, child.ID, childTrigger.ID,
@@ -811,6 +823,24 @@ func TestChildPendingActionCrossPostsAndRoutesResolution(t *testing.T) {
 		confirmation.Payload["session_thread_id"] != child.ID {
 		t.Fatalf("routed confirmation = %+v", confirmation)
 	}
+	if external {
+		child, err = store.GetSessionThread(ctx, session.ID, child.ID)
+		if err != nil || child.Status != domain.StatusIdle || admitted.Enqueued {
+			t.Fatalf("external approval reopened child: child=%+v admission=%+v err=%v", child, admitted, err)
+		}
+		pending, err := store.UnresolvedThreadPendingActions(ctx, session.ID, child.ID)
+		if err != nil || pending[0].ApprovalEventID == nil || *pending[0].ApprovalEventID != confirmation.ID {
+			t.Fatalf("external approval receipt not persisted on child: %+v err=%v", pending, err)
+		}
+		admitted, err = store.AdmitEvents(ctx, session.ID, []domain.EventDraft{externalResult(clientAction.ID)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		confirmation = eventOfType(t, admitted.Events, domain.EvUserToolResult)
+		if confirmation.ThreadID != child.ID || confirmation.Payload["session_thread_id"] != child.ID {
+			t.Fatalf("external result routed incorrectly: %+v", confirmation)
+		}
+	}
 	child, err = store.GetSessionThread(ctx, session.ID, child.ID)
 	if err != nil || child.Status != domain.StatusRunning ||
 		admitted.Session.Status != domain.StatusRunning {
@@ -818,19 +848,24 @@ func TestChildPendingActionCrossPostsAndRoutesResolution(t *testing.T) {
 	}
 
 	report := []any{map[string]any{"type": "text", "text": "Approved check complete."}}
-	resumed, err := store.CompleteThreadWorkflowTurn(
-		ctx, session.ID, child.ID, confirmation.ID,
-		[]domain.EventDraft{
-			{Type: domain.EvAgentToolResult, Payload: map[string]any{
+	output := []domain.EventDraft{
+		{Type: domain.EvAgentMessage, Payload: map[string]any{"content": report}},
+		{Type: domain.EvSessionThreadStatusIdle, Payload: map[string]any{
+			"stop_reason": map[string]any{"type": "end_turn"},
+		}},
+	}
+	if !external {
+		output = append([]domain.EventDraft{{
+			Type: domain.EvAgentToolResult, Payload: map[string]any{
 				"tool_use_id": actionID,
 				"content":     []any{map[string]any{"type": "text", "text": "/workspace"}},
 				"is_error":    false,
-			}},
-			{Type: domain.EvAgentMessage, Payload: map[string]any{"content": report}},
-			{Type: domain.EvSessionThreadStatusIdle, Payload: map[string]any{
-				"stop_reason": map[string]any{"type": "end_turn"},
-			}},
-		},
+			},
+		}}, output...)
+	}
+	resumed, err := store.CompleteThreadWorkflowTurn(
+		ctx, session.ID, child.ID, confirmation.ID,
+		output,
 		domain.StatusIdle, "", "", nil, nil,
 		[]string{customResult.ID, confirmation.ID}, nil, nil, domain.TokenUsage{},
 	)

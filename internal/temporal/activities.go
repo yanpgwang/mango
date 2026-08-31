@@ -1604,6 +1604,25 @@ func (a *Activities) prepareResumeActions(
 			return nil, err
 		}
 		kind, ok := domain.PendingActionKindForEvent(action.Type, action.Payload)
+		var approvalSequence int64
+		if row.ApprovalEventID != nil {
+			if !ok || kind != domain.PendingToolConfirmation ||
+				row.Kind != domain.PendingToolResult || !domain.IsSelfHostedToolCall(action.Type, action.Payload) {
+				return nil, domain.Validation("approval does not match an external pending action")
+			}
+			approval, err := a.source.GetEvent(ctx, sessionID, *row.ApprovalEventID)
+			if err != nil {
+				return nil, err
+			}
+			ref, approvalKind, valid := domain.ResolutionReference(approval.Type, approval.Payload)
+			if !valid || approvalKind != domain.PendingToolConfirmation || approval.Payload["result"] != "allow" ||
+				(ref != action.ID && ref != row.ClientActionEventID) || approval.ThreadID != row.ThreadID ||
+				approval.ProcessedAt == nil || approval.Sequence <= action.Sequence {
+				return nil, domain.Validation("external tool has no valid committed approval")
+			}
+			kind = domain.PendingToolResult
+			approvalSequence = approval.Sequence
+		}
 		if !ok || kind != row.Kind {
 			return nil, domain.Validation("pending action no longer matches its server event")
 		}
@@ -1618,6 +1637,9 @@ func (a *Activities) prepareResumeActions(
 		resolution, err := a.source.GetEvent(ctx, sessionID, resolutionID)
 		if err != nil {
 			return nil, err
+		}
+		if row.ApprovalEventID != nil && resolution.Sequence <= approvalSequence {
+			return nil, domain.Validation("external tool result predates its approval")
 		}
 		refID, refKind, ok := domain.ResolutionReference(resolution.Type, resolution.Payload)
 		expectedClientID := row.ClientActionEventID
@@ -1643,6 +1665,9 @@ func (a *Activities) prepareResumeActions(
 			ToolName:          name,
 			Input:             input,
 			ResolutionEventID: resolution.ID,
+		}
+		if row.ApprovalEventID != nil {
+			resume.Confirmation = "allow"
 		}
 		switch row.Kind {
 		case domain.PendingCustomToolResult, domain.PendingToolResult:

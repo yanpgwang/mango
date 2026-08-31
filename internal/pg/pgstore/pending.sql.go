@@ -11,6 +11,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const approveExternalPendingAction = `-- name: ApproveExternalPendingAction :execrows
+UPDATE pending_actions
+SET kind = 'tool_result', approval_event_id = $1
+WHERE session_id = $2 AND id = $3
+  AND kind = 'tool_confirmation'
+  AND approval_event_id IS NULL
+  AND resolving_event_id IS NULL AND resolved_at IS NULL
+`
+
+type ApproveExternalPendingActionParams struct {
+	ApprovalEventID *string
+	SessionID       string
+	ID              string
+}
+
+func (q *Queries) ApproveExternalPendingAction(ctx context.Context, arg ApproveExternalPendingActionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, approveExternalPendingAction, arg.ApprovalEventID, arg.SessionID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimPendingAction = `-- name: ClaimPendingAction :execrows
 UPDATE pending_actions
 SET resolving_event_id = $1
@@ -36,7 +59,7 @@ func (q *Queries) ClaimPendingAction(ctx context.Context, arg ClaimPendingAction
 
 const getPendingActionForUpdate = `-- name: GetPendingActionForUpdate :one
 SELECT id, session_id, thread_id, action_event_id, client_action_event_id,
-       kind, resolving_event_id, created_at, resolved_at
+       kind, approval_event_id, resolving_event_id, created_at, resolved_at
 FROM pending_actions
 WHERE session_id = $1
   AND (
@@ -58,6 +81,7 @@ type GetPendingActionForUpdateRow struct {
 	ActionEventID       string
 	ClientActionEventID string
 	Kind                string
+	ApprovalEventID     *string
 	ResolvingEventID    *string
 	CreatedAt           pgtype.Timestamptz
 	ResolvedAt          pgtype.Timestamptz
@@ -73,6 +97,7 @@ func (q *Queries) GetPendingActionForUpdate(ctx context.Context, arg GetPendingA
 		&i.ActionEventID,
 		&i.ClientActionEventID,
 		&i.Kind,
+		&i.ApprovalEventID,
 		&i.ResolvingEventID,
 		&i.CreatedAt,
 		&i.ResolvedAt,
@@ -193,7 +218,7 @@ func (q *Queries) IsUnresolvedPendingResolution(ctx context.Context, arg IsUnres
 
 const listUnresolvedPendingActions = `-- name: ListUnresolvedPendingActions :many
 SELECT id, session_id, thread_id, action_event_id, client_action_event_id,
-       kind, resolving_event_id, created_at, resolved_at
+       kind, approval_event_id, resolving_event_id, created_at, resolved_at
 FROM pending_actions
 WHERE session_id = $1
   AND thread_id = $2
@@ -213,6 +238,7 @@ type ListUnresolvedPendingActionsRow struct {
 	ActionEventID       string
 	ClientActionEventID string
 	Kind                string
+	ApprovalEventID     *string
 	ResolvingEventID    *string
 	CreatedAt           pgtype.Timestamptz
 	ResolvedAt          pgtype.Timestamptz
@@ -234,6 +260,7 @@ func (q *Queries) ListUnresolvedPendingActions(ctx context.Context, arg ListUnre
 			&i.ActionEventID,
 			&i.ClientActionEventID,
 			&i.Kind,
+			&i.ApprovalEventID,
 			&i.ResolvingEventID,
 			&i.CreatedAt,
 			&i.ResolvedAt,

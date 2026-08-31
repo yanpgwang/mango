@@ -78,6 +78,33 @@ result returns `409` and commits none of the failing request. If a client loses
 the HTTP response, it should list persisted events and correlate the action ID
 before retrying rather than assuming the result was rejected.
 
+### Approve externally executed tools
+
+Execution location does not change permission policy. A self-hosted built-in
+with `always_ask` emits `agent.tool_use` with `evaluated_permission: "ask"` and
+waits for `user.tool_confirmation` referencing that original event ID.
+
+- `allow` authorizes the external worker to execute the original call. Mango
+  persists the approval and stamps its `processed_at` on admission, but keeps
+  the action unresolved; the waiting Thread does not resume until its complete
+  result barrier is ready, including this call's `user.tool_result`.
+  The result uses the same `tool_use_id`; no replacement tool-use event is emitted.
+- `deny` resolves the call without external execution or a client tool result.
+  When the complete barrier is ready, Mango gives the model a correlated error
+  result, including any `deny_message`. It never executes the denied tool.
+- A result before approval, or after denial, is rejected with `400`. Repeated
+  approvals and duplicate results return `409`. A failed batch commits nothing;
+  approval/result validation follows the submitted event order.
+
+Workers must wait for a committed allow before executing, and must never
+interpret approval as completion. After reconnecting, reconcile the original
+tool use, confirmation, and result from history. For a cross-posted child call,
+the confirmation and result live in the owning Thread's history, both routed
+using the original client-visible ID. Unapproved calls remain blocked, and an
+existing result must not be blindly executed again. Workspace keys authorize
+trusted workers; Mango does not sandbox application-side execution or guarantee
+exactly-once external side effects.
+
 The barrier lives in PostgreSQL and is selected before ordinary queued input.
 Worker or API replacement does not discard it, and a message accepted during
 the wait cannot overtake the complete result round. See the

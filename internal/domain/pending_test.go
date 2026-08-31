@@ -13,6 +13,9 @@ func TestPendingActionKindForEvent(t *testing.T) {
 		// agent.tool_use parks only when its evaluated permission is "ask".
 		{EvAgentToolUse, map[string]any{"evaluated_permission": "ask"}, PendingToolConfirmation, true},
 		{EvAgentToolUse, map[string]any{InternalToolExecutionOwner: "self_hosted", "evaluated_permission": "allow"}, PendingToolResult, true},
+		{EvAgentToolUse, map[string]any{InternalToolExecutionOwner: "self_hosted", "evaluated_permission": "ask"}, PendingToolConfirmation, true},
+		{EvAgentToolUse, map[string]any{InternalToolExecutionOwner: "self_hosted", "evaluated_permission": "deny"}, "", false},
+		{EvAgentToolUse, map[string]any{InternalToolExecutionOwner: "self_hosted"}, "", false},
 		{EvAgentToolUse, map[string]any{"evaluated_permission": "always_allow"}, "", false},
 		{EvAgentToolUse, map[string]any{"evaluated_permission": "always_deny"}, "", false},
 		{EvAgentToolUse, map[string]any{}, "", false},

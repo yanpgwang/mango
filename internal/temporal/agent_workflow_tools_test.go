@@ -202,6 +202,33 @@ func TestIndexTurnTools_PreservesFirstOwner(t *testing.T) {
 	require.Equal(t, TurnToolBuiltin, tools["read"].Kind)
 }
 
+func TestPlanToolBatch_ExternalPermissionIsIndependentOfExecutionOwner(t *testing.T) {
+	for _, policy := range []string{"always_allow", "always_ask", "unknown"} {
+		t.Run(policy, func(t *testing.T) {
+			plan, failure := planToolBatch(
+				[]domain.ContentBlock{{Type: "tool_use", ToolUseID: "provider_read", ToolName: "read"}},
+				indexTurnTools([]TurnTool{{Name: "read", Kind: TurnToolSelfHosted,
+					Permission: domain.PermissionPolicy{Type: policy}}}),
+				map[string]PlannedToolStep{"provider_read": {ToolUseEventID: "sevt_read", ToolStepID: "tstep_read"}}, true,
+			)
+			if policy == "unknown" {
+				require.NotEmpty(t, failure)
+				require.Empty(t, plan.actionDrafts)
+				return
+			}
+			require.Empty(t, failure)
+			require.Empty(t, plan.executable)
+			require.Equal(t, []string{"sevt_read"}, plan.pendingActionEventIDs)
+			want := "allow"
+			if policy == "always_ask" {
+				want = "ask"
+			}
+			require.Equal(t, want, plan.actionDrafts[0].Payload["evaluated_permission"])
+			require.True(t, domain.IsSelfHostedToolCall(plan.actionDrafts[0].Type, plan.actionDrafts[0].Payload))
+		})
+	}
+}
+
 func TestCloseInterruptedProviderToolRound_PairsEveryProviderToolUse(t *testing.T) {
 	turn := &workflowTurnState{
 		usesProviderTranscript: true,

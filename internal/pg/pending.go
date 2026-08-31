@@ -60,7 +60,7 @@ func (s *Store) routeClientDraftsLocked(
 			targetThreadID = companionThreadID
 		}
 
-		if referencedID, kind, ok := domain.ResolutionReference(
+		if referencedID, _, ok := domain.ResolutionReference(
 			draft.Type, draft.Payload,
 		); ok {
 			row, err := q.GetPendingActionForUpdate(
@@ -77,11 +77,8 @@ func (s *Store) routeClientDraftsLocked(
 			if err != nil {
 				return nil, nil, interruptWakeTargets{}, err
 			}
-			if domain.PendingActionKind(row.Kind) != kind {
-				return nil, nil, interruptWakeTargets{}, domain.Validation(
-					"resolution kind does not match the pending action",
-				)
-			}
+			// Validate response kinds while claiming in request order below. An
+			// earlier allow in this atomic batch may enable a later tool result.
 			if hinted, _ := draft.Payload["session_thread_id"].(string); hinted != "" &&
 				hinted != row.ThreadID {
 				return nil, nil, interruptWakeTargets{}, domain.Validation(
@@ -225,6 +222,7 @@ func (s *Store) UnresolvedThreadPendingActions(
 			ActionEventID:       row.ActionEventID,
 			ClientActionEventID: row.ClientActionEventID,
 			Kind:                domain.PendingActionKind(row.Kind),
+			ApprovalEventID:     row.ApprovalEventID,
 			ResolvingEventID:    row.ResolvingEventID,
 			CreatedAt:           row.CreatedAt.Time.UTC(), ResolvedAt: timePtr(row.ResolvedAt),
 		})
@@ -364,7 +362,8 @@ func (s *Store) claimPendingResolutionsLocked(
 	events []domain.Event,
 ) (bool, error) {
 	claimed := false
-	for _, event := range events {
+	for index := range events {
+		event := events[index]
 		actionEventID, kind, ok := domain.ResolutionReference(event.Type, event.Payload)
 		if !ok {
 			switch event.Type {
@@ -385,6 +384,9 @@ func (s *Store) claimPendingResolutionsLocked(
 		if err != nil {
 			return false, err
 		}
+		if kind == domain.PendingToolConfirmation && row.ApprovalEventID != nil {
+			return false, domain.Conflict("pending action already has an approval")
+		}
 		if domain.PendingActionKind(row.Kind) != kind {
 			return false, domain.Validation("resolution kind does not match the pending action")
 		}
@@ -400,6 +402,46 @@ func (s *Store) claimPendingResolutionsLocked(
 		}
 		if row.ResolvingEventID != nil {
 			return false, domain.Conflict("pending action already has a pending resolution")
+		}
+		if kind == domain.PendingToolConfirmation {
+			verdict, _ := event.Payload["result"].(string)
+			if verdict != "allow" && verdict != "deny" {
+				return false, domain.Validation("tool confirmation must be allow or deny")
+			}
+			actionRow, err := q.GetEvent(ctx, pgstore.GetEventParams{
+				SessionID: sessionID, ID: row.ActionEventID,
+			})
+			if err != nil {
+				return false, err
+			}
+			action, err := eventFromRow(actionRow)
+			if err != nil {
+				return false, err
+			}
+			if verdict == "allow" && domain.IsSelfHostedToolCall(action.Type, action.Payload) {
+				if action.Payload["evaluated_permission"] != "ask" {
+					return false, domain.Validation("external approval does not reference an ask-gated tool")
+				}
+				affected, err := q.ApproveExternalPendingAction(ctx, pgstore.ApproveExternalPendingActionParams{
+					SessionID: sessionID, ID: row.ID, ApprovalEventID: &event.ID,
+				})
+				if err != nil {
+					return false, err
+				}
+				if affected != 1 {
+					return false, domain.Conflict("pending action already has an approval")
+				}
+				// Approval is consumed by admission, not by a model turn. The
+				// unchanged action remains unclaimed until the external result.
+				now := s.clock.Now().UTC()
+				if err := q.MarkEventProcessed(ctx, pgstore.MarkEventProcessedParams{
+					SessionID: sessionID, ID: event.ID, ProcessedAt: tsUTC(now),
+				}); err != nil {
+					return false, err
+				}
+				events[index].ProcessedAt = &now
+				continue
+			}
 		}
 		affected, err := q.ClaimPendingAction(ctx, pgstore.ClaimPendingActionParams{
 			ResolvingEventID: &event.ID,

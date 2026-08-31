@@ -840,9 +840,12 @@ func resumeWorkflowTurn(
 					"tool result does not reference a self-hosted built-in tool",
 				), nil
 			}
+			if definition.Permission.Type == "always_ask" && action.Confirmation != "allow" {
+				return nil, false, failTurn("external tool result has no verified approval"), nil
+			}
 		case domain.PendingToolConfirmation:
 			if (definition.Kind != TurnToolBuiltin &&
-				definition.Kind != TurnToolMCP) ||
+				definition.Kind != TurnToolMCP && definition.Kind != TurnToolSelfHosted) ||
 				definition.Permission.Type != "always_ask" {
 				return nil, false, failTurn(
 					"tool confirmation does not reference an always_ask built-in",
@@ -856,6 +859,9 @@ func resumeWorkflowTurn(
 				content = []any{map[string]any{"type": "text", "text": text}}
 				isError = true
 			} else {
+				if definition.Kind == TurnToolSelfHosted {
+					return nil, false, failTurn("external tool approval must wait for a client tool result"), nil
+				}
 				if action.ToolStepID == "" || prepared.AttemptID == "" {
 					return nil, false, failTurn(
 						"allowed confirmation has no durable operation id",
@@ -1042,7 +1048,7 @@ func planToolBatch(
 				return toolBatchPlan{}, failTurn("advisor tool does not accept input fields")
 			}
 		}
-		if definition.Kind == TurnToolBuiltin &&
+		if (definition.Kind == TurnToolBuiltin || definition.Kind == TurnToolSelfHosted) &&
 			definition.Permission.Type != "always_allow" &&
 			definition.Permission.Type != "always_ask" {
 			return toolBatchPlan{}, failTurn(
@@ -1093,6 +1099,9 @@ func planToolBatch(
 		case definition.Kind == TurnToolSelfHosted:
 			draft.Type = domain.EvAgentToolUse
 			draft.Payload["evaluated_permission"] = "allow"
+			if definition.Permission.Type == "always_ask" {
+				draft.Payload["evaluated_permission"] = "ask"
+			}
 			draft.Payload[domain.InternalToolExecutionOwner] = "self_hosted"
 			plan.pendingActionEventIDs = append(
 				plan.pendingActionEventIDs,

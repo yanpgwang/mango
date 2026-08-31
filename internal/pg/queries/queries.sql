@@ -189,6 +189,10 @@ WHERE event.session_id = @session_id
   )
   AND event.type IN ('user.message', 'user.custom_tool_result', 'user.tool_confirmation')
   AND event.processed_at IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM pending_actions AS action
+      WHERE action.session_id = event.session_id AND action.approval_event_id = event.id
+  )
   AND event.seq < @before_seq
 ORDER BY event.seq;
 

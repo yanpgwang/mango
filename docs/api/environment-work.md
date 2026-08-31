@@ -51,6 +51,14 @@ currently ship an Environment worker runner or external Skill activation.
 Applications implementing a worker own tool execution, workspace preparation,
 and lease-loss cancellation.
 
+Workers must honor `evaluated_permission` independently of execution location.
+An `ask` call waits for a persisted allow confirmation; a deny must never run.
+After allow, execute once and submit `user.tool_result` for the original call.
+An approval alone does not clear the Session's pending-action barrier. On
+reconnect, read confirmations and results as well as tool uses, including the
+owning Thread history for child calls. See
+[external tool approvals](events.md#approve-externally-executed-tools).
+
 Creating a self-hosted Session with custom Skills returns `422` with
 `error.type: "invalid_request_error"` before any Session, Work item, or execution
 wakeup is created. Admission checks the effective primary Agent and every

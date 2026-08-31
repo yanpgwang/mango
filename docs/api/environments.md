@@ -68,6 +68,12 @@ built-in sandbox tools execute on the configured worker sandbox. In
 `user.tool_result`. The server then resumes the same model loop without
 executing the tool a second time.
 
+`always_ask` also applies to self-hosted built-ins. The client first submits
+`user.tool_confirmation`; an allow authorizes external execution but does not
+resume the model until the correlated `user.tool_result` arrives. A denial
+requires no external execution or result. See
+[external tool approvals](events.md#approve-externally-executed-tools).
+
 ## Get and list
 
 ```http
