@@ -108,7 +108,7 @@ through their provider SDK; the selected remote image must contain `tar`.
 OpenSandbox and Daytona stream that archive, while the current E2B/Cube Go data
 plane buffers the complete archive in worker memory before Mango validates and
 publishes it. Publishing is not enabled for Mango's `self_hosted` Environment
-mode, where the client owns tool execution, nor for local-process sandboxes. A
+mode, where the client owns tool execution. A
 text-only Session that never provisioned a sandbox does not create one merely
 to check for outputs. A durable Docker sandbox created before the output mount
 was introduced fails closed and must be recreated; it is never treated as an

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -34,11 +33,6 @@ import (
 // unauthenticated API on all interfaces. Operators who want a public bind must
 // pass -addr explicitly (e.g. -addr :8080).
 const defaultAddr = "127.0.0.1:8080"
-
-// unsafeLocalSandboxEnv, when set to "1", permits running a real
-// (network-backed) model against the local, non-isolating sandbox. See
-// guardModelSandbox.
-const unsafeLocalSandboxEnv = "MANGO_ALLOW_UNSAFE_LOCAL_SANDBOX"
 
 const (
 	sandboxProviderEnv    = "MANGO_SANDBOX"
@@ -98,16 +92,10 @@ func resolveModelClient() (client model.Client, realModel bool, err error) {
 }
 
 // sandboxProviderRegistry declares the adapters compiled into this worker.
-// Factories are lazy: selecting local never initializes Docker, and future
-// optional remote adapters will not require credentials unless selected.
+// Factories are lazy: API admission reads capabilities without contacting a
+// daemon, and optional remote adapters require credentials only when selected.
 func sandboxProviderRegistry() (*sandbox.ProviderRegistry, error) {
 	return sandbox.NewProviderRegistry(
-		sandbox.ProviderRegistration{
-			Name: sandbox.LocalProviderName,
-			Factory: func() (sandbox.Provider, error) {
-				return sandbox.NewLocalProvider(), nil
-			},
-		},
 		sandbox.ProviderRegistration{
 			Name: sandbox.DockerProviderName,
 			Capabilities: sandbox.ProviderCapabilities{
@@ -344,52 +332,31 @@ func firstNonEmpty(values ...string) string {
 }
 
 // resolveSandboxProvider selects the process-wide sandbox backend from the
-// internal registry and reports whether it is the local non-isolating provider.
+// internal registry. Docker is the default; host-process execution is not a
+// selectable backend.
 // Provider choice is deployment configuration, not part of the Mango
 // public API. Unknown names fail closed instead of silently falling back to
 // host execution.
-func resolveSandboxProvider() (p sandbox.Provider, isLocal bool, err error) {
+func resolveSandboxProvider() (sandbox.Provider, error) {
 	name := configuredSandboxProviderName()
 	registry, err := sandboxProviderRegistry()
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	provider, err := registry.Open(name)
 	if err != nil {
-		return nil, false, err
-	}
-	if name == sandbox.LocalProviderName {
-		log.Printf("sandbox: local provider (dev-grade guardrail, not a security boundary)")
-		return provider, true, nil
+		return nil, err
 	}
 	log.Printf("sandbox: %s provider", name)
-	return provider, false, nil
+	return provider, nil
 }
 
 func configuredSandboxProviderName() string {
 	name := strings.TrimSpace(os.Getenv(sandboxProviderEnv))
 	if name == "" {
-		return sandbox.LocalProviderName
+		return sandbox.DockerProviderName
 	}
 	return name
-}
-
-// guardModelSandbox refuses to start when a real, network-backed model is paired
-// with the local sandbox, which is a dev-grade guardrail and not a security
-// boundary: a real model can be steered into executing tool commands that run on
-// the host with no isolation. The pairing is permitted only when the operator
-// explicitly sets MANGO_ALLOW_UNSAFE_LOCAL_SANDBOX=1. The deterministic
-// fake model + local sandbox (the zero-config default) is always allowed, as is
-// any model against the Docker sandbox.
-func guardModelSandbox(realModel, localSandbox, allowUnsafe bool) error {
-	if realModel && localSandbox && !allowUnsafe {
-		return errors.New("refusing to run a real model against the local sandbox: " +
-			"the local sandbox is a dev-grade guardrail, not a security boundary, and a " +
-			"real model can run tool commands on the host with no isolation. " +
-			"Set MANGO_SANDBOX=docker for real isolation, or set " +
-			unsafeLocalSandboxEnv + "=1 to override this check at your own risk")
-	}
-	return nil
 }
 
 type realClock struct{}

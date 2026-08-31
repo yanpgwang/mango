@@ -92,9 +92,9 @@ descriptions bounded to one percent of the configured context window.
 When it invokes the private `Skill` dispatcher, the runtime returns
 `Launching skill: <name>` and injects the complete selected `SKILL.md`, prefixed
 with its base directory, into the provider conversation. Referenced supporting
-files remain on disk for ordinary `read` or `bash` access. Sessions using the
-Local adapter or a self-hosted Environment reject custom Skills at creation
-with `422`, before any Session, Work item, or execution wakeup is created. This
+files remain on disk for ordinary `read` or `bash` access. Sessions using an
+incapable sandbox adapter or a self-hosted Environment reject custom Skills at
+creation with `422`, before any Session, Work item, or execution wakeup is created. This
 check covers the effective primary Agent and every resolved roster member
 after overrides, including a `self` copy. See
 [Sandbox backends](../sandboxes.md#custom-skill-mounts) for the remote-copy
@@ -147,7 +147,7 @@ only be attached at creation. A `git_repository` input uses an anonymous HTTPS
 `url`, optional branch-or-commit `checkout`, and optional `/workspace` child
 `mount_path`; Mango freezes and returns its exact `resolved_commit`. Git
 repositories are create-time-only on Docker, E2B, CubeSandbox, OpenSandbox,
-and Daytona. Self-hosted Environment and local-process resources return `422`.
+and Daytona. Self-hosted Environments reject these resource attachments with `422`.
 E2B and Cube currently buffer File and repository archive transfers in worker
 memory during materialization.
 `vault_ids` is an ordered list of active Vault references. The order is frozen

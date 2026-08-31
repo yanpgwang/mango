@@ -895,8 +895,8 @@ func dockerProviderForTest(t *testing.T, requirement dockerRequirement) sandbox.
 		DefaultImage: "alpine:latest",
 	})
 	if err != nil {
-		if requirement == dockerRequired {
-			t.Fatalf("Docker Engine is required for live tool conformance: %v", err)
+		if requirement == dockerRequired || os.Getenv("MANGO_TEST_DOCKER") == "1" {
+			t.Fatalf("Docker Engine is required for tool conformance: %v", err)
 		}
 		t.Skipf("Docker Engine unreachable: %v", err)
 	}

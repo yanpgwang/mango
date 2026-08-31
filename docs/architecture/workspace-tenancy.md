@@ -66,6 +66,6 @@ smooth upgrade for pre-tenancy data.
 ## Non-goals
 
 Workspace data isolation does not make a sandbox safe for hostile multi-tenant
-code. The local sandbox is not an isolation boundary, and Docker shares the host
-kernel. Operators must select and harden an execution provider appropriate for
+code. Docker shares the host kernel, and its worker is trusted with daemon
+access. Operators must select and harden an execution provider appropriate for
 their threat model.

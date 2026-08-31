@@ -319,8 +319,8 @@ func iterateDockerProvider(t *testing.T, requirement dockerRequirement) sandbox.
 		DefaultImage: "python:3.12-alpine",
 	})
 	if err != nil {
-		if requirement == dockerRequired {
-			t.Fatalf("Docker Engine is required for the live iterate scenario: %v", err)
+		if requirement == dockerRequired || os.Getenv("MANGO_TEST_DOCKER") == "1" {
+			t.Fatalf("Docker Engine is required for the iterate scenario: %v", err)
 		}
 		t.Skipf("Docker Engine unreachable: %v", err)
 	}

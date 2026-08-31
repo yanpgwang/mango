@@ -120,7 +120,7 @@ model vendor, sandbox backend, or worker topology.
 | `internal/live` | NATS wakeups/previews plus PostgreSQL cursor reconciliation |
 | `internal/agentruntime` | Reusable model, message, and tool execution primitives |
 | `internal/model` | Offline and Messages API model clients |
-| `internal/sandbox` | Provider registry, lifecycle contract, and local/remote adapters |
+| `internal/sandbox` | Provider registry, lifecycle contract, Docker and remote adapters |
 
 The dependency direction points inward: transport and infrastructure depend on
 application/domain semantics, while the domain has no HTTP, SQL, model-client,

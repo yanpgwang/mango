@@ -35,6 +35,9 @@ import (
 const (
 	dockerManagedLabel    = "io.mango.managed"
 	dockerSessionKeyLabel = "io.mango.session_key"
+	// DefaultDockerImage includes Python and POSIX tools for the default OSS
+	// workflow. Operators may choose their own image through DockerConfig.
+	DefaultDockerImage = "python:3.12-alpine"
 )
 
 // Docker provider notes on isolation:
@@ -53,7 +56,7 @@ const (
 // DockerConfig configures the Docker-backed Provider.
 type DockerConfig struct {
 	// DefaultImage is used when Spec.Image is empty. Empty defaults to
-	// "alpine:latest".
+	// DefaultDockerImage.
 	DefaultImage string
 	// ResourceBaseDir stores provider-owned File Resource staging directories.
 	// Empty uses a stable, non-hidden directory beneath the host user's home.
@@ -140,7 +143,7 @@ func newDockerProviderWithEngine(cfg DockerConfig, engine dockerEngine) (Provide
 	}
 	image := cfg.DefaultImage
 	if image == "" {
-		image = "alpine:latest"
+		image = DefaultDockerImage
 	}
 	resourceBaseDir := cfg.ResourceBaseDir
 	if resourceBaseDir == "" {

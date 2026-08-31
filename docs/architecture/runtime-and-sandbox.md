@@ -28,8 +28,9 @@ The loop is capped at 20 model/tool rounds to prevent unbounded execution.
 The model boundary is a small stateless interface with regular and streaming
 message creation.
 
-- The offline fake is deterministic and keeps the default binary and test suite
-  network-free.
+- The offline fake is deterministic and requires no model endpoint. The default
+  worker still needs Docker; pulling a missing sandbox image requires access to
+  its registry.
 - The real client targets a Messages-shaped `/v1/messages` endpoint and
   supports API-key or bearer authentication.
 
@@ -71,30 +72,11 @@ and writes. This is currently an in-process Go interface, not a separate
 sandbox HTTP service. See the [sandbox backend matrix](../sandboxes.md) for
 support levels, backend requirements, and the ordered evolution path.
 
-### Local provider
-
-The default provider creates a temporary work directory, rejects path escapes,
-clears the child environment, limits command duration, and caps output.
-
-:::danger[Not a security boundary]
-
-The local provider shares the host process and filesystem namespaces. Never use
-it to execute untrusted code.
-
-:::
-
-Because of this, **a real (network-backed) model paired with the local sandbox
-is refused at startup by default**: a real model can be steered into running
-tool commands on the host with no isolation. The offline deterministic fake
-model plus the local sandbox (the zero-config default) always starts. To run a
-real model, either select the Docker provider (below) or, as a dev-only explicit
-override, set `MANGO_ALLOW_UNSAFE_LOCAL_SANDBOX=1` — this accepts the
-risk of running tool commands on the host unisolated and must never be used with
-untrusted input or in production.
-
 ### Docker provider
 
-Set `MANGO_SANDBOX=docker` to run each sandbox in a container. The
+Docker is the default; `MANGO_SANDBOX=docker` selects it explicitly. The worker
+requires a reachable Docker daemon even with the offline model. Host-process
+execution is not selectable, and no unsafe-local override is supported. The
 provider talks directly to the Docker Engine API through the supported Moby Go
 client; it does not invoke the `docker` CLI. The client honors `DOCKER_HOST`,
 `DOCKER_API_VERSION`, and Docker TLS environment variables and negotiates a
@@ -106,8 +88,10 @@ credential helper must be installed on the worker. Containers use a separate
 filesystem, Linux namespaces/cgroups, configurable resource limits, and no
 networking for direct provider calls. Mango's cloud Environment path explicitly
 requests `bridge` networking because the public Environment default is
-unrestricted. This is the recommended sandbox for a real model, and it satisfies
-the startup guard without the unsafe override.
+unrestricted. The default image is `python:3.12-alpine`; operators select another
+image with `MANGO_SANDBOX_IMAGE`. The Compose worker mounts its resource directory
+at the same absolute path seen by the daemon. See
+[Docker worker configuration](../deployment.md#docker-worker-configuration).
 
 Containers share the host kernel. This provider has not been audited for
 hostile multi-tenant use; stronger isolation such as gVisor or a remote sandbox

@@ -33,12 +33,19 @@ keep the offline deterministic model.
 
 For an explicitly offline startup that bypasses the development file, use the
 command in [Getting started](../../docs/getting-started.md#run-the-server).
-The Compose worker currently fixes `MANGO_SANDBOX=local` and enables its unsafe
-real-model override: tools run inside the worker container, not a per-Session
-Docker container. Exporting `MANGO_SANDBOX=docker` does not override this
-configuration. For Files, Skills, Memory mounts, or other Docker capabilities,
-use the consistently configured source API and worker described in
-[Use a real model endpoint](../../docs/getting-started.md#use-a-real-model-endpoint).
+Both API and worker select Docker. The worker creates sibling Session containers
+on the host daemon; tools do not run in the worker container. Files, Skills,
+Memory mounts, and Session Outputs use this provider. The sandbox image defaults
+to `python:3.12-alpine`; set `MANGO_SANDBOX_IMAGE` to choose another image.
+
+The trusted worker runs as root and mounts the Docker socket. The API remains
+non-root and has no socket. The resource directory defaults to
+`$HOME/mango-resources`, mounted at the same absolute path inside the worker.
+Set `MANGO_SANDBOX_RESOURCE_DIR` to an absolute host path when needed, and
+`MANGO_DOCKER_SOCKET` for a non-default host Unix socket. A remote Docker context
+must have those paths on its daemon host; this bundle is intended for a local
+daemon. See [Docker worker configuration](../../docs/deployment.md#docker-worker-configuration)
+for trust, retention, and upgrade boundaries.
 
 The API bootstraps `sk-mango-local-development` for the default Workspace.
 Override it with `MANGO_API_KEY` before `make local-up`; never reuse the

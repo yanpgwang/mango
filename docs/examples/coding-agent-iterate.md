@@ -38,9 +38,10 @@ The example connects to an already running Mango server; it does not start
 internal services or invoke Mango's test suite. Model credentials stay on the
 server. Running the example with a real model may incur provider charges.
 
-The default `make local-up` stack uses the local-process sandbox, which rejects
-File Resources and Session Outputs. Its `offline-fake` model is a text demo,
-not a coding model. Starting that stack alone is not sufficient for this example.
+The default `make local-up` stack provides Docker File Resources and Session
+Outputs with a Python-capable image. Configure its real model as described in
+[Getting started](../getting-started.md#use-a-real-model-endpoint) before running
+this example: `offline-fake` is a text demo, not a coding model.
 
 With a capable deployment running, provide its Workspace key through your
 environment, then run:

@@ -95,15 +95,51 @@ must be able to bind the worker's provider-owned staging directory. Set
 host volume; the default is `mango-resources` beneath the process
 user's home directory. The API and every worker
 on the task queue must agree on the sandbox provider and object-store
-configuration. The local-process adapter rejects File Resources.
+configuration. Host-process execution is not a selectable runtime backend.
 
 Memory API contents and immutable Versions live entirely in PostgreSQL and do
 not require S3-compatible storage. Memory-backed Session Resources do require
 `MANGO_SANDBOX=docker`: the API snapshots each attachment, and the
 worker bind-mounts it beneath `/mnt/memory`, then synchronizes tool changes back
-to PostgreSQL. API and worker processes must select the same provider. Local,
-self-hosted, and current remote adapters reject Memory Store attachment while
+to PostgreSQL. API and worker processes must select the same provider.
+Self-hosted and current remote adapters reject Memory Store attachment while
 the standalone Memory API remains available.
+
+### Docker worker configuration
+
+Docker is the default for native processes and the local Compose stack. An
+unreachable daemon fails worker startup; `MANGO_SANDBOX=local` is rejected and
+the former unsafe-local override has no effect. API startup reads the Docker
+capability declaration without needing daemon access. A healthy API alone does
+not establish worker or sandbox readiness.
+
+The Compose worker is a trusted daemon controller. It runs as root and mounts
+`/var/run/docker.sock`, or the host Unix socket selected by `MANGO_DOCKER_SOCKET`.
+This grants substantial host authority; do not expose the socket to untrusted
+users. The API has no socket. Session containers receive their own input,
+output, Skill, and Memory mounts, never the daemon socket or model credentials.
+They share the host kernel and are not a hardened hostile multi-tenant boundary.
+
+`MANGO_SANDBOX_RESOURCE_DIR` defaults to `$HOME/mango-resources` in Compose.
+Its bind source and target are the same absolute path so the worker and host
+daemon resolve generated mount paths identically. A custom value must be an
+absolute directory visible to the daemon; Docker Desktop must share that path.
+Mounting only the socket is insufficient. The default image is
+`python:3.12-alpine`; choose `MANGO_SANDBOX_IMAGE` when other runtimes or package
+managers are required. Alpine does not include `apt-get`.
+
+Restart retains the Session container and reattaches through its persisted
+binding. Missing containers fail explicitly instead of creating empty
+replacement workspaces. Session deletion releases its container and staged
+resources. `make local-down` stops Compose services but deliberately retains
+Session containers and their host directory; it is not Session deletion.
+Delete Sessions through Mango before discarding deployment data. Even
+`VOLUMES=1` does not remove sibling Session containers or host bind directories.
+
+An older local-backed Session cannot resume on this Docker worker. Finish and
+delete those Sessions with the old worker before upgrading; the new binary
+neither migrates their workspaces nor supports a local compatibility executor.
+No development database or existing workspace is automatically erased.
 
 The Vault and Webhook APIs are disabled unless `MANGO_VAULT_KEYRING_FILE` points to
 an operator-mounted JSON keyring. A configured but invalid keyring fails API

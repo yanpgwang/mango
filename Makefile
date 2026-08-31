@@ -96,6 +96,8 @@ test-race:
 	$(GO) test -race ./...
 
 test-service:
+	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
+	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_LIVE_MODEL=0 \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \

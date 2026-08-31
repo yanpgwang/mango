@@ -208,7 +208,7 @@ clients and record an identity marker after validation; OpenSandbox and Daytona
 stream the transfer, while E2B and Cube buffer each complete File in worker
 memory. The current remote copies are writable and sandbox-local edits do not
 update the S3-backed Session File. Deletion records a tombstone until the worker
-removes the applied copy. The local adapter rejects the feature.
+removes the applied copy.
 
 Docker, E2B, CubeSandbox, OpenSandbox, and Daytona expose a writable
 `/mnt/session/outputs` boundary. Docker uses a provider-owned bind mount and
