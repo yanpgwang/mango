@@ -26,12 +26,16 @@ an Advisor, and persistent follow-up, see
   delegation decisions.
 
 The examples use the local API at `http://localhost:8080`.
+Export `MANGO_API_KEY` with the same Workspace key used in Getting started.
+The HTTP snippets below show the wire requests; the first-party
+[SDKs](../sdk.md) handle authentication and these resource operations as well.
 
 ## Create the worker Agents
 
 ```bash
 RESEARCHER_ID=$(
   curl -sS http://localhost:8080/v1/agents \
+    -H "Authorization: Bearer $MANGO_API_KEY" \
     -H 'content-type: application/json' \
     -d '{
       "name": "researcher",
@@ -42,6 +46,7 @@ RESEARCHER_ID=$(
 
 REVIEWER_ID=$(
   curl -sS http://localhost:8080/v1/agents \
+    -H "Authorization: Bearer $MANGO_API_KEY" \
     -H 'content-type: application/json' \
     -d '{
       "name": "reviewer",
@@ -59,6 +64,7 @@ must be distinct.
 ```bash
 COORDINATOR_ID=$(
   curl -sS http://localhost:8080/v1/agents \
+    -H "Authorization: Bearer $MANGO_API_KEY" \
     -H 'content-type: application/json' \
     -d "{
       \"name\": \"coordinator\",
@@ -110,6 +116,7 @@ Create a cloud Environment and Session as in the quick start, using
 
 ```bash
 curl -sS "http://localhost:8080/v1/sessions/$SESSION_ID/events" \
+  -H "Authorization: Bearer $MANGO_API_KEY" \
   -H 'content-type: application/json' \
   -d '{
     "events": [{
@@ -136,13 +143,15 @@ Thread so it continues with its prior context.
 List the primary and child Threads:
 
 ```bash
-curl -sS "http://localhost:8080/v1/sessions/$SESSION_ID/threads" | jq
+curl -sS "http://localhost:8080/v1/sessions/$SESSION_ID/threads" \
+  -H "Authorization: Bearer $MANGO_API_KEY" | jq
 ```
 
 Read one child ledger independently:
 
 ```bash
 curl -sS \
+  -H "Authorization: Bearer $MANGO_API_KEY" \
   "http://localhost:8080/v1/sessions/$SESSION_ID/threads/$THREAD_ID/events" |
   jq
 ```

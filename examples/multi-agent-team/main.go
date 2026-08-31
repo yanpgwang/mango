@@ -1,6 +1,6 @@
 // Command multi-agent-team runs a real-model coordinator, specialist, Advisor,
-// and persistent follow-up workflow against Mango's public HTTP API. It uses
-// only net/http so the example does not depend on an unpublished Mango SDK.
+// and persistent follow-up workflow against Mango's public HTTP API. This
+// client currently uses net/http; first-party SDKs expose the same operations.
 package main
 
 import (

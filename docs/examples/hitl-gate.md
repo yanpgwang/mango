@@ -10,9 +10,10 @@ run inside its sandbox. The application can call an internal service, record an
 audited decision, or wait for a human reviewer, then return the result to the
 same durable Session.
 
-This example includes a runnable program over Mango's public HTTP API. Mango does
-not yet publish an SDK, so the example deliberately uses Go's standard
-`net/http` client and exposes the same requests an SDK would eventually wrap.
+This example includes a runnable Go program over Mango's public HTTP API.
+It currently uses the standard `net/http` client. First-party
+[Go, Python, and TypeScript SDKs](../sdk.md) are available for the same operations;
+this example has not yet been migrated to one.
 It never calls the model provider directly: the configured Mango worker owns
 that credential and model request. Complete [Getting started](../getting-started.md)
 first and use the exact request shapes from the [Agents](../api/agents.md) and
@@ -120,16 +121,18 @@ is deliberately thin, at least once, and not an infinite log: production
 consumers must still use the documented stream-plus-history recovery pattern or
 bounded reconciliation after receiving it.
 
-## Executable verification
+## Run the example
 
-Start the local stack with the real model values in
-`~/.config/mango/dev.env`, then run the interactive example:
+First configure a running API and worker using
+[Use a real model endpoint](../getting-started.md#use-a-real-model-endpoint).
+With the same `~/.config/mango/dev.env`, run the interactive client:
 
 ```bash
-make local-up
-make local-health
 scripts/with-dev-env make demo-hitl-gate
 ```
+
+The example connects to that deployment; it does not start services or change
+the worker's model or sandbox configuration.
 
 The program creates an Environment, Agent, and Session through public HTTP,
 sends two receipts, and waits for the complete `requires_action` barrier. The
@@ -169,16 +172,11 @@ Receipt r01: Approved ...
 Receipt r02: Rejected (after human review) ...
 ```
 
-A separate offline test creates seven parallel actions, answers only three,
-rejects a duplicate without a partial commit, replaces the execution worker,
-and then resumes the complete barrier exactly once:
-
-```bash
-make test-hitl-gate
-```
-
-That deterministic test proves failure and concurrency invariants; it is not
-presented as the Cookbook user example.
+This application records decisions for the sample receipts; it does not call a
+payment service or approve a real expense. Its successful run shows the public
+custom-tool workflow, not a production integration or exhaustive recovery test.
+Independent runtime tests are described in the
+[contributor guide](https://github.com/yanpgwang/mango/blob/main/CONTRIBUTING.md).
 
 ## Design boundary
 

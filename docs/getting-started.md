@@ -17,15 +17,28 @@ message through the full environment → agent → session → event flow.
 
 ## Run the server
 
+Run from the repository root. This command explicitly selects the offline model
+and does not load `~/.config/mango/dev.env`:
+
 ```bash
-make local-up
+export MANGO_API_KEY="${MANGO_API_KEY:-sk-mango-local-development}"
+MANGO_MODEL_BASE_URL= MANGO_MODEL_API_KEY= MANGO_MODEL_ID= \
+  docker compose -f deployments/local/compose.yaml up -d --build
 make local-health
 ```
 
 This builds and starts separate API and worker containers plus PostgreSQL,
-Temporal, Temporal UI, and NATS. The examples use `http://localhost:8080`; the
-Workflow explorer is at `http://localhost:8233`. No model credentials are
-required because the worker defaults to the deterministic offline model.
+Temporal, Temporal UI, NATS, and MinIO. The examples use `http://localhost:8080`;
+the Workflow explorer is at `http://localhost:8233`. No model credentials are
+required for this offline walkthrough.
+
+The convenience command `make local-up` behaves differently: it automatically
+loads an existing development environment file and can enable a real model.
+Do not use it as an offline-only guarantee. The current Compose worker executes
+tools inside its own container with the `local` provider; it does not create a
+Docker sandbox per Session. Follow
+[Use a real model endpoint](#use-a-real-model-endpoint) for a Docker-backed setup
+supporting Files and coding tasks.
 
 In another shell, verify readiness:
 
@@ -33,8 +46,9 @@ In another shell, verify readiness:
 curl -i http://localhost:8080/readyz
 ```
 
-The Compose API bootstraps one development-only Workspace key. Export it once
-for the protected examples below:
+The Compose API bootstraps the Workspace key selected above. In another shell,
+export the same key for the protected examples below. If you did not override
+it, the development-only value is:
 
 ```bash
 export MANGO_API_KEY=sk-mango-local-development
@@ -172,28 +186,80 @@ curl -N -H "Authorization: Bearer $MANGO_API_KEY" \
 
 ## Use a real model endpoint
 
-The quick start already runs an offline worker. Stop it before launching a
-source worker with different model or sandbox configuration:
+The current Compose file fixes its sandbox provider to `local`; setting
+`MANGO_SANDBOX=docker` in your shell does not change that file. For per-Session
+Docker sandboxes, run **both** API and worker from source against the Compose
+infrastructure. This requires Go 1.26.6+ and a running Docker daemon.
+
+Create the repository-external configuration file, then edit it:
 
 ```bash
-docker compose -f deployments/local/compose.yaml stop worker
-
-export MANGO_DATABASE_URL="postgres://postgres:postgres@localhost:5432/mango?sslmode=disable"
-export MANGO_TEMPORAL_HOSTPORT="localhost:7233"
-export MANGO_NATS_URL="nats://localhost:4222"
-
-export MANGO_MODEL_BASE_URL=https://api.example.com
-export MANGO_MODEL_API_KEY=replace-me
-export MANGO_MODEL_ID=claude-model-id
-export MANGO_MODEL_AUTH=x-api-key # or authorization-bearer
-
-# A real model must not run against the local sandbox (it is a dev-grade
-# guardrail, not a security boundary), so select the Docker sandbox for real
-# isolation. The server refuses to start with a real model + local sandbox.
-export MANGO_SANDBOX=docker
-
-go run ./cmd/mango orchestrate
+make dev-env-init
+$EDITOR ~/.config/mango/dev.env
 ```
+
+Set the following values in that file. It uses literal `NAME=VALUE` lines,
+without shell quotes or `export`; replace the model placeholders securely.
+The object-store values below are only for the bundled local MinIO service:
+
+```ini
+MANGO_DATABASE_URL=postgres://postgres:postgres@localhost:5432/mango?sslmode=disable
+MANGO_TEMPORAL_HOSTPORT=localhost:7233
+MANGO_TEMPORAL_NAMESPACE=default
+MANGO_NATS_URL=nats://localhost:4222
+MANGO_API_KEY=sk-mango-local-development
+
+MANGO_SANDBOX=docker
+MANGO_SANDBOX_IMAGE=python:3.12-alpine
+
+MANGO_MODEL_BASE_URL=https://api.example.com
+MANGO_MODEL_API_KEY=replace-me
+MANGO_MODEL_ID=your-model-id
+MANGO_MODEL_AUTH=x-api-key
+
+MANGO_FILE_S3_ENDPOINT=http://localhost:9000
+MANGO_FILE_S3_REGION=us-east-1
+MANGO_FILE_S3_BUCKET=mango-files
+MANGO_FILE_S3_ACCESS_KEY=minioadmin
+MANGO_FILE_S3_SECRET_KEY=minioadmin
+MANGO_FILE_S3_PATH_STYLE=true
+MANGO_FILE_S3_CREATE_BUCKET=true
+```
+
+Use `authorization-bearer` for `MANGO_MODEL_AUTH` if your endpoint requires it.
+API admission and worker execution must use the same sandbox provider and
+object store; changing only the worker leaves the API rejecting Docker-only
+resources. The Docker daemon must be able to bind the worker's resource staging
+directory; see [Deployment model](deployment.md#process-topology).
+
+Finish active development work before switching processes. Existing local
+sandboxes are not migrated to Docker; use new Sessions for this walkthrough.
+Stop the Compose API and worker, but keep their backing data:
+
+```bash
+docker compose -f deployments/local/compose.yaml stop api worker
+docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
+docker pull python:3.12-alpine
+```
+
+Start the API in one terminal, without model-provider credentials:
+
+```bash
+scripts/with-dev-env env \
+  -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
+  go run ./cmd/mango serve -addr :8080
+```
+
+Start the worker in another terminal using the same configuration:
+
+```bash
+scripts/with-dev-env env -u MANGO_API_KEY go run ./cmd/mango orchestrate
+```
+
+Check `curl -i http://localhost:8080/readyz` and the worker's startup log.
+`make local-health` checks the Compose application containers, so it is not the
+health command for these source processes. Do not run `make local-up` while
+they are running: that would restart the differently configured Compose worker.
 
 The provider name is validated strictly. The compiled choices are `local`,
 `docker`, `e2b`, `cube`, `opensandbox`, and `daytona`; an unknown value fails
@@ -215,11 +281,11 @@ explicit live checks and examples exercise that endpoint:
 ```bash
 # Checks the external Messages endpoint only. This makes a real, potentially
 # billable request.
-make test-model-live
+scripts/with-dev-env make test-model-live
 
 # With the local PostgreSQL and Temporal services running, checks one complete
 # durable platform turn against the same model endpoint.
-make test-platform-live
+scripts/with-dev-env make test-platform-live
 
 # Runs the longer File Resource -> coding loop -> Session Output scenario.
 # The wrapper loads ~/.config/mango/dev.env without copying secrets into the
@@ -253,11 +319,11 @@ latency, user input, and cost are not deterministic.
 Use a newly issued key if a credential has ever appeared in chat, logs, or shell
 history.
 
-If you understand the risk and deliberately want a real model against the local
-sandbox during development, set `MANGO_ALLOW_UNSAFE_LOCAL_SANDBOX=1` to
-override the startup guard. This is a dev-only escape hatch — the local sandbox
-runs tool commands on the host with no isolation, so never use it with untrusted
-input or in production.
+The `local` provider executes tool commands in the worker process's host
+environment. The current Compose worker explicitly bypasses the real-model
+startup guard with `MANGO_ALLOW_UNSAFE_LOCAL_SANDBOX=1`; its container is not
+per-Session isolation. The Docker setup above does not need that bypass.
+Neither setup is a hardened boundary for hostile multi-tenant workloads.
 
 ## Reusable local credentials
 
@@ -272,11 +338,13 @@ $EDITOR ~/.config/mango/dev.env
 Run a command with that environment explicitly:
 
 ```bash
-scripts/with-dev-env go run ./cmd/mango orchestrate
+scripts/with-dev-env make demo-coding-agent
 ```
 
 The wrapper requires the file to have no group or other permissions. Set
 `MANGO_ENV_FILE` only when a different repository-external path is needed.
+It loads configuration; it does not start or reconfigure a deployment. The
+example above also requires its [Python SDK setup](examples/coding-agent-iterate.md#run-the-example).
 
 ## Clean up
 
@@ -284,6 +352,8 @@ The wrapper requires the file to have no group or other permissions. Set
 make local-down
 ```
 
-This keeps the PostgreSQL volume. Add `VOLUMES=1` only when you intentionally
+Stop any source API and worker processes with Ctrl-C before running this command.
+It keeps the
+PostgreSQL and MinIO volumes. Add `VOLUMES=1` only when you intentionally
 want to delete local data. PostgreSQL schema changes are applied by embedded,
 versioned `goose` migrations when API or worker processes start.

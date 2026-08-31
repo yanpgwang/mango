@@ -107,7 +107,7 @@ OpenSandbox, or Daytona sandbox. Remote adapters create a temporary archive
 through their provider SDK; the selected remote image must contain `tar`.
 OpenSandbox and Daytona stream that archive, while the current E2B/Cube Go data
 plane buffers the complete archive in worker memory before Mango validates and
-publishes it. Publishing is not enabled for the CMA `self_hosted` Environment
+publishes it. Publishing is not enabled for Mango's `self_hosted` Environment
 mode, where the client owns tool execution, nor for local-process sandboxes. A
 text-only Session that never provisioned a sandbox does not create one merely
 to check for outputs. A durable Docker sandbox created before the output mount
