@@ -10,6 +10,9 @@ Skill, Memory, Vault, Webhook, Deployment, Environment Work, and Session Thread 
 surface under `/v1`. Operation presence does not imply unrestricted support
 for every workflow; resource-specific limitations are documented explicitly.
 
+Use the [first-party SDKs](../sdk.md) for typed Go, Python, or TypeScript access
+to this API. SDKs and API reference share the same checked-in OpenAPI source.
+
 :::info
 
 This reference documents repository behavior. See

@@ -21,6 +21,8 @@ MANGO_TEST_S3_BUCKET ?= mango-test
 MANGO_TEST_S3_ACCESS_KEY ?= minioadmin
 MANGO_TEST_S3_SECRET_KEY ?= minioadmin
 TERMINAL_UI_DIR ?= examples/terminal-ui
+PYTHON ?= python3
+UV ?= uv
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
 MANGO_EXAMPLE_ADVISOR_MODEL_ID ?= $(MANGO_EXAMPLE_MODEL_ID)
 
@@ -37,6 +39,8 @@ endif
 	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
 	terminal-ui-build terminal-ui-verify security docs-check image image-smoke dev-env-init \
 	local-config local-up local-down local-health local-ps local-logs
+
+.PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
 
 help:
 	@echo "Development"
@@ -55,6 +59,11 @@ help:
 	@echo "  make vet            run go vet"
 	@echo "  make verify         run the core Go checks"
 	@echo "  make terminal-ui-verify  verify the terminal UI example"
+	@echo "  make sdk-install    install isolated Python and TypeScript SDK dev dependencies"
+	@echo "  make sdk-generate   regenerate all SDK bindings from Mango OpenAPI"
+	@echo "  make sdk-check      reject stale SDK bindings or contract snapshots"
+	@echo "  make sdk-test       test/typecheck/build Go, Python and TypeScript SDKs"
+	@echo "  make sdk-conformance  exercise language clients against Mango HTTP handlers"
 	@echo "  make security       scan reachable Go code and high-severity npm issues"
 	@echo "  make docs-check     install and verify documentation dependencies"
 	@echo "  make dev-env-init   create ~/.config/mango/dev.env with mode 0600"
@@ -152,6 +161,31 @@ terminal-ui-build:
 terminal-ui-verify: terminal-ui-test terminal-ui-test-race terminal-ui-vet terminal-ui-build
 
 verify: lint test test-race vet terminal-ui-verify
+
+sdk-install:
+	$(UV) sync --project sdk/python --frozen --group dev
+	npm --prefix sdk/typescript ci
+
+sdk-generate:
+	$(GO) run ./scripts/sdk-contract
+	$(PYTHON) sdk/go/generate.py
+	$(PYTHON) sdk/python/generate.py
+	node sdk/typescript/scripts/generate.mjs
+
+sdk-check:
+	$(GO) run ./scripts/sdk-contract -check
+	$(PYTHON) sdk/go/generate.py --check
+	$(PYTHON) sdk/python/generate.py --check
+	node sdk/typescript/scripts/generate.mjs --check
+
+sdk-test: sdk-check
+	cd sdk/go && $(GO) test -race ./... && $(GO) vet ./...
+	cd sdk/python && .venv/bin/python -m pytest && .venv/bin/python -m mypy && .venv/bin/python -m ruff check .
+	npm --prefix sdk/typescript test
+
+sdk-conformance:
+	npm --prefix sdk/typescript run build
+	MANGO_TEST_SDK=1 $(GO) test ./internal/httpapi -run '^TestFirstPartySDKHTTPConformance$$' -count=1 -v
 
 security:
 	$(GOVULNCHECK) ./...

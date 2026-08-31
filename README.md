@@ -144,6 +144,10 @@ and sandbox lifecycle.
 
 ## Documentation
 
+The [first-party SDKs](sdk/) provide Go, Python, and TypeScript/JavaScript
+clients for Mango's current HTTP API. Install from source while the packages
+remain pre-release; no hosted agent service is required.
+
 | I want to… | Read |
 | --- | --- |
 | Run my first agent session | [Getting started](https://yanpgwang.github.io/mango/getting-started) |
