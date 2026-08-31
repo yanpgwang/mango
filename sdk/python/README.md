@@ -9,8 +9,9 @@ use an SDK version built for the server revision you deploy.
 
 ## Install
 
-Python 3.11 or newer is required. For a published alpha version, install by its
-exact version in a virtual environment:
+Python 3.11 or newer is required. Install the published
+[PyPI alpha](https://pypi.org/project/mango-sdk/0.1.0a1/) by its exact version
+in a virtual environment:
 
 ```sh
 python -m pip install 'mango-sdk==0.1.0a1'

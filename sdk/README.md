@@ -11,8 +11,9 @@ server; they do not run an Agent loop or call a hosted agent service.
 
 The npm package [`mango-sdk@0.1.0-alpha.1`](https://www.npmjs.com/package/mango-sdk/v/0.1.0-alpha.1)
 is published. Install it with `npm install mango-sdk@0.1.0-alpha.1`.
-The Python `mango-sdk` candidate is built and tested but is not yet published
-to PyPI; use its local installation instructions for now.
+The Python package [`mango-sdk==0.1.0a1`](https://pypi.org/project/mango-sdk/0.1.0a1/)
+is published on PyPI. Install it with `python -m pip install 'mango-sdk==0.1.0a1'`
+in a Python 3.11+ virtual environment.
 
 All three target every operation in the current OpenAPI document: Agents,
 Environments, Environment Work, Sessions, Events, Threads, Resources, Files,
@@ -20,7 +21,7 @@ Skills, Memory, Vaults, Webhooks, Deployments and public diagnostics. An SDK
 method does not remove a server capability restriction.
 
 Python and TypeScript use the distribution name `mango-sdk`. Python imports
-`mango_sdk`; TypeScript imports `mango-sdk`. Their initial release candidates are
+`mango_sdk`; TypeScript imports `mango-sdk`. Their initial alpha versions are
 `0.1.0a1` (Python) and `0.1.0-alpha.1` (npm, under the `alpha` dist-tag).
 The Go module remains `github.com/yanpgwang/mango/sdk/go`, without an independent
 version tag. Source installation remains available for every language.

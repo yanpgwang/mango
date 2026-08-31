@@ -37,7 +37,7 @@ and service test suites.
 | Capability | Status | Supported scope and important constraints |
 | --- | --- | --- |
 | Agents and Versions | Supported | Create, get, list, update, immutable Version history, archive, filters, and pagination. Model ID, effort, and speed reach working and grader requests. Provider routing policy remains outside the Agent contract. |
-| [First-party SDKs](sdk.md) | Preview | Go, Python (sync/async), and TypeScript/JavaScript clients cover the current OpenAPI operations with generated types, pagination, multipart and streaming transports. TypeScript `mango-sdk@0.1.0-alpha.1` is published on npm; Python's `mango-sdk` candidate remains local pending PyPI authorization. Alpha publication does not establish a stable contract. HTTP conformance uses test-only storage/model implementations. Server capability limits still apply. |
+| [First-party SDKs](sdk.md) | Preview | Go, Python (sync/async), and TypeScript/JavaScript clients cover the current OpenAPI operations with generated types, pagination, multipart and streaming transports. TypeScript `mango-sdk@0.1.0-alpha.1` is published on npm; Python `mango-sdk==0.1.0a1` is published on PyPI. Alpha publication does not establish a stable contract. HTTP conformance uses test-only storage/model implementations. Server capability limits still apply. |
 | Environments | Supported | Cloud and self-hosted lifecycle, package configuration, limited-network declarations, filters, and pagination. Package execution requires a capable sandbox; limited egress is currently enforced only by OpenSandbox. |
 | Sessions | Supported | Create from immutable Agent snapshots, get/list/update/archive/delete, metadata, filters, exact shared public-list-cost budgets, usage, timing, and resource projections. Deletion fences admission and durably releases the Workflow and sandbox. |
 | Events and client actions | Limited | System context, messages, thinking, tool events, confirmation/custom/self-hosted result barriers, outcomes, retries, interrupts, and the budget-boundary `session.usage`/`budget_reached` idle sequence are implemented. File-backed message documents are limited to bounded UTF-8 text; File-sourced images and File documents in tool results are not supported. |
@@ -80,8 +80,8 @@ Capability changes use raw HTTP/OpenAPI tests, PostgreSQL transaction tests,
 Temporal replay and integration tests, and real
 PostgreSQL/Temporal/NATS/MinIO/Docker service tests.
 
-Mango has not published a versioned release. Published versions will appear in
-[GitHub Releases](https://github.com/yanpgwang/mango/releases). Follow Mango's
+The Mango runtime has not published a versioned release. Runtime versions will
+appear in [GitHub Releases](https://github.com/yanpgwang/mango/releases). Follow Mango's
 [API reference](api/overview.md) for the current wire surface, this page for
 operational boundaries, and current
 [pull requests](https://github.com/yanpgwang/mango/pulls) or optional

@@ -22,7 +22,7 @@ The packages cover the current OpenAPI operation inventory, including Memory,
 Skills, Files, multi-agent Threads and Environment Work. Coverage means API
 access, not an expansion of the [server capabilities](capabilities.md).
 These are alpha SDKs; a stable SDK contract has not been established. The package
-READMEs document exact-version registry installation for published candidates
+READMEs document exact-version registry installation for published versions
 and local installation from this checkout. Release preparation is tracked in
 the [release guide](https://github.com/yanpgwang/mango/blob/main/sdk/RELEASING.md).
 Package metadata does not by itself confirm a registry release. Match the SDK
@@ -35,8 +35,13 @@ The TypeScript/JavaScript alpha is published on
 npm install mango-sdk@0.1.0-alpha.1
 ```
 
-Python `mango-sdk` is prepared but not yet published to PyPI. Use the Python
-README's local installation instructions until its release is confirmed.
+The Python alpha is published on
+[PyPI](https://pypi.org/project/mango-sdk/0.1.0a1/). With Python 3.11 or newer,
+install it in a virtual environment:
+
+```sh
+python -m pip install 'mango-sdk==0.1.0a1'
+```
 
 ## Authentication and errors
 
