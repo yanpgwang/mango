@@ -1,0 +1,1 @@
+{ "title": "Architecture", "pagesIndex": "../architecture", "pages": ["domain-model", "session-lifecycle", "runtime-and-sandbox", "storage-context-and-tools", "workspace-tenancy"] }

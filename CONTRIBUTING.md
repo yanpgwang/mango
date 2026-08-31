@@ -31,7 +31,7 @@ Requirements:
 - Go 1.26 or newer;
 - [golangci-lint](https://golangci-lint.run/docs/welcome/install/local/)
   2.12.x for local lint checks;
-- Node.js 20 or newer for the documentation site;
+- Node.js 22 or newer for the documentation site and TypeScript SDK;
 - Docker with Compose for service-conformance and Docker sandbox tests.
 
 Run the core checks:
@@ -48,6 +48,12 @@ Run the documentation checks:
 ```bash
 make docs-check
 ```
+
+The Fumadocs site reads `docs/` directly and exports a static GitHub Pages
+artifact. Its build checks internal links, anchors, assets, search indexes, and
+Markdown exports. SDK snippets use named regions from executable examples;
+run `make sdk-test` and `make sdk-conformance` after changing those examples.
+See [website/README.md](website/README.md) for authoring and local preview.
 
 Run reachable Go vulnerability scanning and fail on high-severity production
 dependency advisories for the documentation toolchain:

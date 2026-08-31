@@ -291,6 +291,25 @@ support, so they run the same offline and opt-in live conformance suites.
   bundled sales collateral, web-search dependency, hosted model restrictions,
   or exact response text.
 
+## SDK-first documentation
+
+- Reviewed the public [Claude Managed Agents Sessions guide](https://platform.claude.com/docs/en/managed-agents/sessions)
+  on 2026-08-31. Mango adopts the useful documentation pattern of showing the
+  same operation in selectable language examples alongside lifecycle prose.
+- Mango uses its own Go, Python, and TypeScript SDKs plus HTTP examples. The
+  runnable quickstart files are the single source of code snippets and are
+  verified against Mango's HTTP handlers with test-only repositories and model
+  behavior. A docs migration does not establish hosted-platform compatibility
+  or expand runtime capability claims.
+- Mango does not adopt Anthropic SDK packaging, CLI commands, beta headers,
+  hosted authentication, supported-language inventory, or unsupported resource
+  options simply because the reference page shows them.
+- The site uses [Fumadocs](https://www.fumadocs.dev/docs), its Docs layout and
+  neutral theme, with Mango's existing mark and orange accents. Static export
+  and a bundled search index preserve the existing GitHub Pages operating model;
+  no hosted documentation, search service, model credential, or Node server is
+  required to serve the built artifact.
+
 ## Custom Skills
 
 - The public [Claude Managed Agents Skills guide](https://platform.claude.com/docs/en/managed-agents/skills)

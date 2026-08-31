@@ -7,6 +7,19 @@ title: Sessions
 Sessions bind an immutable agent snapshot to an environment and own an
 append-only event history.
 
+## SDK and HTTP example
+
+This excerpt uses the client and resources from [Getting started](../getting-started.md).
+Select your language; the wire contract and lifecycle rules follow below.
+
+::include[../../sdk/typescript/examples/quickstart.ts#session]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../../sdk/python/examples/quickstart.py#session]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../../sdk/go/examples/quickstart/main.go#session]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../../examples/sdk-quickstart.sh#session]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
+
 ## Create
 
 `POST /v1/sessions`

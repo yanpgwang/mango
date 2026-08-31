@@ -7,6 +7,19 @@ title: Agents
 Agents are versioned definitions. Sessions resolve an agent version once and
 store an immutable snapshot.
 
+## SDK and HTTP example
+
+This excerpt uses the client and resources from [Getting started](../getting-started.md).
+Select your language; the wire contract and lifecycle rules follow below.
+
+::include[../../sdk/typescript/examples/quickstart.ts#agent]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../../sdk/python/examples/quickstart.py#agent]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../../sdk/go/examples/quickstart/main.go#agent]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../../examples/sdk-quickstart.sh#agent]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
+
 ## Create an agent
 
 `POST /v1/agents`

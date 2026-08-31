@@ -24,7 +24,7 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src/mango_sdk", "tests/typing_examples.py"]
+files = ["src/mango_sdk", "tests/typing_examples.py", "examples/quickstart.py"]
 
 [tool.ruff]
 target-version = "py311"

@@ -1,0 +1,4 @@
+{
+  "title": "Documentation",
+  "pages": ["intro", "---Get started---", "getting-started", "sdk", "---Build with Mango---", "guides", "examples", "api", "---Operate & understand---", "deployment", "sandboxes", "architecture", "---Project---", "capabilities", "product", "provenance"]
+}

@@ -11,20 +11,9 @@ const severityRank = new Map([
   ["critical", 4],
 ]);
 
-// Docusaurus 3.10.2 depends on image-size 2.0.2, which is the newest release.
-// These build-time image parsers process repository-controlled documentation
-// assets, and upstream currently provides no patched version. Keep the
-// exception narrow: package plus advisory URL. Any other high or critical root
-// advisory still fails the security job.
-const acceptedAdvisories = new Map([
-  [
-    "image-size",
-    new Set([
-      "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr",
-      "https://github.com/advisories/GHSA-5p2g-fcmc-qvqq",
-    ]),
-  ],
-]);
+// No exceptions are needed by the current Fumadocs toolchain. Any future
+// exception must be justified narrowly by package and advisory URL.
+const acceptedAdvisories = new Map();
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const result = spawnSync(

@@ -6,6 +6,8 @@ on:
     paths:
       - docs/**
       - website/**
+      - sdk/**
+      - examples/sdk-quickstart.sh
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -35,11 +37,12 @@ jobs:
           cache-dependency-path: website/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: website/build
+          path: website/out
 
   deploy:
     name: Deploy

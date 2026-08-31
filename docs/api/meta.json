@@ -1,0 +1,5 @@
+{
+  "title": "API reference",
+  "pagesIndex": "overview",
+  "pages": ["agents", "environments", "sessions", "events", "session-threads", "session-resources", "files", "skills", "memory", "vaults", "webhooks", "deployments", "environment-work"]
+}

@@ -182,6 +182,32 @@ For reconnect without gaps:
 An active stream receives `session.deleted` and then EOF when its session is
 deleted.
 
+### SDK streaming example
+
+The examples use a newly created Session and the configured client from
+[Getting started](../getting-started.md). SDKs open a live subscription before
+sending; HTTP polls this new Session's first turn. They check the stop reason
+and close the subscription. Do not reuse this first-turn polling shortcut to
+identify completion of a later turn in existing history.
+
+::include[../../sdk/typescript/examples/quickstart.ts#stream]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../../sdk/python/examples/quickstart.py#stream]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../../sdk/go/examples/quickstart/main.go#stream]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../../examples/sdk-quickstart.sh#stream]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
+
+### Read history in your language
+
+::include[../../sdk/typescript/examples/quickstart.ts#history]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../../sdk/python/examples/quickstart.py#history]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../../sdk/go/examples/quickstart/main.go#history]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+::include[../../examples/sdk-quickstart.sh#history]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
+
 ## Live event previews
 
 Opt in to ephemeral assistant text and privacy-safe thinking starts:
