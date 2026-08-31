@@ -92,8 +92,11 @@ descriptions bounded to one percent of the configured context window.
 When it invokes the private `Skill` dispatcher, the runtime returns
 `Launching skill: <name>` and injects the complete selected `SKILL.md`, prefixed
 with its base directory, into the provider conversation. Referenced supporting
-files remain on disk for ordinary `read` or `bash` access. Local and Environment
-Worker Sessions reject custom Skill execution. See
+files remain on disk for ordinary `read` or `bash` access. Sessions using the
+Local adapter or a self-hosted Environment reject custom Skills at creation
+with `422`, before any Session, Work item, or execution wakeup is created. This
+check covers the effective primary Agent and every resolved roster member
+after overrides, including a `self` copy. See
 [Sandbox backends](../sandboxes.md#custom-skill-mounts) for the remote-copy
 limitation.
 
@@ -241,6 +244,11 @@ A running session cannot be archived or deleted and returns `409`. A
 worker processes so the Session can return to `idle`. Omitting
 `session_thread_id` interrupts every non-archived Thread; providing it targets
 only the named Thread.
+
+Archive prevents further input and retains history and Session Files, but does
+not release the sandbox. Automatic idle or archive-based sandbox reclamation
+is not implemented. Delete performs sandbox cleanup and removes Session-owned
+Files; download any outputs you need to retain before deleting a Session.
 
 Delete removes the session and persisted history, sends a final
 `session.deleted` event to active subscribers, and closes their streams:

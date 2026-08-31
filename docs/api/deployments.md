@@ -118,6 +118,14 @@ successful attempt. If Session creation is rejected, the Run instead contains
 an `error` and no Session ID. Fatal scheduled errors also pause the Deployment
 with an error reason.
 
+Each Run uses the same capability admission as direct Session creation. For
+example, custom Skills on a self-hosted Environment produce a Run with
+`session_creation_rejected_error` and no Session, Work item, or execution
+wakeup. Creating the Deployment template does not establish that its runtime
+capabilities are available. A manual Run records the failure without pausing
+the Deployment; a scheduled Run treats this unsupported capability as a
+permanent error and pauses further scheduled attempts.
+
 Run lists support `deployment_id`, `has_error`, `trigger_type`, all four
 `created_at` bounds, `limit`, and a forward-only opaque `page` cursor. The
 `trigger_context` distinguishes manual attempts from scheduled attempts and

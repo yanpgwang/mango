@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -98,9 +99,8 @@ func TestPostgresAgentAndSessionSkillVersionResolution(t *testing.T) {
 		t.Fatalf("overridden Session pin = %+v", overridden.AgentSnapshot.Skills)
 	}
 
-	// Cloud bundle materialization is adapter-gated, while the official
-	// self-hosted EnvironmentWorker downloads the same pinned bundle through
-	// the public Skills API and must not inherit that cloud adapter restriction.
+	// Cloud bundle materialization is adapter-gated. External worker Skill
+	// activation is not implemented and must fail before Session admission.
 	sessions.ConfigureCloudSkillBundles(false)
 	if _, err := sessions.Create(ctx, app.CreateSessionInput{
 		AgentID: agent.ID, EnvironmentID: environment.ID,
@@ -114,22 +114,20 @@ func TestPostgresAgentAndSessionSkillVersionResolution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create self-hosted Environment: %v", err)
 	}
-	selfHostedSession, err := sessions.Create(ctx, app.CreateSessionInput{
+	_, err = sessions.Create(ctx, app.CreateSessionInput{
 		AgentID: agent.ID, EnvironmentID: selfHosted.ID,
 		InitialEvents: []domain.EventDraft{{
 			Type: domain.EvUserMessage, Payload: map[string]any{"content": "use the Skill"},
 		}},
 	})
-	if err != nil {
-		t.Fatalf("create self-hosted Session with Skill: %v", err)
-	}
-	if selfHostedSession.AgentSnapshot.Skills[0].Version != first.Version {
-		t.Fatalf("self-hosted Session pin = %+v", selfHostedSession.AgentSnapshot.Skills)
+	var capabilityErr *domain.DomainError
+	if !errors.As(err, &capabilityErr) || capabilityErr.Kind != domain.KindUnsupported {
+		t.Fatalf("self-hosted Session with Skill must fail admission: %v", err)
 	}
 	work, err := pg.NewEnvironmentWorkRepository(fixture.store).ListWork(
 		ctx, selfHosted.ID, app.EnvironmentWorkListQuery{Limit: 10},
 	)
-	if err != nil || len(work.Work) != 1 || work.Work[0].SessionID != selfHostedSession.ID {
+	if err != nil || len(work.Work) != 0 {
 		t.Fatalf("self-hosted Skill Work = %+v, err=%v", work, err)
 	}
 	for _, version := range []string{first.Version, second.Version} {

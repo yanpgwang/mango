@@ -149,6 +149,19 @@ func TestClassifyDeploymentRunGitRepositoryFailure(t *testing.T) {
 	}
 }
 
+func TestClassifyDeploymentRunUnsupportedCapabilityIsPermanent(t *testing.T) {
+	t.Parallel()
+	for _, message := range []string{
+		"custom Skills are unavailable for self-hosted Sessions",
+		"custom Skills are unavailable for the configured cloud sandbox provider",
+	} {
+		errorType, detail := classifyDeploymentRunError(domain.Unsupported(message))
+		if errorType != "session_creation_rejected_error" || detail != message || !shouldPauseDeployment(errorType) {
+			t.Fatalf("unsupported capability classification = %q, %q", errorType, detail)
+		}
+	}
+}
+
 func TestDeploymentServiceRecordsAndPausesOnScheduledCreationFailure(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)

@@ -333,3 +333,31 @@ support, so they run the same offline and opt-in live conformance suites.
   `anthropic` managed catalog, cloud-only repository scanning, rollout timing,
   or a requirement to mirror hosted/self-hosted feature differences. Repository
   Skills and Environment Worker activation remain separate product decisions.
+
+## OSS execution capability admission
+
+- Reviewed the public [CMA self-hosted sandbox guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+  and [Skills guide](https://platform.claude.com/docs/en/managed-agents/skills)
+  on 2026-08-31. CMA's external worker helpers prepare a workspace and activate
+  pinned Skills; the existence of a Work API alone does not supply that runtime.
+- Mango's user problem is narrower: a Session must not be admitted with a
+  statically known capability mismatch and fail only after execution starts.
+  Mango keeps version-pinned Skills but rejects self-hosted Session creation
+  when the effective primary Agent or any resolved roster member has Skills.
+  Overrides apply before admission, including to `self` roster copies.
+- The rejection precedes Session persistence, Work activation, and execution
+  wakeups. Deployment Runs reuse the same admission path, record the existing
+  `session_creation_rejected_error`, and pause a scheduled Deployment for an
+  unsupported capability. Manual Run failures do not pause it. Replaying a
+  scheduled occurrence returns the same immutable failure record.
+- Acceptance is verified through Mango HTTP and isolated PostgreSQL tests:
+  inherited, pinned, override-added, and roster-only Skills are rejected;
+  clearing effective Skills permits an otherwise valid self-hosted Session;
+  capable Mango-managed sandboxes retain Skill admission. No hosted agent
+  credentials, vendor SDK worker, new authentication scheme, or migration is
+  required.
+- This slice also clarifies existing limits rather than changing their
+  semantics: Outcome grading is tool-free evidence evaluation, archive does
+  not release a sandbox, and Environment Work is a protocol without a
+  first-party runner. Artifact verification, SDK workflow helpers, sandbox
+  reclamation, and OSS cost accounting are separate delivery slices.

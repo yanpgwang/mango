@@ -808,7 +808,8 @@ func classifyDeploymentRunError(err error) (string, string) {
 	case strings.Contains(lower, "mcp") && strings.Contains(lower, "egress"):
 		return "mcp_egress_blocked_error", message
 	}
-	if errors.As(err, &domainErr) && domainErr.Kind == domain.KindValidation {
+	if errors.As(err, &domainErr) &&
+		(domainErr.Kind == domain.KindValidation || domainErr.Kind == domain.KindUnsupported) {
 		return "session_creation_rejected_error", message
 	}
 	return "unknown_error", message
