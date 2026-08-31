@@ -5,7 +5,5 @@
 and its
 [`example_data/iterate` fixture](https://github.com/anthropics/claude-cookbooks/tree/main/managed_agents/example_data/iterate).
 
-These inputs belong to the standalone Python SDK example. Mango's system tests
-keep separate fixtures. The calculator checks use Python's standard-library
-`unittest` instead of requiring pytest or installing packages inside the sandbox.
+They are used only by Mango's deterministic and opt-in live scenario tests.
 The source material is MIT licensed; the source license is retained here.

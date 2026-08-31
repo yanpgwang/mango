@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	iterateFixtureDirectory = "../../examples/coding-agent/fixtures"
+	iterateFixtureDirectory = "testdata/coding_agent_iterate"
 	iterateOutputPath       = "calc.py"
 )
 
@@ -172,7 +172,7 @@ func runIterateFixFailingTests(t *testing.T, tc iterateScenarioCase) {
 		}
 	}
 
-	prompt := "Use your Sandbox tools now. The checks in /mnt/session/uploads/test_calc.py for /mnt/session/uploads/calc.py are failing. First copy both files into /workspace/iterate and run python3 test_calc.py so you observe the existing failure. Then inspect and edit the writable calc.py, re-running the unchanged tests until add, divide, and mean all behave as test_calc.py requires. The checks use the Python standard library. Do not install packages or access the network. Write the verified final calc.py to /mnt/session/outputs/calc.py. Do not reply until the file exists and every assertion has passed."
+	prompt := "Use your Sandbox tools now. The checks in /mnt/session/uploads/test_calc.py for /mnt/session/uploads/calc.py are failing. First copy both files into /workspace/iterate and run the assertions so you observe the existing failure. Then inspect and edit the writable calc.py, re-running the assertions until add, divide, and mean all behave as test_calc.py requires. Pytest is not installed, so run equivalent assertions directly with python3. Do not install packages or access the network. Write the verified final calc.py to /mnt/session/outputs/calc.py. Do not reply until the file exists and every assertion has passed."
 	if _, err := orchestrator.Admit(ctx, sessionID, []domain.EventDraft{{
 		Type: domain.EvUserMessage,
 		Payload: map[string]any{"content": []any{map[string]any{
@@ -369,9 +369,9 @@ func iterateCodingToolset(t *testing.T) []any {
 
 // iterateProbeModel derives its next action entirely from committed tool
 // results, making every provider Activity retry return the same response.
-type iterateProbeModel struct{ outputPath string }
+type iterateProbeModel struct{}
 
-func (m iterateProbeModel) CreateMessage(
+func (iterateProbeModel) CreateMessage(
 	_ context.Context,
 	request model.Request,
 ) (model.Response, error) {
@@ -397,7 +397,7 @@ func (m iterateProbeModel) CreateMessage(
 			return model.Response{}, errors.New("iterate probe did not observe the repaired test suite")
 		}
 		return model.Response{
-			Content:    []domain.ContentBlock{{Type: "text", Text: "All assertions pass and the repaired source was published."}},
+			Content:    []domain.ContentBlock{{Type: "text", Text: "All assertions pass and calc.py was published."}},
 			StopReason: "end_turn",
 		}, nil
 	}
@@ -421,9 +421,6 @@ PY
 ` + iterateVerificationCommand("/workspace/iterate/calc.py") + `
 mkdir -p /mnt/session/outputs
 cp /workspace/iterate/calc.py /mnt/session/outputs/calc.py`,
-	}
-	if m.outputPath != "" {
-		commands[2] = strings.ReplaceAll(commands[2], "/mnt/session/outputs/calc.py", "/mnt/session/outputs/"+m.outputPath)
 	}
 	return model.Response{
 		Content: []domain.ContentBlock{{
