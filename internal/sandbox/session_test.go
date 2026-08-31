@@ -52,7 +52,9 @@ func TestSessionManager_ReconcilesCreateBeforeBindingCrash(t *testing.T) {
 	// The provider resource exists even though its binding did not commit. A
 	// marker proves reconciliation attaches the same workspace rather than
 	// silently replacing it.
-	_, orphan, err := provider.Create(ctx, "sesn_orphan_recover", spec)
+	orphan, err := provider.Attach(ctx, "sesn_orphan_recover", Ref{
+		Provider: provider.Name(), ID: "sesn_orphan_recover",
+	}, spec)
 	if err != nil {
 		t.Fatal(err)
 	}
