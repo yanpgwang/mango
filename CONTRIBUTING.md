@@ -97,6 +97,15 @@ service suite and can also be selected directly with `make test-coding-agent`.
 Keep its documented example, fixture, and deterministic/live outcome assertions
 aligned.
 
+The runnable Python SDK coding-agent tutorial shares those fixtures. Install
+the checkout SDK with `uv sync --project sdk/python --frozen`, then run
+`make test-coding-agent-example-unit` and `make test-coding-agent-example`.
+The latter runs the exact tutorial against isolated PostgreSQL state, real
+Temporal, NATS, MinIO, and Docker with deterministic inference, including stream
+loss and read-only client resumption. The opt-in
+`scripts/with-dev-env make test-coding-agent-example-live` runs the same SDK
+program against the configured real model without changing the running stack.
+
 The durable custom-tool gate scenario can be selected with
 `make test-hitl-gate`; its credentialed user journey runs with
 `scripts/with-dev-env make demo-hitl-gate` against the public HTTP API. Keep

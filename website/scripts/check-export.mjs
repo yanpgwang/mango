@@ -76,6 +76,10 @@ export async function checkExport(directory = resolve('out')) {
   for (const path of ['/sdk', '/api', '/architecture']) {
     assert.ok(homeLinks.includes(`${basePath}${path}`), `missing overview navigation ${path}`);
   }
+  const codingGuide = pages.get('examples/coding-agent-iterate/index.html').html('main').text();
+  for (const snippet of ['AsyncMango(', 'client.upload_file(', 'client.stream_session_events(', 'client.download_file(', '--network=none']) {
+    assert.ok(codingGuide.includes(snippet), `coding-agent guide: missing executable snippet ${snippet}`);
+  }
 
   // Exercise the same static search client used in the browser, through a
   // loopback-only static server. No hosted search/API or browser automation.
@@ -92,7 +96,7 @@ export async function checkExport(directory = resolve('out')) {
         assert.ok(target, `invalid search result ${result.url}`);
       }
     }
-    for (const path of ['/markdown/index.md', '/markdown/getting-started/index.md', '/markdown/api/sessions/index.md', '/llms.txt']) {
+    for (const path of ['/markdown/index.md', '/markdown/getting-started/index.md', '/markdown/api/sessions/index.md', '/markdown/examples/coding-agent-iterate/index.md', '/llms.txt']) {
       const response = await fetch(`${origin}${basePath}${path}`);
       assert.equal(response.status, 200, `${path}: exported Markdown available`);
       const markdown = await response.text();
@@ -102,6 +106,11 @@ export async function checkExport(directory = resolve('out')) {
         assert.ok(markdown.includes(absoluteUrl('/sdk#install-from-source')), 'Markdown links must work outside the source tree');
         for (const method of ['createSession', 'create_session', 'CreateSession', 'curl']) {
           assert.ok(markdown.includes(method), `${path}: missing ${method} example`);
+        }
+      }
+      if (path === '/markdown/examples/coding-agent-iterate/index.md') {
+        for (const snippet of ['AsyncMango(', 'client.upload_file(', 'client.download_file(', '--network=none']) {
+          assert.ok(markdown.includes(snippet), `${path}: missing executable snippet ${snippet}`);
         }
       }
     }

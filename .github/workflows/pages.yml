@@ -8,6 +8,7 @@ on:
       - website/**
       - sdk/**
       - examples/sdk-quickstart.sh
+      - examples/coding-agent/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 

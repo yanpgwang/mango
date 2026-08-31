@@ -25,6 +25,7 @@ PYTHON ?= python3
 UV ?= uv
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
 MANGO_EXAMPLE_ADVISOR_MODEL_ID ?= $(MANGO_EXAMPLE_MODEL_ID)
+EXAMPLE_PYTHON ?= sdk/python/.venv/bin/python
 
 DOCKER_BUILD_ARGS := --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION)
 ifneq ($(strip $(GOPROXY)),)
@@ -41,6 +42,7 @@ endif
 	local-config local-up local-down local-health local-ps local-logs
 
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
+.PHONY: demo-coding-agent test-coding-agent-example test-coding-agent-example-live test-coding-agent-example-unit
 
 help:
 	@echo "Development"
@@ -53,6 +55,9 @@ help:
 	@echo "  make test-platform-live  run durable text and Docker tool turns against that live model"
 	@echo "  make test-coding-agent   run the offline iterate coding scenario in Docker"
 	@echo "  make test-coding-agent-live  run the iterate scenario against the live model"
+	@echo "  make demo-coding-agent  run the Python SDK coding example against a running Mango server"
+	@echo "  make test-coding-agent-example  exercise that exact example against real local services"
+	@echo "  make test-coding-agent-example-live  exercise the SDK example with the configured live model"
 	@echo "  make test-hitl-gate      run the durable custom-tool HITL scenario"
 	@echo "  make demo-hitl-gate      run the interactive HITL example over public HTTP"
 	@echo "  make demo-multi-agent-team  run the interactive multi-agent example over public HTTP"
@@ -142,6 +147,31 @@ demo-multi-agent-team:
 	MANGO_EXAMPLE_ADVISOR_MODEL_ID='$(MANGO_EXAMPLE_ADVISOR_MODEL_ID)' \
 	env -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
 		$(GO) run ./examples/multi-agent-team
+
+demo-coding-agent:
+	MANGO_EXAMPLE_MODEL_ID='$(MANGO_EXAMPLE_MODEL_ID)' \
+	env -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
+		$(EXAMPLE_PYTHON) examples/coding-agent/main.py
+
+test-coding-agent-example-unit:
+	$(EXAMPLE_PYTHON) -m unittest discover -s examples/coding-agent -p 'test_example.py'
+	$(EXAMPLE_PYTHON) -m mypy --strict examples/coding-agent/main.py examples/coding-agent/verify.py
+	$(EXAMPLE_PYTHON) -m ruff check examples/coding-agent
+
+test-coding-agent-example: EXAMPLE_TEST := TestCodingAgentSDKExample
+test-coding-agent-example: EXAMPLE_LIVE := 0
+test-coding-agent-example-live: EXAMPLE_TEST := TestLiveModelCodingAgentSDKExample
+test-coding-agent-example-live: EXAMPLE_LIVE := 1
+test-coding-agent-example test-coding-agent-example-live:
+	MANGO_TEST_EXAMPLES=1 MANGO_TEST_LIVE_MODEL='$(EXAMPLE_LIVE)' \
+	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
+	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
+	MANGO_TEST_NATS_URL='$(MANGO_TEST_NATS_URL)' \
+	MANGO_TEST_S3_ENDPOINT='$(MANGO_TEST_S3_ENDPOINT)' \
+	MANGO_TEST_S3_BUCKET='$(MANGO_TEST_S3_BUCKET)' \
+	MANGO_TEST_S3_ACCESS_KEY='$(MANGO_TEST_S3_ACCESS_KEY)' \
+	MANGO_TEST_S3_SECRET_KEY='$(MANGO_TEST_S3_SECRET_KEY)' \
+	$(GO) test ./internal/temporal -run '^$(EXAMPLE_TEST)$$' -count=1
 
 vet:
 	$(GO) vet ./...
