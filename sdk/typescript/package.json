@@ -1,10 +1,22 @@
 {
-  "name": "@mango-agents/sdk",
-  "version": "0.1.0",
+  "name": "mango-sdk",
+  "version": "0.1.0-alpha.1",
   "description": "Typed TypeScript and JavaScript client for Mango's self-hosted /v1 API",
-  "private": true,
   "type": "module",
   "license": "Apache-2.0",
+  "homepage": "https://yanpgwang.github.io/mango/sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yanpgwang/mango.git",
+    "directory": "sdk/typescript"
+  },
+  "bugs": { "url": "https://github.com/yanpgwang/mango/issues" },
+  "keywords": ["mango", "agents", "sdk", "self-hosted"],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "alpha"
+  },
   "engines": { "node": ">=22" },
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "main": "./dist/index.js",
@@ -14,6 +26,7 @@
     "generate": "node scripts/generate.mjs",
     "generate:check": "node scripts/generate.mjs --check",
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "test": "npm run generate:check && npm run build && tsc -p test/tsconfig.json && node --test test/*.test.mjs"
   },
   "devDependencies": { "typescript": "5.9.3" }

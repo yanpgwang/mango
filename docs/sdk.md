@@ -12,18 +12,36 @@ scheduling, and sandboxes.
 
 ## Packages
 
-| Language | Source, local installation and examples |
-| --- | --- |
-| Go | [Go SDK](https://github.com/yanpgwang/mango/tree/main/sdk/go) |
-| Python | [Python SDK](https://github.com/yanpgwang/mango/tree/main/sdk/python) |
-| TypeScript / JavaScript | [TypeScript SDK](https://github.com/yanpgwang/mango/tree/main/sdk/typescript) |
+| Language | Package / module | Installation and examples |
+| --- | --- | --- |
+| Go | `github.com/yanpgwang/mango/sdk/go` | [Go SDK](https://github.com/yanpgwang/mango/tree/main/sdk/go) |
+| Python | `mango-sdk` (import `mango_sdk`) | [Python SDK](https://github.com/yanpgwang/mango/tree/main/sdk/python) |
+| TypeScript / JavaScript | `mango-sdk` | [TypeScript SDK](https://github.com/yanpgwang/mango/tree/main/sdk/typescript) |
 
 The packages cover the current OpenAPI operation inventory, including Memory,
 Skills, Files, multi-agent Threads and Environment Work. Coverage means API
 access, not an expansion of the [server capabilities](capabilities.md).
-These are pre-release source packages; registry releases and a stable SDK
-contract have not been established. Install locally as the package README
-describes.
+These are alpha SDKs; a stable SDK contract has not been established. The package
+READMEs document exact-version registry installation for published versions
+and local installation from this checkout. Release preparation is tracked in
+the [release guide](https://github.com/yanpgwang/mango/blob/main/sdk/RELEASING.md).
+Package metadata does not by itself confirm a registry release. Match the SDK
+version to the server revision you deploy.
+
+The TypeScript/JavaScript alpha is published on
+[npm](https://www.npmjs.com/package/mango-sdk/v/0.1.0-alpha.1):
+
+```sh
+npm install mango-sdk@0.1.0-alpha.1
+```
+
+The Python alpha is published on
+[PyPI](https://pypi.org/project/mango-sdk/0.1.0a1/). With Python 3.11 or newer,
+install it in a virtual environment:
+
+```sh
+python -m pip install 'mango-sdk==0.1.0a1'
+```
 
 ## Authentication and errors
 
