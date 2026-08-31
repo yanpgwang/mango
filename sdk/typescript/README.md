@@ -19,9 +19,11 @@ For a published alpha version, install by its exact version:
 npm install mango-sdk@0.1.0-alpha.1
 ```
 
-The release uses the `alpha` dist-tag rather than `latest`. Registry packages
-include compiled JavaScript and type declarations; consumers do not need to
-compile the SDK. Use an SDK version built for your Mango server revision.
+The release is an alpha even if npm displays it under `latest`: the first upload
+created both tags, and the registry rejected removal of `latest`. Prefer the
+exact version above. Registry packages include compiled JavaScript and type
+declarations; consumers do not need to compile the SDK. Use an SDK version built
+for your Mango server revision.
 
 ### Build and install from source
 

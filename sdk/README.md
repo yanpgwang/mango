@@ -9,6 +9,11 @@ server; they do not run an Agent loop or call a hosted agent service.
 | Python | [Python SDK](python/) — synchronous and asynchronous clients |
 | TypeScript / JavaScript | [TypeScript SDK](typescript/) — native fetch and async iteration |
 
+The npm package [`mango-sdk@0.1.0-alpha.1`](https://www.npmjs.com/package/mango-sdk/v/0.1.0-alpha.1)
+is published. Install it with `npm install mango-sdk@0.1.0-alpha.1`.
+The Python `mango-sdk` candidate is built and tested but is not yet published
+to PyPI; use its local installation instructions for now.
+
 All three target every operation in the current OpenAPI document: Agents,
 Environments, Environment Work, Sessions, Events, Threads, Resources, Files,
 Skills, Memory, Vaults, Webhooks, Deployments and public diagnostics. An SDK
@@ -20,8 +25,8 @@ Python and TypeScript use the distribution name `mango-sdk`. Python imports
 The Go module remains `github.com/yanpgwang/mango/sdk/go`, without an independent
 version tag. Source installation remains available for every language.
 There is no third-party SDK compatibility promise or independently stable SDK
-API. See [release preparation and verification](RELEASING.md) for the first
-registry release; candidate metadata alone does not mean a package is published.
+API. See [release preparation and verification](RELEASING.md) and the
+[first alpha release record](releases/0.1.0-alpha.1.md).
 
 ## One contract, three packages
 

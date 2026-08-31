@@ -28,6 +28,16 @@ the [release guide](https://github.com/yanpgwang/mango/blob/main/sdk/RELEASING.m
 Package metadata does not by itself confirm a registry release. Match the SDK
 version to the server revision you deploy.
 
+The TypeScript/JavaScript alpha is published on
+[npm](https://www.npmjs.com/package/mango-sdk/v/0.1.0-alpha.1):
+
+```sh
+npm install mango-sdk@0.1.0-alpha.1
+```
+
+Python `mango-sdk` is prepared but not yet published to PyPI. Use the Python
+README's local installation instructions until its release is confirmed.
+
 ## Authentication and errors
 
 Configure your Mango URL and Workspace API key. Model-provider credentials
