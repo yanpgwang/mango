@@ -11,6 +11,8 @@ description: Runnable examples with explicit verification boundaries.
 - [Human-in-the-loop gate](hitl-gate.md): persist a custom-tool approval barrier.
 - [Specialist team](multi-agent-team.md): coordinate a team, consult an Advisor, and synthesize reports.
 
-The HTTP-handler tests use deterministic test repositories and model behavior.
-They do not establish production, real-model, or third-party integration support.
-Each example documents its own service and live-model verification tier.
+Start with the SDK quickstart for an offline first turn. The coding, human-gate,
+and specialist-team examples connect to a running Mango deployment with a real
+model; they do not start the runtime or invoke its system tests. Each guide
+explains its prerequisites, expected results, cleanup, and limits. A successful
+example is evidence for that workflow, not a production-readiness guarantee.

@@ -129,8 +129,8 @@ separate Deployment design change rather than a synthetic notification.
 - Redirects are never followed. A `3xx`, or resolution to a non-public address,
   disables the endpoint immediately and fails its pending deliveries.
 - One later `2xx` resets the tracked continuous-failure window. Mango records
-  this window but does not yet auto-disable solely by duration because CMA does
-  not publish the threshold and Mango has not selected an operator policy.
+  this window but does not auto-disable solely by duration. Mango has not yet
+  implemented an operator-configured sustained-failure threshold.
 - Terminal delivery records and their payloads are retained internally for 30
   days, then removed in bounded worker cleanup batches. They are not currently
   exposed as a delivery-log API.

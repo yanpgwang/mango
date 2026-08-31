@@ -31,6 +31,15 @@ When `~/.config/mango/dev.env` exists, `make local-up` loads it via
 worker uses the real Messages endpoint. A missing file or empty model values
 keep the offline deterministic model.
 
+For an explicitly offline startup that bypasses the development file, use the
+command in [Getting started](../../docs/getting-started.md#run-the-server).
+The Compose worker currently fixes `MANGO_SANDBOX=local` and enables its unsafe
+real-model override: tools run inside the worker container, not a per-Session
+Docker container. Exporting `MANGO_SANDBOX=docker` does not override this
+configuration. For Files, Skills, Memory mounts, or other Docker capabilities,
+use the consistently configured source API and worker described in
+[Use a real model endpoint](../../docs/getting-started.md#use-a-real-model-endpoint).
+
 The API bootstraps `sk-mango-local-development` for the default Workspace.
 Override it with `MANGO_API_KEY` before `make local-up`; never reuse the
 bundled value outside local development.

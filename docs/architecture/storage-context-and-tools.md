@@ -369,13 +369,18 @@ Therefore:
 
 - `provider_native + always_allow` is supported;
 - `provider_native + always_ask` is rejected during capability resolution;
-- `always_ask` becomes available only with a `platform_managed` executor that
-  can durably park before execution. A `client_self_hosted` environment already
-  makes execution client-owned and parks for `user.tool_result`.
+- an interceptable `platform_managed` executor can support `always_ask` by
+  durably parking before execution;
+- `client_self_hosted` built-ins preserve the permission gate: first wait for a
+  persisted `user.tool_confirmation` allowing execution, then execute and return
+  `user.tool_result` for the original tool-use event. A denial never authorizes
+  execution, and approval alone does not complete the pending-action barrier.
 
-This rejection is a current Mango executor limitation. The API returns a clear
-unsupported-capability error until Mango has an interceptable executor. Silently treating
-`always_ask` as `always_allow` is not allowed.
+The provider-native rejection is a current Mango executor limitation. The API
+returns a clear unsupported-capability error until Mango has an interceptable
+executor. Silently treating `always_ask` as `always_allow` is not allowed.
+See [external tool approvals](../api/events.md#approve-externally-executed-tools)
+for admission and recovery rules.
 
 ## Web Fetch
 

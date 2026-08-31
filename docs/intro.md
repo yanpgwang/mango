@@ -51,9 +51,11 @@ The default deployment separates API and worker roles around three backends:
 - **NATS Core** carries best-effort previews and event wakeups; missed wakeups
   are repaired from PostgreSQL sequence cursors.
 
-The local Compose stack runs this complete architecture with a deterministic
-offline model and needs no external model credentials; examples use a documented
-development-only Mango Workspace key. The runtime and its native API are the
+The [getting-started command](getting-started.md#run-the-server) explicitly selects
+the deterministic offline model and needs no external model credentials;
+`make local-up` can instead load a real model from an existing development
+configuration. Examples use a documented development-only Mango Workspace key.
+The runtime and its native API are the
 product. External contracts may supply useful routes, resource models, schemas,
 events, and public SDK types that Mango intentionally reuses or adapts. The
 adopted result is Mango-owned: Mango's own documentation, OpenAPI definition,

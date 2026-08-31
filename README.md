@@ -53,24 +53,28 @@ required for the local walkthrough.
 ```bash
 git clone https://github.com/yanpgwang/mango.git
 cd mango
-make local-up
+export MANGO_API_KEY="${MANGO_API_KEY:-sk-mango-local-development}"
+MANGO_MODEL_BASE_URL= MANGO_MODEL_API_KEY= MANGO_MODEL_ID= \
+  docker compose -f deployments/local/compose.yaml up -d --build
 make local-health
 ```
 
 Follow the [five-minute walkthrough](https://yanpgwang.github.io/mango/getting-started)
 to create an Environment, Agent, and Session, then send and stream your first
-message. The local stack uses a deterministic offline model and supplies a
-development-only Mango API key.
+message. The command above explicitly selects the deterministic offline model
+and supplies a development-only Mango API key unless you override it.
 
-To use a real Messages-compatible model instead, create the repository-external
-development configuration, set `MANGO_SANDBOX=docker` and the documented
-`MANGO_MODEL_*` values, then start the same stack:
+`make local-up` is a convenience command that automatically loads an existing
+`~/.config/mango/dev.env`; it may enable a real model. The current Compose worker
+still uses the local-process sandbox inside its own container, not a separate
+Docker sandbox for each Session. A shell setting of `MANGO_SANDBOX=docker` does
+not override that Compose configuration.
 
-```bash
-make dev-env-init
-$EDITOR ~/.config/mango/dev.env
-make local-up
-```
+For real model tasks with Files and per-Session Docker sandboxes, follow
+[Use a real model endpoint](docs/getting-started.md#use-a-real-model-endpoint).
+That setup configures both the API and worker consistently.
+
+Stop the Compose stack without deleting its data:
 
 ```bash
 make local-down

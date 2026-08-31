@@ -6,6 +6,8 @@ slug: /examples/multi-agent-team
 # Coordinate a specialist team
 
 This example runs a release-readiness review through Mango's public HTTP API.
+The current Go client uses `net/http`; the same operations are available in
+the first-party [SDKs](../sdk.md).
 A coordinator delegates independent work to reliability and security Agents,
 consults an Advisor, waits for all three responses, and produces a decision. A
 second interactive turn adds a new constraint and must continue the existing
@@ -42,20 +44,15 @@ adds the explicitly opt-in real-model evidence that public CI cannot provide.
 
 ## Run the example
 
-Configure `MANGO_MODEL_*` in `~/.config/mango/dev.env` as described in
-[Getting started](../getting-started.md). Start the local stack with that
-environment so its worker uses the real Messages-shaped endpoint:
-
-```bash
-scripts/with-dev-env make local-up
-make local-health
-```
-
-Then run the public-HTTP client:
+Configure a running API and worker using
+[Use a real model endpoint](../getting-started.md#use-a-real-model-endpoint).
+With the same `~/.config/mango/dev.env`, run the public-HTTP client:
 
 ```bash
 scripts/with-dev-env make demo-multi-agent-team
 ```
+
+The example does not start services or change the worker's model or sandbox.
 
 The Make target passes the configured model IDs to the example but removes the
 provider base URL and key from the client process. Set
