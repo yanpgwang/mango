@@ -38,18 +38,19 @@ type ApiKey struct {
 }
 
 type Deployment struct {
-	ID                string
-	AgentID           string
-	AgentVersion      int32
-	EnvironmentID     string
-	Status            string
-	Body              []byte
-	NextRunAt         pgtype.Timestamptz
-	ScheduleClaimedAt pgtype.Timestamptz
-	CreatedAt         pgtype.Timestamptz
-	UpdatedAt         pgtype.Timestamptz
-	ArchivedAt        pgtype.Timestamptz
-	WorkspaceID       string
+	ID                 string
+	AgentID            string
+	AgentVersion       int32
+	EnvironmentID      string
+	Status             string
+	Body               []byte
+	NextRunAt          pgtype.Timestamptz
+	ScheduleClaimedAt  pgtype.Timestamptz
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	ArchivedAt         pgtype.Timestamptz
+	WorkspaceID        string
+	ScheduleClaimToken *string
 }
 
 type DeploymentRun struct {
@@ -208,6 +209,7 @@ type PendingAction struct {
 	ResolvedAt          pgtype.Timestamptz
 	ThreadID            string
 	ClientActionEventID string
+	ApprovalEventID     *string
 }
 
 type ProviderTranscriptTurn struct {

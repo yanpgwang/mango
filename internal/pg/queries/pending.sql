@@ -14,7 +14,7 @@ VALUES (
 
 -- name: GetPendingActionForUpdate :one
 SELECT id, session_id, thread_id, action_event_id, client_action_event_id,
-       kind, resolving_event_id, created_at, resolved_at
+       kind, approval_event_id, resolving_event_id, created_at, resolved_at
 FROM pending_actions
 WHERE session_id = @session_id
   AND (
@@ -22,6 +22,14 @@ WHERE session_id = @session_id
       OR client_action_event_id = @referenced_event_id
   )
 FOR UPDATE;
+
+-- name: ApproveExternalPendingAction :execrows
+UPDATE pending_actions
+SET kind = 'tool_result', approval_event_id = @approval_event_id
+WHERE session_id = @session_id AND id = @id
+  AND kind = 'tool_confirmation'
+  AND approval_event_id IS NULL
+  AND resolving_event_id IS NULL AND resolved_at IS NULL;
 
 -- name: ClaimPendingAction :execrows
 UPDATE pending_actions
@@ -84,7 +92,7 @@ SELECT EXISTS(
 
 -- name: ListUnresolvedPendingActions :many
 SELECT id, session_id, thread_id, action_event_id, client_action_event_id,
-       kind, resolving_event_id, created_at, resolved_at
+       kind, approval_event_id, resolving_event_id, created_at, resolved_at
 FROM pending_actions
 WHERE session_id = @session_id
   AND thread_id = @thread_id

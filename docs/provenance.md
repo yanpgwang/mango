@@ -361,3 +361,27 @@ support, so they run the same offline and opt-in live conformance suites.
   not release a sandbox, and Environment Work is a protocol without a
   first-party runner. Artifact verification, SDK workflow helpers, sandbox
   reclamation, and OSS cost accounting are separate delivery slices.
+
+## External tool approvals
+
+- Reviewed CMA's [permission policies](https://platform.claude.com/docs/en/managed-agents/permission-policies)
+  and the official [SessionToolRunner approval gate](https://github.com/anthropics/anthropic-sdk-python/blob/071efb619cfe195d74deb377e1dd14814643b2ca/src/anthropic/lib/tools/_beta_session_runner.py#L701)
+  on 2026-08-31. Mango adopts the invariant that execution location must not
+  override permission policy: external tools wait for approval before execution.
+- The Mango user problem was an `always_ask` self-hosted call incorrectly emitted
+  as `allow`. Acceptance requires a durable approval before result admission,
+  no server-side external execution, denial without a client result, atomic
+  duplicate rejection, complete mixed barriers, child routing, and recovery
+  after worker replacement.
+- Mango reuses `agent.tool_use`, `user.tool_confirmation`, `user.tool_result`,
+  and the original public tool-use ID. An allow advances the existing pending
+  record to await its result; it does not resume the model. A persisted approval
+  receipt makes this independent of SDK memory and stream availability. Denial
+  follows the existing confirmed-tool error-result path without execution.
+- The self-hosted trust boundary remains Workspace-scoped trusted workers.
+  This slice does not introduce hosted credentials, a tool runner, resource
+  preparation, automatic side-effect retries, or exactly-once execution claims.
+- Migration 38 adds the internal approval receipt. It does not rewrite old
+  incorrectly allowed events into approvals. Rebuild development databases
+  rather than rolling back across unresolved two-phase calls; dropping approval
+  evidence cannot preserve the new lifecycle. No compatibility shim is added.

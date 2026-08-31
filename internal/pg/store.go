@@ -717,6 +717,7 @@ func (s *Store) admitLocked(
 	}
 	events := make([]domain.Event, 0, len(routed))
 	submittedEvents := make([]domain.Event, 0, len(drafts))
+	submittedIDs := make(map[string]bool, len(drafts))
 	for _, item := range routed {
 		committed, nextSeq, appendErr := s.appendThreadDrafts(
 			ctx, q, session.ID, item.ThreadID,
@@ -728,7 +729,9 @@ func (s *Store) admitLocked(
 		maxSeq = nextSeq
 		events = append(events, committed...)
 		if item.Submitted {
-			submittedEvents = append(submittedEvents, committed...)
+			for _, event := range committed {
+				submittedIDs[event.ID] = true
+			}
 		}
 	}
 
@@ -743,6 +746,13 @@ func (s *Store) admitLocked(
 	)
 	if err != nil {
 		return Admission{}, err
+	}
+	// Claiming consumes external approvals immediately. Return the same
+	// processed_at receipt that history and live observers will read.
+	for _, event := range events {
+		if submittedIDs[event.ID] {
+			submittedEvents = append(submittedEvents, event)
+		}
 	}
 
 	hasMessage := false
@@ -1403,6 +1413,10 @@ WHERE event.session_id = $1
   )
   AND event.processed_at IS NOT NULL
 	AND event.turn_event_id IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM pending_actions AS action
+      WHERE action.session_id = event.session_id AND action.approval_event_id = event.id
+  )
   AND event.seq < $3
 ORDER BY event.seq`, sessionID, threadID, beforeSeq)
 	if err != nil {

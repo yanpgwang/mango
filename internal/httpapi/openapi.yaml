@@ -5219,6 +5219,11 @@ components:
           minLength: 1
           pattern: '^sthr_'
     UserToolConfirmationEventInput:
+      description: >-
+        Approves or denies an always_ask tool call. For a self-hosted built-in,
+        allow is processed on admission and authorizes external execution but
+        keeps the original action pending until user.tool_result. Deny requires
+        no client result and never executes the tool. Duplicate approvals return 409.
       type: object
       additionalProperties: false
       required: [type, tool_use_id, result]
@@ -5262,6 +5267,10 @@ components:
           type: string
           pattern: '^sthr_'
     UserToolResultEventInput:
+      description: >-
+        Resolves an externally executed built-in using its original tool_use_id.
+        An always_ask call requires a committed allow first; premature results
+        and results after denial return 400. Duplicate results return 409.
       type: object
       additionalProperties: false
       required: [type, tool_use_id]
