@@ -35,7 +35,9 @@ tags:
   - name: Skills
     description: >-
       Custom filesystem Skills with immutable archived Versions and
-      provider-capability-gated Session materialization.
+      provider-capability-gated Session materialization. Self-hosted Sessions
+      with custom Skills are rejected at creation; external worker Skill
+      activation is not implemented.
   - name: Memory
     description: Persistent path-addressed Memory Stores with immutable audit Versions.
   - name: Vaults
@@ -343,6 +345,12 @@ paths:
       operationId: createSession
       tags: [Sessions]
       summary: Create a Session
+      description: >-
+        Custom Skills on the effective primary Agent or any resolved roster
+        member require a capable Mango-managed sandbox. Overrides apply before
+        this check. Configurations with custom Skills return 422 for self-hosted
+        Environments or cloud adapters without Skill support, before any
+        Session, Work item, or execution wakeup is created.
       requestBody:
         required: true
         content:
@@ -420,6 +428,9 @@ paths:
       operationId: deleteSession
       tags: [Sessions]
       summary: Delete a non-running Session and its event history
+      description: >-
+        Performs sandbox cleanup and removes Session-owned Files as well as
+        persisted history. Download outputs that must be retained first.
       responses:
         '200':
           $ref: '#/components/responses/SessionDeletedResponse'
@@ -434,6 +445,10 @@ paths:
       operationId: archiveSession
       tags: [Sessions]
       summary: Archive a non-running Session
+      description: >-
+        Prevents further input and retains history and Session Files. Archive
+        does not release the sandbox; automatic idle or archive-based sandbox
+        reclamation is not implemented.
       responses:
         '200':
           $ref: '#/components/responses/SessionResponse'
@@ -1535,6 +1550,11 @@ paths:
       operationId: runDeployment
       tags: [Deployments]
       summary: Run a Deployment immediately
+      description: >-
+        Uses direct Session capability admission. An unsupported Skill capability
+        returns a Run with session_creation_rejected_error and no Session ID.
+        This manual failure does not pause the Deployment; the same permanent
+        failure during a scheduled Run pauses further scheduled attempts.
       responses:
         '200': {$ref: '#/components/responses/DeploymentRunResponse'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -4362,7 +4382,7 @@ components:
           additionalProperties: {type: string}
         secret:
           type: [string, 'null']
-          description: Null outside a poll response; Mango does not currently issue an environment-scoped secret payload.
+          description: Always null; Mango does not currently issue Work secrets.
         created_at: {type: string, format: date-time}
         acknowledged_at: {$ref: '#/components/schemas/NullableTimestamp'}
         started_at: {$ref: '#/components/schemas/NullableTimestamp'}
@@ -4994,6 +5014,10 @@ components:
             list_cost: {$ref: '#/components/schemas/MonetaryAmount'}
     OutcomeEvaluation:
       type: object
+      description: >-
+        Tool-free model evaluation of a rubric and candidate conversation
+        evidence. The grader cannot independently read output Files, fetch
+        URLs, or execute tests; a passing result is not artifact verification.
       additionalProperties: false
       required: [type, outcome_id, description, result, explanation, iteration, completed_at]
       properties:

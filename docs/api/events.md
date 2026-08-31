@@ -110,6 +110,13 @@ characters. A File rubric must be a ready, top-level File in the same Workspace;
 Mango validates and snapshots its UTF-8 text before admitting the event. The
 public event keeps the File reference and never exposes the private snapshot.
 
+The current Outcome grader makes an isolated, tool-free model request using
+the rubric and candidate conversation evidence. It cannot independently open
+an output File, fetch a URL, or run a test. A passing evaluation is therefore
+a judgment of the supplied evidence, not independent artifact verification.
+Applications requiring artifact acceptance should download and check the
+outputs separately.
+
 An interrupt is first committed to PostgreSQL and then delivered to each
 affected Workflow as a metadata-only wakeup. An interrupt that commits before
 turn completion wins that ordering point: the owning execution ends with

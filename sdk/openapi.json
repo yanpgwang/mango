@@ -3693,7 +3693,7 @@
             "type": "object"
           },
           "secret": {
-            "description": "Null outside a poll response; Mango does not currently issue an environment-scoped secret payload.",
+            "description": "Always null; Mango does not currently issue Work secrets.",
             "type": [
               "string",
               "null"
@@ -5891,6 +5891,7 @@
       },
       "OutcomeEvaluation": {
         "additionalProperties": false,
+        "description": "Tool-free model evaluation of a rubric and candidate conversation evidence. The grader cannot independently read output Files, fetch URLs, or execute tests; a passing result is not artifact verification.",
         "properties": {
           "completed_at": {
             "$ref": "#/components/schemas/NullableTimestamp"
@@ -9715,6 +9716,7 @@
         }
       ],
       "post": {
+        "description": "Uses direct Session capability admission. An unsupported Skill capability returns a Run with session_creation_rejected_error and no Session ID. This manual failure does not pause the Deployment; the same permanent failure during a scheduled Run pauses further scheduled attempts.",
         "operationId": "runDeployment",
         "responses": {
           "200": {
@@ -10838,6 +10840,7 @@
         ]
       },
       "post": {
+        "description": "Custom Skills on the effective primary Agent or any resolved roster member require a capable Mango-managed sandbox. Overrides apply before this check. Configurations with custom Skills return 422 for self-hosted Environments or cloud adapters without Skill support, before any Session, Work item, or execution wakeup is created.",
         "operationId": "createSession",
         "requestBody": {
           "content": {
@@ -10874,6 +10877,7 @@
     },
     "/v1/sessions/{session_id}": {
       "delete": {
+        "description": "Performs sandbox cleanup and removes Session-owned Files as well as persisted history. Download outputs that must be retained first.",
         "operationId": "deleteSession",
         "responses": {
           "200": {
@@ -10953,6 +10957,7 @@
         }
       ],
       "post": {
+        "description": "Prevents further input and retains history and Session Files. Archive does not release the sandbox; automatic idle or archive-based sandbox reclamation is not implemented.",
         "operationId": "archiveSession",
         "responses": {
           "200": {
@@ -12241,7 +12246,7 @@
       "name": "Files"
     },
     {
-      "description": "Custom filesystem Skills with immutable archived Versions and provider-capability-gated Session materialization.",
+      "description": "Custom filesystem Skills with immutable archived Versions and provider-capability-gated Session materialization. Self-hosted Sessions with custom Skills are rejected at creation; external worker Skill activation is not implemented.",
       "name": "Skills"
     },
     {

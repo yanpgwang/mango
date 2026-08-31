@@ -691,7 +691,7 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 	}
 	if skills != nil && !providerCapabilities.SkillBundles {
 		log.Printf(
-			"serve: custom Skills remain available to self-hosted Environments; cloud Session Skill admission disabled because sandbox provider %q has no isolated read-only Skill capability",
+			"serve: custom Skill storage remains available; Session Skill admission disabled because sandbox provider %q cannot materialize Skills; external worker Skill activation is not supported",
 			configuredSandboxProviderName(),
 		)
 	}

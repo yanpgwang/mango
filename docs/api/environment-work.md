@@ -46,12 +46,21 @@ Stop returns `204 No Content`, and an empty Poll returns an empty JSON object.
 
 ## Skills and Session state
 
-An Environment worker retrieves the Session's immutable Agent snapshot and
-downloads its pinned custom Skill Versions into the worker workspace before
-running tools. This path is independent of Mango's cloud sandbox adapter
-capability: a cloud Session still requires a Skill-capable
-adapter, while a self-hosted Session may use Skills whenever the Skills API and
-object store are configured.
+The Work and Session event APIs provide the worker protocol; Mango does not
+currently ship an Environment worker runner or external Skill activation.
+Applications implementing a worker own tool execution, workspace preparation,
+and lease-loss cancellation.
+
+Creating a self-hosted Session with custom Skills returns `422` with
+`error.type: "invalid_request_error"` before any Session, Work item, or execution
+wakeup is created. Admission checks the effective primary Agent and every
+resolved roster member after Session overrides. Clearing the primary Agent's
+Skills does not clear Skills on independently referenced roster Agents.
+
+Skills storage and Agent definitions remain available when configured, but
+neither object storage nor a Skill-capable cloud adapter enables external
+worker Skill execution. A self-hosted Session without Skills can use the Work
+protocol. See [Skills](skills.md) for Mango-managed sandbox support.
 
 ## Security boundary
 
