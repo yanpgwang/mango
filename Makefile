@@ -13,6 +13,8 @@ VERSION ?= dev
 REVISION ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 GOPROXY ?=
 LINT_BASE ?= origin/main
+# Optional test-binary wrapper; compilation and Go caches keep the caller's UID.
+SERVICE_TEST_EXEC ?=
 MANGO_TEST_DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/mango?sslmode=disable
 MANGO_TEST_TEMPORAL_HOSTPORT ?= localhost:7233
 MANGO_TEST_NATS_URL ?= nats://localhost:4222
@@ -106,7 +108,7 @@ test-service:
 	MANGO_TEST_S3_BUCKET='$(MANGO_TEST_S3_BUCKET)' \
 	MANGO_TEST_S3_ACCESS_KEY='$(MANGO_TEST_S3_ACCESS_KEY)' \
 	MANGO_TEST_S3_SECRET_KEY='$(MANGO_TEST_S3_SECRET_KEY)' \
-	$(GO) test ./... -count=1
+	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') ./... -count=1
 
 test-model-live:
 	MANGO_TEST_LIVE_MODEL=1 \

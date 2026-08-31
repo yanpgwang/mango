@@ -72,6 +72,9 @@ Mango currently has these product and operational boundaries:
 - Kubernetes and production Compose distributions are not supported;
 - Docker sandboxes share the host kernel and are not hardened hostile
   multi-tenant boundaries; the Compose worker is trusted with daemon access.
+  Native Linux workers using rootful Docker need the same root-worker model
+  for arbitrary container-owned bind-mount files; socket group membership alone
+  does not guarantee Memory synchronization or output cleanup.
 
 Unsupported behavior should fail with an explicit validation or capability
 error whenever it can be detected at admission time.

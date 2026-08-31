@@ -77,6 +77,15 @@ docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal 
 make test-service
 ```
 
+On native Linux, use `make test-service SERVICE_TEST_EXEC='sudo -n -E --'`
+with a trusted local checkout and passwordless sudo. This runs only the test
+binaries as root, matching the Compose worker; Go compilation and caches keep
+your user identity. Container-created bind-mount files retain their numeric
+ownership, so an unprivileged runner cannot reliably remove nested outputs.
+CI uses this mode for service tests while unit tests remain unprivileged.
+Docker Desktop normally maps bind-mount ownership to the desktop user, so the
+plain command above works there. Cleanup errors remain test failures.
+
 Default tests must stay offline and deterministic. Service tests must use
 isolated database schemas and clean up their workflows, File objects, and
 sandboxes. `make test-service` requires a reachable Docker daemon and sets
