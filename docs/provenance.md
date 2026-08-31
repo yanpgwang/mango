@@ -43,6 +43,27 @@ release is never an automatic roadmap.
   Anthropic adapter reads a provider-reported response region only as an
   internal list-cost input; it never sends a geography request field.
 
+## First-party SDKs
+
+- The public [CMA quickstart](https://platform.claude.com/docs/en/managed-agents/quickstart)
+  and [Session guide](https://platform.claude.com/docs/en/managed-agents/sessions)
+  informed the useful client workflow: create resources, send user events,
+  iterate live output, and retrieve durable results with language-native types.
+- Mango adopts those developer-experience goals, but generates Go, Python and
+  TypeScript bindings exclusively from its own checked-in OpenAPI document.
+  Transport, pagination and SSE implementations are first-party code; no
+  external SDK implementation or hosted code-generation service is required.
+- The SDKs retain standard bearer authentication and explicit local endpoints.
+  They reject vendor beta namespaces, hosted environment-key issuance and an
+  SDK-owned Agent execution loop. Current server limits remain visible rather
+  than being hidden behind compatibility shims.
+- Automatic mutation retries are deliberately omitted: Mango does not promise
+  a general idempotency-key contract. Raw event streams remain live-only, with
+  history listing and event-ID deduplication required for reconnect recovery.
+- Language transport tests and real-handler HTTP conformance validate SDK
+  behavior. The latter uses test-only storage/model fakes and is not evidence
+  of durable service execution or live-provider quality.
+
 ## Built-in Agent tools
 
 - The public Agent Toolset shapes and executable cases in the pinned Anthropic

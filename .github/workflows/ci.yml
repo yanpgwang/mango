@@ -37,6 +37,29 @@ jobs:
       - run: make test-race
       - run: make vet
 
+  sdk:
+    name: First-party SDKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+      - run: python -m pip install uv==0.12.5
+      - run: make sdk-install
+      - run: make sdk-test
+      - run: make sdk-conformance
+
   terminal-ui:
     name: Terminal UI example
     runs-on: ubuntu-latest

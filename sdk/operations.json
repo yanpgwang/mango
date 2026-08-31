@@ -1,0 +1,3584 @@
+{
+  "schema_version": 1,
+  "source": "internal/httpapi/openapi.yaml",
+  "operations": [
+    {
+      "id": "acknowledgeEnvironmentWork",
+      "method": "POST",
+      "path": "/v1/environments/{environment_id}/work/{work_id}/ack",
+      "tag": "Environment Work",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "work_id",
+          "required": true,
+          "schema": {
+            "pattern": "^work_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentWork"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "addSessionResource",
+      "method": "POST",
+      "path": "/v1/sessions/{session_id}/resources",
+      "tag": "Session Resources",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/FileSessionResourceInput"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionResource"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "archiveAgent",
+      "method": "POST",
+      "path": "/v1/agents/{agent_id}/archive",
+      "tag": "Agents",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Agent"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "archiveDeployment",
+      "method": "POST",
+      "path": "/v1/deployments/{deployment_id}/archive",
+      "tag": "Deployments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "deployment_id",
+          "required": true,
+          "schema": {
+            "pattern": "^depl_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Deployment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "archiveEnvironment",
+      "method": "POST",
+      "path": "/v1/environments/{environment_id}/archive",
+      "tag": "Environments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Environment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "archiveMemoryStore",
+      "method": "POST",
+      "path": "/v1/memory_stores/{store_id}/archive",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryStore"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "archiveSession",
+      "method": "POST",
+      "path": "/v1/sessions/{session_id}/archive",
+      "tag": "Sessions",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Session"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "archiveSessionThread",
+      "method": "POST",
+      "path": "/v1/sessions/{session_id}/threads/{thread_id}/archive",
+      "tag": "Session Threads",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "pattern": "^sthr_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionThread"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "archiveVault",
+      "method": "POST",
+      "path": "/v1/vaults/{vault_id}/archive",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Vault"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "archiveVaultCredential",
+      "method": "POST",
+      "path": "/v1/vaults/{vault_id}/credentials/{credential_id}/archive",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "credential_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vcrd_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/VaultCredential"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createAgent",
+      "method": "POST",
+      "path": "/v1/agents",
+      "tag": "Agents",
+      "parameters": [],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/AgentCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Agent"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createDeployment",
+      "method": "POST",
+      "path": "/v1/deployments",
+      "tag": "Deployments",
+      "parameters": [],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/DeploymentCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Deployment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createEnvironment",
+      "method": "POST",
+      "path": "/v1/environments",
+      "tag": "Environments",
+      "parameters": [],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/EnvironmentCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Environment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createMemory",
+      "method": "POST",
+      "path": "/v1/memory_stores/{store_id}/memories",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Full includes content; basic returns content as null.",
+          "in": "query",
+          "name": "view",
+          "schema": {
+            "enum": [
+              "basic",
+              "full"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/MemoryCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Memory"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createMemoryStore",
+      "method": "POST",
+      "path": "/v1/memory_stores",
+      "tag": "Memory",
+      "parameters": [],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/MemoryStoreCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryStore"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createSession",
+      "method": "POST",
+      "path": "/v1/sessions",
+      "tag": "Sessions",
+      "parameters": [],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/SessionCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Session"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createSkill",
+      "method": "POST",
+      "path": "/v1/skills",
+      "tag": "Skills",
+      "parameters": [],
+      "request_content_type": "multipart/form-data",
+      "request_schema": {
+        "$ref": "#/components/schemas/SkillUploadRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SkillResource"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createSkillVersion",
+      "method": "POST",
+      "path": "/v1/skills/{skill_id}/versions",
+      "tag": "Skills",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "skill_id",
+          "required": true,
+          "schema": {
+            "pattern": "^skill_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "multipart/form-data",
+      "request_schema": {
+        "$ref": "#/components/schemas/SkillVersionUploadRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SkillVersion"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createVault",
+      "method": "POST",
+      "path": "/v1/vaults",
+      "tag": "Vaults",
+      "parameters": [],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/VaultCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Vault"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createVaultCredential",
+      "method": "POST",
+      "path": "/v1/vaults/{vault_id}/credentials",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/VaultCredentialCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/VaultCredential"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createWebhook",
+      "method": "POST",
+      "path": "/v1/webhooks",
+      "tag": "Webhooks",
+      "parameters": [],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/WebhookCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/WebhookWithSigningSecret"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteEnvironment",
+      "method": "DELETE",
+      "path": "/v1/environments/{environment_id}",
+      "tag": "Environments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteFile",
+      "method": "DELETE",
+      "path": "/v1/files/{file_id}",
+      "tag": "Files",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "file_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/FileDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteMemory",
+      "method": "DELETE",
+      "path": "/v1/memory_stores/{store_id}/memories/{memory_id}",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "memory_id",
+          "required": true,
+          "schema": {
+            "pattern": "^mem_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "expected_content_sha256",
+          "schema": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteMemoryStore",
+      "method": "DELETE",
+      "path": "/v1/memory_stores/{store_id}",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryStoreDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteSession",
+      "method": "DELETE",
+      "path": "/v1/sessions/{session_id}",
+      "tag": "Sessions",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteSessionResource",
+      "method": "DELETE",
+      "path": "/v1/sessions/{session_id}/resources/{resource_id}",
+      "tag": "Session Resources",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "resource_id",
+          "required": true,
+          "schema": {
+            "pattern": "^sesrsc_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionResourceDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteSkill",
+      "method": "DELETE",
+      "path": "/v1/skills/{skill_id}",
+      "tag": "Skills",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "skill_id",
+          "required": true,
+          "schema": {
+            "pattern": "^skill_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SkillDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteSkillVersion",
+      "method": "DELETE",
+      "path": "/v1/skills/{skill_id}/versions/{version}",
+      "tag": "Skills",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "skill_id",
+          "required": true,
+          "schema": {
+            "pattern": "^skill_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "version",
+          "required": true,
+          "schema": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SkillVersionDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteVault",
+      "method": "DELETE",
+      "path": "/v1/vaults/{vault_id}",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/VaultDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteVaultCredential",
+      "method": "DELETE",
+      "path": "/v1/vaults/{vault_id}/credentials/{credential_id}",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "credential_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vcrd_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/VaultCredentialDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "deleteWebhook",
+      "method": "DELETE",
+      "path": "/v1/webhooks/{webhook_id}",
+      "tag": "Webhooks",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "webhook_id",
+          "required": true,
+          "schema": {
+            "pattern": "^wh_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/WebhookDeleted"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "downloadFile",
+      "method": "GET",
+      "path": "/v1/files/{file_id}/content",
+      "tag": "Files",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "file_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/binary",
+      "response_schema": {
+        "format": "binary",
+        "type": "string"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "downloadSkillVersion",
+      "method": "GET",
+      "path": "/v1/skills/{skill_id}/versions/{version}/content",
+      "tag": "Skills",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "skill_id",
+          "required": true,
+          "schema": {
+            "pattern": "^skill_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "version",
+          "required": true,
+          "schema": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/zip",
+      "response_schema": {
+        "format": "binary",
+        "type": "string"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getAgent",
+      "method": "GET",
+      "path": "/v1/agents/{agent_id}",
+      "tag": "Agents",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Agent"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getDeployment",
+      "method": "GET",
+      "path": "/v1/deployments/{deployment_id}",
+      "tag": "Deployments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "deployment_id",
+          "required": true,
+          "schema": {
+            "pattern": "^depl_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Deployment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getDeploymentRun",
+      "method": "GET",
+      "path": "/v1/deployment_runs/{deployment_run_id}",
+      "tag": "Deployments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "deployment_run_id",
+          "required": true,
+          "schema": {
+            "pattern": "^drun_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/DeploymentRun"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getEnvironment",
+      "method": "GET",
+      "path": "/v1/environments/{environment_id}",
+      "tag": "Environments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Environment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getEnvironmentWork",
+      "method": "GET",
+      "path": "/v1/environments/{environment_id}/work/{work_id}",
+      "tag": "Environment Work",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "work_id",
+          "required": true,
+          "schema": {
+            "pattern": "^work_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentWork"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getEnvironmentWorkStats",
+      "method": "GET",
+      "path": "/v1/environments/{environment_id}/work/stats",
+      "tag": "Environment Work",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentWorkQueueStats"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getFileMetadata",
+      "method": "GET",
+      "path": "/v1/files/{file_id}",
+      "tag": "Files",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "file_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/File"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getMemory",
+      "method": "GET",
+      "path": "/v1/memory_stores/{store_id}/memories/{memory_id}",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "memory_id",
+          "required": true,
+          "schema": {
+            "pattern": "^mem_",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Full includes content; basic returns content as null.",
+          "in": "query",
+          "name": "view",
+          "schema": {
+            "enum": [
+              "basic",
+              "full"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Memory"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getMemoryStore",
+      "method": "GET",
+      "path": "/v1/memory_stores/{store_id}",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryStore"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getMemoryVersion",
+      "method": "GET",
+      "path": "/v1/memory_stores/{store_id}/memory_versions/{version_id}",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "version_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memver_",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Full includes content; basic returns content as null.",
+          "in": "query",
+          "name": "view",
+          "schema": {
+            "enum": [
+              "basic",
+              "full"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryVersion"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getSession",
+      "method": "GET",
+      "path": "/v1/sessions/{session_id}",
+      "tag": "Sessions",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Session"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getSessionResource",
+      "method": "GET",
+      "path": "/v1/sessions/{session_id}/resources/{resource_id}",
+      "tag": "Session Resources",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "resource_id",
+          "required": true,
+          "schema": {
+            "pattern": "^sesrsc_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionResource"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getSessionThread",
+      "method": "GET",
+      "path": "/v1/sessions/{session_id}/threads/{thread_id}",
+      "tag": "Session Threads",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "pattern": "^sthr_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionThread"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getSkill",
+      "method": "GET",
+      "path": "/v1/skills/{skill_id}",
+      "tag": "Skills",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "skill_id",
+          "required": true,
+          "schema": {
+            "pattern": "^skill_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SkillResource"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getSkillVersion",
+      "method": "GET",
+      "path": "/v1/skills/{skill_id}/versions/{version}",
+      "tag": "Skills",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "skill_id",
+          "required": true,
+          "schema": {
+            "pattern": "^skill_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "version",
+          "required": true,
+          "schema": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SkillVersion"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getVault",
+      "method": "GET",
+      "path": "/v1/vaults/{vault_id}",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Vault"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getVaultCredential",
+      "method": "GET",
+      "path": "/v1/vaults/{vault_id}/credentials/{credential_id}",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "credential_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vcrd_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/VaultCredential"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "getWebhook",
+      "method": "GET",
+      "path": "/v1/webhooks/{webhook_id}",
+      "tag": "Webhooks",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "webhook_id",
+          "required": true,
+          "schema": {
+            "pattern": "^wh_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Webhook"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "health",
+      "method": "GET",
+      "path": "/healthz",
+      "tag": "System",
+      "parameters": [],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "",
+      "response_schema": null,
+      "response_status": 200,
+      "public": true
+    },
+    {
+      "id": "heartbeatEnvironmentWork",
+      "method": "POST",
+      "path": "/v1/environments/{environment_id}/work/{work_id}/heartbeat",
+      "tag": "Environment Work",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "work_id",
+          "required": true,
+          "schema": {
+            "pattern": "^work_",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Exact previous heartbeat timestamp, or NO_HEARTBEAT for the first lease heartbeat.",
+          "in": "query",
+          "name": "expected_last_heartbeat",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "desired_ttl_seconds",
+          "schema": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentWorkHeartbeat"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listAgentVersions",
+      "method": "GET",
+      "path": "/v1/agents/{agent_id}/versions",
+      "tag": "Agents",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/AgentList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listAgents",
+      "method": "GET",
+      "path": "/v1/agents",
+      "tag": "Agents",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "include_archived",
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[gte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/AgentList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listDeploymentRuns",
+      "method": "GET",
+      "path": "/v1/deployment_runs",
+      "tag": "Deployments",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[gt]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[gte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lt]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Filter Sessions or Deployment Runs by their Deployment.",
+          "in": "query",
+          "name": "deployment_id",
+          "schema": {
+            "pattern": "^depl_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "has_error",
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "in": "query",
+          "name": "trigger_type",
+          "schema": {
+            "enum": [
+              "schedule",
+              "manual"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/DeploymentRunList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listDeployments",
+      "method": "GET",
+      "path": "/v1/deployments",
+      "tag": "Deployments",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[gte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "include_archived",
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        {
+          "in": "query",
+          "name": "status",
+          "schema": {
+            "enum": [
+              "active",
+              "paused"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/DeploymentList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listEnvironmentWork",
+      "method": "GET",
+      "path": "/v1/environments/{environment_id}/work",
+      "tag": "Environment Work",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 100,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentWorkList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listEnvironments",
+      "method": "GET",
+      "path": "/v1/environments",
+      "tag": "Environments",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 100,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "include_archived",
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listFiles",
+      "method": "GET",
+      "path": "/v1/files",
+      "tag": "Files",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Return the page immediately after this File ID.",
+          "in": "query",
+          "name": "after_id",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "description": "Return the page immediately before this File ID.",
+          "in": "query",
+          "name": "before_id",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "description": "Filter Files by their producing Session ID.",
+          "in": "query",
+          "name": "scope_id",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/FileList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listMemories",
+      "method": "GET",
+      "path": "/v1/memory_stores/{store_id}/memories",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Full views allow at most 20 items; basic views allow at most 100.",
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "description": "Full includes content; basic returns content as null.",
+          "in": "query",
+          "name": "view",
+          "schema": {
+            "enum": [
+              "basic",
+              "full"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "path_prefix",
+          "schema": {
+            "maxLength": 1024,
+            "type": "string"
+          }
+        },
+        {
+          "description": "Zero lists matching Memories recursively; one projects immediate path prefixes.",
+          "in": "query",
+          "name": "depth",
+          "schema": {
+            "default": 0,
+            "enum": [
+              0,
+              1
+            ],
+            "type": "integer"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listMemoryStores",
+      "method": "GET",
+      "path": "/v1/memory_stores",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "include_archived",
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[gte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryStoreList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listMemoryVersions",
+      "method": "GET",
+      "path": "/v1/memory_stores/{store_id}/memory_versions",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "description": "Full includes content; basic returns content as null.",
+          "in": "query",
+          "name": "view",
+          "schema": {
+            "enum": [
+              "basic",
+              "full"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "api_key_id",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "session_id",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "memory_id",
+          "schema": {
+            "pattern": "^mem_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "operation",
+          "schema": {
+            "enum": [
+              "created",
+              "modified",
+              "deleted"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[gte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryVersionList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listSessionEvents",
+      "method": "GET",
+      "path": "/v1/sessions/{session_id}/events",
+      "tag": "Session Events",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 100,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "in": "query",
+          "name": "order",
+          "schema": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "explode": true,
+          "in": "query",
+          "name": "types[]",
+          "schema": {
+            "items": {
+              "$ref": "#/components/schemas/CoreSessionEventType"
+            },
+            "type": "array"
+          },
+          "style": "form"
+        },
+        {
+          "in": "query",
+          "name": "created_at[gt]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[gte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lt]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionEventList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listSessionResources",
+      "method": "GET",
+      "path": "/v1/sessions/{session_id}/resources",
+      "tag": "Session Resources",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "description": "Maximum resources per page. Omit to return all Session Resources.",
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionResourceList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listSessionThreadEvents",
+      "method": "GET",
+      "path": "/v1/sessions/{session_id}/threads/{thread_id}/events",
+      "tag": "Session Threads",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "pattern": "^sthr_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 100,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionEventList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listSessionThreads",
+      "method": "GET",
+      "path": "/v1/sessions/{session_id}/threads",
+      "tag": "Session Threads",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 1000,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionThreadList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listSessions",
+      "method": "GET",
+      "path": "/v1/sessions",
+      "tag": "Sessions",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 100,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "order",
+          "schema": {
+            "default": "desc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Requires agent_id.",
+          "in": "query",
+          "name": "agent_version",
+          "schema": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "explode": true,
+          "in": "query",
+          "name": "statuses[]",
+          "schema": {
+            "items": {
+              "$ref": "#/components/schemas/SessionStatus"
+            },
+            "type": "array"
+          },
+          "style": "form"
+        },
+        {
+          "in": "query",
+          "name": "include_archived",
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[gt]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[gte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lt]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_at[lte]",
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Filter Sessions or Deployment Runs by their Deployment.",
+          "in": "query",
+          "name": "deployment_id",
+          "schema": {
+            "pattern": "^depl_",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Return Sessions attached to this Memory Store.",
+          "in": "query",
+          "name": "memory_store_id",
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listSkillVersions",
+      "method": "GET",
+      "path": "/v1/skills/{skill_id}/versions",
+      "tag": "Skills",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "skill_id",
+          "required": true,
+          "schema": {
+            "pattern": "^skill_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SkillVersionList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listSkills",
+      "method": "GET",
+      "path": "/v1/skills",
+      "tag": "Skills",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "source",
+          "schema": {
+            "enum": [
+              "custom",
+              "anthropic"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SkillList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listVaultCredentials",
+      "method": "GET",
+      "path": "/v1/vaults/{vault_id}/credentials",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "include_archived",
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/VaultCredentialList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listVaults",
+      "method": "GET",
+      "path": "/v1/vaults",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "include_archived",
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/VaultList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "listWebhooks",
+      "method": "GET",
+      "path": "/v1/webhooks",
+      "tag": "Webhooks",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Opaque cursor returned by a previous list response.",
+          "in": "query",
+          "name": "page",
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/WebhookList"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "openAPI",
+      "method": "GET",
+      "path": "/openapi.yaml",
+      "tag": "System",
+      "parameters": [],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/yaml",
+      "response_schema": {
+        "type": "string"
+      },
+      "response_status": 200,
+      "public": true
+    },
+    {
+      "id": "pauseDeployment",
+      "method": "POST",
+      "path": "/v1/deployments/{deployment_id}/pause",
+      "tag": "Deployments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "deployment_id",
+          "required": true,
+          "schema": {
+            "pattern": "^depl_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Deployment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "pollEnvironmentWork",
+      "method": "GET",
+      "path": "/v1/environments/{environment_id}/work/poll",
+      "tag": "Environment Work",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "description": "Long-poll duration. Omit for a non-blocking poll.",
+          "in": "query",
+          "name": "block_ms",
+          "schema": {
+            "maximum": 999,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Reclaim a polled but unacknowledged item after this duration; defaults to 5000.",
+          "in": "query",
+          "name": "reclaim_older_than_ms",
+          "schema": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        {
+          "description": "Operational correlation identifier; it does not authenticate the worker.",
+          "in": "query",
+          "name": "worker_id",
+          "required": false,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/EnvironmentWork"
+          },
+          {
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "readiness",
+      "method": "GET",
+      "path": "/readyz",
+      "tag": "System",
+      "parameters": [],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "",
+      "response_schema": null,
+      "response_status": 200,
+      "public": true
+    },
+    {
+      "id": "redactMemoryVersion",
+      "method": "POST",
+      "path": "/v1/memory_stores/{store_id}/memory_versions/{version_id}/redact",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "version_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memver_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryVersion"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "regenerateWebhookSigningSecret",
+      "method": "POST",
+      "path": "/v1/webhooks/{webhook_id}/regenerate_signing_secret",
+      "tag": "Webhooks",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "webhook_id",
+          "required": true,
+          "schema": {
+            "pattern": "^wh_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/WebhookWithSigningSecret"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "runDeployment",
+      "method": "POST",
+      "path": "/v1/deployments/{deployment_id}/run",
+      "tag": "Deployments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "deployment_id",
+          "required": true,
+          "schema": {
+            "pattern": "^depl_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/DeploymentRun"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "sendSessionEvents",
+      "method": "POST",
+      "path": "/v1/sessions/{session_id}/events",
+      "tag": "Session Events",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/SendSessionEventsRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/SessionEventBatch"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "stopEnvironmentWork",
+      "method": "POST",
+      "path": "/v1/environments/{environment_id}/work/{work_id}/stop",
+      "tag": "Environment Work",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "work_id",
+          "required": true,
+          "schema": {
+            "pattern": "^work_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/EnvironmentWorkStopRequest"
+      },
+      "request_required": true,
+      "response_content_type": "",
+      "response_schema": null,
+      "response_status": 204,
+      "public": false
+    },
+    {
+      "id": "streamSessionEvents",
+      "method": "GET",
+      "path": "/v1/sessions/{session_id}/events/stream",
+      "tag": "Session Events",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "description": "Opt in to best-effort preview frames for the selected event types.",
+          "explode": true,
+          "in": "query",
+          "name": "event_deltas[]",
+          "schema": {
+            "items": {
+              "enum": [
+                "agent.message",
+                "agent.thinking"
+              ],
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "style": "form"
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "text/event-stream",
+      "response_schema": {
+        "$ref": "#/components/schemas/EventStreamFrame"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "streamSessionThreadEvents",
+      "method": "GET",
+      "path": "/v1/sessions/{session_id}/threads/{thread_id}/stream",
+      "tag": "Session Threads",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "pattern": "^sthr_",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Opt in to best-effort preview frames for the selected event types.",
+          "explode": true,
+          "in": "query",
+          "name": "event_deltas[]",
+          "schema": {
+            "items": {
+              "enum": [
+                "agent.message",
+                "agent.thinking"
+              ],
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "style": "form"
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "text/event-stream",
+      "response_schema": {
+        "$ref": "#/components/schemas/EventStreamFrame"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "unpauseDeployment",
+      "method": "POST",
+      "path": "/v1/deployments/{deployment_id}/unpause",
+      "tag": "Deployments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "deployment_id",
+          "required": true,
+          "schema": {
+            "pattern": "^depl_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Deployment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateAgent",
+      "method": "POST",
+      "path": "/v1/agents/{agent_id}",
+      "tag": "Agents",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/AgentUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Agent"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateDeployment",
+      "method": "POST",
+      "path": "/v1/deployments/{deployment_id}",
+      "tag": "Deployments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "deployment_id",
+          "required": true,
+          "schema": {
+            "pattern": "^depl_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/DeploymentUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Deployment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateEnvironment",
+      "method": "POST",
+      "path": "/v1/environments/{environment_id}",
+      "tag": "Environments",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/EnvironmentUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Environment"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateEnvironmentWork",
+      "method": "POST",
+      "path": "/v1/environments/{environment_id}/work/{work_id}",
+      "tag": "Environment Work",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "work_id",
+          "required": true,
+          "schema": {
+            "pattern": "^work_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/EnvironmentWorkUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentWork"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateMemory",
+      "method": "POST",
+      "path": "/v1/memory_stores/{store_id}/memories/{memory_id}",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "memory_id",
+          "required": true,
+          "schema": {
+            "pattern": "^mem_",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Full includes content; basic returns content as null.",
+          "in": "query",
+          "name": "view",
+          "schema": {
+            "enum": [
+              "basic",
+              "full"
+            ],
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/MemoryUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Memory"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateMemoryStore",
+      "method": "POST",
+      "path": "/v1/memory_stores/{store_id}",
+      "tag": "Memory",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "store_id",
+          "required": true,
+          "schema": {
+            "pattern": "^memstore_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/MemoryStoreUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/MemoryStore"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateSession",
+      "method": "POST",
+      "path": "/v1/sessions/{session_id}",
+      "tag": "Sessions",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/SessionUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Session"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateVault",
+      "method": "POST",
+      "path": "/v1/vaults/{vault_id}",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/VaultUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Vault"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateVaultCredential",
+      "method": "POST",
+      "path": "/v1/vaults/{vault_id}/credentials/{credential_id}",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "credential_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vcrd_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/VaultCredentialUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/VaultCredential"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "updateWebhook",
+      "method": "POST",
+      "path": "/v1/webhooks/{webhook_id}",
+      "tag": "Webhooks",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "webhook_id",
+          "required": true,
+          "schema": {
+            "pattern": "^wh_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/WebhookUpdateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/Webhook"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "uploadFile",
+      "method": "POST",
+      "path": "/v1/files",
+      "tag": "Files",
+      "parameters": [],
+      "request_content_type": "multipart/form-data",
+      "request_schema": {
+        "$ref": "#/components/schemas/FileUploadRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/File"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "validateVaultCredentialMCPOAuth",
+      "method": "POST",
+      "path": "/v1/vaults/{vault_id}/credentials/{credential_id}/mcp_oauth_validate",
+      "tag": "Vaults",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "vault_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vlt_",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "credential_id",
+          "required": true,
+          "schema": {
+            "pattern": "^vcrd_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "",
+      "request_schema": null,
+      "request_required": false,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/VaultCredentialValidation"
+      },
+      "response_status": 200,
+      "public": false
+    }
+  ]
+}

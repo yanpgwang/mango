@@ -112,6 +112,15 @@ named as such; never present it as a real third-party integration.
 
 ## Public API changes
 
+First-party SDKs are generated from the checked-in OpenAPI source. After an API
+or schema change, run `make sdk-generate` and `make sdk-check`. Install SDK
+development dependencies with `make sdk-install`, then run `make sdk-test`
+and `make sdk-conformance`. The latter executes all language clients against
+the real HTTP handlers with test-only storage/model fakes; it does not replace
+the service or live-model verification tiers. Keep SDK source packages free of
+server runtime dependencies and do not publish packages as part of development
+without an explicit release request.
+
 When changing the public HTTP surface:
 
 1. describe the Mango workflow and acceptance criteria in the Issue or pull
@@ -186,8 +195,12 @@ Keep each pull request focused. Include:
 - security considerations for tools, sandboxes, credentials, or external calls;
 - documentation updates for user-visible behavior.
 
-Use `gofmt` for Go code. Generated and dependency artifacts should not be
-committed except for lockfiles required for reproducible builds.
+Use `gofmt` for Go code. Generated build and dependency artifacts should not be
+committed except for lockfiles required for reproducible builds. First-party
+SDK bindings and the SDK OpenAPI snapshot are a narrow exception: they are
+distributed source, generated offline from `internal/httpapi/openapi.yaml`.
+Keep their generators in the repository and run the SDK drift checks whenever
+the contract or a generator changes. Never edit generated bindings by hand.
 
 Keep deployment assets within the support boundaries documented in
 [`deployments/README.md`](deployments/README.md). The local Compose stack may

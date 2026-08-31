@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mango-agent-sdk"
+version = "0.1.0"
+description = "Typed synchronous and asynchronous client for the Mango development API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+dependencies = ["httpx>=0.28.1,<0.29"]
+
+[dependency-groups]
+dev = ["pytest==8.4.2", "mypy==1.18.2", "ruff==0.13.3"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mango_sdk"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/mango_sdk", "tests/typing_examples.py"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

@@ -15,6 +15,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'getting-started',
+        'sdk',
         'capabilities',
       ],
     },
