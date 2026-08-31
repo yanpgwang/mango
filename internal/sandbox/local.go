@@ -26,6 +26,8 @@ type localProvider struct {
 
 // NewLocalProvider returns a Provider that runs commands as local child
 // processes confined (best-effort) to a working directory.
+// It is retained for legacy test fixtures only; the Mango binary does not
+// register this provider. New runtime verification should use Docker.
 //
 // This is a dev-grade guardrail, NOT a security boundary: it shares the host
 // kernel and filesystem namespace, and offers no network isolation. Do NOT run

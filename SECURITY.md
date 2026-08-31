@@ -24,11 +24,15 @@ maintainer contact without disclosing vulnerability details.
 
 ## Current security boundaries
 
-- The default local sandbox is a development guardrail, not a security
-  boundary. It must not execute untrusted code.
-- The Docker provider gives container isolation and disables networking by
-  default, but containers share the host kernel and the provider has not been
-  audited for hostile multi-tenant workloads.
+- Docker is the default runtime sandbox; host-process execution is not
+  selectable. Containers share the host kernel and the provider has not been
+  audited for hostile multi-tenant workloads. Direct provider calls default to
+  no network, while cloud Environments request bridge networking unless a
+  supported network policy says otherwise.
+- The local Compose worker is trusted with root access and the host Docker
+  socket. The API and Session containers do not receive that socket; Session
+  containers do not inherit worker credentials. Docker access still grants
+  substantial host authority and is not a hostile multi-tenant guarantee.
 - Every protected API request is authenticated by an opaque API key and scoped
   to one Workspace. Top-level resources, child resources, scheduled work, and
   object-store keys are isolated by that Workspace. Health, readiness, and the

@@ -1,6 +1,7 @@
 package sandbox_test
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -25,6 +26,9 @@ func TestDockerProviderConformance(t *testing.T) {
 				DefaultImage: "alpine:latest",
 			})
 			if err != nil {
+				if os.Getenv("MANGO_TEST_DOCKER") == "1" {
+					t.Fatalf("required Docker Engine not reachable: %v", err)
+				}
 				t.Skipf("Docker Engine not reachable: %v", err)
 			}
 			return provider

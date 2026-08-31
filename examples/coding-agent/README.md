@@ -26,8 +26,8 @@ charges. The example does not start the server or invoke Mango's test suite.
 Its fixtures are self-contained, and its result verifier is part of the
 application workflow, not a system-test harness.
 
-The default local Compose API/worker use the local-process sandbox and cannot
-run this File Resource workflow. See the
+The default local Compose stack provides the required Docker sandbox and Files
+storage; configure a tool-capable model before running this workflow. See the
 [complete tutorial](../../docs/examples/coding-agent-iterate.md) for deployment
 requirements, executable SDK snippets, resource ownership, `--keep-resources`,
 and read-only `--session-id` resume. Downloaded code is not executed on the

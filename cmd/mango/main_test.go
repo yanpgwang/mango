@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -38,56 +40,50 @@ func TestRetryingSessionResourceReconcilerRecoversAndCaches(t *testing.T) {
 	}
 }
 
-// TestResolveSandboxProvider_DefaultsToLocal asserts that, with no
-// MANGO_SANDBOX set, resolveSandboxProvider returns the offline
-// local provider. localProvider is unexported, so we cannot type-assert;
-// instead we smoke-test the observable behavior: provision a sandbox and run
-// echo. The local provider does this with a host child process and no docker
-// daemon, so success here (offline, no docker) proves the default is local.
-func TestResolveSandboxProvider_DefaultsToLocal(t *testing.T) {
-	t.Setenv("MANGO_SANDBOX", "")
-	p, isLocal, err := resolveSandboxProvider()
-	if err != nil {
-		t.Fatal(err)
+func TestConfiguredSandboxProvider_DefaultsToDocker(t *testing.T) {
+	for _, value := range []string{"", "  ", "docker", " docker "} {
+		t.Setenv(sandboxProviderEnv, value)
+		if got := configuredSandboxProviderName(); got != sandbox.DockerProviderName {
+			t.Fatalf("provider for %q = %q, want docker", value, got)
+		}
 	}
-	if !isLocal {
-		t.Fatalf("default resolveSandboxProvider isLocal=false; want true")
+}
+
+func TestResolveSandboxProvider_FailsClosedWithoutDocker(t *testing.T) {
+	// A socket cannot exist beneath a regular device file. Keep this path short
+	// enough for the Darwin Unix-domain socket limit as well as Linux.
+	t.Setenv("DOCKER_HOST", "unix:///dev/null/mango.sock")
+	t.Setenv("DOCKER_TLS_VERIFY", "")
+	t.Setenv("DOCKER_CERT_PATH", "")
+	t.Setenv("DOCKER_API_VERSION", "")
+	for _, selection := range []string{"", "docker"} {
+		t.Setenv(sandboxProviderEnv, selection)
+		provider, err := resolveSandboxProvider()
+		if provider != nil || err == nil || !strings.Contains(err.Error(), "Docker Engine is unreachable") {
+			t.Fatalf("provider for %q = %v, %v; want unreachable Docker, no fallback", selection, provider, err)
+		}
 	}
-	_, sb, err := p.Create(
-		context.Background(),
-		t.Name(),
-		sandbox.Spec{Timeout: 5 * time.Second},
-	)
-	if err != nil {
-		t.Fatalf("default provider Provision: %v", err)
-	}
-	defer sb.Destroy(context.Background())
-	// The local provider's root is a host temp dir; the Docker provider's root
-	// is the constant "/workspace". Asserting on Root() proves the default is
-	// local deterministically, independent of whether a Docker daemon is present
-	// on the machine running the test.
-	if sb.Root() == "/workspace" {
-		t.Fatalf("default provider Root()=%q looks like the Docker provider; want local", sb.Root())
-	}
-	res, err := sb.Exec(context.Background(), sandbox.Command{Path: "/bin/sh", Args: []string{"-c", "echo hello"}})
-	if err != nil {
-		t.Fatalf("default provider Exec: %v", err)
-	}
-	if res.ExitCode != 0 || strings.TrimSpace(string(res.Stdout)) != "hello" {
-		t.Fatalf("default provider = %+v; want local (echo hello, exit 0)", res)
+}
+
+func TestResolveSandboxProvider_RejectsLocalEvenWithFormerUnsafeOverride(t *testing.T) {
+	t.Setenv(sandboxProviderEnv, "local")
+	t.Setenv("MANGO_ALLOW_UNSAFE_LOCAL_SANDBOX", "1")
+	provider, err := resolveSandboxProvider()
+	if provider != nil || err == nil || !strings.Contains(err.Error(), `unsupported provider "local"`) {
+		t.Fatalf("local selection = %v, %v; want unsupported provider", provider, err)
 	}
 }
 
 func TestResolveSandboxProvider_RejectsUnknownSelection(t *testing.T) {
 	t.Setenv(sandboxProviderEnv, "dockre")
-	_, _, err := resolveSandboxProvider()
+	_, err := resolveSandboxProvider()
 	if err == nil {
 		t.Fatal("resolveSandboxProvider accepted an unknown provider")
 	}
 	if !strings.Contains(err.Error(), `unsupported provider "dockre"`) ||
 		!strings.Contains(
 			err.Error(),
-			"available: cube, daytona, docker, e2b, local, opensandbox",
+			"available: cube, daytona, docker, e2b, opensandbox",
 		) {
 		t.Fatalf("resolveSandboxProvider error = %q", err)
 	}
@@ -95,17 +91,18 @@ func TestResolveSandboxProvider_RejectsUnknownSelection(t *testing.T) {
 
 func TestSandboxProviderRegistry_IsLazy(t *testing.T) {
 	t.Setenv("PATH", "")
+	t.Setenv("DOCKER_HOST", "not-a-docker-endpoint")
 	t.Setenv(sandboxImageEnv, "unused.invalid/image")
 	registry, err := sandboxProviderRegistry()
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := registry.Open(sandbox.LocalProviderName)
+	capabilities, err := registry.Capabilities(sandbox.DockerProviderName)
 	if err != nil {
-		t.Fatalf("opening local initialized optional Docker provider: %v", err)
+		t.Fatalf("reading admission capabilities initialized Docker: %v", err)
 	}
-	if provider.Name() != sandbox.LocalProviderName {
-		t.Fatalf("provider name = %q", provider.Name())
+	if !capabilities.FileResources || !capabilities.MemoryStores {
+		t.Fatalf("Docker capabilities = %+v", capabilities)
 	}
 }
 
@@ -119,54 +116,14 @@ func TestSandboxProviderRegistry_AdvertisesRuntimeCapabilities(t *testing.T) {
 		if err != nil {
 			t.Fatalf("capabilities for %s: %v", name, err)
 		}
-		want := name != sandbox.LocalProviderName
-		if capabilities.PackageSetup != want {
-			t.Errorf("%s PackageSetup = %v, want %v", name, capabilities.PackageSetup, want)
+		want := sandbox.ProviderCapabilities{
+			PackageSetup: true, FileResources: true, SessionOutputs: true,
+			SkillBundles: true, GitRepositories: true,
+			MemoryStores:   name == sandbox.DockerProviderName,
+			LimitedNetwork: name == sandbox.OpenSandboxProviderName,
 		}
-		wantLimitedNetwork := name == sandbox.OpenSandboxProviderName
-		if capabilities.LimitedNetwork != wantLimitedNetwork {
-			t.Errorf(
-				"%s LimitedNetwork = %v, want %v",
-				name,
-				capabilities.LimitedNetwork,
-				wantLimitedNetwork,
-			)
-		}
-		wantSessionOutputs := name != sandbox.LocalProviderName
-		if capabilities.SessionOutputs != wantSessionOutputs {
-			t.Errorf(
-				"%s SessionOutputs = %v, want %v",
-				name,
-				capabilities.SessionOutputs,
-				wantSessionOutputs,
-			)
-		}
-		wantFileResources := name != sandbox.LocalProviderName
-		if capabilities.FileResources != wantFileResources {
-			t.Errorf(
-				"%s FileResources = %v, want %v",
-				name,
-				capabilities.FileResources,
-				wantFileResources,
-			)
-		}
-		wantSkillBundles := name != sandbox.LocalProviderName
-		if capabilities.SkillBundles != wantSkillBundles {
-			t.Errorf(
-				"%s SkillBundles = %v, want %v",
-				name,
-				capabilities.SkillBundles,
-				wantSkillBundles,
-			)
-		}
-		wantGitRepositories := name != sandbox.LocalProviderName
-		if capabilities.GitRepositories != wantGitRepositories {
-			t.Errorf(
-				"%s GitRepositories = %v, want %v",
-				name,
-				capabilities.GitRepositories,
-				wantGitRepositories,
-			)
+		if capabilities != want {
+			t.Errorf("%s capabilities = %+v, want %+v", name, capabilities, want)
 		}
 	}
 }
@@ -176,23 +133,23 @@ func TestResolveSandboxProvider_RejectsInvalidSelectedProviderConfig(t *testing.
 	t.Setenv(e2bAPIKeyEnv, "test-key")
 	t.Setenv(e2bIdleTimeoutEnv, "eventually")
 
-	_, _, err := resolveSandboxProvider()
+	_, err := resolveSandboxProvider()
 	if err == nil || !strings.Contains(err.Error(), e2bIdleTimeoutEnv) {
 		t.Fatalf("resolveSandboxProvider error = %v, want invalid %s", err, e2bIdleTimeoutEnv)
 	}
 }
 
 func TestSandboxProviderRegistry_DoesNotValidateUnusedProviderConfig(t *testing.T) {
-	t.Setenv(sandboxProviderEnv, sandbox.LocalProviderName)
+	t.Setenv(sandboxProviderEnv, sandbox.DockerProviderName)
 	t.Setenv(e2bIdleTimeoutEnv, "eventually")
 	t.Setenv(openSandboxUseProxyEnv, "sometimes")
 
-	provider, _, err := resolveSandboxProvider()
+	registry, err := sandboxProviderRegistry()
 	if err != nil {
-		t.Fatalf("unused provider configuration affected local: %v", err)
+		t.Fatalf("unused provider configuration affected registry: %v", err)
 	}
-	if provider.Name() != sandbox.LocalProviderName {
-		t.Fatalf("provider = %q, want local", provider.Name())
+	if _, err := registry.Capabilities(configuredSandboxProviderName()); err != nil {
+		t.Fatalf("unused provider configuration affected Docker admission: %v", err)
 	}
 }
 
@@ -208,42 +165,61 @@ func TestSandboxEnvironmentParsersRejectInvalidValues(t *testing.T) {
 	}
 }
 
-// TestGuardModelSandbox_Matrix covers the safe-defaults startup guard: a real
-// model against the local (non-isolating) sandbox must fail unless the operator
-// explicitly opts in via MANGO_ALLOW_UNSAFE_LOCAL_SANDBOX=1. Every other
-// combination — including the zero-config fake + local default — must start.
-func TestGuardModelSandbox_Matrix(t *testing.T) {
-	cases := []struct {
-		name                            string
-		realModel, localSandbox, unsafe bool
-		wantErr                         bool
-	}{
-		{"fake+local (default) allowed", false, true, false, false},
-		{"fake+docker allowed", false, false, false, false},
-		{"real+docker allowed", true, false, false, false},
-		{"real+local blocked", true, true, false, true},
-		{"real+local override allowed", true, true, true, false},
+func TestDefaultDockerRuntime_PythonReattachAndCleanup(t *testing.T) {
+	if os.Getenv("MANGO_TEST_DOCKER") != "1" {
+		t.Skip("set MANGO_TEST_DOCKER=1 to require real Docker execution")
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := guardModelSandbox(tc.realModel, tc.localSandbox, tc.unsafe)
-			if tc.wantErr && err == nil {
-				t.Fatalf("guardModelSandbox(%v,%v,%v) = nil; want error", tc.realModel, tc.localSandbox, tc.unsafe)
-			}
-			if !tc.wantErr && err != nil {
-				t.Fatalf("guardModelSandbox(%v,%v,%v) = %v; want nil", tc.realModel, tc.localSandbox, tc.unsafe, err)
-			}
-			if tc.wantErr {
-				// The error must guide the operator to both remedies.
-				msg := err.Error()
-				if !strings.Contains(msg, "MANGO_SANDBOX=docker") {
-					t.Errorf("error does not mention MANGO_SANDBOX=docker: %q", msg)
-				}
-				if !strings.Contains(msg, unsafeLocalSandboxEnv) {
-					t.Errorf("error does not mention %s override: %q", unsafeLocalSandboxEnv, msg)
-				}
-			}
-		})
+	t.Setenv(sandboxProviderEnv, "")
+	t.Setenv(sandboxImageEnv, "")
+	t.Setenv(sandboxResourceDirEnv, t.TempDir())
+	t.Setenv("MANGO_MODEL_API_KEY", "worker-only-test-marker")
+	provider, err := resolveSandboxProvider()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	key := fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano())
+	spec := sandbox.Spec{Timeout: 10 * time.Second}
+	ref, box, err := provider.Create(ctx, key, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := box.Destroy(cleanupCtx); err != nil {
+			t.Errorf("cleanup Docker sandbox: %v", err)
+		}
+	})
+	if ref.Provider != "docker" || box.Root() != "/workspace" {
+		t.Fatalf("default sandbox = %+v, root %q", ref, box.Root())
+	}
+	result, err := box.Exec(ctx, sandbox.Command{Path: "python3", Args: []string{"-c",
+		"import os; from pathlib import Path; assert 'MANGO_MODEL_API_KEY' not in os.environ; assert not Path('/var/run/docker.sock').exists(); Path('marker.txt').write_text('survives'); Path('/mnt/session/outputs/result.txt').write_text('artifact')",
+	}})
+	if err != nil || result.ExitCode != 0 || result.TimedOut {
+		t.Fatalf("default Python execution = %+v, %v", result, err)
+	}
+	restarted, err := resolveSandboxProvider()
+	if err != nil {
+		t.Fatal(err)
+	}
+	attached, err := restarted.Attach(ctx, key, ref, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{"marker.txt": "survives", "/mnt/session/outputs/result.txt": "artifact"} {
+		got, err := attached.ReadFile(ctx, path)
+		if err != nil || string(got) != want {
+			t.Fatalf("read %s after restart = %q, %v", path, got, err)
+		}
+	}
+	if err := attached.Destroy(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.Attach(ctx, key, ref, spec); !errors.Is(err, sandbox.ErrNotFound) {
+		t.Fatalf("attach after deletion = %v, want ErrNotFound", err)
 	}
 }
 

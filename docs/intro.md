@@ -21,7 +21,8 @@ behavior may change there directly; Mango does not
 preserve earlier development snapshots through `/v2` or compatibility layers,
 and does not promise drop-in use with a hosted agent service or third-party
 SDK. Check [capabilities and limits](capabilities.md) before depending on a
-workflow, and do not treat the default local sandbox as a security boundary.
+workflow. Docker shares the host kernel and is not a hardened hostile
+multi-tenant boundary.
 
 :::
 
@@ -34,7 +35,7 @@ workflow, and do not treat the default local sandbox as a security boundary.
 - A durable **model-and-tool loop**: multi-round inference, custom-tool and
   confirmation waits, single- and multi-Thread interrupts, and outcome
   evaluation.
-- Tools run in **replaceable sandboxes** — local, Docker, and remote providers —
+- Tools run in **replaceable sandboxes** — Docker by default, or remote providers —
   with eight built-ins plus provider-native Web Search/Fetch and remote MCP
   tools.
 - Opt-in **live previews** of assistant text, streamed while the authoritative

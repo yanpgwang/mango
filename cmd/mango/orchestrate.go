@@ -412,16 +412,13 @@ func runOrchestrate() {
 
 	// Workflow executions call the selected model through granular model/tool
 	// Activities. The offline fake model needs no configuration.
-	modelClient, realModel, err := resolveModelClient()
+	modelClient, _, err := resolveModelClient()
 	if err != nil {
 		log.Fatalf("orchestrate: runtime: %v", err)
 	}
-	provider, localSandbox, err := resolveSandboxProvider()
+	provider, err := resolveSandboxProvider()
 	if err != nil {
 		log.Fatalf("orchestrate: sandbox: %v", err)
-	}
-	if err := guardModelSandbox(realModel, localSandbox, os.Getenv(unsafeLocalSandboxEnv) == "1"); err != nil {
-		log.Fatalf("orchestrate: %v", err)
 	}
 	providerRegistry, err := sandboxProviderRegistry()
 	if err != nil {

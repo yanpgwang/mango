@@ -8,9 +8,8 @@ import (
 )
 
 const (
-	// LocalProviderName and DockerProviderName are persisted in sandbox
-	// bindings. They are part of the internal storage compatibility contract and
-	// must remain stable across worker releases.
+	// Provider names identify persisted sandbox bindings. Local remains for
+	// legacy test fixtures but is not registered by the Mango binary.
 	LocalProviderName  = "local"
 	DockerProviderName = "docker"
 )

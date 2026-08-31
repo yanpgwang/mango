@@ -79,7 +79,15 @@ make test-service
 
 Default tests must stay offline and deterministic. Service tests must use
 isolated database schemas and clean up their workflows, File objects, and
-sandboxes. A real model endpoint is a separate, explicitly enabled test tier
+sandboxes. `make test-service` requires a reachable Docker daemon and sets
+`MANGO_TEST_DOCKER=1`; required Docker checks must fail rather than skip when
+the daemon becomes unavailable. The default-runtime test provisions the
+binary's actual default image, verifies Python execution, reattaches its
+workspace, and checks teardown independently of any cookbook application.
+Legacy local-based test fixtures have not yet all been migrated; their presence
+does not make `local` a selectable runtime backend.
+
+A real model endpoint is a separate, explicitly enabled test tier
 because it uses a credentialed network call and may incur cost:
 
 ```bash

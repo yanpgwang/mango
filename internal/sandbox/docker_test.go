@@ -30,6 +30,9 @@ func dockerAvailable(t *testing.T) {
 	t.Helper()
 	engine, err := dockerclient.New(dockerclient.FromEnv)
 	if err != nil {
+		if os.Getenv("MANGO_TEST_DOCKER") == "1" {
+			t.Fatalf("required Docker Engine client unavailable: %v", err)
+		}
 		t.Skipf("Docker Engine client unavailable: %v", err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
@@ -38,6 +41,9 @@ func dockerAvailable(t *testing.T) {
 	if _, err := engine.Ping(ctx, dockerclient.PingOptions{
 		NegotiateAPIVersion: true,
 	}); err != nil {
+		if os.Getenv("MANGO_TEST_DOCKER") == "1" {
+			t.Fatalf("required Docker Engine not reachable: %v", err)
+		}
 		t.Skipf("Docker Engine not reachable: %v", err)
 	}
 }

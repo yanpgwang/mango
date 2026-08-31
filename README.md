@@ -65,14 +65,13 @@ message. The command above explicitly selects the deterministic offline model
 and supplies a development-only Mango API key unless you override it.
 
 `make local-up` is a convenience command that automatically loads an existing
-`~/.config/mango/dev.env`; it may enable a real model. The current Compose worker
-still uses the local-process sandbox inside its own container, not a separate
-Docker sandbox for each Session. A shell setting of `MANGO_SANDBOX=docker` does
-not override that Compose configuration.
+`~/.config/mango/dev.env`; it may enable a real model. Both paths use Docker:
+the worker creates a separate container for each Session that needs sandbox
+tools. The default image includes Python and the stack configures Files storage.
 
 For real model tasks with Files and per-Session Docker sandboxes, follow
 [Use a real model endpoint](docs/getting-started.md#use-a-real-model-endpoint).
-That setup configures both the API and worker consistently.
+The same stack keeps API admission and worker execution configured consistently.
 
 Stop the Compose stack without deleting its data:
 
@@ -96,15 +95,15 @@ go run ./cmd/mango-tui --demo
 | Tools and resources | Sandboxed file and shell tools, remote MCP, Files, Git repositories, custom Skills, Memory Stores, and encrypted credentials |
 | Durable execution | Persisted event history, journaled tool calls, retries, park/resume, and restart recovery |
 | Automation and delegation | Scheduled Deployments, Run history, signed durable Webhooks, persistent child Agents, and Advisor consultations |
-| Execution environments | Local and Docker backends, self-hosted worker leases, and Preview remote-sandbox adapters |
+| Execution environments | Docker by default, self-hosted worker leases, and Preview remote-sandbox adapters |
 | Operator stack | PostgreSQL-authoritative state, Temporal workflows, S3-compatible objects, and NATS live previews |
 
 > [!IMPORTANT]
 > Mango is alpha: its API is unstable and the project does not yet claim
 > production readiness. Support varies by workflow and backend; review
 > [capabilities and limits](https://yanpgwang.github.io/mango/capabilities)
-> before relying on a workflow. The default local sandbox is not a security
-> boundary.
+> before relying on a workflow. Docker shares the host kernel; the development
+> stack is not a hardened boundary for hostile multi-tenant workloads.
 
 ## Relationship to Claude Managed Agents
 

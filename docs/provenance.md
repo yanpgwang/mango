@@ -410,3 +410,34 @@ support, so they run the same offline and opt-in live conformance suites.
   incorrectly allowed events into approvals. Rebuild development databases
   rather than rolling back across unresolved two-phase calls; dropping approval
   evidence cannot preserve the new lifecycle. No compatibility shim is added.
+
+## Docker-default OSS execution
+
+- User problem: the ordinary local deployment must run tools in a separate
+  Session container and support Files, Skills, and Memory without manually
+  replacing the API or worker. A missing Docker daemon must not permit host
+  execution as a fallback.
+- Reviewed the public [cloud Environment design](https://platform.claude.com/docs/en/managed-agents/environments)
+  and [self-hosted sandbox distinction](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+  on 2026-08-31. Mango retains the useful separation between reusable Environment
+  configuration and Session-owned sandbox instances. This is Mango-managed
+  execution on the operator's Docker daemon, not a hosted control plane or an
+  external Environment Work runner.
+- Acceptance: Docker is the binary and Compose default; `local` is not a
+  selectable runtime backend; API and worker capabilities agree; the default
+  image runs Python; File mounts and outputs are visible across the worker and
+  its daemon; restart reattaches the original container; deletion removes it;
+  an unreachable daemon fails worker startup. Existing binding and provisioning
+  intent semantics remain authoritative, without migrations or an empty-workspace
+  fallback for old local bindings.
+- Following Docker's [daemon security](https://docs.docker.com/engine/security/)
+  and [bind-mount model](https://docs.docker.com/engine/storage/bind-mounts/), the
+  development worker is trusted with daemon access and mounts its resource
+  directory at the same absolute host/container path. The API receives no daemon
+  socket. Session containers receive only their own resource mounts, not the
+  socket or worker credentials. This is not a hostile multi-tenant guarantee.
+- Non-goals: no external worker, new credentials protocol, provider inventory,
+  public API change, automatic local-workspace migration, or cookbook test
+  harness. Legacy local-based test fixtures remain temporarily; moving real
+  tool tests to Docker and pure protocol tests to non-executing doubles is a
+  separate test-convergence slice, not evidence that all tests already use Docker.

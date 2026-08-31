@@ -10,7 +10,7 @@ production-ready merely because it can execute a command: its isolation model,
 lifecycle guarantees, operational dependencies, and known limits must also be
 clear.
 
-Local and Docker execution do not add another HTTP service. Remote adapters
+Docker execution does not add another HTTP service. Remote adapters
 call an independently deployed sandbox service through the same in-process Go
 boundary:
 
@@ -23,8 +23,8 @@ provider name and opaque external ID; a restarted worker calls `Attach` instead
 of creating an empty replacement. `Sandbox` exposes command execution, confined
 file access, a workspace root, and teardown. The execution worker selects one
 compiled adapter through an internal registry. `MANGO_SANDBOX` accepts
-`local` (the default), `docker`, `e2b`, `cube`, `opensandbox`, or `daytona`; an
-unknown name fails startup instead of falling back to host execution. Provider
+`docker` (the default), `e2b`, `cube`, `opensandbox`, or `daytona`; `local` and
+unknown names fail startup instead of falling back to host execution. Provider
 selection does not add fields to the public Environment or Session resources.
 
 The `serve` and `orchestrate` processes for one deployment must use the same
@@ -46,8 +46,7 @@ These labels describe project support, not a security certification.
 
 | Backend | Status | Isolation model | Limited egress | Session state | Intended use |
 |---|---|---|---|---|---|
-| Local process | Available; default | Host process plus confined workspace; not an isolation boundary | No; rejected | Reattaches by durable workspace path on the same host | Offline tests and trusted local development only |
-| Docker | Available; opt-in | Container filesystem, namespaces/cgroups, configurable limits; provider calls default to no network while cloud Environments request bridge networking | No; rejected | Reattaches by container ID on the same Docker daemon | Controlled single-host self-hosting |
+| Docker | Available; default | Container filesystem, namespaces/cgroups, configurable limits; provider calls default to no network while cloud Environments request bridge networking | No; rejected | Reattaches by container ID on the same Docker daemon | Controlled single-host self-hosting |
 | [E2B](https://github.com/e2b-dev/E2B) | Preview | Managed microVM service | No; rejected | E2B ID plus auto-pause filesystem persistence | Managed production |
 | [Tencent CubeSandbox](https://github.com/TencentCloud/CubeSandbox) | Preview | E2B-compatible microVM service | No; rejected | Provider-owned durable sandbox ID | Self-hosted production on Linux/KVM |
 | [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox) | Preview; Docker runtime manually live-verified | Docker or Kubernetes-backed sandbox service | Yes; host allowlist | Provider-owned durable sandbox ID | Self-hosted production |
@@ -59,8 +58,9 @@ These labels describe project support, not a security certification.
 The Docker provider uses the Docker Engine API through the supported Moby Go
 client with API-version negotiation; it has no runtime dependency on the
 `docker` CLI. It has not been audited for hostile multi-tenant workloads.
-The local provider is not a security boundary. No backend currently carries a
-production security claim.
+No backend currently carries a production security claim. The old local provider
+remains only for legacy repository test fixtures; the binary does not register
+it and no unsafe-local setting re-enables it.
 
 ### Capability matrix
 
@@ -70,7 +70,6 @@ Memory, or network enforcement.
 
 | Backend | Packages | File Resources | Git repositories | Session Outputs | Skills | Memory | Limited egress |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Local process | No | No | No | No | No | No | No |
 | Docker | Yes | Yes, read-only | Yes, writable | Yes | Yes, read-only | Yes | No |
 | E2B | Yes | Yes, buffered writable-copy limitation | Yes, buffered writable | Yes, buffered | Yes, buffered hardened-copy limitation | No | No |
 | CubeSandbox | Yes | Yes, buffered writable-copy limitation | Yes, buffered writable | Yes, buffered | Yes, buffered hardened-copy limitation | No | No |
@@ -104,10 +103,9 @@ S3-backed source or the downloadable Session File; a later resource with a new
 identity replaces the path, and an interrupted import is retried before the
 next tool.
 
-The local-process provider would have to write into the worker host's absolute
-`/mnt` path and therefore rejects the feature. E2B and Cube retain the public
-File limits and checksum validation, but their current buffering means the
-worker must have enough memory for the largest accepted individual resource.
+E2B and Cube retain the public File limits and checksum validation, but their
+current buffering means the worker must have enough memory for the largest
+accepted individual resource.
 
 ## Git repository mounts
 
@@ -234,8 +232,8 @@ A backend implements the core lifecycle contract when it can:
 5. read and write paths relative to the workspace;
 6. destroy the resource idempotently.
 
-These requirements are executable in `internal/sandbox/sandboxtest`. Local,
-Docker, and every remote provider's opt-in live test run the same suite,
+These requirements are executable in `internal/sandbox/sandboxtest`. Docker
+and every remote provider's opt-in live test run the same suite,
 including cross-client Create/Attach, workspace preservation, ownership
 rejection, cancellation, and post-delete missing-reference behavior. Offline
 adapter tests cover the same contract without credentials. Provider-specific
@@ -258,10 +256,6 @@ not compatible with all executing built-ins yet.
   image must contain each requested manager, and package validation remains the
   caller's responsibility. An install failure leaves the provisioning intent
   for retry and does not expose the sandbox to tool execution.
-- A deployment using the local-process backend rejects non-empty package
-  configuration at API admission because installing there would mutate the
-  worker host. Use Docker or a remote isolated backend for package-configured
-  cloud Environments.
 - Limited networking is admitted only when the selected provider declares and
   implements exact host-level egress reconciliation. OpenSandbox creates a
   deny-by-default policy, temporarily expands it for configured package setup,

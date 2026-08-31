@@ -40,9 +40,9 @@ Cloud environments accept package lists for `apt`, `cargo`, `gem`, `go`, `npm`,
 and `pip`. The first sandbox-using turn installs those packages before the
 Session's durable sandbox binding becomes visible. Package names are passed
 directly to the corresponding package manager; the caller is responsible for
-valid names and versions. Package setup requires Docker or a remote isolated
-backend; a deployment using the host-process `local` backend rejects non-empty
-package configuration at admission.
+valid names and versions. Package setup requires an image containing each
+requested package manager; the default Python Alpine image does not include
+`apt-get` or every supported language runtime.
 
 Limited networking is available when the deployment selects the `opensandbox`
 backend. It is deny-by-default and accepts this shape:
@@ -58,7 +58,7 @@ backend. It is deny-by-default and accepts this shape:
 
 `allowed_hosts` entries are bare hostnames or a leading `*.` wildcard. URL
 schemes, ports, paths, and embedded wildcards are rejected. The two allow flags
-default to `false`. Deployments using local, Docker, E2B, CubeSandbox, or
+default to `false`. Deployments using Docker, E2B, CubeSandbox, or
 Daytona return `422` for a limited policy instead of storing unenforced intent.
 
 The runtime accepts `cloud` and `self_hosted` sessions. In `cloud`, enabled
