@@ -846,16 +846,25 @@ func TestDocker_ExecAfterTimeoutReturnsError(t *testing.T) {
 
 func TestDocker_CreateIsIdempotentAndAttachPreservesWorkspace(t *testing.T) {
 	dockerAvailable(t)
-	ctx := context.Background()
-	firstProvider, err := NewDockerProvider(DockerConfig{DefaultImage: "alpine:latest"})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cfg := DockerConfig{DefaultImage: "alpine:latest", ResourceBaseDir: t.TempDir()}
+	sessionKey := fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano())
+	firstProvider, err := NewDockerProvider(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, first, err := firstProvider.Create(ctx, t.Name(), Spec{Timeout: 30 * time.Second})
+	ref, first, err := firstProvider.Create(ctx, sessionKey, Spec{Timeout: 30 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = first.Destroy(context.Background()) })
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := first.Destroy(ctx); err != nil {
+			t.Errorf("Docker cleanup: %v", err)
+		}
+	})
 	if err := first.WriteFile(ctx, "state.txt", []byte("durable")); err != nil {
 		t.Fatal(err)
 	}
@@ -874,13 +883,13 @@ func TestDocker_CreateIsIdempotentAndAttachPreservesWorkspace(t *testing.T) {
 		t.Fatalf("import before worker restart: %v", err)
 	}
 
-	secondProvider, err := NewDockerProvider(DockerConfig{DefaultImage: "alpine:latest"})
+	secondProvider, err := NewDockerProvider(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sameRef, same, err := secondProvider.Create(
 		ctx,
-		t.Name(),
+		sessionKey,
 		Spec{Timeout: 30 * time.Second},
 	)
 	if err != nil {
@@ -891,7 +900,7 @@ func TestDocker_CreateIsIdempotentAndAttachPreservesWorkspace(t *testing.T) {
 	}
 	attached, err := secondProvider.Attach(
 		ctx,
-		t.Name(),
+		sessionKey,
 		ref,
 		Spec{Timeout: 30 * time.Second},
 	)
