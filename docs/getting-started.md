@@ -43,11 +43,14 @@ export MANGO_API_KEY=sk-mango-local-development
 ## Choose a client
 
 The examples below show the same workflow in TypeScript, Python, Go, and HTTP.
-The selected language is shared across code groups. Install your
-[SDK from the local checkout](sdk.md#install-from-source) first; packages are not
-published as stable registry releases. The HTTP variant needs `curl` and `jq`.
+The selected language is shared across code groups. Python and TypeScript have
+[published alpha packages](sdk.md#install-an-alpha); Go currently uses source
+installation. These SDKs do not yet have a stable API contract. The HTTP variant
+needs `curl` and `jq`.
 
-Run the complete example from the repository root:
+The complete repository examples below install/build the SDK from this checkout
+so it matches the server source. Run them from the repository root. For your own
+application, use the published alpha or [install from source](sdk.md#install-from-source).
 
 ```sh tab="TypeScript" tab-group="mango-language"
 npm --prefix sdk/typescript ci

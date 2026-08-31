@@ -5,9 +5,21 @@ description: Typed clients, promises, pagination, and live event streams.
 
 # TypeScript and JavaScript SDK
 
-Use `@mango-agents/sdk` from Node.js 22+ with ESM imports. JavaScript uses the
+Use `mango-sdk` from Node.js 22+ with ESM imports. JavaScript uses the
 same package; TypeScript adds generated request/response types. The client uses
-native `fetch` and has no runtime dependencies. See [local installation](../sdk.md#install-from-source).
+native `fetch` and has no runtime dependencies.
+
+## Install
+
+Install the published alpha by its exact version:
+
+```sh
+npm install mango-sdk@0.1.0-alpha.1
+```
+
+This is an alpha, not a stable release, even if npm displays it under `latest`.
+The package includes compiled JavaScript and type declarations. For development
+against this checkout, see [source installation](../sdk.md#install-from-source).
 
 ## Configure the client
 

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { Mango, APIError, ProtocolError, operations, parseSSE } from '../dist/index.js';
+import { Mango, APIError, ProtocolError, operations, parseSSE } from 'mango-sdk';
 
 const json = (body, init = {}) => new Response(JSON.stringify(body), { ...init, headers: { 'content-type': 'application/json', ...init.headers } });
 const encoder = new TextEncoder();

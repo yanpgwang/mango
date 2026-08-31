@@ -6,7 +6,20 @@ description: Typed synchronous and asynchronous clients for Mango.
 # Python SDK
 
 Use `mango_sdk` with Python 3.11+. It includes `Mango` and `AsyncMango` clients
-and generated request/response `TypedDict` types. See [local installation](../sdk.md#install-from-source).
+and generated request/response `TypedDict` types. The distribution name is
+`mango-sdk`; the Python import remains `mango_sdk`.
+
+## Install
+
+Install the published alpha in a virtual environment:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install 'mango-sdk==0.1.0a1'
+```
+
+This is an alpha with no stable API contract. For development against this
+checkout, see [source installation](../sdk.md#install-from-source).
 
 ## Configure the client
 

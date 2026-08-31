@@ -3,12 +3,21 @@
 Typed synchronous and asynchronous clients for **every operation in Mango's
 current OpenAPI**: Agents, Environments and Work, Sessions and Threads, Events,
 Resources, Files, Skills, Memory, Vaults, Webhooks, Deployments, and probes.
-The package is local source, not a published PyPI release. Mango's development
-API can change in place; keep the SDK and server on the same checkout.
+The distribution name is `mango-sdk`; Python imports use `mango_sdk`. This is an
+alpha SDK, not a stable release. Mango's development API can change in place;
+use an SDK version built for the server revision you deploy.
 
-## Install locally
+## Install
 
-Python 3.11 or newer is required. From the repository root:
+Python 3.11 or newer is required. Install the published
+[PyPI alpha](https://pypi.org/project/mango-sdk/0.1.0a1/) by its exact version
+in a virtual environment:
+
+```sh
+python -m pip install 'mango-sdk==0.1.0a1'
+```
+
+To install this checkout instead, from the repository root:
 
 ```sh
 python3 -m venv .venv

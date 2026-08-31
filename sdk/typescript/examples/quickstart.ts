@@ -1,6 +1,6 @@
 // Used directly by the documentation. Run against the offline Compose stack.
 // #region client
-import { Mango } from '@mango-agents/sdk';
+import { Mango } from 'mango-sdk';
 
 const client = new Mango({
   baseURL: process.env.MANGO_BASE_URL ?? 'http://localhost:8080',

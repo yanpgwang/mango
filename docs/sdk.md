@@ -12,20 +12,51 @@ scheduling, and sandboxes.
 
 ## Packages
 
-| Language | Source, local installation and examples |
-| --- | --- |
-| Go | [Go SDK](https://github.com/yanpgwang/mango/tree/main/sdk/go) |
-| Python | [Python SDK](https://github.com/yanpgwang/mango/tree/main/sdk/python) |
-| TypeScript / JavaScript | [TypeScript SDK](https://github.com/yanpgwang/mango/tree/main/sdk/typescript) |
+| Language | Package / module | Installation and examples |
+| --- | --- | --- |
+| Go | `github.com/yanpgwang/mango/sdk/go` | [Go SDK](https://github.com/yanpgwang/mango/tree/main/sdk/go) |
+| Python | `mango-sdk` (import `mango_sdk`) | [Python SDK](https://github.com/yanpgwang/mango/tree/main/sdk/python) |
+| TypeScript / JavaScript | `mango-sdk` | [TypeScript SDK](https://github.com/yanpgwang/mango/tree/main/sdk/typescript) |
 
 Start with the [multi-language quickstart](getting-started.md), or read the
 language-specific guides: [Go](sdk/go.md), [Python](sdk/python.md), and
 [TypeScript / JavaScript](sdk/typescript.md).
 
+## Install an alpha
+
+The packages cover the current OpenAPI operation inventory, including Memory,
+Skills, Files, multi-agent Threads and Environment Work. Coverage means API
+access, not an expansion of the [server capabilities](capabilities.md).
+These are alpha SDKs; a stable SDK contract has not been established. Match the
+SDK version to the server revision you deploy.
+
+Python and TypeScript/JavaScript are published on
+[PyPI](https://pypi.org/project/mango-sdk/0.1.0a1/) and
+[npm](https://www.npmjs.com/package/mango-sdk/v/0.1.0-alpha.1). Install by exact
+version; Go has no independently tagged release yet and uses source installation.
+
+```sh tab="TypeScript" tab-group="mango-language"
+npm install mango-sdk@0.1.0-alpha.1
+```
+
+```sh tab="Python" tab-group="mango-language"
+python3 -m venv .venv
+.venv/bin/python -m pip install 'mango-sdk==0.1.0a1'
+```
+
+The TypeScript package includes compiled JavaScript and declarations; consuming
+it does not require building the SDK. The alpha is not a stable release even if
+npm displays it under `latest`. See the
+[release record](https://github.com/yanpgwang/mango/blob/main/sdk/releases/0.1.0-alpha.1.md)
+for verified artifacts and the
+[release guide](https://github.com/yanpgwang/mango/blob/main/sdk/RELEASING.md)
+for the publishing process. Package metadata alone is not evidence of publication.
+
 ## Install from source
 
-Run these from the Mango repository root. These are local source packages,
-not published npm, PyPI, or independently tagged Go releases.
+Use source installation when developing against this checkout, running the
+repository examples, or using the Go SDK before a tagged release. Run from the
+Mango repository root unless a command says to use your application directory.
 
 ```sh tab="TypeScript" tab-group="mango-language"
 npm --prefix sdk/typescript ci
@@ -46,13 +77,6 @@ go mod edit -replace=github.com/yanpgwang/mango/sdk/go=/absolute/path/to/mango/s
 # Add your Mango import before running tidy.
 go mod tidy
 ```
-
-The packages cover the current OpenAPI operation inventory, including Memory,
-Skills, Files, multi-agent Threads and Environment Work. Coverage means API
-access, not an expansion of the [server capabilities](capabilities.md).
-These are pre-release source packages; registry releases and a stable SDK
-contract have not been established. Install locally as the package README
-describes.
 
 ## Authentication and errors
 

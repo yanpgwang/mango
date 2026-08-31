@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { normalizeBasePath } from '../src/lib/site.mjs';
@@ -8,6 +8,15 @@ import { remarkDocumentTitle, remarkRelativeDocLinks } from '../src/lib/markdown
 import { exportMarkdown } from '../src/lib/markdown-export.mjs';
 import { resolveExportLink } from './check-export.mjs';
 import { createPreviewServer } from './serve.mjs';
+
+test('the TypeScript guide and executable example use the package manifest name', async () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+  const manifest = JSON.parse(await read('../../sdk/typescript/package.json'));
+  const example = await read('../../sdk/typescript/examples/quickstart.ts');
+  const guide = await read('../../docs/sdk/typescript.md');
+  assert.ok(example.includes(`from '${manifest.name}'`), 'quickstart must import the current public package');
+  assert.ok(guide.includes(`Use \`${manifest.name}\``), 'SDK guide must name the current public package');
+});
 
 test('normalize root and nested base paths, reject URL injection', () => {
   assert.equal(normalizeBasePath('/'), '');
