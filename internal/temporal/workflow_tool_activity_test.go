@@ -18,6 +18,7 @@ import (
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 var toolSchemaSeq atomic.Int64
@@ -646,11 +647,7 @@ func TestExecuteTool_SandboxPermanentErrorTerminatesTurn(t *testing.T) {
 
 func TestExecuteTool_WritebackFailurePreservesToolOutput(t *testing.T) {
 	ctx := context.Background()
-	_, box, err := sandbox.NewLocalProvider().Create(ctx, t.Name(), sandbox.Spec{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = box.Destroy(context.Background()) })
+	box := sandboxtest.Docker(t)
 	journal := &memoryMCPJournal{}
 	activities := NewActivities(
 		nil,
@@ -685,11 +682,7 @@ func TestExecuteTool_WritebackFailurePreservesToolOutput(t *testing.T) {
 
 func TestExecuteTool_CoordinatesResourceSyncAroundToolOperation(t *testing.T) {
 	ctx := context.Background()
-	_, inner, err := sandbox.NewLocalProvider().Create(ctx, t.Name(), sandbox.Spec{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = inner.Destroy(context.Background()) })
+	inner := sandboxtest.Docker(t)
 	box := &synchronizationObservingSandbox{Sandbox: inner}
 	reconciler := &synchronizationObservingReconciler{box: box}
 	journal := &memoryMCPJournal{}
@@ -732,7 +725,7 @@ func TestWorkflowTurn_ToolResultWriteRetryDoesNotReexecute(t *testing.T) {
 	ids := domain.NewRandomIDGen()
 	source := storeSource{store: store}
 	journal := &loseFirstCompletionAckJournal{JournalStore: source}
-	manager := sandbox.NewSessionManager(sandbox.NewLocalProvider(), store)
+	manager := sandbox.NewSessionManager(sandboxtest.DockerProvider(t), store)
 	lease := &forwardingCountingLease{inner: manager}
 	t.Cleanup(func() {
 		_ = manager.Release(context.Background(), sessionID)

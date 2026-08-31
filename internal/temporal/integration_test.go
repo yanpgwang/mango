@@ -22,6 +22,7 @@ import (
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 )
 
@@ -59,7 +60,7 @@ func TestVerticalSlice_MultiagentDelegationEndToEnd(t *testing.T) {
 	probe := &multiagentProbeModel{}
 	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
 		TemporalClient: c, Store: store, ModelClient: probe,
-		SandboxProvider: sandbox.NewLocalProvider(), IDGenerator: ids,
+		SandboxProvider: sandboxtest.NoProvision(t), IDGenerator: ids,
 		RelayConfig: temporalpkg.RelayConfig{PollInterval: 50 * time.Millisecond},
 		TaskQueue:   "mango-multiagent-test-" + ids.NewID(""),
 	})
@@ -387,7 +388,7 @@ func runVerticalSliceEndToEnd(
 		TemporalClient:  c,
 		Store:           store,
 		ModelClient:     modelClient,
-		SandboxProvider: sandbox.NewLocalProvider(),
+		SandboxProvider: sandboxtest.NoProvision(t),
 		IDGenerator:     ids,
 		RelayConfig:     temporalpkg.RelayConfig{PollInterval: 200 * time.Millisecond},
 		TaskQueue:       "mango-test-" + ids.NewID(""),
@@ -500,11 +501,12 @@ func TestLifecycleReconciler_RecoversPreparedDeletionEndToEnd(t *testing.T) {
 	defer c.Close()
 
 	ids := domain.NewRandomIDGen()
+	provider := sandboxtest.DockerProvider(t)
 	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
 		TemporalClient:  c,
 		Store:           store,
 		ModelClient:     model.NewFake(),
-		SandboxProvider: sandbox.NewLocalProvider(),
+		SandboxProvider: provider,
 		IDGenerator:     ids,
 		RelayConfig:     temporalpkg.RelayConfig{},
 		TaskQueue:       "mango-lifecycle-test-" + ids.NewID(""),
@@ -545,7 +547,10 @@ func TestLifecycleReconciler_RecoversPreparedDeletionEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire sandbox: %v", err)
 	}
-	root := box.Root()
+	binding, found, err := store.GetSandboxBinding(ctx, session.ID)
+	if err != nil || !found {
+		t.Fatalf("load sandbox binding: found=%v err=%v", found, err)
+	}
 	if err := box.WriteFile(ctx, "before-crash", []byte("durable")); err != nil {
 		t.Fatalf("write sandbox marker: %v", err)
 	}
@@ -589,8 +594,8 @@ func TestLifecycleReconciler_RecoversPreparedDeletionEndToEnd(t *testing.T) {
 	if _, found, err := store.GetSandboxBinding(ctx, session.ID); err != nil || found {
 		t.Fatalf("sandbox binding survived: found=%v err=%v", found, err)
 	}
-	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("sandbox root survived cleanup or stat failed: %v", err)
+	if _, err := provider.Attach(ctx, session.ID, binding.Ref, sandbox.Spec{}); !errors.Is(err, sandbox.ErrNotFound) {
+		t.Fatalf("Docker sandbox survived cleanup or attachment failed: %v", err)
 	}
 	described, err = c.DescribeWorkflowExecution(ctx, childWorkflowID, "")
 	if err != nil || described.WorkflowExecutionInfo.Status !=
@@ -627,7 +632,7 @@ func TestVerticalSlice_InterruptCancelsModelActivity(t *testing.T) {
 		TemporalClient:  c,
 		Store:           store,
 		ModelClient:     blockingModel,
-		SandboxProvider: sandbox.NewLocalProvider(),
+		SandboxProvider: sandboxtest.NoProvision(t),
 		IDGenerator:     ids,
 		RelayConfig:     temporalpkg.RelayConfig{PollInterval: 200 * time.Millisecond},
 		TaskQueue:       "mango-test-" + ids.NewID(""),
@@ -748,31 +753,6 @@ func TestVerticalSlice_InterruptCancelsModelActivity(t *testing.T) {
 	}
 }
 
-// TestVerticalSlice_ToolStepEndToEnd is the real integration path for a
-// tool-using turn: a session whose agent enables the built-in toolset admits one
-// user.message, and a deterministic model requests bash with a valid command.
-// The turn runs the tool step as its own Activity under the durable journal and
-// commits agent.tool_use, agent.tool_result, the final agent.message, and
-// terminal idle to PostgreSQL. Skips unless both the DB and Temporal env vars
-// are set.
-func TestVerticalSlice_ToolStepEndToEnd(t *testing.T) {
-	const marker = "mango-temporal-local-ok"
-	runToolStepEndToEnd(t, toolStepCase{
-		provider: sandbox.NewLocalProvider(),
-		modelClient: toolProbeModel{
-			command:   "printf '" + marker + "'",
-			finalText: "Local probe completed",
-		},
-		modelID:            "fake",
-		sessionPrefix:      "sess_tool_e2e_",
-		prompt:             "run a tool",
-		tools:              []any{map[string]any{"type": domain.BuiltinToolsetType}},
-		expectedTool:       bashToolName,
-		expectedToolOutput: marker,
-		timeout:            30 * time.Second,
-	})
-}
-
 // TestVerticalSlice_LiveModelToolStepEndToEnd verifies the external model
 // contract beyond plain text streaming: a real model selects the offered bash
 // tool, Mango executes it in Docker as a durable sandbox Activity, feeds the
@@ -780,7 +760,7 @@ func TestVerticalSlice_ToolStepEndToEnd(t *testing.T) {
 // response. It is opt-in because it reaches a billable model endpoint.
 func TestVerticalSlice_LiveModelToolStepEndToEnd(t *testing.T) {
 	modelClient, modelID := liveModelForTest(t, "tool conformance test")
-	provider := dockerProviderForTest(t, dockerRequired)
+	provider := sandboxtest.DockerProvider(t)
 	const marker = "mango-live-tool-ok"
 	runToolStepEndToEnd(t, toolStepCase{
 		provider:      provider,
@@ -798,8 +778,9 @@ func TestVerticalSlice_LiveModelToolStepEndToEnd(t *testing.T) {
 	})
 }
 
-// TestVerticalSlice_DockerToolStepEndToEnd runs the same real PostgreSQL +
-// Temporal tool path through the Docker sandbox provider. Its command checks
+// TestVerticalSlice_DockerToolStepEndToEnd runs the PostgreSQL + Temporal tool
+// path through Docker. It commits the journal, tool events, final message and
+// terminal idle status. Its command checks
 // /.dockerenv and /workspace before writing and reading the marker. The committed
 // non-error tool_result therefore proves the Activity actually executed inside
 // the provisioned container, not merely that Docker provisioning succeeded.
@@ -808,7 +789,7 @@ func TestVerticalSlice_DockerToolStepEndToEnd(t *testing.T) {
 		os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT") == "" {
 		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the Docker tool end-to-end slice")
 	}
-	provider := dockerProviderForTest(t, dockerOptional)
+	provider := sandboxtest.DockerProvider(t)
 	const marker = "mango-temporal-docker-ok"
 	runToolStepEndToEnd(t, toolStepCase{
 		provider: provider,
@@ -836,7 +817,7 @@ func TestVerticalSlice_DockerSkillRuntimeEndToEnd(t *testing.T) {
 		os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT") == "" {
 		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the Docker Skill end-to-end slice")
 	}
-	provider := dockerProviderForTest(t, dockerOptional)
+	provider := sandboxtest.DockerProvider(t)
 	runToolStepEndToEnd(t, toolStepCase{
 		provider: provider,
 		modelClient: skillProbeModel{
@@ -880,27 +861,6 @@ func TestVerticalSlice_DockerSkillRuntimeEndToEnd(t *testing.T) {
 				)
 		},
 	})
-}
-
-type dockerRequirement bool
-
-const (
-	dockerOptional dockerRequirement = false
-	dockerRequired dockerRequirement = true
-)
-
-func dockerProviderForTest(t *testing.T, requirement dockerRequirement) sandbox.Provider {
-	t.Helper()
-	provider, err := sandbox.NewDockerProvider(sandbox.DockerConfig{
-		DefaultImage: "alpine:latest",
-	})
-	if err != nil {
-		if requirement == dockerRequired || os.Getenv("MANGO_TEST_DOCKER") == "1" {
-			t.Fatalf("Docker Engine is required for tool conformance: %v", err)
-		}
-		t.Skipf("Docker Engine unreachable: %v", err)
-	}
-	return provider
 }
 
 type toolStepCase struct {

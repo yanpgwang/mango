@@ -35,7 +35,7 @@ capability again before provisioning.
 ## Support levels
 
 - **Available**: implemented, documented, and exercised by repository tests.
-- **Preview**: implemented with offline and opt-in live conformance, but still
+- **Preview**: implemented with credential-free and opt-in live conformance, but still
   awaiting promotion based on repeatable service-level validation.
 - **Planned**: selected for a dedicated adapter, but not implemented.
 - **Evaluating**: useful integration shape, without a committed adapter.
@@ -58,9 +58,9 @@ These labels describe project support, not a security certification.
 The Docker provider uses the Docker Engine API through the supported Moby Go
 client with API-version negotiation; it has no runtime dependency on the
 `docker` CLI. It has not been audited for hostile multi-tenant workloads.
-No backend currently carries a production security claim. The old local provider
-remains only for legacy repository test fixtures; the binary does not register
-it and no unsafe-local setting re-enables it.
+No backend currently carries a production security claim. Host-process sandbox
+execution has been removed, including the old local test fixtures. No
+unsafe-local setting re-enables it.
 
 ### Capability matrix
 
@@ -235,9 +235,12 @@ A backend implements the core lifecycle contract when it can:
 These requirements are executable in `internal/sandbox/sandboxtest`. Docker
 and every remote provider's opt-in live test run the same suite,
 including cross-client Create/Attach, workspace preservation, ownership
-rejection, cancellation, and post-delete missing-reference behavior. Offline
-adapter tests cover the same contract without credentials. Provider-specific
-tests cover protocol translation, isolation, and resource controls separately.
+rejection, cancellation, and post-delete missing-reference behavior. Unit tests
+cover protocol and state behavior without executing commands. Credential-free
+remote-adapter conformance uses simulated service APIs backed by real Docker
+command execution; it runs in `make test-service`, not the offline unit tier.
+Provider-specific tests cover protocol translation, isolation, and resource
+controls separately. Only the explicit live tier contacts real remote providers.
 
 The built-in toolset currently assumes a POSIX-like environment with
 `/bin/sh`, `find`, and `grep`. A backend that does not provide those commands is

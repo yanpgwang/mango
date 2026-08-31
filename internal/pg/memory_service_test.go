@@ -15,6 +15,7 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 func TestMemoryService_PostgresOfficialSDKLifecycle(t *testing.T) {
@@ -211,12 +212,7 @@ func TestMemoryRuntime_DockerPostgresRoundTrip(t *testing.T) {
 		[]app.PreparedSessionResource{{Resource: resource}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	provider, err := sandbox.NewDockerProvider(sandbox.DockerConfig{
-		DefaultImage: "alpine:latest", ResourceBaseDir: t.TempDir(),
-	})
-	if err != nil {
-		t.Skipf("Docker Engine not reachable: %v", err)
-	}
+	provider := sandboxtest.DockerProvider(t)
 	_, box, err := provider.Create(ctx, t.Name(), sandbox.Spec{MemoryStores: []sandbox.MemoryStoreMount{{
 		Identity: resource.ID, StoreID: memoryStore.ID,
 		RuntimePath: resource.MountPath, Access: resource.MemoryAccess,

@@ -52,14 +52,14 @@ func registryFactory(name string) ProviderFactory {
 }
 
 func TestProviderRegistry_OpensSelectedFactoryLazily(t *testing.T) {
-	var localCalls, dockerCalls int
+	var testCalls, dockerCalls int
 	registry, err := NewProviderRegistry(
 		ProviderRegistration{
-			Name:         LocalProviderName,
+			Name:         "test-provider",
 			Capabilities: ProviderCapabilities{PackageSetup: false},
 			Factory: func() (Provider, error) {
-				localCalls++
-				return &registryTestProvider{name: LocalProviderName}, nil
+				testCalls++
+				return &registryTestProvider{name: "test-provider"}, nil
 			},
 		},
 		ProviderRegistration{
@@ -74,30 +74,30 @@ func TestProviderRegistry_OpensSelectedFactoryLazily(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if localCalls != 0 || dockerCalls != 0 {
+	if testCalls != 0 || dockerCalls != 0 {
 		t.Fatal("registry construction invoked an optional provider factory")
 	}
 	capabilities, err := registry.Capabilities(DockerProviderName)
 	if err != nil || !capabilities.PackageSetup {
 		t.Fatalf("docker capabilities = %+v, err=%v", capabilities, err)
 	}
-	if localCalls != 0 || dockerCalls != 0 {
+	if testCalls != 0 || dockerCalls != 0 {
 		t.Fatal("capability lookup invoked a provider factory")
 	}
 
-	provider, err := registry.Open(LocalProviderName)
+	provider, err := registry.Open("test-provider")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if provider.Name() != LocalProviderName {
-		t.Fatalf("provider name = %q, want %q", provider.Name(), LocalProviderName)
+	if provider.Name() != "test-provider" {
+		t.Fatalf("provider name = %q, want %q", provider.Name(), "test-provider")
 	}
-	if localCalls != 1 || dockerCalls != 0 {
-		t.Fatalf("factory calls local=%d docker=%d, want 1/0", localCalls, dockerCalls)
+	if testCalls != 1 || dockerCalls != 0 {
+		t.Fatalf("factory calls test=%d docker=%d, want 1/0", testCalls, dockerCalls)
 	}
 	if got := registry.Names(); !reflect.DeepEqual(
 		got,
-		[]string{DockerProviderName, LocalProviderName},
+		[]string{DockerProviderName, "test-provider"},
 	) {
 		t.Fatalf("Names() = %v", got)
 	}

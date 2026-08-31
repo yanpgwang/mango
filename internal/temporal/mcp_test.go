@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/yanpgwang/mango/internal/mcpclient"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 type fakeMCPClient struct {
@@ -339,24 +339,6 @@ type fixedSandboxLease struct {
 	spec sandbox.Spec
 }
 
-// localSkillPathSandbox gives the unit test's local filesystem the same
-// absolute Skill-read contract implemented by Skill-capable providers. The
-// local provider itself intentionally remains incapable of custom Skills.
-type localSkillPathSandbox struct {
-	sandbox.Sandbox
-}
-
-func (s localSkillPathSandbox) ReadFile(
-	ctx context.Context,
-	value string,
-) ([]byte, error) {
-	if !strings.HasPrefix(value, domain.SessionSkillsRoot+"/") {
-		return nil, errors.New("test sandbox requires an absolute Skill runtime path")
-	}
-	value = strings.TrimPrefix(value, "/workspace/")
-	return s.Sandbox.ReadFile(ctx, value)
-}
-
 func (l *fixedSandboxLease) Acquire(
 	_ context.Context,
 	_ string,
@@ -395,16 +377,10 @@ func (s *skillExecutionSource) SessionSkillsForRuntime(
 
 func TestExecuteTool_RuntimeSkillLoadsFullInstructionsWithoutReadTool(t *testing.T) {
 	ctx := context.Background()
-	_, box, err := sandbox.NewLocalProvider().Create(ctx, t.Name(), sandbox.Spec{})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = box.Destroy(context.Background()) })
+	box := sandboxtest.Docker(t)
 
 	const body = "---\nname: report-tools\ndescription: Analyze reports\n---\n\nFollow the complete report workflow.\n"
-	require.NoError(t, box.WriteFile(
-		ctx,
-		"skills/report-tools/SKILL.md",
-		[]byte(body),
-	))
+	sandboxtest.MountSkill(t, box, domain.SessionSkillsRoot+"/report-tools", body)
 
 	journal := &memoryMCPJournal{}
 	source := &skillExecutionSource{
@@ -426,7 +402,7 @@ func TestExecuteTool_RuntimeSkillLoadsFullInstructionsWithoutReadTool(t *testing
 		nil,
 		source,
 		journal,
-		&fixedSandboxLease{box: localSkillPathSandbox{Sandbox: box}},
+		&fixedSandboxLease{box: box},
 		&testIDGen{},
 	)
 
@@ -462,17 +438,11 @@ func TestExecuteTool_RuntimeSkillLoadsFullInstructionsWithoutReadTool(t *testing
 
 func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 	ctx := context.Background()
-	_, box, err := sandbox.NewLocalProvider().Create(ctx, t.Name(), sandbox.Spec{})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = box.Destroy(context.Background()) })
+	box := sandboxtest.Docker(t)
 
 	root := domain.SessionSkillsRoot + "/.agents/0123456789abcdef01234567"
 	const body = "---\nname: report-tools\ndescription: Child reports\n---\nchild body\n"
-	require.NoError(t, box.WriteFile(
-		ctx,
-		"skills/.agents/0123456789abcdef01234567/report-tools/SKILL.md",
-		[]byte(body),
-	))
+	sandboxtest.MountSkill(t, box, root+"/report-tools", body)
 	source := &threadSkillExecutionSource{
 		skillExecutionSource: &skillExecutionSource{
 			mcpPrepareSource: &mcpPrepareSource{
@@ -490,7 +460,7 @@ func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 	journal := &memoryMCPJournal{}
 	activities := NewActivities(
 		nil, source, journal,
-		&fixedSandboxLease{box: localSkillPathSandbox{Sandbox: box}},
+		&fixedSandboxLease{box: box},
 		&testIDGen{},
 	)
 	result, err := activities.ExecuteTool(ctx, ExecuteToolInput{
@@ -515,14 +485,8 @@ func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 
 func TestExecuteTool_RuntimeSkillStartedStepIsSafelyReloaded(t *testing.T) {
 	ctx := context.Background()
-	_, box, err := sandbox.NewLocalProvider().Create(ctx, t.Name(), sandbox.Spec{})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = box.Destroy(context.Background()) })
-	require.NoError(t, box.WriteFile(
-		ctx,
-		"skills/report-tools/SKILL.md",
-		[]byte("---\nname: report-tools\ndescription: Analyze reports\n---\nbody\n"),
-	))
+	box := sandboxtest.Docker(t)
+	sandboxtest.MountSkill(t, box, domain.SessionSkillsRoot+"/report-tools", "---\nname: report-tools\ndescription: Analyze reports\n---\nbody\n")
 
 	journal := &memoryMCPJournal{step: domain.ToolStep{
 		ID: "tstep_started_skill", AttemptID: "ratm_started_skill",
@@ -540,7 +504,7 @@ func TestExecuteTool_RuntimeSkillStartedStepIsSafelyReloaded(t *testing.T) {
 	}
 	result, err := NewActivities(
 		nil, source, journal,
-		&fixedSandboxLease{box: localSkillPathSandbox{Sandbox: box}},
+		&fixedSandboxLease{box: box},
 		&testIDGen{},
 	).ExecuteTool(ctx, ExecuteToolInput{
 		SessionID: "sess_started_skill", TriggerEventID: "sevt_trigger",
@@ -557,13 +521,7 @@ func TestExecuteTool_RuntimeSkillStartedStepIsSafelyReloaded(t *testing.T) {
 }
 
 func TestExecuteTool_MCPJournalsRawAndProjectsModelContent(t *testing.T) {
-	_, box, err := sandbox.NewLocalProvider().Create(
-		context.Background(),
-		t.Name(),
-		sandbox.Spec{},
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = box.Destroy(context.Background()) })
+	box := sandboxtest.Inert(t)
 	journal := &memoryMCPJournal{}
 	lease := &fixedSandboxLease{box: box}
 	client := &fakeMCPClient{result: mcpclient.Result{
@@ -617,11 +575,7 @@ func TestExecuteTool_MCPJournalsRawAndProjectsModelContent(t *testing.T) {
 }
 
 func TestExecuteTool_MCPAuthenticationFailureIsDurableAndNonAmbiguous(t *testing.T) {
-	_, box, err := sandbox.NewLocalProvider().Create(
-		context.Background(), t.Name(), sandbox.Spec{},
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = box.Destroy(context.Background()) })
+	box := sandboxtest.Inert(t)
 	journal := &memoryMCPJournal{}
 	activities := NewActivities(
 		nil,

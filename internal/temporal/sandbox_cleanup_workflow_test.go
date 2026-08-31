@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	"go.temporal.io/sdk/activity"
 	temporalsdk "go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
@@ -132,9 +133,7 @@ func TestReleaseSandbox_MapsPermanentProviderErrorToNonRetryable(t *testing.T) {
 
 func TestReleaseSandbox_FlushesMemoryBeforeProviderRelease(t *testing.T) {
 	ctx := context.Background()
-	_, box, err := sandbox.NewLocalProvider().Create(ctx, t.Name(), sandbox.Spec{})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = box.Destroy(context.Background()) })
+	box := sandboxtest.Inert(t)
 	lease := &releaseMemoryLease{box: box}
 	reconciler := &releaseMemoryReconciler{mounts: []sandbox.MemoryStoreMount{{
 		Identity: "sesrsc_memory", StoreID: "memstore_memory",
@@ -144,7 +143,7 @@ func TestReleaseSandbox_FlushesMemoryBeforeProviderRelease(t *testing.T) {
 		nil, newFakeSource(nil), nil, lease, &testIDGen{},
 	).WithSandboxResourceReconciler(reconciler)
 
-	err = activities.ReleaseSandbox(ctx, ReleaseSandboxInput{SessionID: "sess_memory"})
+	err := activities.ReleaseSandbox(ctx, ReleaseSandboxInput{SessionID: "sess_memory"})
 	require.NoError(t, err)
 	require.True(t, reconciler.wroteBack)
 	require.True(t, lease.released)

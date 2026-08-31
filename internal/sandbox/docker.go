@@ -42,8 +42,7 @@ const (
 
 // Docker provider notes on isolation:
 //
-// Unlike the local provider, the Docker provider gives REAL isolation: each
-// sandbox is a container with its own kernel view via Linux namespaces and
+// Each sandbox is a container with its own kernel view via Linux namespaces and
 // cgroups, its filesystem is separate from the host, and networking defaults to
 // --network none. This is a genuine security boundary for ordinary untrusted
 // code, not merely a dev-grade guardrail.

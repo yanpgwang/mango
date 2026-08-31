@@ -24,28 +24,12 @@ import (
 	"github.com/moby/moby/api/types/container"
 	dockerclient "github.com/moby/moby/client"
 	"github.com/yanpgwang/mango/internal/domain"
+	"github.com/yanpgwang/mango/internal/testutil/dockertest"
 )
 
 func dockerAvailable(t *testing.T) {
 	t.Helper()
-	engine, err := dockerclient.New(dockerclient.FromEnv)
-	if err != nil {
-		if os.Getenv("MANGO_TEST_DOCKER") == "1" {
-			t.Fatalf("required Docker Engine client unavailable: %v", err)
-		}
-		t.Skipf("Docker Engine client unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = engine.Close() })
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if _, err := engine.Ping(ctx, dockerclient.PingOptions{
-		NegotiateAPIVersion: true,
-	}); err != nil {
-		if os.Getenv("MANGO_TEST_DOCKER") == "1" {
-			t.Fatalf("required Docker Engine not reachable: %v", err)
-		}
-		t.Skipf("Docker Engine not reachable: %v", err)
-	}
+	_ = dockertest.Connect(t)
 }
 
 type stubDockerEngine struct {
@@ -180,18 +164,26 @@ func (s *stubDockerEngine) ContainerInspect(
 func newDockerSB(t *testing.T, spec Spec) Sandbox {
 	t.Helper()
 	dockerAvailable(t)
-	p, err := NewDockerProvider(DockerConfig{DefaultImage: "alpine:latest"})
+	p, err := NewDockerProvider(DockerConfig{ResourceBaseDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if spec.Timeout == 0 {
 		spec.Timeout = 30 * time.Second
 	}
-	_, sb, err := p.Create(context.Background(), t.Name(), spec)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	_, sb, err := p.Create(ctx, fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), spec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { sb.Destroy(context.Background()) })
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := sb.Destroy(ctx); err != nil {
+			t.Errorf("Docker cleanup: %v", err)
+		}
+	})
 	return sb
 }
 

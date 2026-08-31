@@ -176,7 +176,7 @@ two-pass validation, close-time cleanup, S3 publication, and idle-event ordering
 remain Mango-owned behavior. E2B and Cube adopt the same repeatability and
 cleanup contract but buffer each archive in worker memory as an explicit
 Preview limitation; their SDK similarity alone is not treated as evidence of
-support, so they run the same offline and opt-in live conformance suites.
+support, so they run the same credential-free and opt-in live conformance suites.
 
 ## Git repository Session Resources
 
@@ -438,6 +438,26 @@ support, so they run the same offline and opt-in live conformance suites.
   socket or worker credentials. This is not a hostile multi-tenant guarantee.
 - Non-goals: no external worker, new credentials protocol, provider inventory,
   public API change, automatic local-workspace migration, or cookbook test
-  harness. Legacy local-based test fixtures remain temporarily; moving real
-  tool tests to Docker and pure protocol tests to non-executing doubles is a
-  separate test-convergence slice, not evidence that all tests already use Docker.
+  harness. The subsequent test-convergence slice below removes the remaining
+  local-based test fixtures.
+
+## Remove host-process sandbox execution
+
+- User/operator problem: a Docker-default binary is insufficient if its tests
+  still validate tool behavior through a host-process executor. Remove the
+  executor entirely and test the actual execution boundary used by Mango.
+- Acceptance: no `LocalProvider`, local provider registration/name, or local-only
+  `Spec.WorkDir` remains. Built-in execution and remote-adapter command fixtures
+  run in Docker through the Go Engine client. Pure state/protocol doubles never
+  launch processes. Required Docker tests fail if the daemon is unavailable;
+  offline unit tests never auto-detect or contact it. Examples remain independent.
+- Shared output bounding and host-path canonicalization are retained as
+  provider-neutral helpers because Docker still requires them. Local-only tests
+  are removed; Docker conformance and service tests cover execution, mounts,
+  ownership, cancellation, restart, and cleanup.
+- This completes the prior OSS execution decision, not a new CMA wire surface.
+  No public API, SDK, or database schema changes. Removing the unused WorkDir
+  member changes newly computed internal Spec hashes; pre-release deployments
+  should drain provisioning intents before upgrading. Existing bound Sessions
+  still use their provider reference and package-setup evidence, without a
+  legacy-spec translation layer or automatic data deletion.

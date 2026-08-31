@@ -145,7 +145,7 @@ func (p *dockerProvider) inspectMemoryMounts(
 				mount.RuntimePath,
 			))
 		}
-		source, err := canonicalLocalPath(actualMount.Source)
+		source, err := canonicalHostPath(actualMount.Source)
 		if err != nil {
 			return nil, fmt.Errorf("sandbox: resolve Docker Memory Store mount: %w", err)
 		}

@@ -8,9 +8,7 @@ import (
 )
 
 const (
-	// Provider names identify persisted sandbox bindings. Local remains for
-	// legacy test fixtures but is not registered by the Mango binary.
-	LocalProviderName  = "local"
+	// Provider names identify persisted sandbox bindings.
 	DockerProviderName = "docker"
 )
 

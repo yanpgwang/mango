@@ -90,10 +90,10 @@ lint:
 	$(GOLANGCI_LINT) run --new-from-rev=$(LINT_BASE) ./...
 
 test:
-	$(GO) test ./...
+	MANGO_TEST_DOCKER=0 $(GO) test ./...
 
 test-race:
-	$(GO) test -race ./...
+	MANGO_TEST_DOCKER=0 $(GO) test -race ./...
 
 test-service:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
@@ -113,18 +113,21 @@ test-model-live:
 	$(GO) test ./internal/model -run '^TestAnthropic_LiveMessagesConformance$$' -count=1
 
 test-platform-live:
+	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_LIVE_MODEL=1 \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
 	$(GO) test ./internal/temporal -run '^TestVerticalSlice_LiveModel(EndToEnd|ToolStepEndToEnd)$$' -count=1
 
 test-coding-agent:
+	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
 	$(GO) test ./internal/temporal \
 		-run '^TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd$$' -count=1
 
 test-coding-agent-live:
+	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_LIVE_MODEL=1 \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \

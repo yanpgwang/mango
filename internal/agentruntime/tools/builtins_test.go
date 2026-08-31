@@ -4,22 +4,14 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 func newSB(t *testing.T) sandbox.Sandbox {
-	_, sb, err := sandbox.NewLocalProvider().Create(
-		context.Background(),
-		t.Name(),
-		sandbox.Spec{Timeout: 5 * time.Second},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { sb.Destroy(context.Background()) })
-	return sb
+	t.Helper()
+	return sandboxtest.Docker(t)
 }
 
 func TestBuiltins_WriteReadEditBash(t *testing.T) {
@@ -110,7 +102,7 @@ func TestBuiltins_EditMissingStringIsError(t *testing.T) {
 }
 
 func TestBuiltins_NotImplemented(t *testing.T) {
-	r := Registry()["web_fetch"](context.Background(), newSB(t), map[string]any{"url": "http://x"})
+	r := Registry()["web_fetch"](context.Background(), sandboxtest.Inert(t), map[string]any{"url": "http://x"})
 	if !r.IsError {
 		t.Fatal("web_fetch should report not implemented as is_error")
 	}

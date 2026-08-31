@@ -17,6 +17,7 @@ import (
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
 	"github.com/yanpgwang/mango/internal/sandbox"
+	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 	"go.temporal.io/sdk/client"
 )
@@ -34,7 +35,7 @@ const (
 // external model or GitHub service.
 func TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd(t *testing.T) {
 	requireIterateServices(t)
-	provider := iterateDockerProvider(t, dockerOptional)
+	provider := sandboxtest.DockerProvider(t)
 	runIterateFixFailingTests(t, iterateScenarioCase{
 		provider:        provider,
 		modelClient:     iterateProbeModel{},
@@ -50,7 +51,7 @@ func TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd(t *testing.T) {
 // opt-in because it makes a credentialed, potentially billable model call.
 func TestVerticalSlice_LiveModelIterateFixFailingTestsEndToEnd(t *testing.T) {
 	modelClient, modelID := liveModelForTest(t, "iterate coding-agent scenario")
-	provider := iterateDockerProvider(t, dockerRequired)
+	provider := sandboxtest.DockerProvider(t)
 	runIterateFixFailingTests(t, iterateScenarioCase{
 		provider:        provider,
 		modelClient:     modelClient,
@@ -311,20 +312,6 @@ func iterateFixture(t *testing.T, name string) string {
 		t.Fatalf("read iterate fixture %s: %v", name, err)
 	}
 	return string(data)
-}
-
-func iterateDockerProvider(t *testing.T, requirement dockerRequirement) sandbox.Provider {
-	t.Helper()
-	provider, err := sandbox.NewDockerProvider(sandbox.DockerConfig{
-		DefaultImage: "python:3.12-alpine",
-	})
-	if err != nil {
-		if requirement == dockerRequired || os.Getenv("MANGO_TEST_DOCKER") == "1" {
-			t.Fatalf("Docker Engine is required for the iterate scenario: %v", err)
-		}
-		t.Skipf("Docker Engine unreachable: %v", err)
-	}
-	return provider
 }
 
 func iterateCodingToolset(t *testing.T) []any {
