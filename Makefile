@@ -24,7 +24,10 @@ SERVICE_CORE_PACKAGES ?= \
 	./internal/live/... \
 	./internal/pg/... \
 	./internal/temporal/...
-SANDBOX_TEST_PACKAGES ?= ./internal/sandbox/... ./internal/testutil/dockertest
+SANDBOX_TEST_PACKAGES ?= \
+	./internal/agentruntime/... \
+	./internal/sandbox/... \
+	./internal/testutil/dockertest
 MANGO_TEST_DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/mango?sslmode=disable
 MANGO_TEST_TEMPORAL_HOSTPORT ?= localhost:7233
 MANGO_TEST_NATS_URL ?= nats://localhost:4222
