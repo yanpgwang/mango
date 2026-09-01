@@ -1,0 +1,76 @@
+name: Integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  service-core:
+    name: Core services
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Start PostgreSQL, Temporal, NATS, and MinIO
+        run: docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
+      - name: Run core service integration tests
+        # Match the trusted root worker in Compose. Native Linux bind mounts
+        # retain container UIDs, including root-owned nested output directories.
+        # Elevate only test binaries, not the Go build/cache or other CI jobs.
+        run: make test-service-core SERVICE_TEST_EXEC='sudo -n -E --'
+      - name: Show dependency logs after failure
+        if: failure()
+        run: docker compose -f deployments/local/compose.yaml logs --no-color postgres temporal nats minio
+      - name: Stop service dependencies
+        if: always()
+        run: docker compose -f deployments/local/compose.yaml down --volumes
+
+  docker-sandboxes:
+    name: Docker sandboxes
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run Docker sandbox conformance tests
+        run: make test-sandbox-docker SERVICE_TEST_EXEC='sudo -n -E --'
+      - name: Show Docker state after failure
+        if: failure()
+        run: docker ps --all --no-trunc
+
+  required:
+    name: Required
+    if: always()
+    needs: [service-core, docker-sandboxes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every integration layer
+        env:
+          CORE_RESULT: ${{ needs.service-core.result }}
+          SANDBOX_RESULT: ${{ needs.docker-sandboxes.result }}
+        run: |
+          if [ "$CORE_RESULT" != "success" ] || [ "$SANDBOX_RESULT" != "success" ]; then
+            echo "Core services: $CORE_RESULT"
+            echo "Docker sandboxes: $SANDBOX_RESULT"
+            exit 1
+          fi
