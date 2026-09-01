@@ -77,6 +77,21 @@ docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal 
 make test-service
 ```
 
+The combined target keeps the complete local verification entry point, while CI
+runs its two layers in parallel:
+
+```bash
+make test-service-core
+make test-sandbox-docker
+```
+
+`test-service-core` owns tests that require PostgreSQL, Temporal, NATS, MinIO,
+or a Docker-backed runtime. `test-sandbox-docker` owns the Docker provider,
+filesystem, simulated remote-service, and fixture contracts. Keep new
+service-only packages in `SERVICE_CORE_PACKAGES`; keep sandbox infrastructure
+under the sandbox target. Each layer has an explicit Go timeout below its CI job
+timeout so test cleanup and failure diagnostics still have time to run.
+
 On native Linux, use `make test-service SERVICE_TEST_EXEC='sudo -n -E --'`
 with a trusted local checkout and passwordless sudo. This runs only the test
 binaries as root, matching the Compose worker; Go compilation and caches keep

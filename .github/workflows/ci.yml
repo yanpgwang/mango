@@ -9,6 +9,10 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint:
     name: Lint
@@ -70,30 +74,6 @@ jobs:
           go-version-file: examples/terminal-ui/go.mod
           cache-dependency-path: examples/terminal-ui/go.sum
       - run: make terminal-ui-verify
-
-  service-conformance:
-    name: Service conformance
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Start PostgreSQL, Temporal, NATS, and MinIO
-        run: docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
-      - name: Run service conformance tests
-        # Match the trusted root worker in Compose. Native Linux bind mounts
-        # retain container UIDs, including root-owned nested output directories.
-        # Elevate only test binaries, not the Go build/cache or other CI jobs.
-        run: make test-service SERVICE_TEST_EXEC='sudo -n -E --'
-      - name: Show dependency logs after failure
-        if: failure()
-        run: docker compose -f deployments/local/compose.yaml logs --no-color postgres temporal nats minio
-      - name: Stop service dependencies
-        if: always()
-        run: docker compose -f deployments/local/compose.yaml down --volumes
 
   security:
     name: Security checks

@@ -15,6 +15,16 @@ GOPROXY ?=
 LINT_BASE ?= origin/main
 # Optional test-binary wrapper; compilation and Go caches keep the caller's UID.
 SERVICE_TEST_EXEC ?=
+SERVICE_CORE_TEST_TIMEOUT ?= 10m
+SANDBOX_TEST_TIMEOUT ?= 20m
+SERVICE_CORE_PACKAGES ?= \
+	./cmd/mango \
+	./internal/blob/... \
+	./internal/controlplane/... \
+	./internal/live/... \
+	./internal/pg/... \
+	./internal/temporal/...
+SANDBOX_TEST_PACKAGES ?= ./internal/sandbox/... ./internal/testutil/dockertest
 MANGO_TEST_DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/mango?sslmode=disable
 MANGO_TEST_TEMPORAL_HOSTPORT ?= localhost:7233
 MANGO_TEST_NATS_URL ?= nats://localhost:4222
@@ -36,7 +46,8 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build lint test test-race test-service test-model-live test-platform-live \
+.PHONY: help build lint test test-race test-service test-service-core \
+	test-sandbox-docker test-model-live test-platform-live \
 	test-coding-agent test-coding-agent-live test-hitl-gate demo-hitl-gate \
 	demo-multi-agent-team \
 	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
@@ -53,6 +64,8 @@ help:
 	@echo "  make test           run unit tests"
 	@echo "  make test-race      run tests with the race detector"
 	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, MinIO, and Docker"
+	@echo "  make test-service-core  run stateful service integration tests"
+	@echo "  make test-sandbox-docker  run Docker sandbox conformance tests"
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"
 	@echo "  make test-platform-live  run durable text and Docker tool turns against that live model"
 	@echo "  make test-coding-agent   run the offline iterate coding scenario in Docker"
@@ -97,7 +110,9 @@ test:
 test-race:
 	MANGO_TEST_DOCKER=0 $(GO) test -race ./...
 
-test-service:
+test-service: test-service-core test-sandbox-docker
+
+test-service-core:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
 	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_LIVE_MODEL=0 \
@@ -108,7 +123,15 @@ test-service:
 	MANGO_TEST_S3_BUCKET='$(MANGO_TEST_S3_BUCKET)' \
 	MANGO_TEST_S3_ACCESS_KEY='$(MANGO_TEST_S3_ACCESS_KEY)' \
 	MANGO_TEST_S3_SECRET_KEY='$(MANGO_TEST_S3_SECRET_KEY)' \
-	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') ./... -count=1
+	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') \
+		-timeout '$(SERVICE_CORE_TEST_TIMEOUT)' $(SERVICE_CORE_PACKAGES) -count=1
+
+test-sandbox-docker:
+	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
+	MANGO_TEST_DOCKER=1 \
+	MANGO_TEST_LIVE_MODEL=0 \
+	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') \
+		-timeout '$(SANDBOX_TEST_TIMEOUT)' $(SANDBOX_TEST_PACKAGES) -count=1
 
 test-model-live:
 	MANGO_TEST_LIVE_MODEL=1 \
