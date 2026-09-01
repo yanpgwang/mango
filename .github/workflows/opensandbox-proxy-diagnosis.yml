@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [stock, no-keepalive]
+        mode: [stock, host-mapped]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -26,10 +26,10 @@ jobs:
           cache: true
       - name: Start dependencies
         run: docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio opensandbox
-      - name: Disable sandbox proxy keep-alive
-        if: matrix.mode == 'no-keepalive'
+      - name: Force host-mapped sandbox proxy targets
+        if: matrix.mode == 'host-mapped'
         run: |
-          docker exec mango-opensandbox sh -ec 'grep -Fq "httpx.AsyncClient(timeout=180.0)" /app/opensandbox_server/main.py && sed -i "s|httpx.AsyncClient(timeout=180.0)|httpx.AsyncClient(timeout=180.0, limits=httpx.Limits(max_keepalive_connections=0))|" /app/opensandbox_server/main.py'
+          docker exec mango-opensandbox sh -ec 'grep -Fq "resolve_internal=True" /app/opensandbox_server/api/proxy.py && sed -i "s|resolve_internal=True|resolve_internal=False|g" /app/opensandbox_server/api/proxy.py'
           docker restart mango-opensandbox
           for attempt in $(seq 1 60); do
             if curl -fsS --max-time 2 http://127.0.0.1:8090/health >/dev/null; then
