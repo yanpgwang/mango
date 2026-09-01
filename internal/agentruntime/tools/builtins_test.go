@@ -11,7 +11,7 @@ import (
 
 func newSB(t *testing.T) sandbox.Sandbox {
 	t.Helper()
-	return sandboxtest.Docker(t)
+	return sandboxtest.OpenSandbox(t)
 }
 
 func TestBuiltins_WriteReadEditBash(t *testing.T) {

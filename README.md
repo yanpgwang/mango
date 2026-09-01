@@ -65,11 +65,13 @@ message. The command above explicitly selects the deterministic offline model
 and supplies a development-only Mango API key unless you override it.
 
 `make local-up` is a convenience command that automatically loads an existing
-`~/.config/mango/dev.env`; it may enable a real model. Both paths use Docker:
-the worker creates a separate container for each Session that needs sandbox
-tools. The default image includes Python and the stack configures Files storage.
+`~/.config/mango/dev.env`; it may enable a real model. Both paths use the pinned
+local OpenSandbox service, whose development runtime creates a separate Docker
+container for each Session that needs tools. Mango itself never mounts the
+Docker socket. The default sandbox image includes Python and the stack
+configures Files storage.
 
-For real model tasks with Files and per-Session Docker sandboxes, follow
+For real model tasks with Files and per-Session OpenSandbox sandboxes, follow
 [Use a real model endpoint](docs/getting-started.md#use-a-real-model-endpoint).
 The same stack keeps API admission and worker execution configured consistently.
 
@@ -95,15 +97,16 @@ go run ./cmd/mango-tui --demo
 | Tools and resources | Sandboxed file and shell tools, remote MCP, Files, Git repositories, custom Skills, Memory Stores, and encrypted credentials |
 | Durable execution | Persisted event history, journaled tool calls, retries, park/resume, and restart recovery |
 | Automation and delegation | Scheduled Deployments, Run history, signed durable Webhooks, persistent child Agents, and Advisor consultations |
-| Execution environments | Docker by default, self-hosted worker leases, and Preview remote-sandbox adapters |
+| Execution environments | OpenSandbox on Docker for local/CI, a Kubernetes/Kata production-candidate profile, and self-hosted worker leases |
 | Operator stack | PostgreSQL-authoritative state, Temporal workflows, S3-compatible objects, and NATS live previews |
 
 > [!IMPORTANT]
 > Mango is alpha: its API is unstable and the project does not yet claim
 > production readiness. Support varies by workflow and backend; review
 > [capabilities and limits](https://yanpgwang.github.io/mango/capabilities)
-> before relying on a workflow. Docker shares the host kernel; the development
-> stack is not a hardened boundary for hostile multi-tenant workloads.
+> before relying on a workflow. The local OpenSandbox Docker runtime shares the
+> host kernel; the development stack is not a hardened boundary for hostile
+> multi-tenant workloads.
 
 ## Relationship to Claude Managed Agents
 

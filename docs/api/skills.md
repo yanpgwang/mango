@@ -38,13 +38,13 @@ archive that is still executable.
 
 ## Runtime behavior
 
-Docker, E2B, CubeSandbox, OpenSandbox, and Daytona Sessions initially expose
+OpenSandbox Sessions initially expose
 only Skill name, description, and instruction path metadata. A private `Skill`
 dispatcher selects the immutable bundle, returns `Launching skill: <name>`,
 and injects the complete main instruction file on demand. Supporting files and
-scripts remain available through ordinary sandbox tools. Docker presents a
-read-only bind mount; remote adapters present a permission-hardened local copy
-and preserve the canonical archive in Mango storage.
+scripts remain available through ordinary sandbox tools. OpenSandbox presents a
+permission-hardened local copy and Mango preserves the canonical archive in
+object storage.
 
 Primary and `self` Agent bundles use `/workspace/skills/<name>/`; external
 roster Agents use isolated namespaces below `/workspace/skills/.agents/`.
@@ -53,10 +53,9 @@ External managed catalogs, repository auto-loading, and Environment Worker
 runtime activation are not implemented. Session creation returns `422` when
 the effective primary Agent or any resolved roster member has custom Skills
 but the selected Environment cannot execute them. This includes every
-self-hosted Environment and cloud Environments using a sandbox adapter without
-Skill support. Session overrides are applied before this check; Skills storage
+self-hosted Environment. Session overrides are applied before this check; Skills storage
 and Agent definitions do not depend on the configured sandbox capability.
 
 See [Environment Work](environment-work.md) for the external worker boundary
-and [Sandbox backends](../sandboxes.md#custom-skill-mounts) for the remote-copy
+and [Sandbox runtime](../sandboxes.md#skills) for the copy-materialization
 limitation.

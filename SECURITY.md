@@ -24,15 +24,20 @@ maintainer contact without disclosing vulnerability details.
 
 ## Current security boundaries
 
-- Docker is the default runtime sandbox; host-process execution is not
-  selectable. Containers share the host kernel and the provider has not been
-  audited for hostile multi-tenant workloads. Direct provider calls default to
-  no network, while cloud Environments request bridge networking unless a
-  supported network policy says otherwise.
-- The local Compose worker is trusted with root access and the host Docker
-  socket. The API and Session containers do not receive that socket; Session
-  containers do not inherit worker credentials. Docker access still grants
-  substantial host authority and is not a hostile multi-tenant guarantee.
+- OpenSandbox is Mango's only sandbox control plane; host-process and direct
+  Docker execution are not selectable. Local and CI use OpenSandbox's Docker
+  runtime, whose Session containers share the host kernel and are not a
+  hostile multi-tenant boundary. The Kubernetes/Kata profile remains a
+  qualification candidate, not a security certification. Direct provider
+  calls default to no network, while cloud Environments request unrestricted
+  networking unless their policy is limited.
+- In local Compose only the trusted OpenSandbox service mounts the host Docker
+  socket. The Mango API and worker retain the image's non-root user; the API
+  receives neither the socket nor OpenSandbox credentials, while the worker
+  receives only the private OpenSandbox endpoint and key needed for execution.
+  Session containers do not inherit worker/model/object-store credentials.
+  Compromise of the OpenSandbox service still grants substantial daemon
+  authority.
 - Every protected API request is authenticated by an opaque API key and scoped
   to one Workspace. Top-level resources, child resources, scheduled work, and
   object-store keys are isolated by that Workspace. Health, readiness, and the

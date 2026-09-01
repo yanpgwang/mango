@@ -1,11 +1,11 @@
 # Local development stack for the Temporal platform spine.
 #
-#   make up       build/start API, worker, Postgres, Temporal (+UI), NATS, and MinIO
+#   make up       build/start Mango, OpenSandbox, and stateful dependencies
 #   make health   block until every service reports healthy
 #   make ps       show container status
 #   make logs     tail all service logs
 #   make down     stop and remove containers (keeps data)
-#   make down VOLUMES=1   also delete the Postgres and MinIO volumes
+#   make down VOLUMES=1   also delete the Postgres, MinIO, and OpenSandbox volumes
 
 COMPOSE ?= docker compose
 FILE := $(dir $(lastword $(MAKEFILE_LIST)))compose.yaml
@@ -37,8 +37,8 @@ logs:
 # healthcheck, then confirms the Temporal frontend answers. It exits non-zero if
 # any service is not healthy within the compose-defined retry windows.
 health:
-	@echo "waiting for postgres, temporal, nats, minio, api, and worker to become healthy..."
-	@for svc in mango-postgres mango-temporal mango-nats mango-minio mango-api mango-worker; do \
+	@echo "waiting for postgres, temporal, nats, minio, opensandbox, api, and worker to become healthy..."
+	@for svc in mango-postgres mango-temporal mango-nats mango-minio mango-opensandbox mango-api mango-worker; do \
 		printf "  %-28s " "$$svc"; \
 		for i in $$(seq 1 60); do \
 			state=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' $$svc 2>/dev/null || echo missing); \

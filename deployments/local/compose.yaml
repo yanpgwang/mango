@@ -6,6 +6,7 @@
 #   - Temporal     durable session orchestration (auto-setup + web UI)
 #   - NATS Core    ephemeral preview / SSE wakeup transport
 #   - MinIO        S3-compatible File bytes for local and service conformance
+#   - OpenSandbox  sandbox control plane backed by the local Docker daemon
 #   - API          PostgreSQL-backed Mango HTTP surface
 #   - Worker       Temporal worker plus PostgreSQL outbox relay
 #
@@ -107,6 +108,38 @@ services:
       timeout: 5s
       retries: 20
 
+  opensandbox:
+    image: opensandbox/server:v0.2.2@sha256:8f8762af7565ed9c6f9dbcf009dd56727aa1fef8ce58a17f2b007b88cfe542bb
+    container_name: mango-opensandbox
+    restart: unless-stopped
+    environment:
+      SANDBOX_CONFIG_PATH: /etc/opensandbox/config.toml
+      # Development-only credential. Keep authentication enabled even though
+      # the service is bound to loopback on the host.
+      OPENSANDBOX_SERVER_API_KEY: ${OPEN_SANDBOX_API_KEY:-sk-opensandbox-local-development}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - ./opensandbox.toml:/etc/opensandbox/config.toml:ro
+      - opensandbox-data:/var/lib/opensandbox
+      - type: bind
+        source: ${OPEN_SANDBOX_DOCKER_SOCKET:-/var/run/docker.sock}
+        target: /var/run/docker.sock
+        bind:
+          create_host_path: false
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2).read()"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
   api:
     build:
       context: ../..
@@ -126,7 +159,6 @@ services:
     environment:
       MANGO_DATABASE_URL: postgres://postgres:postgres@postgres:5432/mango?sslmode=disable
       MANGO_API_KEY: ${MANGO_API_KEY:-sk-mango-local-development}
-      MANGO_SANDBOX: docker
       MANGO_TEMPORAL_HOSTPORT: temporal:7233
       MANGO_TEMPORAL_NAMESPACE: default
       MANGO_NATS_URL: nats://nats:4222
@@ -155,9 +187,6 @@ services:
     pull_policy: never
     container_name: mango-worker
     command: ["orchestrate"]
-    # This trusted process owns Docker daemon access. The API remains non-root;
-    # neither this socket nor worker credentials enter Session sandboxes.
-    user: "0:0"
     # Keep the execution plane alive across Docker Desktop/daemon restarts. A
     # stopped worker leaves accepted messages pending indefinitely.
     restart: unless-stopped
@@ -167,6 +196,8 @@ services:
       temporal:
         condition: service_healthy
       nats:
+        condition: service_healthy
+      opensandbox:
         condition: service_healthy
     environment:
       MANGO_DATABASE_URL: postgres://postgres:postgres@postgres:5432/mango?sslmode=disable
@@ -179,12 +210,12 @@ services:
       MANGO_MODEL_API_KEY: ${MANGO_MODEL_API_KEY:-}
       MANGO_MODEL_ID: ${MANGO_MODEL_ID:-}
       MANGO_MODEL_AUTH: ${MANGO_MODEL_AUTH:-x-api-key}
-      MANGO_SANDBOX: docker
-      MANGO_SANDBOX_IMAGE: ${MANGO_SANDBOX_IMAGE:-python:3.12-alpine}
-      # Bind sources sent to the sibling-container daemon must exist at the
-      # identical absolute path inside this worker and on the daemon host.
-      MANGO_SANDBOX_RESOURCE_DIR: ${MANGO_SANDBOX_RESOURCE_DIR:-${HOME}/mango-resources}
-      DOCKER_HOST: unix:///var/run/docker.sock
+      OPEN_SANDBOX_DOMAIN: http://opensandbox:8090
+      OPEN_SANDBOX_API_KEY: ${OPEN_SANDBOX_API_KEY:-sk-opensandbox-local-development}
+      OPEN_SANDBOX_IMAGE: ${OPEN_SANDBOX_IMAGE:-python:3.12-slim}
+      # The proxy keeps sandbox bridge addresses private to the OpenSandbox
+      # control plane; Mango workers never need host port discovery.
+      OPEN_SANDBOX_USE_SERVER_PROXY: "true"
       MANGO_FILE_S3_ENDPOINT: http://minio:9000
       MANGO_FILE_S3_REGION: us-east-1
       MANGO_FILE_S3_BUCKET: mango-files
@@ -194,14 +225,6 @@ services:
       MANGO_VAULT_KEYRING_FILE: /run/secrets/mango-vault-keyring.json
     volumes:
       - ./vault-keyring.json:/run/secrets/mango-vault-keyring.json:ro
-      - type: bind
-        source: ${MANGO_DOCKER_SOCKET:-/var/run/docker.sock}
-        target: /var/run/docker.sock
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${MANGO_SANDBOX_RESOURCE_DIR:-${HOME}/mango-resources}
-        target: ${MANGO_SANDBOX_RESOURCE_DIR:-${HOME}/mango-resources}
     healthcheck:
       # There is no HTTP surface on the worker. The process being alive is the
       # minimum useful Compose signal; an exited worker cannot consume Temporal
@@ -215,3 +238,4 @@ services:
 volumes:
   postgres-data:
   minio-data:
+  opensandbox-data:

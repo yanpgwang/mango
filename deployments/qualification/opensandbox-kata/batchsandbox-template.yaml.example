@@ -1,0 +1,18 @@
+# Qualification template only. RuntimeClass is injected by OpenSandbox's
+# [secure_runtime] configuration and is checked by Mango's live gate.
+metadata:
+  labels:
+    mango.oss/qualification-profile: opensandbox-kata
+spec:
+  replicas: 1
+  template:
+    spec:
+      automountServiceAccountToken: false
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault

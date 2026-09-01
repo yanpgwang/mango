@@ -15,7 +15,7 @@ import (
 // helper must not silently reintroduce the execution path this cleanup removes.
 // Ordinary build/SDK runner subprocesses outside these boundaries are unrelated.
 func TestSandboxExecutionDoesNotSpawnHostProcesses(t *testing.T) {
-	for _, root := range []string{".", "../agentruntime", "../temporal", "../testutil/dockertest"} {
+	for _, root := range []string{".", "../agentruntime", "../temporal"} {
 		err := filepath.WalkDir(root, func(name string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -34,7 +34,7 @@ func TestSandboxExecutionDoesNotSpawnHostProcesses(t *testing.T) {
 					return err
 				}
 				if value == "os/exec" {
-					t.Errorf("%s imports a host command executor; sandbox commands belong in Docker", name)
+					t.Errorf("%s imports a host command executor; sandbox commands belong in OpenSandbox", name)
 				}
 				alias := filepath.Base(value)
 				if item.Name != nil {

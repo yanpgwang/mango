@@ -83,6 +83,54 @@ release is never an automatic roadmap.
   line-oriented file viewer and a general shell rather than inventing a
   Mango-specific character-pagination field.
 
+## Sandbox production-candidate path
+
+- On 2026-09-01 Mango reviewed OpenSandbox's public
+  [architecture](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/architecture.md),
+  [secure-container configuration](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/secure-container.md),
+  [server configuration](https://github.com/opensandbox-group/OpenSandbox/blob/main/server/configuration.md),
+  and [Kubernetes/Kata example](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/examples/aks-kata.md),
+  together with Kata Containers' public
+  [virtualization design](https://github.com/kata-containers/kata-containers/blob/main/docs/design/virtualization.md).
+  Cursor's public
+  [Cloud Agent security description](https://prod.cursor.com/docs/cloud-agent/security)
+  and [Composer 2 technical report](https://cursor.com/resources/Composer2.pdf)
+  were additional industry evidence for keeping durable agent orchestration
+  separate from a VM-backed sandbox data plane. These references do not define
+  Mango's contract or certify the selected implementation.
+- Mango adopted the high-level chain
+  `Mango/Temporal -> sandbox.Provider -> OpenSandbox -> Kubernetes -> Kata`.
+  The user problem is a self-hosted execution backend that preserves Mango's
+  durable Session ownership and limited-egress semantics while adding a
+  VM-backed kernel boundary suitable for later hostile-workload qualification.
+  Docker remains the local/CI default and an adapter-development runtime.
+- Mango retained its existing provider binding and recovery contract rather
+  than exposing OpenSandbox resources in the public API. OpenSandbox is an
+  optional infrastructure dependency used through its Go SDK pinned at
+  `v1.0.5`; it never owns Sessions, scheduling, Files, model calls, or Temporal
+  state.
+- Mango adopted OpenSandbox's Kubernetes BatchSandbox mapping, explicit
+  `secure_runtime.type = "kata"`, operator-selected `k8s_runtime_class`,
+  startup RuntimeClass validation, and `dns+nft` egress with IPv6 disabled.
+  The Mango qualification gate independently verifies the RuntimeClass, created
+  BatchSandbox, and live Pod plus positive and negative network reachability;
+  config text or successful command execution alone is not accepted as
+  isolation evidence.
+- Mango rejected gVisor for this candidate because OpenSandbox documents its
+  current iptables-NAT egress sidecar as incompatible with that runtime. It also
+  rejected a raw Firecracker integration, a Mango-owned Kubernetes controller,
+  floating upstream tags, OpenSandbox's Docker runtime as production evidence,
+  and copying an upstream demo chart with well-known credentials. Those choices
+  would either duplicate mature lower-layer work or weaken the required
+  lifecycle and network proof.
+- The committed profile is explicitly Qualification-only. OpenSandbox's
+  server, BatchSandbox controller/CRD, `execd`, egress image, and SDK do not yet
+  share a Mango-owned release train, so the repository records placeholders
+  instead of inventing a compatible version matrix. Production promotion
+  requires one pinned bill of materials, repeatable clean-cluster and failure
+  tests, upgrades and rollback, observability, capacity policy, and isolation
+  review. Memory Store mounts remain a separate unimplemented capability.
+
 ## Outbound Webhooks
 
 - The public [Claude Managed Agents Webhook guide](https://platform.claude.com/docs/en/managed-agents/webhooks),
@@ -146,7 +194,7 @@ choices documented in [Files](api/files.md) and
   development. Existing tests using those types may change or be removed with
   Mango's `/v1` design.
 - Remote File Resource behavior is implemented against pinned provider Go
-  clients. The [OpenSandbox Go SDK](https://github.com/alibaba/OpenSandbox/blob/main/sdks/sandbox/go/README.md)
+  clients. The [OpenSandbox Go SDK](https://github.com/opensandbox-group/OpenSandbox/blob/main/sdks/sandbox/go/README.md)
   and [Daytona filesystem guide](https://www.daytona.io/docs/file-system-operations/)
   define streaming upload/download, metadata and permission operations,
   directory management, and move/delete. The
@@ -461,3 +509,65 @@ support, so they run the same credential-free and opt-in live conformance suites
   should drain provisioning intents before upgrading. Existing bound Sessions
   still use their provider reference and package-setup evidence, without a
   legacy-spec translation layer or automatic data deletion.
+
+## OpenSandbox as the sole sandbox control plane
+
+- User/operator problem: maintaining direct Docker plus several service
+  adapters duplicated infrastructure policy inside Mango, produced capability
+  drift (notably Memory), and made local tests exercise a different topology
+  from the production candidate. Mango needs one OSS control-plane contract
+  that works locally on Docker and can move to Kubernetes/Kata without changing
+  its public API or durable Session lifecycle.
+- Reviewed the OpenSandbox server source, Docker and Kubernetes runtime
+  configuration, Go SDK, volume model, network-policy implementation, and
+  BatchSandbox integration on 2026-09-01. The local profile pins OpenSandbox
+  server `v0.2.2`, `execd` `v1.0.21`, and egress `v1.1.5` by multi-architecture
+  digest; Mango pins Go SDK `v1.0.5` in `go.mod`.
+- Adopted: the official Go SDK for lifecycle, command/file transport, managed
+  PVC or Docker named volumes, server proxying, and network-policy updates.
+  Docker and Kubernetes are now OpenSandbox runtimes, not Mango providers. The
+  application retains its narrow `Provider`/`Sandbox` interfaces only as
+  Mango-owned lifecycle and trust boundaries.
+- OpenSandbox's create API has no idempotency key. Mango therefore re-lists by
+  its Session ownership metadata after create, deterministically adopts one
+  resource, removes duplicates, and repeats duplicate reconciliation when a
+  durable reference is attached. This closes concurrent-create and
+  post-create crash windows without moving lifecycle authority into the SDK.
+  A sandbox object's `Destroy` remains resource-scoped so a losing database
+  binding election can remove only its own resource. Session-wide deletion is
+  a separate Release operation that requires the authoritative persisted Ref,
+  validates every discovered resource before mutation, removes duplicates
+  first, and removes that authoritative resource last for retryable cleanup.
+- Changed for Mango's invariants: agent commands run as numeric UID/GID 1000
+  while package/resource maintenance remains trusted root; exact stdout/stderr
+  bytes are captured outside the workspace because OpenSandbox's exec event
+  stream is line-oriented; Git publication hands the restored worktree to the
+  agent identity. The local Docker profile enables `no_new_privileges`, drops
+  capabilities, limits PIDs, binds the control plane to loopback, and leaves
+  the socket only on the OpenSandbox service.
+- Memory adopts one OpenSandbox-managed claim per Store with two mounts: the
+  public path is read-only or read-write, while a root-only private path remains
+  writable for Mango refresh/writeback. PostgreSQL and Mango's baseline,
+  precondition, version, and resource-lock protocol remain authoritative;
+  OpenSandbox supplies storage and mount isolation only. Destruction owns
+  managed-volume cleanup.
+- Rejected: a runtime-selectable provider registry, Mango direct Docker/Moby
+  access, host-process fallback, and E2B, CubeSandbox, or Daytona adapters.
+  Their earlier provenance entries remain historical research records, not
+  current capability claims or compatibility obligations. The related SDK
+  dependencies, configuration, tests, and documentation were removed.
+- The pinned Kubernetes server synthesizes main and egress containers after
+  loading its BatchSandbox template, so the template cannot establish every
+  container security field. Mango does not treat a RuntimeClass name as
+  sufficient evidence: the qualification profile requires cluster admission
+  to set regular-container privilege escalation policy and its audit reads the
+  actual Pod, image digests, namespaces, seccomp, capabilities, service-account
+  token, and explicit audit CPU/memory bounds. Per-Environment resource sizing
+  was not added merely for this gate and remains an explicit promotion blocker.
+- Acceptance: ordinary unit tests remain offline; local/CI service tests start
+  the pinned OpenSandbox server and run all agent, lifecycle, Files, Git,
+  Outputs, Skills, Memory, reattachment, exact-output, and cleanup checks
+  through its Docker runtime. Integration packages are serialized around one
+  server because OpenSandbox `v0.2.2` can race Docker host-port allocation under
+  concurrent sandbox creation. The separate Kubernetes/Kata gate remains
+  required for production isolation and operational claims.

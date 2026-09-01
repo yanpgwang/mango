@@ -28,16 +28,16 @@ make local-health
 ```
 
 This builds and starts separate API and worker containers plus PostgreSQL,
-Temporal, Temporal UI, NATS, and MinIO. The examples use `http://localhost:8080`;
+Temporal, Temporal UI, NATS, MinIO, and OpenSandbox. The examples use `http://localhost:8080`;
 the Workflow explorer is at `http://localhost:8233`. No model credentials are
 required for this offline walkthrough.
 
 The convenience command `make local-up` behaves differently: it automatically
 loads an existing development environment file and can enable a real model.
-Do not use it as an offline-only guarantee. Both startup paths use the Docker
-sandbox provider: each Session that needs sandbox tools gets its own container.
-The worker needs access to the local Docker daemon and its resource directory;
-see [Docker worker configuration](deployment.md#docker-worker-configuration).
+Do not use it as an offline-only guarantee. Both startup paths use OpenSandbox;
+its local runtime creates one Docker container for each tool-using Session.
+Only OpenSandbox receives the Docker socket. See
+[OpenSandbox worker configuration](deployment.md#opensandbox-worker-configuration).
 
 In another shell, verify readiness:
 
@@ -185,7 +185,7 @@ curl -N -H "Authorization: Bearer $MANGO_API_KEY" \
 
 ## Use a real model endpoint
 
-The same Compose stack supports real-model tasks with Docker sandboxes and
+The same Compose stack supports real-model tasks with OpenSandbox sandboxes and
 Files. You do not need to replace its API or worker with source processes.
 
 Create the repository-external configuration file, then edit it:
@@ -201,8 +201,7 @@ The stack already configures PostgreSQL, Temporal, NATS, and MinIO internally:
 
 ```ini
 MANGO_API_KEY=sk-mango-local-development
-MANGO_SANDBOX=docker
-MANGO_SANDBOX_IMAGE=python:3.12-alpine
+OPEN_SANDBOX_IMAGE=python:3.12-slim
 MANGO_MODEL_BASE_URL=https://api.example.com
 MANGO_MODEL_API_KEY=replace-me
 MANGO_MODEL_ID=your-model-id
@@ -217,24 +216,21 @@ make local-up
 make local-health
 ```
 
-The API and worker select Docker consistently. The default sandbox image
+The worker uses the Compose OpenSandbox service. The default sandbox image
 contains Python; it is pulled on first use if missing. Packages requiring other
 language runtimes need an operator-selected image that includes those runtimes.
 Model credentials are supplied only to the worker, not the API or Session
 containers. Real model calls may incur charges.
 
-Native `serve` and `orchestrate` processes also default to Docker. They must
-agree on the provider and object-store configuration when run outside Compose;
-see [Deployment model](deployment.md). The runtime choices are `docker`, `e2b`,
-`cube`, `opensandbox`, and `daytona`; `local` and unknown values are rejected.
-An unreachable Docker daemon fails worker startup instead of permitting host
-execution. Remote-provider variables and live-test commands are listed in
-[Sandbox backends](sandboxes.md).
+Native `orchestrate` also requires a reachable OpenSandbox service; configure
+its endpoint, API key, image, and server proxy as described in
+[Deployment model](deployment.md). There is no provider selector or direct
+Docker/host-process fallback. The API does not need OpenSandbox credentials.
 
 The current built-in external-model adapter expects a Messages-shaped
 `/v1/messages` API. This adapter constraint does not define Mango's public API
 or permanently limit future model integrations.
-Do not run workers with different model or sandbox configuration on the same
+Do not run workers with different model or OpenSandbox configuration on the same
 Temporal Task Queue. Keep credentials in the environment and never commit them.
 
 Only this model endpoint is called; Mango does not call a separate hosted agent
@@ -274,7 +270,7 @@ example and its application-owned action boundary. The
 delegation, Advisor usage, and persistent Thread follow-up.
 
 These commands never print the API key. The model-only smoke test does not
-enable tools; the platform tests use an isolated Docker sandbox, the coding
+enable tools; the platform tests use an OpenSandbox sandbox, the coding
 scenario excludes Web Search/Fetch from its least-privilege toolset, and the
 interactive examples remove provider credentials from their client processes.
 Live checks
@@ -283,11 +279,9 @@ latency, user input, and cost are not deterministic.
 Use a newly issued key if a credential has ever appeared in chat, logs, or shell
 history.
 
-Docker containers share the host kernel. The development stack is not a hardened
-boundary for hostile multi-tenant workloads. The former local-provider unsafe
-override is no longer supported. Before upgrading an older local-backed stack,
-finish and delete its Sessions using the old worker; existing local workspaces
-are not migrated or silently replaced by empty Docker containers.
+The local OpenSandbox Docker runtime shares the host kernel. The development
+stack is not a hardened boundary for hostile multi-tenant workloads. There is
+no host-process or direct-Docker Mango fallback.
 
 ## Reusable local credentials
 

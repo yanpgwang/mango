@@ -10,6 +10,7 @@ infrastructure versions and health checks.
 | Temporal UI| `temporalio/ui:2.52.1`         | `8233` → container `8080`   | Workflow explorer at <http://localhost:8233>.        |
 | NATS Core  | `nats:2.11.17-alpine`          | `4222` (client), `8222` (monitoring) | Ephemeral previews and SSE wakeups; PostgreSQL cursor reads repair loss. |
 | MinIO      | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | `9000` | S3-compatible File bytes for development and service conformance. |
+| OpenSandbox | `opensandbox/server:v0.2.2` (digest pinned) | `8090` on loopback | Sole Mango sandbox control plane; uses Docker only in this local profile. |
 | API        | `mango:local`        | `8080`                      | PostgreSQL-backed Mango HTTP API. |
 | Worker     | `mango:local`        | —                           | Temporal worker and PostgreSQL outbox relay. |
 
@@ -33,18 +34,17 @@ keep the offline deterministic model.
 
 For an explicitly offline startup that bypasses the development file, use the
 command in [Getting started](../../docs/getting-started.md#run-the-server).
-Both API and worker select Docker. The worker creates sibling Session containers
-on the host daemon; tools do not run in the worker container. Files, Skills,
-Memory mounts, and Session Outputs use this provider. The sandbox image defaults
-to `python:3.12-alpine`; set `MANGO_SANDBOX_IMAGE` to choose another image.
+OpenSandbox creates sibling Session containers on the local Docker daemon;
+tools do not run in the Mango worker container. Files, Git repositories,
+Skills, Memory mounts, and Session Outputs all cross the OpenSandbox boundary.
+The sandbox image defaults to `python:3.12-slim`; set `OPEN_SANDBOX_IMAGE` to
+choose another image.
 
-The trusted worker runs as root and mounts the Docker socket. The API remains
-non-root and has no socket. The resource directory defaults to
-`$HOME/mango-resources`, mounted at the same absolute path inside the worker.
-Set `MANGO_SANDBOX_RESOURCE_DIR` to an absolute host path when needed, and
-`MANGO_DOCKER_SOCKET` for a non-default host Unix socket. A remote Docker context
-must have those paths on its daemon host; this bundle is intended for a local
-daemon. See [Docker worker configuration](../../docs/deployment.md#docker-worker-configuration)
+Only the trusted OpenSandbox service mounts the Docker socket selected by
+`OPEN_SANDBOX_DOCKER_SOCKET`. The Mango API and worker remain non-root and receive no
+socket or host resource bind. OpenSandbox persists its control database in the
+`opensandbox-data` volume and exposes its API only on host loopback. See
+[OpenSandbox worker configuration](../../docs/deployment.md#opensandbox-worker-configuration)
 for trust, retention, and upgrade boundaries.
 
 The API bootstraps `sk-mango-local-development` for the default Workspace.
@@ -97,14 +97,14 @@ Start only the infrastructure dependencies, then run every test that can be
 executed without an external model or sandbox account:
 
 ```sh
-docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
+docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio opensandbox
 make test-service
 ```
 
 This is the same suite run by CI. It covers real PostgreSQL migrations and
 transactions, Temporal workflows and Activities, NATS reconciliation and
 previews, the Files lifecycle through real MinIO, the HTTP-to-service vertical
-slice, a Docker sandbox tool step, and an offline coding-agent scenario that
+slice, an OpenSandbox tool step, and an offline coding-agent scenario that
 observes failing assertions, fixes a mounted fixture, and publishes the verified
 source through Session Outputs. Each database test uses an isolated schema;
 workflow, object, and sandbox cleanup is part of the assertions.
@@ -117,6 +117,7 @@ Each service declares a Docker `healthcheck`:
 - **temporal** — `tctl --address temporal:7233 cluster health`
 - **nats** — HTTP `GET /healthz` on the monitoring port
 - **minio** — HTTP `GET /minio/health/live`
+- **opensandbox** — HTTP `GET /health`
 - **api** — HTTP `GET /readyz`
 - **worker** — its long-running orchestration process is alive
 
@@ -126,7 +127,7 @@ Each service declares a Docker `healthcheck`:
 
 ```sh
 make local-down            # stop containers, keep data
-make local-down VOLUMES=1  # also delete the Postgres and MinIO volumes
+make local-down VOLUMES=1  # also delete the Postgres, MinIO, and OpenSandbox volumes
 ```
 
 ## Scope

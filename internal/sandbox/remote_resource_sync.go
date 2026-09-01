@@ -38,7 +38,7 @@ func (s *remoteResourceSynchronization) TryLockResourceSync(
 	if !s.mu.TryLock() {
 		return ctx, func() {}, false, nil
 	}
-	return ctx, s.mu.Unlock, true, nil
+	return resourceSyncContext(ctx), s.mu.Unlock, true, nil
 }
 
 func (s *remoteResourceSynchronization) LockResourceSync(
@@ -46,7 +46,7 @@ func (s *remoteResourceSynchronization) LockResourceSync(
 ) (context.Context, func(), error) {
 	for {
 		if s.mu.TryLock() {
-			return ctx, s.mu.Unlock, nil
+			return resourceSyncContext(ctx), s.mu.Unlock, nil
 		}
 		if err := waitForRemoteResourceLock(ctx); err != nil {
 			return ctx, nil, err

@@ -27,15 +27,15 @@ const (
 	iterateOutputPath       = "calc.py"
 )
 
-// TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd exercises Mango's
+// TestVerticalSlice_OpenSandboxIterateFixFailingTestsEndToEnd exercises Mango's
 // coding-agent iterate workflow as a Mango-owned product scenario.
 // A retry-safe deterministic model drives the real PostgreSQL + Temporal +
-// Docker path through two observed failures, fixes the fixture, and publishes
+// OpenSandbox path through two observed failures, fixes the fixture, and publishes
 // the final source through Mango's Session output lifecycle. It never calls an
 // external model or GitHub service.
-func TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd(t *testing.T) {
+func TestVerticalSlice_OpenSandboxIterateFixFailingTestsEndToEnd(t *testing.T) {
 	requireIterateServices(t)
-	provider := sandboxtest.DockerProvider(t)
+	provider := sandboxtest.OpenSandboxProvider(t)
 	runIterateFixFailingTests(t, iterateScenarioCase{
 		provider:        provider,
 		modelClient:     iterateProbeModel{},
@@ -51,7 +51,7 @@ func TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd(t *testing.T) {
 // opt-in because it makes a credentialed, potentially billable model call.
 func TestVerticalSlice_LiveModelIterateFixFailingTestsEndToEnd(t *testing.T) {
 	modelClient, modelID := liveModelForTest(t, "iterate coding-agent scenario")
-	provider := sandboxtest.DockerProvider(t)
+	provider := sandboxtest.OpenSandboxProvider(t)
 	runIterateFixFailingTests(t, iterateScenarioCase{
 		provider:        provider,
 		modelClient:     modelClient,

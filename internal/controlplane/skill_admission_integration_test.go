@@ -124,7 +124,7 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 				t.Fatal(err)
 			}
 			if tc.cloud {
-				return // Bundle execution is covered by the Docker Skill service test.
+				return // Bundle execution is covered by the OpenSandbox Skill service test.
 			}
 			after := skillAdmissionCounts(t, fixture, selfHostedID)
 			if after != [3]int{before[0] + 1, before[1] + 1, before[2] + 1} {

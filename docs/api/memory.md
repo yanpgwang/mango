@@ -27,14 +27,15 @@ server's `/openapi.yaml` is the exact path and schema reference.
 
 ## Agent access
 
-Docker-backed cloud Sessions mount attached Stores beneath
+OpenSandbox-backed cloud Sessions mount attached Stores beneath
 `/mnt/memory/<store-slug>/`. Store metadata and instructions enter system
 context; file contents do not. Agents use the ordinary `read`, `write`, `edit`,
 `glob`, `grep`, and `bash` tools rather than a Memory-specific recall tool.
 
 Read/write mounts synchronize changes back to PostgreSQL after sandbox tools
-and perform a final writeback before sandbox deletion. Read-only mounts are
-enforced by Docker.
+and perform a final writeback before sandbox deletion. Each Store uses one
+OpenSandbox-managed volume mounted publicly with the requested access and
+privately for trusted Mango refresh/writeback; UID 1000 cannot traverse the
+private control root.
 
-Automatic 30-day Version retention and non-Docker Session mounts are not
-implemented.
+Automatic 30-day Version retention is not implemented.

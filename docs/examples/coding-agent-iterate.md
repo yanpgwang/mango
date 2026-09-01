@@ -17,28 +17,27 @@ run inside async functions, rather than being separate copy-and-paste scripts.
 ## Run the example
 
 From a repository checkout, install the Python SDK and prepare the local
-verification image. Python 3.11+, `uv`, and a running Docker daemon are required:
+verification image. Python 3.11+, `uv`, and a running local OpenSandbox stack are required:
 
 ```sh
 uv sync --project sdk/python --frozen
-docker pull python:3.12-alpine
+docker pull python:3.12-slim
 ```
 
 ### Connect to your Mango deployment
 
 The deployment must have [Files enabled](../deployment.md), a Python-capable
 sandbox supporting File Resources and Session Outputs, and a tool-capable
-model. For the Docker provider, select `MANGO_SANDBOX=docker` on **both** the API
-and worker, and `MANGO_SANDBOX_IMAGE=python:3.12-alpine` on the worker. They must
-share PostgreSQL, Temporal, NATS, and object-store configuration. The worker's
-Docker daemon must be able to bind its resource staging directory; see
-[Deployment model](../deployment.md) and [Sandbox backends](../sandboxes.md).
+model. Configure `OPEN_SANDBOX_IMAGE=python:3.12-slim` on the worker. API and
+worker must share PostgreSQL, Temporal, NATS, and object-store configuration;
+the worker must reach OpenSandbox. See [Deployment model](../deployment.md) and
+[Sandbox runtime](../sandboxes.md).
 
 The example connects to an already running Mango server; it does not start
 internal services or invoke Mango's test suite. Model credentials stay on the
 server. Running the example with a real model may incur provider charges.
 
-The default `make local-up` stack provides Docker File Resources and Session
+The default `make local-up` stack provides OpenSandbox File Resources and Session
 Outputs with a Python-capable image. Configure its real model as described in
 [Getting started](../getting-started.md#use-a-real-model-endpoint) before running
 this example: `offline-fake` is a text demo, not a coding model.
@@ -94,9 +93,9 @@ package installation is needed inside the sandbox.
 
 ::include[../../examples/coding-agent/main.py#upload]{lang="python"}
 
-An upload is a reusable File object. Session creation takes independent copies
-at the requested mount paths; with Docker those input mounts are read-only.
-The Agent copies them to `/workspace/iterate` before editing.
+An upload is a reusable File object. Session creation takes independent,
+permission-hardened copies at the requested mount paths. The Agent copies them
+to `/workspace/iterate` before editing.
 
 ## 3. Create the Environment and Session
 

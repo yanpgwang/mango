@@ -13,8 +13,6 @@ VERSION ?= dev
 REVISION ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 GOPROXY ?=
 LINT_BASE ?= origin/main
-# Optional test-binary wrapper; compilation and Go caches keep the caller's UID.
-SERVICE_TEST_EXEC ?=
 SERVICE_CORE_TEST_TIMEOUT ?= 10m
 SANDBOX_TEST_TIMEOUT ?= 20m
 SERVICE_CORE_PACKAGES ?= \
@@ -26,8 +24,7 @@ SERVICE_CORE_PACKAGES ?= \
 	./internal/temporal/...
 SANDBOX_TEST_PACKAGES ?= \
 	./internal/agentruntime/... \
-	./internal/sandbox/... \
-	./internal/testutil/dockertest
+	./internal/sandbox/...
 MANGO_TEST_DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/mango?sslmode=disable
 MANGO_TEST_TEMPORAL_HOSTPORT ?= localhost:7233
 MANGO_TEST_NATS_URL ?= nats://localhost:4222
@@ -42,6 +39,13 @@ MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
 MANGO_EXAMPLE_ADVISOR_MODEL_ID ?= $(MANGO_EXAMPLE_MODEL_ID)
 EXAMPLE_PYTHON ?= sdk/python/.venv/bin/python
 
+OPEN_SANDBOX_TEST_ENV = \
+	MANGO_TEST_OPENSANDBOX=1 \
+	OPEN_SANDBOX_DOMAIN='http://127.0.0.1:8090' \
+	OPEN_SANDBOX_API_KEY="$${OPEN_SANDBOX_API_KEY:-sk-opensandbox-local-development}" \
+	OPEN_SANDBOX_IMAGE="$${OPEN_SANDBOX_IMAGE:-python:3.12-slim}" \
+	OPEN_SANDBOX_USE_SERVER_PROXY=true
+
 DOCKER_BUILD_ARGS := --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION)
 ifneq ($(strip $(GOPROXY)),)
 DOCKER_BUILD_ARGS += --build-arg GOPROXY=$(GOPROXY)
@@ -50,7 +54,8 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help build lint test test-race test-service test-service-core \
-	test-sandbox-docker test-model-live test-platform-live \
+	test-sandbox-opensandbox test-model-live test-platform-live \
+	test-sandbox-opensandbox-kata-live \
 	test-coding-agent test-coding-agent-live test-hitl-gate demo-hitl-gate \
 	demo-multi-agent-team \
 	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
@@ -66,12 +71,13 @@ help:
 	@echo "  make lint           lint changes relative to $(LINT_BASE)"
 	@echo "  make test           run unit tests"
 	@echo "  make test-race      run tests with the race detector"
-	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, MinIO, and Docker"
+	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, MinIO, and OpenSandbox"
 	@echo "  make test-service-core  run stateful service integration tests"
-	@echo "  make test-sandbox-docker  run Docker sandbox conformance tests"
+	@echo "  make test-sandbox-opensandbox  run OpenSandbox-on-Docker conformance tests"
+	@echo "  make test-sandbox-opensandbox-kata-live  qualify OpenSandbox on Kubernetes/Kata"
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"
-	@echo "  make test-platform-live  run durable text and Docker tool turns against that live model"
-	@echo "  make test-coding-agent   run the offline iterate coding scenario in Docker"
+	@echo "  make test-platform-live  run durable text and OpenSandbox tool turns against that live model"
+	@echo "  make test-coding-agent   run the offline iterate coding scenario in OpenSandbox"
 	@echo "  make test-coding-agent-live  run the iterate scenario against the live model"
 	@echo "  make demo-coding-agent  run the Python SDK coding example against a running Mango server"
 	@echo "  make test-hitl-gate      run the durable custom-tool HITL scenario"
@@ -108,16 +114,17 @@ lint:
 	$(GOLANGCI_LINT) run --new-from-rev=$(LINT_BASE) ./...
 
 test:
-	MANGO_TEST_DOCKER=0 $(GO) test ./...
+	MANGO_TEST_OPENSANDBOX=0 $(GO) test ./...
 
 test-race:
-	MANGO_TEST_DOCKER=0 $(GO) test -race ./...
+	MANGO_TEST_OPENSANDBOX=0 $(GO) test -race ./...
 
-test-service: test-service-core test-sandbox-docker
+test-service: test-service-core test-sandbox-opensandbox
 
 test-service-core:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
-	MANGO_TEST_DOCKER=1 \
+	$(COMPOSE) -f deployments/local/compose.yaml up -d --wait opensandbox
+	$(OPEN_SANDBOX_TEST_ENV) \
 	MANGO_TEST_LIVE_MODEL=0 \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
@@ -126,36 +133,43 @@ test-service-core:
 	MANGO_TEST_S3_BUCKET='$(MANGO_TEST_S3_BUCKET)' \
 	MANGO_TEST_S3_ACCESS_KEY='$(MANGO_TEST_S3_ACCESS_KEY)' \
 	MANGO_TEST_S3_SECRET_KEY='$(MANGO_TEST_S3_SECRET_KEY)' \
-	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') \
-		-timeout '$(SERVICE_CORE_TEST_TIMEOUT)' $(SERVICE_CORE_PACKAGES) -count=1
+	$(GO) test \
+		-p=1 -timeout '$(SERVICE_CORE_TEST_TIMEOUT)' $(SERVICE_CORE_PACKAGES) -count=1
 
-test-sandbox-docker:
+test-sandbox-opensandbox:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
-	MANGO_TEST_DOCKER=1 \
+	$(COMPOSE) -f deployments/local/compose.yaml up -d --wait opensandbox
+	$(OPEN_SANDBOX_TEST_ENV) \
 	MANGO_TEST_LIVE_MODEL=0 \
-	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') \
-		-timeout '$(SANDBOX_TEST_TIMEOUT)' $(SANDBOX_TEST_PACKAGES) -count=1
+	MANGO_LIVE_OPENSANDBOX=1 \
+	$(GO) test \
+		-p=1 -timeout '$(SANDBOX_TEST_TIMEOUT)' $(SANDBOX_TEST_PACKAGES) -count=1
+
+test-sandbox-opensandbox-kata-live:
+	$(GO) run ./scripts/opensandbox-kata-audit
+	MANGO_LIVE_OPENSANDBOX_KATA=1 $(GO) test ./internal/sandbox \
+		-run '^TestOpenSandboxKataLiveQualification$$' -timeout 30m -count=1 -v
 
 test-model-live:
 	MANGO_TEST_LIVE_MODEL=1 \
 	$(GO) test ./internal/model -run '^TestAnthropic_LiveMessagesConformance$$' -count=1
 
 test-platform-live:
-	MANGO_TEST_DOCKER=1 \
+	$(OPEN_SANDBOX_TEST_ENV) \
 	MANGO_TEST_LIVE_MODEL=1 \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
 	$(GO) test ./internal/temporal -run '^TestVerticalSlice_LiveModel(EndToEnd|ToolStepEndToEnd)$$' -count=1
 
 test-coding-agent:
-	MANGO_TEST_DOCKER=1 \
+	$(OPEN_SANDBOX_TEST_ENV) \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
 	$(GO) test ./internal/temporal \
-		-run '^TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd$$' -count=1
+		-run '^TestVerticalSlice_OpenSandboxIterateFixFailingTestsEndToEnd$$' -count=1
 
 test-coding-agent-live:
-	MANGO_TEST_DOCKER=1 \
+	$(OPEN_SANDBOX_TEST_ENV) \
 	MANGO_TEST_LIVE_MODEL=1 \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \

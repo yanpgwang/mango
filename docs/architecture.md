@@ -12,8 +12,8 @@ Compose stack runs those roles separately; they can also be packaged in one
 deployment for development.
 
 The selected stack is Temporal orchestration, PostgreSQL, NATS Core,
-S3-compatible File and Skill archive storage, and replaceable sandbox providers.
-Provider sandbox bindings and File/Skill lifecycle intents are persisted in
+S3-compatible File and Skill archive storage, and OpenSandbox as the single
+sandbox control plane. OpenSandbox sandbox bindings and File/Skill lifecycle intents are persisted in
 PostgreSQL; File bytes and immutable custom Skill archives live in object
 storage when those optional surfaces are enabled.
 
@@ -100,10 +100,11 @@ onto the public API.
 
 ### Interfaces sit at expensive boundaries
 
-The model client, agent runtime, and sandbox provider are interfaces because
+The model client, agent runtime, and sandbox boundary are interfaces because
 they cross process, trust, or infrastructure boundaries. Domain entities stay
-concrete. This keeps the code easy to follow without locking the project to one
-model vendor, sandbox backend, or worker topology.
+concrete. The sandbox interface isolates Mango's lifecycle from the OpenSandbox
+SDK and keeps tests focused on observable behavior; it is not a provider/plugin
+registry. OpenSandbox is Mango's sole current and target sandbox control plane.
 
 ## Package boundaries
 
@@ -120,7 +121,7 @@ model vendor, sandbox backend, or worker topology.
 | `internal/live` | NATS wakeups/previews plus PostgreSQL cursor reconciliation |
 | `internal/agentruntime` | Reusable model, message, and tool execution primitives |
 | `internal/model` | Offline and Messages API model clients |
-| `internal/sandbox` | Provider registry, lifecycle contract, Docker and remote adapters |
+| `internal/sandbox` | Mango lifecycle/resource contract and its OpenSandbox SDK mapping |
 
 The dependency direction points inward: transport and infrastructure depend on
 application/domain semantics, while the domain has no HTTP, SQL, model-client,
@@ -164,8 +165,9 @@ API replicas are stateless around PostgreSQL and NATS. Temporal assigns Workflow
 and Activity tasks to workers; the PostgreSQL tool journal records the
 side-effect ambiguity boundary. Core NATS is at-most-once, so streams
 periodically reconcile their durable cursor and never treat a wakeup as data.
-Worker Versioning and promotion of remote sandbox adapters through repeatable
-live conformance are still required before production rolling deployments.
+Worker Versioning and promotion of the OpenSandbox/Kata profile through
+repeatable live conformance are still required before production rolling
+deployments.
 
 Workflow changes use Temporal version markers where replay safety
 requires them, and `internal/temporal` carries an offline `worker.WorkflowReplayer`
@@ -187,12 +189,12 @@ The strongest current risks are semantic rather than structural:
    extractive compaction policy. Provider-exact tokenizers, per-model context
    profiles, and complete per-provider-request audit snapshots are not yet
    implemented. Compacted message projections are durably checkpointed per Thread.
-2. Sandboxes are session-scoped and durably bound to opaque provider IDs.
-   Restart reattachment and deletion cleanup are implemented for local and
-   Docker on the same host/daemon. Provisioning intent closes the
+2. Sandboxes are session-scoped and durably bound to opaque OpenSandbox IDs.
+   Restart reattachment and deletion cleanup use its shared control plane.
+   Provisioning intent closes the
    create-before-binding crash window and workers autonomously resume fenced
-   deletions. Provider-aware routing for heterogeneous workers, quotas, and
-   eviction are not implemented.
+   deletions. Shared-control-plane operations, quotas, and eviction are not
+   implemented.
 3. Worker Versioning, observability, enterprise identity/RBAC, large-payload
    offload, and production manifests remain open. The OSS Workspace API-key
    and tenant-isolation boundary is implemented.

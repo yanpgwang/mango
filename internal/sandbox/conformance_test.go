@@ -8,11 +8,10 @@ import (
 	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
-func TestDockerProviderConformance(t *testing.T) {
-	resourceDir := t.TempDir()
+func TestOpenSandboxProviderConformance(t *testing.T) {
 	cfg := sandboxtest.Config{
 		NewProvider: func(t *testing.T) sandbox.Provider {
-			return sandboxtest.DockerProvider(t, sandbox.DockerConfig{ResourceBaseDir: resourceDir})
+			return sandboxtest.OpenSandboxProvider(t)
 		},
 		Spec: sandbox.Spec{Timeout: 30 * time.Second},
 	}

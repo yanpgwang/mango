@@ -182,7 +182,7 @@ func TestMemoryService_PostgresOfficialSDKLifecycle(t *testing.T) {
 	}
 }
 
-func TestMemoryRuntime_DockerPostgresRoundTrip(t *testing.T) {
+func TestMemoryRuntime_OpenSandboxPostgresRoundTrip(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 	ids := domain.NewSeqIDGen()
@@ -198,10 +198,10 @@ func TestMemoryRuntime_DockerPostgresRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
-	session := newSession("sess_docker_memory")
+	session := newSession("sess_opensandbox_memory")
 	session.CreatedAt, session.UpdatedAt = now, now
 	resource := domain.SessionResource{
-		ID: "sesrsc_docker_memory", SessionID: session.ID,
+		ID: "sesrsc_opensandbox_memory", SessionID: session.ID,
 		ResourceType:  domain.SessionResourceTypeMemoryStore,
 		MemoryStoreID: memoryStore.ID, MemoryAccess: domain.MemoryAccessReadWrite,
 		MemoryStoreName: memoryStore.Name, MemoryStoreDescription: memoryStore.Description,
@@ -212,7 +212,7 @@ func TestMemoryRuntime_DockerPostgresRoundTrip(t *testing.T) {
 		[]app.PreparedSessionResource{{Resource: resource}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	provider := sandboxtest.DockerProvider(t)
+	provider := sandboxtest.OpenSandboxProvider(t)
 	_, box, err := provider.Create(ctx, t.Name(), sandbox.Spec{MemoryStores: []sandbox.MemoryStoreMount{{
 		Identity: resource.ID, StoreID: memoryStore.ID,
 		RuntimePath: resource.MountPath, Access: resource.MemoryAccess,
@@ -233,7 +233,7 @@ func TestMemoryRuntime_DockerPostgresRoundTrip(t *testing.T) {
 	}
 	locker, ok := box.(sandbox.ResourceSynchronizationSandbox)
 	if !ok {
-		t.Fatal("Docker sandbox does not coordinate tool operations with Memory sync")
+		t.Fatal("OpenSandbox sandbox does not coordinate tool operations with Memory sync")
 	}
 	unlockOperation, err := locker.LockResourceOperation(ctx)
 	if err != nil {

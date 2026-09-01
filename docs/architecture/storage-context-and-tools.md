@@ -200,21 +200,15 @@ provider-native document support.
 
 A File-backed Session Resource instead creates a second, downloadable,
 Session-scoped File object and records a durable desired mount.
-Before each sandbox tool execution a capable adapter ensures that the requested
-identity exists beneath `/mnt/session/uploads`. Docker streams into
-provider-owned staging, verifies size and SHA-256, atomically publishes it, and
-exposes the staging directory read-only. Remote adapters use their official SDK
-clients and record an identity marker after validation; OpenSandbox and Daytona
-stream the transfer, while E2B and Cube buffer each complete File in worker
-memory. The current remote copies are writable and sandbox-local edits do not
-update the S3-backed Session File. Deletion records a tombstone until the worker
-removes the applied copy.
+Before each sandbox tool execution Mango ensures that the requested identity
+exists beneath `/mnt/session/uploads`. The OpenSandbox SDK streams the bytes,
+validates size and SHA-256, publishes the copy, and records an identity marker.
+The permission-hardened copy is sandbox-local, so edits do not update the
+S3-backed Session File. Deletion records a tombstone until the worker removes
+the applied copy.
 
-Docker, E2B, CubeSandbox, OpenSandbox, and Daytona expose a writable
-`/mnt/session/outputs` boundary. Docker uses a provider-owned bind mount and
-the Engine archive API; the remote adapters create a unique temporary archive
-and open it through their official SDK file clients. E2B and Cube buffer the
-archive before returning the reader. Before the primary
+OpenSandbox exposes a writable `/mnt/session/outputs` boundary. The adapter
+creates a unique temporary archive and opens it through the SDK. Before the primary
 Session's idle event is committed, Temporal runs a retryable Activity that
 attaches only to an existing sandbox, streams the output tree, rejects
 non-regular or escaping entries, and publishes each accepted file through the
@@ -241,10 +235,9 @@ Version pins for every distinct resolved roster Agent scope with the Session
 projection so archive deletion cannot race admission. Before a capable sandbox
 tool runs, the worker selects the current Thread Agent scope, reads only those
 relational pins, verifies the corresponding object bytes and archive entries,
-and publishes an immutable-source tree. Docker uses a provider-owned read-only
-bind mount. E2B, CubeSandbox, OpenSandbox, and Daytona use a shared remote
-materializer over their SDK file data planes, a sibling staging tree, hardened
-modes, and a durable marker plus instruction checksum. Primary/self scopes
+and publishes an immutable-source tree. OpenSandbox uses its SDK file data
+plane, a sibling staging tree, hardened modes, and a durable marker plus
+instruction checksum. Primary/self scopes
 retain
 `/workspace/skills/<name>/`; external roster Agents use stable namespaces below
 `/workspace/skills/.agents/` so equal runtime names cannot collide.
@@ -253,9 +246,9 @@ path metadata plus a private `Skill` schema. A successful dispatch returns the
 normal tool result first, then adds a sibling user-text block containing
 `Base directory for this skill: ...` and the complete `SKILL.md`. That exact
 block is stored in the provider transcript; only supporting files require later
-`read` or `bash` calls. The same provider-owned root, lock, attach inspection,
-stale-root audit, and destruction path serve File and Skill staging without
-merging their resource models. Remote shell users can change hardened modes, so
+`read` or `bash` calls. The same resource lock and attach/destruction lifecycle
+serve File and Skill staging without merging their resource models. Sandbox
+shell users can change hardened modes, so
 the next pre-tool pass repairs detectable instruction damage; this does not
 weaken the immutable archive stored by Mango.
 
@@ -267,7 +260,7 @@ For a large tool result:
    truncated preview, size, media type, and sandbox path;
 3. tell the Agent to inspect the exact saved file with bounded `bash` byte
    slices; the line-oriented `read` tool is capped at 64 KiB inside every
-   sandbox provider and never downloads an arbitrarily large file into worker
+   sandbox and never downloads an arbitrarily large file into worker
    memory;
 4. create the documented public event projection;
 5. record the sandbox path on the same durable tool step where applicable.
@@ -607,7 +600,7 @@ tool boundaries needed for native web and unauthenticated MCP:
    later-round projection checkpoints, equivalent Outcome/Advisor overflow
    recovery, provider-exact counters, compaction quality evidence, and retention
    controls remain follow-up work. Independent cross-Session Memory now uses
-   PostgreSQL-backed Stores and Docker Session mounts.
+   PostgreSQL-backed Stores and OpenSandbox-managed Session volumes.
 
 The first two steps were treated as prerequisites rather than cleanup after
 native web, so new Sessions do not depend on reconstructing provider context

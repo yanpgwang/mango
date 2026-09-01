@@ -44,8 +44,8 @@ valid names and versions. Package setup requires an image containing each
 requested package manager; the default Python Alpine image does not include
 `apt-get` or every supported language runtime.
 
-Limited networking is available when the deployment selects the `opensandbox`
-backend. It is deny-by-default and accepts this shape:
+Limited networking is enforced by OpenSandbox. It is deny-by-default and
+accepts this shape:
 
 ```json
 {
@@ -58,8 +58,7 @@ backend. It is deny-by-default and accepts this shape:
 
 `allowed_hosts` entries are bare hostnames or a leading `*.` wildcard. URL
 schemes, ports, paths, and embedded wildcards are rejected. The two allow flags
-default to `false`. Deployments using Docker, E2B, CubeSandbox, or
-Daytona return `422` for a limited policy instead of storing unenforced intent.
+default to `false`.
 
 The runtime accepts `cloud` and `self_hosted` sessions. In `cloud`, enabled
 built-in sandbox tools execute on the configured worker sandbox. In

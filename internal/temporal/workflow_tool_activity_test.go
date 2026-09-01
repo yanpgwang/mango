@@ -647,7 +647,7 @@ func TestExecuteTool_SandboxPermanentErrorTerminatesTurn(t *testing.T) {
 
 func TestExecuteTool_WritebackFailurePreservesToolOutput(t *testing.T) {
 	ctx := context.Background()
-	box := sandboxtest.Docker(t)
+	box := sandboxtest.OpenSandbox(t)
 	journal := &memoryMCPJournal{}
 	activities := NewActivities(
 		nil,
@@ -682,7 +682,7 @@ func TestExecuteTool_WritebackFailurePreservesToolOutput(t *testing.T) {
 
 func TestExecuteTool_CoordinatesResourceSyncAroundToolOperation(t *testing.T) {
 	ctx := context.Background()
-	inner := sandboxtest.Docker(t)
+	inner := sandboxtest.OpenSandbox(t)
 	box := &synchronizationObservingSandbox{Sandbox: inner}
 	reconciler := &synchronizationObservingReconciler{box: box}
 	journal := &memoryMCPJournal{}
@@ -725,7 +725,7 @@ func TestWorkflowTurn_ToolResultWriteRetryDoesNotReexecute(t *testing.T) {
 	ids := domain.NewRandomIDGen()
 	source := storeSource{store: store}
 	journal := &loseFirstCompletionAckJournal{JournalStore: source}
-	manager := sandbox.NewSessionManager(sandboxtest.DockerProvider(t), store)
+	manager := sandbox.NewSessionManager(sandboxtest.OpenSandboxProvider(t), store)
 	lease := &forwardingCountingLease{inner: manager}
 	t.Cleanup(func() {
 		_ = manager.Release(context.Background(), sessionID)

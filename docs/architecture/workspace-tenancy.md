@@ -66,6 +66,6 @@ smooth upgrade for pre-tenancy data.
 ## Non-goals
 
 Workspace data isolation does not make a sandbox safe for hostile multi-tenant
-code. Docker shares the host kernel, and its worker is trusted with daemon
-access. Operators must select and harden an execution provider appropriate for
-their threat model.
+code. The local OpenSandbox Docker profile shares the host kernel, and the
+OpenSandbox service is trusted with daemon access. Production must qualify and
+harden the Kubernetes/Kata profile for its threat model.

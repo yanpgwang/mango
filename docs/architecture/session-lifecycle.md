@@ -165,6 +165,6 @@ execution worker. Cleanup destroys the provider resource and removes its
 persisted binding before the Session projection can be deleted. Repeating the
 operation safely joins or repeats idempotent cleanup.
 
-Local workspaces can reattach on the same host and Docker containers can
-reattach through the same daemon. Cross-host workers require a remote provider
-or shared execution substrate.
+Workers reattach through the same OpenSandbox control plane and its durable
+state. Cross-host workers therefore share that service rather than a host-local
+runtime reference.

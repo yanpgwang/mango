@@ -382,7 +382,7 @@ func TestEnabledSelfHostedToolSchemasDeclaresWebAsClientTool(t *testing.T) {
 }
 
 func TestAgentCore_ExecutesBuiltinToolLoop(t *testing.T) {
-	sb := sandboxtest.Docker(t)
+	sb := sandboxtest.OpenSandbox(t)
 	if err := sb.WriteFile(context.Background(), "note.txt", []byte("hi")); err != nil {
 		t.Fatal(err)
 	}

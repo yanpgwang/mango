@@ -1,8 +1,8 @@
 // Package sandbox provides isolated execution for agent tools.
 //
-// Docker is the default. Remote providers are optional infrastructure adapters.
-// There is no host-process executor. Each provider's documented trust boundary
-// still applies; container execution is not a hostile multi-tenant guarantee.
+// OpenSandbox is the sole control plane. There is no host-process or direct
+// Docker executor. Each OpenSandbox runtime profile's documented trust boundary
+// still applies; local container execution is not a hostile multi-tenant guarantee.
 package sandbox
 
 import (
@@ -58,7 +58,7 @@ type Spec struct {
 	Image     string // container image ref; empty uses the provider default
 	Memory    string // e.g. "512m"; empty uses the provider/daemon default
 	CPUs      string // e.g. "1.0"; empty uses the default
-	Network   string // "none" (default) or "bridge"
+	Network   string // "none" (default), "limited", or "bridge"
 	PidsLimit int    // max processes; 0 uses the default
 	// NetworkAllowedHosts is the final allowlist for a limited network. Setup
 	// NetworkAllowedHosts may temporarily add package registries while package
@@ -71,6 +71,19 @@ type Spec struct {
 	// MemoryStores are immutable Session attachment descriptors. Providers with
 	// Memory Store capability expose one durable mount for each descriptor.
 	MemoryStores []MemoryStoreMount
+}
+
+func validateSandboxNetworkSpec(spec Spec) error {
+	switch spec.Network {
+	case "", "none", "bridge", "limited":
+	default:
+		return fmt.Errorf("sandbox: unsupported network mode %q", spec.Network)
+	}
+	if spec.Network != "limited" &&
+		(len(spec.NetworkAllowedHosts) > 0 || len(spec.SetupNetworkAllowedHosts) > 0) {
+		return errors.New("sandbox: network allowlists require limited networking")
+	}
+	return nil
 }
 
 // PackageSet is the normalized Mango Environment package plan.
@@ -200,6 +213,14 @@ type Provider interface {
 	Attach(ctx context.Context, sessionKey string, ref Ref, spec Spec) (Sandbox, error)
 }
 
+// BoundSessionDestroyer removes every provider resource for a Session while
+// preserving the durable binding as the authority for ownership validation and
+// deletion order. Sandbox.Destroy must remain resource-scoped because it is
+// also used to discard a losing resource after a concurrent binding election.
+type BoundSessionDestroyer interface {
+	DestroyBoundSession(context.Context, string, Ref) error
+}
+
 // PackageSetupProvider declares that package-manager commands execute inside
 // the provider's isolation boundary rather than on the worker host. Providers
 // must opt in explicitly; an undeclared capability is denied.
@@ -229,9 +250,8 @@ const SessionUploadsRoot = domain.SessionUploadsRoot
 const SessionOutputsRoot = domain.SessionOutputsRoot
 
 // SessionSkillsRoot is the provider-independent runtime directory containing
-// immutable custom Skill trees. A sandbox workspace may live elsewhere (for
-// example Daytona uses /home/daytona), so callers must not derive this path
-// from Sandbox.Root.
+// immutable custom Skill trees. Callers must not derive this path from the
+// provider's workspace root.
 const SessionSkillsRoot = domain.SessionSkillsRoot
 
 const SessionRepositoryRoot = domain.SessionRepositoryRoot

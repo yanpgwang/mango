@@ -501,7 +501,7 @@ func TestLifecycleReconciler_RecoversPreparedDeletionEndToEnd(t *testing.T) {
 	defer c.Close()
 
 	ids := domain.NewRandomIDGen()
-	provider := sandboxtest.DockerProvider(t)
+	provider := sandboxtest.OpenSandboxProvider(t)
 	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
 		TemporalClient:  c,
 		Store:           store,
@@ -595,7 +595,7 @@ func TestLifecycleReconciler_RecoversPreparedDeletionEndToEnd(t *testing.T) {
 		t.Fatalf("sandbox binding survived: found=%v err=%v", found, err)
 	}
 	if _, err := provider.Attach(ctx, session.ID, binding.Ref, sandbox.Spec{}); !errors.Is(err, sandbox.ErrNotFound) {
-		t.Fatalf("Docker sandbox survived cleanup or attachment failed: %v", err)
+		t.Fatalf("OpenSandbox sandbox survived cleanup or attachment failed: %v", err)
 	}
 	described, err = c.DescribeWorkflowExecution(ctx, childWorkflowID, "")
 	if err != nil || described.WorkflowExecutionInfo.Status !=
@@ -755,12 +755,12 @@ func TestVerticalSlice_InterruptCancelsModelActivity(t *testing.T) {
 
 // TestVerticalSlice_LiveModelToolStepEndToEnd verifies the external model
 // contract beyond plain text streaming: a real model selects the offered bash
-// tool, Mango executes it in Docker as a durable sandbox Activity, feeds the
+// tool, Mango executes it in OpenSandbox as a durable sandbox Activity, feeds the
 // result back into the provider transcript, and commits the final assistant
 // response. It is opt-in because it reaches a billable model endpoint.
 func TestVerticalSlice_LiveModelToolStepEndToEnd(t *testing.T) {
 	modelClient, modelID := liveModelForTest(t, "tool conformance test")
-	provider := sandboxtest.DockerProvider(t)
+	provider := sandboxtest.OpenSandboxProvider(t)
 	const marker = "mango-live-tool-ok"
 	runToolStepEndToEnd(t, toolStepCase{
 		provider:      provider,
@@ -778,27 +778,27 @@ func TestVerticalSlice_LiveModelToolStepEndToEnd(t *testing.T) {
 	})
 }
 
-// TestVerticalSlice_DockerToolStepEndToEnd runs the PostgreSQL + Temporal tool
-// path through Docker. It commits the journal, tool events, final message and
+// TestVerticalSlice_OpenSandboxToolStepEndToEnd runs the PostgreSQL + Temporal
+// tool path through the local OpenSandbox Docker runtime. It commits the journal, tool events, final message and
 // terminal idle status. Its command checks
 // /.dockerenv and /workspace before writing and reading the marker. The committed
 // non-error tool_result therefore proves the Activity actually executed inside
-// the provisioned container, not merely that Docker provisioning succeeded.
-func TestVerticalSlice_DockerToolStepEndToEnd(t *testing.T) {
+// the provisioned container, not merely that provisioning succeeded.
+func TestVerticalSlice_OpenSandboxToolStepEndToEnd(t *testing.T) {
 	if os.Getenv("MANGO_TEST_DATABASE_URL") == "" ||
 		os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT") == "" {
-		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the Docker tool end-to-end slice")
+		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the OpenSandbox tool end-to-end slice")
 	}
-	provider := sandboxtest.DockerProvider(t)
-	const marker = "mango-temporal-docker-ok"
+	provider := sandboxtest.OpenSandboxProvider(t)
+	const marker = "mango-temporal-opensandbox-ok"
 	runToolStepEndToEnd(t, toolStepCase{
 		provider: provider,
 		modelClient: toolProbeModel{
 			command:   "test -f /.dockerenv && test \"$(pwd)\" = /workspace && printf '" + marker + "' > probe.txt && cat probe.txt",
-			finalText: "Docker probe completed",
+			finalText: "OpenSandbox probe completed",
 		},
 		modelID:            "fake",
-		sessionPrefix:      "sess_docker_tool_e2e_",
+		sessionPrefix:      "sess_opensandbox_tool_e2e_",
 		prompt:             "run a tool",
 		tools:              []any{map[string]any{"type": domain.BuiltinToolsetType}},
 		expectedTool:       bashToolName,
@@ -807,17 +807,17 @@ func TestVerticalSlice_DockerToolStepEndToEnd(t *testing.T) {
 	})
 }
 
-// TestVerticalSlice_DockerSkillRuntimeEndToEnd proves the complete custom Skill
+// TestVerticalSlice_OpenSandboxSkillRuntimeEndToEnd proves the complete custom Skill
 // execution path: PostgreSQL pins one immutable Version, PrepareTurn exposes its
 // discovery metadata and private Skill dispatcher, the pre-tool reconciler
 // extracts the canonical archive, and the runtime injects the complete SKILL.md
 // without asking the model to call read or bash.
-func TestVerticalSlice_DockerSkillRuntimeEndToEnd(t *testing.T) {
+func TestVerticalSlice_OpenSandboxSkillRuntimeEndToEnd(t *testing.T) {
 	if os.Getenv("MANGO_TEST_DATABASE_URL") == "" ||
 		os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT") == "" {
-		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the Docker Skill end-to-end slice")
+		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the OpenSandbox Skill end-to-end slice")
 	}
-	provider := sandboxtest.DockerProvider(t)
+	provider := sandboxtest.OpenSandboxProvider(t)
 	runToolStepEndToEnd(t, toolStepCase{
 		provider: provider,
 		modelClient: skillProbeModel{
@@ -827,7 +827,7 @@ func TestVerticalSlice_DockerSkillRuntimeEndToEnd(t *testing.T) {
 			requiredSystem: "/workspace/skills/runtime-probe/SKILL.md",
 		},
 		modelID:            "fake",
-		sessionPrefix:      "sess_docker_skill_e2e_",
+		sessionPrefix:      "sess_opensandbox_skill_e2e_",
 		prompt:             "use the runtime probe Skill",
 		tools:              []any{map[string]any{"type": domain.BuiltinToolsetType}},
 		expectedTool:       agentruntime.RuntimeSkillToolName,
@@ -980,7 +980,7 @@ func runToolStepEndToEnd(t *testing.T, tc toolStepCase) {
 	orch := runtime.Orchestrator()
 	sessID := tc.sessionPrefix + ids.NewID("")
 	// SessionManager keeps a sandbox alive across turns by design. Explicitly
-	// release it after this integration test so the Docker variant cannot leak a
+	// release it after this integration test so the OpenSandbox variant cannot leak a
 	// container (the second call is a harmless no-op after normal-path release).
 	defer func() {
 		releaseCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

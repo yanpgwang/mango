@@ -4,14 +4,14 @@ title: Runtime and sandbox
 
 # Runtime and sandbox
 
-The runtime is split into three replaceable boundaries: conversation
-orchestration, model inference, and tool isolation.
+The runtime separates conversation orchestration, model inference, and tool
+isolation.
 
 ## Agent runtime
 
-`AgentRuntime.Run` receives a single trigger, the immutable session agent
-snapshot, the conversation already projected from event history, the parsed
-tool configuration, and a provisioned sandbox.
+`AgentRuntime.Run` receives one trigger, the immutable Session Agent snapshot,
+the conversation projected from event history, parsed tool configuration, and
+an acquired sandbox when tools require one.
 
 The default `AgentCore`:
 
@@ -21,140 +21,101 @@ The default `AgentCore`:
 4. executes allowed built-ins and feeds results back to the model;
 5. repeats until the model ends the turn or requires client action.
 
-The loop is capped at 20 model/tool rounds to prevent unbounded execution.
+The loop is capped at 20 model/tool rounds.
 
 ## Model clients
 
 The model boundary is a small stateless interface with regular and streaming
-message creation.
+message creation. The offline fake is deterministic and requires no model
+endpoint. The real client targets a Messages-shaped `/v1/messages` endpoint
+with API-key or bearer authentication.
 
-- The offline fake is deterministic and requires no model endpoint. The default
-  worker still needs Docker; pulling a missing sandbox image requires access to
-  its registry.
-- The real client targets a Messages-shaped `/v1/messages` endpoint and
-  supports API-key or bearer authentication.
-
-Conversation ownership remains in this server. This is why earlier
-self-contained harness integrations were removed: a second component owning
-history would create competing sources of truth.
-
-The context boundary now includes a lossless Provider Transcript rather than
-reconstructing provider-native history from public events. Native Web
-Search/Fetch and MCP keep separate raw, model-facing, and public projections;
-compacted projections are preserved per Thread in immutable internal snapshots. See
+Conversation ownership remains in Mango. Provider-native history is retained
+in a lossless transcript rather than reconstructed from public events. Native
+Web Search/Fetch, MCP, and compaction keep separate raw, model-facing, and
+public projections. See
 [Storage, context, and connected tools](storage-context-and-tools.md).
 
 ## Tool runtime
 
-Agent tool configuration is parsed into:
+Agent tool configuration resolves to the built-in toolset, custom tools, and
+MCP toolset references. `bash`, `read`, `write`, `edit`, `glob`, and `grep`
+execute in the Session sandbox. Provider-native Web Search/Fetch and remote MCP
+cross their own network boundaries. Custom tools and interceptable
+`always_ask` tools park the Session for a client response.
 
-- the `agent_toolset_20260401` built-in toolset;
-- custom tool definitions;
-- MCP toolset references.
+## Sandbox control plane
 
-`bash`, `read`, `write`, `edit`, `glob`, and `grep` execute in the Session
-sandbox. `web_fetch` and `web_search` are sent as native server-tool
-declarations to the configured Messages API endpoint and currently require
-`always_allow`. Remote MCP tools are discovered through Streamable HTTP, pinned
-per Session, permission-checked, journaled, and given the same sandbox-backed
-large-result policy. Deployment-managed MCP authentication and deprecated-SSE
-fallback remain follow-up work.
+Mango keeps a narrow in-process lifecycle interface so Agent and Temporal code
+do not depend on infrastructure SDK types. Its only implementation uses the
+official OpenSandbox Go SDK. There is no runtime provider registry, host-process
+executor, or direct Docker fallback.
 
-Locally executable built-ins and MCP tools with `always_allow` execute inside
-the current run. Custom tools and interceptable `always_ask` tools park the
-session for a client response.
+```text
+Mango Activity
+  -> SessionManager
+  -> Mango lifecycle/resource boundary
+  -> OpenSandbox Go SDK
+  -> OpenSandbox server
+       -> Docker                  local development and CI
+       -> Kubernetes + Kata       production-candidate profile
+```
 
-## Sandbox provider
+Mango owns durable Session bindings, recovery, resource reconciliation, Memory
+versioning/writeback, and teardown. OpenSandbox owns workload creation,
+attachment, command/file transport, volumes, network policy, and its runtime.
+OpenSandbox endpoint, authentication, image, and proxy settings are worker
+configuration and never appear in Mango's public Environment or Session wire
+models.
 
-The application provisions a sandbox only when the resolved toolset contains
-tools. The same interface supports process execution and confined file reads
-and writes. This is currently an in-process Go interface, not a separate
-sandbox HTTP service. See the [sandbox backend matrix](../sandboxes.md) for
-support levels, backend requirements, and the ordered evolution path.
+Agent commands run as numeric UID/GID `1000:1000`; trusted package and resource
+maintenance runs as sandbox root. The local OpenSandbox Docker profile enables
+`no_new_privileges`. Only the OpenSandbox service mounts the Docker socket;
+Mango API and worker processes stay non-root and never receive it.
 
-### Docker provider
+Limited networking becomes an exact OpenSandbox deny-by-default host policy.
+Provisioning temporarily expands it for configured package setup, restores the
+final Environment policy before publishing the binding, and reconciles later
+MCP-derived host changes.
 
-Docker is the default; `MANGO_SANDBOX=docker` selects it explicitly. The worker
-requires a reachable Docker daemon even with the offline model. Host-process
-execution is not selectable, and no unsafe-local override is supported. The
-provider talks directly to the Docker Engine API through the supported Moby Go
-client; it does not invoke the `docker` CLI. The client honors `DOCKER_HOST`,
-`DOCKER_API_VERSION`, and Docker TLS environment variables and negotiates a
-compatible API version by default. When an image is absent, the provider pulls
-it through the Engine API and resolves registry credentials from the standard
-Docker `config.json` selected by `DOCKER_CONFIG` or `~/.docker`. Inline `auths`,
-`credsStore`, and per-registry `credHelpers` are supported; a configured native
-credential helper must be installed on the worker. Containers use a separate
-filesystem, Linux namespaces/cgroups, configurable resource limits, and no
-networking for direct provider calls. Mango's cloud Environment path explicitly
-requests `bridge` networking because the public Environment default is
-unrestricted. The default image is `python:3.12-alpine`; operators select another
-image with `MANGO_SANDBOX_IMAGE`. The Compose worker mounts its resource directory
-at the same absolute path seen by the daemon. See
-[Docker worker configuration](../deployment.md#docker-worker-configuration).
+The production-candidate path is:
 
-Containers share the host kernel. This provider has not been audited for
-hostile multi-tenant use; stronger isolation such as gVisor or a remote sandbox
-can be added behind the same provider interface.
+```text
+Mango/Temporal -> OpenSandbox -> Kubernetes BatchSandbox -> Kata RuntimeClass
+```
 
-### Remote providers
-
-E2B, CubeSandbox, OpenSandbox, and Daytona are selected through the same
-deployment-level registry. The worker remains the lifecycle owner: it maps one
-session to one external sandbox, persists only the provider name and opaque ID,
-reattaches after restart, and deletes the resource through a durable Temporal
-Activity. The external service owns isolation and workspace storage.
-
-Provider credentials, endpoint routing, templates, images, and auto-pause
-settings stay in worker environment variables. They do not change the Managed
-Agents Environment or Session wire models.
-
-OpenSandbox is the first adapter with fine-grained egress capability. A
-limited cloud Environment becomes a deny-by-default OpenSandbox network policy
-whose exact allow rules are reconciled during provisioning, after an
-MCP-affecting Session update, and after worker restart. Package installation
-uses a temporary registry expansion before the durable binding is published;
-tool execution sees only the final policy. The API returns `422` for limited
-networking when any other implemented adapter is selected.
+Kata gives the sandbox a VM-backed kernel boundary rather than the local
+Docker profile's shared host kernel. This is a deployment profile, not a new
+public Environment type. It remains Preview until the
+[promotion gates](../deployment.md#production-promotion-gates) pass against a
+pinned release matrix. OpenSandbox-on-Docker conformance establishes adapter
+behavior, not production isolation.
 
 ## Session-scoped ownership
 
-A sandbox is scoped to the session, not to a single run. The first run in a
-session that needs tools provisions a logical sandbox; every later run in the
-same session reuses that same instance, so filesystem state a tool creates in
-one run is visible to the next. Different sessions acquire under different keys
-and never share a sandbox, so they stay isolated even when they use the same
-agent and environment.
+A sandbox is scoped to a Session, not a Run. The first tool-using Run
+idempotently creates it; later Runs reuse the same instance. Different Sessions
+use different ownership keys and never share one logical sandbox.
 
-Ownership lives in a session-scoped manager that wraps the provider inside the
-`internal/sandbox` package. PostgreSQL stores a non-secret provisioning intent
-before provider creation, then atomically replaces it with the provider name,
-opaque external ID, and spec hash. The in-memory map is only a live client
-cache. The `AgentRuntime` is unaware of this — the application resolves the
-sandbox and passes it in the run request.
+PostgreSQL records a non-secret provisioning intent before OpenSandbox
+creation, then atomically replaces it with provider name `opensandbox`, opaque
+external ID, and spec hash after package/resource setup succeeds. The in-memory
+map is only a live-client cache.
 
-Entering idle does not tear the sandbox down. After a worker restart, `Attach`
-reconstructs the client from the persisted reference; if the resource has
-disappeared, acquisition fails instead of silently replacing session state.
+Entering idle retains the sandbox. After a worker restart, `Attach`
+reconstructs the client from the persisted reference. A missing external
+resource fails explicitly rather than silently replacing its workspace.
 
-Session deletion runs provider teardown as a retryable Temporal Activity and
-removes the binding before PostgreSQL permits the Session row to be deleted.
-Workers reconcile provisioning intents left before binding and resume fenced
-deletions left before cleanup or finalization. Local references require the same
-host filesystem and Docker references require the same daemon. Remote
-multi-worker execution therefore needs a service-backed provider.
-Every provider name still present in a binding or provisioning intent must stay
-routable to a compatible worker; changing the default provider does not migrate
-existing resources or discharge their cleanup obligations.
-Checkpoint/restore, quotas, and eviction are not implemented.
+Session deletion fences admission, stops the Workflow, retries OpenSandbox
+teardown, removes the binding, and only then deletes the Session row. Workers
+also recover unfinished provisioning and deletion intents. All workers for a
+deployment must reach the same OpenSandbox control plane and durable state.
+Checkpoint/restore, quotas, and automatic eviction are not implemented.
 
 ## Streaming previews
 
 The runtime may report `event_start` and `event_delta` through an optional
 preview interface. These frames bypass durable storage and go directly to
-subscribers that requested the matching event type. The complete event is still
-buffered and committed through the normal completion transaction.
-
-This split keeps the event log authoritative while improving latency, but it
-also means clients must tolerate a preview ending without a persisted event if
-the process or upstream stream fails.
+subscribers that requested them. The complete event is still committed through
+the normal transaction, so the event log remains authoritative and clients
+must tolerate a preview ending without a persisted event after a failure.

@@ -178,16 +178,16 @@ func TestFileHTTP_PostgresS3SDKLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	publisher := app.NewSessionOutputPublisher(repo, blobs, ids, fixedClock{})
-	provider := sandboxtest.DockerProvider(t)
+	provider := sandboxtest.OpenSandboxProvider(t)
 	_, outputBox, err := provider.Create(ctx, t.Name(), sandbox.Spec{
 		Timeout: 30 * time.Second,
 	})
 	if err != nil {
-		t.Fatalf("create Docker output sandbox: %v", err)
+		t.Fatalf("create OpenSandbox output sandbox: %v", err)
 	}
 	defer func() {
 		if err := outputBox.Destroy(context.Background()); err != nil {
-			t.Errorf("destroy Docker output sandbox: %v", err)
+			t.Errorf("destroy OpenSandbox output sandbox: %v", err)
 		}
 	}()
 	if err := outputBox.WriteFile(

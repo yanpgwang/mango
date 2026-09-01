@@ -481,9 +481,9 @@ func (r *remoteSkillBundles) uploadPreparedSkill(
 	})
 }
 
-// hardenPreparedSkill restores the canonical executable bits after upload and
-// removes every write bit. The E2B/Cube and Daytona clients currently ignore
-// upload modes, so ResourceUpload alone cannot preserve executable helpers.
+// hardenPreparedSkill restores canonical executable bits after upload and
+// removes every write bit. Explicit chmod keeps the contract independent of
+// whether the OpenSandbox file transport preserves requested modes.
 // Bounded batches avoid one command round-trip per file without exceeding
 // provider or process command-size limits for bundles with many paths.
 func (r *remoteSkillBundles) hardenPreparedSkill(
@@ -610,12 +610,6 @@ func (r *remoteSkillBundles) runCommand(
 		if result != nil {
 			message = fmt.Sprintf("command exited with code %d", result.ExitCode)
 			diagnostic := strings.TrimSpace(string(result.Stderr))
-			if diagnostic == "" {
-				// Daytona's pinned SDK exposes one combined Result value, which its
-				// adapter maps to stdout. Preserve useful failures without duplicating
-				// successful command output across the public stdout/stderr streams.
-				diagnostic = strings.TrimSpace(string(result.Stdout))
-			}
 			if diagnostic != "" {
 				message += ": " + diagnostic
 			}

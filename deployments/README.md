@@ -5,10 +5,13 @@ level rather than by container technology.
 
 | Directory | Support level | Purpose |
 | --- | --- | --- |
-| [`local`](local/) | Development | Reproducible PostgreSQL, Temporal, NATS, MinIO, API, and worker stack for local development and integration tests |
+| [`local`](local/) | Development | Reproducible PostgreSQL, Temporal, NATS, MinIO, OpenSandbox, API, and worker stack for local development and integration tests |
+| [`qualification/opensandbox-kata`](qualification/opensandbox-kata/) | Qualification | Non-installing contract and live gate for OpenSandbox on Kubernetes with Kata isolation |
 
 `deployments/local` is the only committed deployment bundle today. It builds
-the current checkout and is not a production manifest.
+the current checkout and is not a production manifest. Qualification assets
+describe a candidate topology and its acceptance checks; they do not install
+dependencies or expand Mango's support guarantee.
 
 Future deployment bundles are added only when their lifecycle is tested and
 documented:
@@ -38,4 +41,5 @@ make local-down
 ```
 
 See [Deployment model](../docs/deployment.md) for the current guarantees and
-the promotion criteria for Docker and Kubernetes assets.
+the promotion criteria for the local OpenSandbox/Docker and Kubernetes/Kata
+profiles.

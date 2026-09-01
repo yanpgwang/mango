@@ -277,6 +277,9 @@ func (m *SessionManager) AcquireExisting(
 }
 
 func (m *SessionManager) validateAcquireSpec(spec Spec) error {
+	if err := validateSandboxNetworkSpec(spec); err != nil {
+		return Permanent(err)
+	}
 	if !spec.Packages.Empty() {
 		capability, ok := m.provider.(PackageSetupProvider)
 		if !ok || !capability.SupportsPackageSetup() {
@@ -294,10 +297,6 @@ func (m *SessionManager) validateAcquireSpec(spec Spec) error {
 				m.provider.Name(),
 			))
 		}
-	} else if len(spec.NetworkAllowedHosts) > 0 || len(spec.SetupNetworkAllowedHosts) > 0 {
-		return Permanent(errors.New(
-			"sandbox: network allowlists require limited networking",
-		))
 	}
 	return nil
 }
@@ -468,6 +467,16 @@ func (m *SessionManager) Release(ctx context.Context, sessionID string) error {
 			binding.Ref.Provider,
 			m.provider.Name(),
 		))
+	}
+	if destroyer, ok := m.provider.(BoundSessionDestroyer); ok {
+		if err := destroyer.DestroyBoundSession(ctx, sessionID, binding.Ref); err != nil &&
+			!errors.Is(err, ErrNotFound) {
+			return err
+		}
+		if err := m.bindings.DeleteSandboxBinding(ctx, binding); err != nil {
+			return fmt.Errorf("sandbox: delete binding: %w", err)
+		}
+		return m.clearMatchingProvisioningIntent(ctx, sessionID)
 	}
 	if box == nil {
 		box, err = m.provider.Attach(ctx, sessionID, binding.Ref, Spec{})

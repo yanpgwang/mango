@@ -82,22 +82,21 @@ until the Session is physically deleted. The pin migration backfills concrete,
 still-ready custom references from existing Session snapshots; former opaque
 values remain readable but are not treated as executable references. Up to 500
 Skills are accepted, subject to a 500 MB aggregate expanded-size limit and
-unique runtime names. Docker, E2B, CubeSandbox, OpenSandbox, and Daytona verify
-pinned archives and expose them at `/workspace/skills/<name>/`; external roster
-Agents use isolated subdirectories below `/workspace/skills/.agents/`. Docker
-enforces a read-only bind mount, while remote providers expose a
-permission-hardened sandbox-local copy and reject ordinary file-tool writes to
+unique runtime names. OpenSandbox verifies pinned archives and exposes them at
+`/workspace/skills/<name>/`; external roster Agents use isolated subdirectories
+below `/workspace/skills/.agents/`. It uses a permission-hardened sandbox-local
+copy and rejects ordinary file-tool writes to
 the Skill root. The model first receives every Skill name plus
 descriptions bounded to one percent of the configured context window.
 When it invokes the private `Skill` dispatcher, the runtime returns
 `Launching skill: <name>` and injects the complete selected `SKILL.md`, prefixed
 with its base directory, into the provider conversation. Referenced supporting
-files remain on disk for ordinary `read` or `bash` access. Sessions using an
-incapable sandbox adapter or a self-hosted Environment reject custom Skills at
+files remain on disk for ordinary `read` or `bash` access. Sessions using a
+self-hosted Environment reject custom Skills at
 creation with `422`, before any Session, Work item, or execution wakeup is created. This
 check covers the effective primary Agent and every resolved roster member
 after overrides, including a `self` copy. See
-[Sandbox backends](../sandboxes.md#custom-skill-mounts) for the remote-copy
+[Sandbox runtime](../sandboxes.md#skills) for the copy-materialization
 limitation.
 
 Optional `initial_events` may contain up to 50 `user.message` or
@@ -139,17 +138,15 @@ configured:
 ```
 
 Each attachment creates an independent, downloadable Session-scoped File copy
-beneath `/mnt/session/uploads`. Docker presents it read-only; E2B, CubeSandbox,
-OpenSandbox, and Daytona currently expose a writable sandbox-local copy. A Memory Store input
+beneath `/mnt/session/uploads`. OpenSandbox currently exposes a
+permission-hardened sandbox-local copy. A Memory Store input
 uses `type: "memory_store"`, `memory_store_id`, optional `instructions`, and
 `read_write` or `read_only` access; it is mounted beneath `/mnt/memory` and can
 only be attached at creation. A `git_repository` input uses an anonymous HTTPS
 `url`, optional branch-or-commit `checkout`, and optional `/workspace` child
 `mount_path`; Mango freezes and returns its exact `resolved_commit`. Git
-repositories are create-time-only on Docker, E2B, CubeSandbox, OpenSandbox,
-and Daytona. Self-hosted Environments reject these resource attachments with `422`.
-E2B and Cube currently buffer File and repository archive transfers in worker
-memory during materialization.
+repositories are create-time-only on OpenSandbox. Self-hosted Environments
+reject these resource attachments with `422`.
 `vault_ids` is an ordered list of active Vault references. The order is frozen
 with the Session: for an MCP endpoint, the first Vault containing a matching
 credential wins. Admission requires the Vault keyring to be configured and
@@ -287,11 +284,11 @@ resumes a turn that was paused at that check.
 `deployment_id` is null for direct Session creation and contains the parent
 Deployment ID for Deployment-created Sessions.
 
-For Mango-managed Docker, E2B, CubeSandbox, OpenSandbox, and Daytona Sessions
-with Files storage configured, regular files written beneath `/mnt/session/outputs` are published
+For Mango-managed OpenSandbox Sessions with Files storage configured, regular
+files written beneath `/mnt/session/outputs` are published
 before the Session becomes idle. List them with
 `GET /v1/files?scope_id={session_id}` and download them through the Files
-content endpoint. See [Files](files.md#session-outputs) for limits and provider
+content endpoint. See [Files](files.md#session-outputs) for limits and runtime
 constraints.
 
 See [capabilities and limits](../capabilities.md).

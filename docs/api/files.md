@@ -33,7 +33,7 @@ cannot be combined.
 
 Client uploads have `scope: null` and `downloadable: false`; their content
 endpoint is intentionally unavailable. File-backed Session Resources create
-independent, downloadable Session-scoped copies. Mango-managed Docker Sessions
+independent, downloadable Session-scoped copies. Mango-managed OpenSandbox Sessions
 also publish agent deliverables written beneath `/mnt/session/outputs` as
 downloadable Files with `scope.id` equal to the Session ID.
 
@@ -79,8 +79,8 @@ tool results remain unsupported.
 
 ## Session outputs
 
-The output directory is writable inside Docker, E2B, CubeSandbox, OpenSandbox, and Daytona
-sandboxes. At every primary Session idle boundary, the worker recursively
+The output directory is writable inside OpenSandbox sandboxes. At every primary
+Session idle boundary, the worker recursively
 streams its regular files into the configured object store before committing
 `session.status_idle`. A client that observes the idle event can therefore
 immediately list and download the deliverables with
@@ -102,17 +102,12 @@ usable, allowing a later turn to remove or replace the invalid entry. An
 explicit interrupt skips output publication so cancellation is not delayed by
 a large snapshot.
 
-Publishing requires configured Files storage and a Docker, E2B, CubeSandbox,
-OpenSandbox, or Daytona sandbox. Remote adapters create a temporary archive
-through their provider SDK; the selected remote image must contain `tar`.
-OpenSandbox and Daytona stream that archive, while the current E2B/Cube Go data
-plane buffers the complete archive in worker memory before Mango validates and
-publishes it. Publishing is not enabled for Mango's `self_hosted` Environment
+Publishing requires configured Files storage and an OpenSandbox sandbox. The
+adapter creates a temporary archive through the SDK; the selected image must
+contain `tar`. Publishing is not enabled for Mango's `self_hosted` Environment
 mode, where the client owns tool execution. A
 text-only Session that never provisioned a sandbox does not create one merely
-to check for outputs. A durable Docker sandbox created before the output mount
-was introduced fails closed and must be recreated; it is never treated as an
-empty output tree.
+to check for outputs.
 
 ## Lifecycle and limits
 

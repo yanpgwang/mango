@@ -3,6 +3,9 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,11 +17,15 @@ import (
 	"time"
 
 	opensandbox "github.com/alibaba/OpenSandbox/sdks/sandbox/go"
+	"github.com/yanpgwang/mango/internal/domain"
 )
 
 const (
 	OpenSandboxProviderName = "opensandbox"
 	defaultOpenSandboxImage = "python:3.12-slim"
+	openSandboxAgentUID     = int32(1000)
+	openSandboxAgentGID     = int32(1000)
+	openSandboxAgentCapture = "/tmp/mango-command-output"
 )
 
 type OpenSandboxConfig struct {
@@ -36,7 +43,14 @@ type openSandboxResource struct {
 
 type openSandboxRemote interface {
 	ID() string
-	Exec(context.Context, string, string, time.Duration) (string, string, int, error)
+	Exec(
+		context.Context,
+		string,
+		string,
+		time.Duration,
+		*int32,
+		*int32,
+	) (string, string, int, error)
 	ReadFile(context.Context, string) ([]byte, error)
 	WriteFile(context.Context, string, []byte) error
 	ApplyLimitedNetwork(context.Context, []string) error
@@ -49,6 +63,7 @@ type openSandboxService interface {
 	Get(context.Context, string) (openSandboxResource, error)
 	Create(context.Context, string, Spec) (openSandboxRemote, error)
 	Connect(context.Context, string) (openSandboxRemote, error)
+	Delete(context.Context, string) error
 }
 
 type openSandboxProvider struct {
@@ -108,6 +123,8 @@ func (*openSandboxProvider) SupportsSkillBundles() bool { return true }
 
 func (*openSandboxProvider) SupportsGitRepositories() bool { return true }
 
+func (*openSandboxProvider) SupportsMemoryStores() bool { return true }
+
 func (p *openSandboxProvider) Create(
 	ctx context.Context,
 	sessionKey string,
@@ -119,31 +136,44 @@ func (p *openSandboxProvider) Create(
 	if err := ctx.Err(); err != nil {
 		return Ref{}, nil, err
 	}
+	if err := validateSandboxNetworkSpec(spec); err != nil {
+		return Ref{}, nil, Permanent(err)
+	}
+	if err := validateMemoryStoreMounts(spec.MemoryStores); err != nil {
+		return Ref{}, nil, Permanent(err)
+	}
 	existing, err := p.service.List(ctx, remoteMetadata(sessionKey))
 	if err != nil {
 		return Ref{}, nil, fmt.Errorf("sandbox: opensandbox list: %w", err)
 	}
-	sort.Slice(existing, func(i, j int) bool { return existing[i].id < existing[j].id })
 	if len(existing) > 0 {
-		return p.attachResource(ctx, sessionKey, existing[0], spec)
+		return p.adoptResource(ctx, sessionKey, "", existing, spec)
 	}
 	remote, err := p.service.Create(ctx, sessionKey, spec)
 	if err != nil {
 		existing, findErr := p.service.List(ctx, remoteMetadata(sessionKey))
 		if findErr == nil && len(existing) > 0 {
-			sort.Slice(existing, func(i, j int) bool {
-				return existing[i].id < existing[j].id
-			})
-			return p.attachResource(ctx, sessionKey, existing[0], spec)
+			return p.adoptResource(ctx, sessionKey, "", existing, spec)
 		}
 		return Ref{}, nil, fmt.Errorf("sandbox: opensandbox create: %w", err)
 	}
-	box := newOpenSandboxBox(remote, p.root, spec.Timeout)
-	if err := box.ensureRoot(ctx); err != nil {
-		_ = remote.Destroy(context.Background())
-		return Ref{}, nil, err
+	// The server has no idempotency key for create. Re-list after creation and
+	// deterministically adopt one resource so concurrent workers converge. Add
+	// the resource returned by create in case list visibility lags behind create;
+	// a later Create or Attach repeats this reconciliation and removes any
+	// duplicate left by a process crash in this window.
+	existing, err = p.service.List(ctx, remoteMetadata(sessionKey))
+	if err != nil {
+		return Ref{}, nil, fmt.Errorf(
+			"sandbox: opensandbox reconcile created sandbox %q: %w", remote.ID(), err,
+		)
 	}
-	return Ref{Provider: p.Name(), ID: remote.ID()}, box, nil
+	if !containsOpenSandboxResource(existing, remote.ID()) {
+		existing = append(existing, openSandboxResource{
+			id: remote.ID(), metadata: remoteMetadata(sessionKey),
+		})
+	}
+	return p.adoptResource(ctx, sessionKey, "", existing, spec)
 }
 
 func (p *openSandboxProvider) Attach(
@@ -152,6 +182,12 @@ func (p *openSandboxProvider) Attach(
 	ref Ref,
 	spec Spec,
 ) (Sandbox, error) {
+	if err := validateSandboxNetworkSpec(spec); err != nil {
+		return nil, Permanent(err)
+	}
+	if err := validateMemoryStoreMounts(spec.MemoryStores); err != nil {
+		return nil, Permanent(err)
+	}
 	if err := validateRemoteReference(p.Name(), sessionKey, ref); err != nil {
 		return nil, err
 	}
@@ -170,29 +206,165 @@ func (p *openSandboxProvider) Attach(
 	); err != nil {
 		return nil, err
 	}
-	remote, err := p.service.Connect(ctx, ref.ID)
+	existing, err := p.service.List(ctx, remoteMetadata(sessionKey))
 	if err != nil {
-		if isOpenSandboxNotFound(err) {
-			return nil, fmt.Errorf("%w: opensandbox sandbox %q", ErrNotFound, ref.ID)
-		}
-		return nil, fmt.Errorf("sandbox: opensandbox connect: %w", err)
+		return nil, fmt.Errorf("sandbox: opensandbox list for attach: %w", err)
 	}
-	box := newOpenSandboxBox(remote, p.root, spec.Timeout)
-	if err := box.ensureRoot(ctx); err != nil {
-		return nil, err
+	if !containsOpenSandboxResource(existing, ref.ID) {
+		existing = append(existing, resource)
 	}
-	return box, nil
+	_, box, err := p.adoptResource(ctx, sessionKey, ref.ID, existing, spec)
+	return box, err
 }
 
-func (p *openSandboxProvider) attachResource(
+func (p *openSandboxProvider) adoptResource(
 	ctx context.Context,
 	sessionKey string,
-	resource openSandboxResource,
+	preferredID string,
+	resources []openSandboxResource,
 	spec Spec,
 ) (Ref, Sandbox, error) {
+	resource, err := p.reconcileResources(ctx, sessionKey, preferredID, resources)
+	if err != nil {
+		return Ref{}, nil, err
+	}
 	ref := Ref{Provider: p.Name(), ID: resource.id}
-	box, err := p.Attach(ctx, sessionKey, ref, spec)
-	return ref, box, err
+	remote, err := p.service.Connect(ctx, resource.id)
+	if err != nil {
+		if isOpenSandboxNotFound(err) {
+			return Ref{}, nil, fmt.Errorf(
+				"%w: opensandbox sandbox %q", ErrNotFound, resource.id,
+			)
+		}
+		return Ref{}, nil, fmt.Errorf("sandbox: opensandbox connect: %w", err)
+	}
+	box := newOpenSandboxBox(remote, p.root, spec.Timeout, spec.MemoryStores)
+	if err := box.ensureRoot(ctx); err != nil {
+		return Ref{}, nil, err
+	}
+	return ref, box, nil
+}
+
+func (p *openSandboxProvider) reconcileResources(
+	ctx context.Context,
+	sessionKey string,
+	preferredID string,
+	resources []openSandboxResource,
+) (openSandboxResource, error) {
+	if len(resources) == 0 {
+		return openSandboxResource{}, errors.New(
+			"sandbox: opensandbox reconciliation found no sandbox",
+		)
+	}
+	resources = append([]openSandboxResource(nil), resources...)
+	sort.Slice(resources, func(i, j int) bool { return resources[i].id < resources[j].id })
+	unique := resources[:0]
+	for _, resource := range resources {
+		if err := validateRemoteOwnership(
+			p.Name(), resource.id, sessionKey, resource.metadata,
+		); err != nil {
+			return openSandboxResource{}, err
+		}
+		if len(unique) == 0 || unique[len(unique)-1].id != resource.id {
+			unique = append(unique, resource)
+		}
+	}
+	selected := unique[0]
+	if preferredID != "" {
+		found := false
+		for _, resource := range unique {
+			if resource.id == preferredID {
+				selected, found = resource, true
+				break
+			}
+		}
+		if !found {
+			return openSandboxResource{}, fmt.Errorf(
+				"%w: opensandbox sandbox %q", ErrNotFound, preferredID,
+			)
+		}
+	}
+	for _, resource := range unique {
+		if resource.id == selected.id {
+			continue
+		}
+		if err := p.service.Delete(ctx, resource.id); err != nil &&
+			!isOpenSandboxNotFound(err) {
+			return openSandboxResource{}, fmt.Errorf(
+				"sandbox: opensandbox remove duplicate %q: %w", resource.id, err,
+			)
+		}
+	}
+	return selected, nil
+}
+
+func containsOpenSandboxResource(resources []openSandboxResource, id string) bool {
+	for _, resource := range resources {
+		if resource.id == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *openSandboxProvider) DestroyBoundSession(
+	ctx context.Context,
+	sessionKey string,
+	ref Ref,
+) error {
+	if err := validateRemoteReference(p.Name(), sessionKey, ref); err != nil {
+		return err
+	}
+	selected, getErr := p.service.Get(ctx, ref.ID)
+	if getErr != nil && !isOpenSandboxNotFound(getErr) {
+		return fmt.Errorf("sandbox: opensandbox get for destroy: %w", getErr)
+	}
+	if getErr == nil {
+		if err := validateRemoteOwnership(
+			p.Name(), selected.id, sessionKey, selected.metadata,
+		); err != nil {
+			return err
+		}
+	}
+	resources, err := p.service.List(ctx, remoteMetadata(sessionKey))
+	if err != nil {
+		return fmt.Errorf("sandbox: opensandbox list for destroy: %w", err)
+	}
+	if getErr == nil && !containsOpenSandboxResource(resources, ref.ID) {
+		resources = append(resources, selected)
+	}
+	resources = append([]openSandboxResource(nil), resources...)
+	sort.Slice(resources, func(i, j int) bool {
+		leftSelected := resources[i].id == ref.ID
+		rightSelected := resources[j].id == ref.ID
+		if leftSelected != rightSelected {
+			return !leftSelected
+		}
+		return resources[i].id < resources[j].id
+	})
+	unique := resources[:0]
+	previousID := ""
+	for _, resource := range resources {
+		if resource.id == previousID {
+			continue
+		}
+		previousID = resource.id
+		if err := validateRemoteOwnership(
+			p.Name(), resource.id, sessionKey, resource.metadata,
+		); err != nil {
+			return err
+		}
+		unique = append(unique, resource)
+	}
+	for _, resource := range unique {
+		if err := p.service.Delete(ctx, resource.id); err != nil &&
+			!isOpenSandboxNotFound(err) {
+			return fmt.Errorf(
+				"sandbox: opensandbox destroy %q: %w", resource.id, err,
+			)
+		}
+	}
+	return nil
 }
 
 type openSandboxBox struct {
@@ -202,6 +374,7 @@ type openSandboxBox struct {
 	resources    *remoteFileResources
 	skills       *remoteSkillBundles
 	repositories *commandGitRepositories
+	memoryStores map[string]MemoryStoreMount
 	sync         remoteResourceSynchronization
 }
 
@@ -209,16 +382,22 @@ func newOpenSandboxBox(
 	remote openSandboxRemote,
 	root string,
 	timeout time.Duration,
+	memoryStores []MemoryStoreMount,
 ) *openSandboxBox {
+	mounts := make(map[string]MemoryStoreMount, len(memoryStores))
+	for _, mount := range memoryStores {
+		mounts[mount.Identity] = mount
+	}
 	box := &openSandboxBox{
 		remote: remote, root: root, timeout: timeout,
-		resources: newRemoteFileResources(OpenSandboxProviderName, remote),
+		resources:    newRemoteFileResources(OpenSandboxProviderName, remote),
+		memoryStores: mounts,
 	}
 	box.skills = newRemoteSkillBundles(
 		OpenSandboxProviderName,
 		box.resources,
 		func(ctx context.Context, command Command) (*Result, error) {
-			return box.exec(
+			return box.execMaintenance(
 				ctx, command, remoteOperationCommandTimeout(ctx, box.timeout),
 			)
 		},
@@ -226,7 +405,9 @@ func newOpenSandboxBox(
 	box.repositories = newRemoteGitRepositories(
 		OpenSandboxProviderName, box.resources,
 		func(ctx context.Context, command Command) (*Result, error) {
-			return box.exec(ctx, command, remoteOperationCommandTimeout(ctx, box.timeout))
+			return box.execMaintenance(
+				ctx, command, remoteOperationCommandTimeout(ctx, box.timeout),
+			)
 		},
 	)
 	return box
@@ -242,23 +423,76 @@ func (s *openSandboxBox) ApplyLimitedNetwork(
 }
 
 func (s *openSandboxBox) ensureRoot(ctx context.Context) error {
-	if err := s.resources.ensureDirectory(ctx, s.root, 0o777); err != nil {
+	for _, directory := range []struct {
+		path string
+		mode int
+	}{
+		{s.root, 0o777},
+		{path.Join(s.root, ".mango-home"), 0o700},
+		{openSandboxAgentCapture, 0o700},
+	} {
+		if err := s.resources.ensureDirectory(ctx, directory.path, directory.mode); err != nil {
+			return err
+		}
+	}
+	if err := s.resources.ensureSessionOutputLayout(ctx); err != nil {
 		return err
 	}
-	return s.resources.ensureSessionOutputLayout(ctx)
+	if err := s.ensureMemoryLayout(ctx); err != nil {
+		return err
+	}
+	result, err := s.execMaintenance(ctx, Command{
+		Path: "chown",
+		Args: []string{
+			"-R",
+			fmt.Sprintf("%d:%d", openSandboxAgentUID, openSandboxAgentGID),
+			path.Join(s.root, ".mango-home"),
+			openSandboxAgentCapture,
+		},
+	}, remoteOperationCommandTimeout(ctx, s.timeout))
+	if err != nil {
+		return fmt.Errorf("sandbox: opensandbox prepare agent identity: %w", err)
+	}
+	if result == nil || result.ExitCode != 0 {
+		return Permanent(fmt.Errorf(
+			"sandbox: opensandbox cannot prepare agent identity: %s",
+			remoteCommandFailure(result),
+		))
+	}
+	return nil
 }
 
 func (s *openSandboxBox) Exec(
 	ctx context.Context,
 	cmd Command,
 ) (*Result, error) {
-	return s.exec(ctx, cmd, s.timeout)
+	uid, gid := openSandboxAgentUID, openSandboxAgentGID
+	return s.execWithIdentity(
+		ctx, cmd, s.timeout, &uid, &gid,
+	)
 }
 
-func (s *openSandboxBox) exec(
+func (s *openSandboxBox) ExecPackageSetup(
+	ctx context.Context,
+	cmd Command,
+) (*Result, error) {
+	return s.execMaintenance(ctx, cmd, s.timeout)
+}
+
+func (s *openSandboxBox) execMaintenance(
 	ctx context.Context,
 	cmd Command,
 	timeout time.Duration,
+) (*Result, error) {
+	return s.execWithIdentity(ctx, cmd, timeout, nil, nil)
+}
+
+func (s *openSandboxBox) execWithIdentity(
+	ctx context.Context,
+	cmd Command,
+	timeout time.Duration,
+	uid *int32,
+	gid *int32,
 ) (*Result, error) {
 	if cmd.Path == "" {
 		return nil, errors.New("sandbox: command path is required")
@@ -270,6 +504,8 @@ func (s *openSandboxBox) exec(
 		remoteCommandLine(cmd),
 		s.root,
 		timeout,
+		uid,
+		gid,
 	)
 	if err != nil {
 		if runCtx.Err() != nil {
@@ -284,10 +520,7 @@ func (s *openSandboxBox) ReadFile(
 	ctx context.Context,
 	value string,
 ) ([]byte, error) {
-	full, err := remoteToolPath(
-		s.root, value, SessionUploadsRoot, SessionOutputsRoot, SessionSkillsRoot,
-		SessionRepositoryRoot,
-	)
+	full, err := s.toolFilePath(value, false)
 	if err != nil {
 		return nil, err
 	}
@@ -299,14 +532,32 @@ func (s *openSandboxBox) ReadFileBounded(
 	value string,
 	maxBytes int64,
 ) ([]byte, bool, error) {
-	full, err := remoteToolPath(
-		s.root, value, SessionUploadsRoot, SessionOutputsRoot, SessionSkillsRoot,
-		SessionRepositoryRoot,
-	)
+	if maxBytes <= 0 || maxBytes >= maxOutput {
+		return nil, false, fmt.Errorf(
+			"sandbox: bounded read limit must be between 1 and %d bytes",
+			maxOutput-1,
+		)
+	}
+	full, err := s.toolFilePath(value, false)
 	if err != nil {
 		return nil, false, err
 	}
-	return readFileBoundedByCommand(ctx, s, full, maxBytes)
+	reader, err := s.remote.ResourceOpen(ctx, full)
+	if err != nil {
+		return nil, false, fmt.Errorf("sandbox: opensandbox bounded read: %w", err)
+	}
+	data, readErr := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	closeErr := reader.Close()
+	if readErr != nil {
+		return nil, false, fmt.Errorf("sandbox: opensandbox bounded read: %w", readErr)
+	}
+	if closeErr != nil {
+		return nil, false, fmt.Errorf("sandbox: opensandbox bounded read close: %w", closeErr)
+	}
+	if int64(len(data)) > maxBytes {
+		return data[:maxBytes], true, nil
+	}
+	return data, false, nil
 }
 
 func (s *openSandboxBox) WriteFile(
@@ -314,9 +565,7 @@ func (s *openSandboxBox) WriteFile(
 	value string,
 	data []byte,
 ) error {
-	full, err := remoteWritableToolPath(
-		s.root, value, SessionUploadsRoot, SessionOutputsRoot, SessionRepositoryRoot,
-	)
+	full, err := s.toolFilePath(value, true)
 	if err != nil {
 		return err
 	}
@@ -324,6 +573,31 @@ func (s *openSandboxBox) WriteFile(
 		return fmt.Errorf("sandbox: opensandbox create parent: %w", err)
 	}
 	return s.remote.WriteFile(ctx, full, data)
+}
+
+func (s *openSandboxBox) toolFilePath(value string, writable bool) (string, error) {
+	if path.IsAbs(value) && pathWithinRemoteRoot(domain.SessionMemoryRoot, value) {
+		clean := path.Clean(value)
+		for _, mount := range s.memoryStores {
+			if clean == mount.RuntimePath || !pathWithinRemoteRoot(mount.RuntimePath, clean) {
+				continue
+			}
+			if writable && mount.Access != domain.MemoryAccessReadWrite {
+				return "", fmt.Errorf("sandbox: path %q is read-only", value)
+			}
+			return clean, nil
+		}
+		return "", fmt.Errorf("sandbox: path %q is outside the authorized Memory mounts", value)
+	}
+	if writable {
+		return remoteWritableToolPath(
+			s.root, value, SessionUploadsRoot, SessionOutputsRoot, SessionRepositoryRoot,
+		)
+	}
+	return remoteToolPath(
+		s.root, value, SessionUploadsRoot, SessionOutputsRoot, SessionSkillsRoot,
+		SessionRepositoryRoot,
+	)
 }
 
 func (s *openSandboxBox) HasFileResource(
@@ -369,7 +643,27 @@ func (s *openSandboxBox) HasGitRepository(ctx context.Context, mount GitReposito
 }
 
 func (s *openSandboxBox) ImportGitRepository(ctx context.Context, mount GitRepositoryMount, content io.Reader) error {
-	return s.repositories.ImportGitRepository(ctx, mount, content)
+	if err := s.repositories.ImportGitRepository(ctx, mount, content); err != nil {
+		return err
+	}
+	result, err := s.execMaintenance(ctx, Command{
+		Path: "chown",
+		Args: []string{
+			"-R",
+			fmt.Sprintf("%d:%d", openSandboxAgentUID, openSandboxAgentGID),
+			mount.RuntimePath,
+		},
+	}, remoteOperationCommandTimeout(ctx, s.timeout))
+	if err != nil {
+		return fmt.Errorf("sandbox: opensandbox prepare Git repository ownership: %w", err)
+	}
+	if result == nil || result.ExitCode != 0 {
+		return Permanent(fmt.Errorf(
+			"sandbox: opensandbox cannot prepare Git repository ownership: %s",
+			remoteCommandFailure(result),
+		))
+	}
+	return nil
 }
 
 func (s *openSandboxBox) RemoveGitRepository(ctx context.Context, runtimePath, identity string) error {
@@ -382,7 +676,7 @@ func (s *openSandboxBox) OpenSessionOutputs(ctx context.Context) (io.ReadCloser,
 		OpenSandboxProviderName,
 		s.resources,
 		func(executeCtx context.Context, command Command) (*Result, error) {
-			return s.exec(
+			return s.execMaintenance(
 				executeCtx,
 				command,
 				remoteOperationCommandTimeout(executeCtx, s.timeout),
@@ -473,6 +767,10 @@ func (s *openSandboxSDKService) Get(
 	return openSandboxResource{id: info.ID, metadata: info.Metadata}, nil
 }
 
+func (s *openSandboxSDKService) Delete(ctx context.Context, id string) error {
+	return s.manager.KillSandbox(ctx, id)
+}
+
 func (s *openSandboxSDKService) Create(
 	ctx context.Context,
 	sessionKey string,
@@ -494,6 +792,10 @@ func (s *openSandboxSDKService) Create(
 		limits["memory"] = normalizeKubernetesMemory(spec.Memory)
 	}
 	policy := openSandboxNetworkPolicy(spec)
+	volumes, err := openSandboxMemoryVolumes(sessionKey, spec.MemoryStores)
+	if err != nil {
+		return nil, err
+	}
 	created, err := opensandbox.CreateSandbox(
 		ctx,
 		s.config,
@@ -503,12 +805,51 @@ func (s *openSandboxSDKService) Create(
 			Metadata:       remoteMetadata(sessionKey),
 			ManualCleanup:  true,
 			NetworkPolicy:  policy,
+			Volumes:        volumes,
 		},
 	)
 	if err != nil {
 		return nil, err
 	}
 	return &openSandboxSDKRemote{sandbox: created}, nil
+}
+
+func openSandboxMemoryVolumes(
+	sessionKey string,
+	mounts []MemoryStoreMount,
+) ([]opensandbox.Volume, error) {
+	if err := validateMemoryStoreMounts(mounts); err != nil {
+		return nil, Permanent(err)
+	}
+	volumes := make([]opensandbox.Volume, 0, len(mounts)*2)
+	for _, mount := range mounts {
+		identity := openSandboxMemoryIdentity(mount.Identity)
+		claimSum := sha256.Sum256([]byte(
+			"opensandbox-memory\x00" + sessionKey + "\x00" + mount.Identity,
+		))
+		claim := "mango-memory-" + hex.EncodeToString(claimSum[:16])
+		create, cleanup := true, true
+		pvc := func() *opensandbox.PVC {
+			return &opensandbox.PVC{
+				ClaimName:                  claim,
+				CreateIfNotExists:          &create,
+				DeleteOnSandboxTermination: &cleanup,
+				AccessModes:                []string{"ReadWriteOnce"},
+			}
+		}
+		volumes = append(volumes,
+			opensandbox.Volume{
+				Name: "memory-" + identity + "-public", PVC: pvc(),
+				MountPath: mount.RuntimePath,
+				ReadOnly:  mount.Access == domain.MemoryAccessReadOnly,
+			},
+			opensandbox.Volume{
+				Name: "memory-" + identity + "-control", PVC: pvc(),
+				MountPath: openSandboxMemoryControlPath(mount),
+			},
+		)
+	}
+	return volumes, nil
 }
 
 func openSandboxNetworkPolicy(spec Spec) *opensandbox.NetworkPolicy {
@@ -521,8 +862,12 @@ func openSandboxNetworkPolicy(spec Spec) *opensandbox.NetworkPolicy {
 		return &opensandbox.NetworkPolicy{DefaultAction: "deny", Egress: rules}
 	case "", "none":
 		return &opensandbox.NetworkPolicy{DefaultAction: "deny"}
-	default:
+	case "bridge":
 		return nil
+	default:
+		// Provider entry points reject unknown modes. Retain deny-by-default here
+		// as a defense if a future internal caller bypasses that validation.
+		return &opensandbox.NetworkPolicy{DefaultAction: "deny"}
 	}
 }
 
@@ -548,29 +893,117 @@ func (s *openSandboxSDKRemote) Exec(
 	command string,
 	cwd string,
 	timeout time.Duration,
+	uid *int32,
+	gid *int32,
 ) (string, string, int, error) {
+	captureRoot := "/var/lib/mango/command-output"
+	if uid != nil {
+		captureRoot = openSandboxAgentCapture
+	}
+	stdoutPath, stderrPath, err := openSandboxCapturePaths(captureRoot)
+	if err != nil {
+		return "", "", -1, err
+	}
+	// execd exposes line-oriented output events, which cannot distinguish
+	// `printf x` from `printf 'x\n'` and therefore cannot satisfy Mango's
+	// byte-preserving Exec contract. Capture inside the sandbox and download the
+	// two files after completion. The command still runs through execd, so
+	// timeout and exit-code semantics remain provider-owned.
+	capturedCommand := "umask 077; mkdir -p " + shellQuote(captureRoot) + " && (" +
+		command + ") >" + shellQuote(stdoutPath) + " 2>" + shellQuote(stderrPath)
 	request := opensandbox.RunCommandRequest{
-		Command: command,
+		Command: capturedCommand,
 		Cwd:     cwd,
+		UID:     uid,
+		GID:     gid,
+	}
+	if uid != nil {
+		request.Envs = map[string]string{
+			"HOME": path.Join(remoteDefaultRoot, ".mango-home"),
+			"USER": "mango",
+		}
 	}
 	if timeout > 0 {
 		request.Timeout = timeout.Milliseconds()
 	}
-	execution, err := s.sandbox.RunCommandWithOpts(
+	execution, runErr := s.sandbox.RunCommandWithOpts(
 		ctx,
 		request,
 		nil,
 	)
-	if err != nil {
-		return "", "", -1, err
+
+	readCtx := ctx
+	cancelRead := func() {}
+	if ctx.Err() != nil {
+		readCtx, cancelRead = context.WithTimeout(context.Background(), 5*time.Second)
+	}
+	defer cancelRead()
+	stdout, stdoutErr := s.readCommandCapture(readCtx, stdoutPath)
+	stderr, stderrErr := s.readCommandCapture(readCtx, stderrPath)
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelCleanup()
+	_ = s.sandbox.DeleteFiles(cleanupCtx, []string{stdoutPath, stderrPath})
+
+	// A command that never reached the capture wrapper has no exact files. Keep
+	// the SDK stream as diagnostic fallback, then return the original run error.
+	if execution == nil {
+		execution = &opensandbox.Execution{}
+	}
+	if stdoutErr != nil {
+		stdout = joinOpenSandboxOutput(execution.Stdout)
+	}
+	if stderrErr != nil {
+		stderr = joinOpenSandboxOutput(execution.Stderr)
+	}
+	if runErr != nil {
+		return stdout, stderr, -1, runErr
+	}
+	if stdoutErr != nil {
+		return stdout, stderr, -1, fmt.Errorf(
+			"opensandbox: read command stdout: %w", stdoutErr,
+		)
+	}
+	if stderrErr != nil {
+		return stdout, stderr, -1, fmt.Errorf(
+			"opensandbox: read command stderr: %w", stderrErr,
+		)
 	}
 	exitCode := 0
 	if execution.ExitCode != nil {
 		exitCode = *execution.ExitCode
 	}
-	stdout := joinOpenSandboxOutput(execution.Stdout)
-	stderr := joinOpenSandboxOutput(execution.Stderr)
 	return stdout, stderr, exitCode, nil
+}
+
+func openSandboxCapturePaths(root string) (string, string, error) {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", "", fmt.Errorf("opensandbox: create command capture id: %w", err)
+	}
+	base := path.Join(root, hex.EncodeToString(nonce[:]))
+	return base + ".stdout", base + ".stderr", nil
+}
+
+func (s *openSandboxSDKRemote) readCommandCapture(
+	ctx context.Context,
+	filePath string,
+) (string, error) {
+	reader, err := s.sandbox.DownloadFile(ctx, filePath, "")
+	if err != nil {
+		return "", err
+	}
+	data, readErr := io.ReadAll(io.LimitReader(reader, maxOutput+1))
+	closeErr := reader.Close()
+	if readErr != nil {
+		return "", readErr
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+	if len(data) > maxOutput {
+		data = data[:maxOutput]
+	}
+	return string(data), nil
 }
 
 func (s *openSandboxSDKRemote) ReadFile(
@@ -601,9 +1034,10 @@ func (s *openSandboxSDKRemote) WriteFile(
 			FileName: path.Base(value),
 			Metadata: opensandbox.FileMetadata{
 				Path: value,
-				// OpenSandbox's wire API uses chmod-style digits (600), not
-				// Go's os.FileMode integer representation (0o600 == 384).
-				Mode: 600,
+				// Agent-visible files must remain readable by the unprivileged
+				// command identity. Internal resource uploads pass stricter modes
+				// through ResourceUpload instead.
+				Mode: 666,
 			},
 		},
 	)

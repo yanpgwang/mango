@@ -29,6 +29,7 @@ func TestOpenSandboxNetworkPolicy(t *testing.T) {
 		{name: "none", spec: Spec{Network: "none"}, want: &opensandbox.NetworkPolicy{DefaultAction: "deny"}},
 		{name: "empty", spec: Spec{}, want: &opensandbox.NetworkPolicy{DefaultAction: "deny"}},
 		{name: "unrestricted", spec: Spec{Network: "bridge"}},
+		{name: "unknown fails closed", spec: Spec{Network: "brigde"}, want: &opensandbox.NetworkPolicy{DefaultAction: "deny"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -36,6 +37,22 @@ func TestOpenSandboxNetworkPolicy(t *testing.T) {
 				t.Fatalf("network policy = %#v, want %#v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestValidateSandboxNetworkSpec(t *testing.T) {
+	for _, mode := range []string{"", "none", "bridge", "limited"} {
+		if err := validateSandboxNetworkSpec(Spec{Network: mode}); err != nil {
+			t.Errorf("mode %q rejected: %v", mode, err)
+		}
+	}
+	if err := validateSandboxNetworkSpec(Spec{Network: "brigde"}); err == nil {
+		t.Fatal("unknown network mode succeeded")
+	}
+	if err := validateSandboxNetworkSpec(Spec{
+		Network: "bridge", NetworkAllowedHosts: []string{"example.com"},
+	}); err == nil {
+		t.Fatal("unrestricted network accepted an allowlist")
 	}
 }
 

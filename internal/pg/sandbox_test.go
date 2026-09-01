@@ -79,7 +79,7 @@ func TestSandboxReleaseRepairsLegacyBindingAndIntentCoexistence(t *testing.T) {
 	if _, err := store.CreateSession(ctx, session, nil); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	provider := sandboxtest.DockerProvider(t)
+	provider := sandboxtest.OpenSandboxProvider(t)
 	spec := sandbox.Spec{}
 	ref, _, err := provider.Create(ctx, session.ID, spec)
 	if err != nil {

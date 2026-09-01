@@ -6,31 +6,37 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"os"
 	"path"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/yanpgwang/mango/internal/sandbox"
-	"github.com/yanpgwang/mango/internal/testutil/dockertest"
 )
 
-// DockerProvider tracks created resources for bounded cleanup even when a test
-// fails before its Session deletion path. This is a real Mango Docker provider.
-func DockerProvider(t testing.TB, configs ...sandbox.DockerConfig) sandbox.Provider {
+// OpenSandboxProvider tracks created resources for bounded cleanup even when a
+// test fails before its Session deletion path. It connects to the real local or
+// CI OpenSandbox service; Mango never reaches Docker directly.
+func OpenSandboxProvider(t testing.TB) sandbox.Provider {
 	t.Helper()
-	dockertest.Require(t)
-	cfg := sandbox.DockerConfig{}
-	if len(configs) > 1 {
-		t.Fatal("at most one Docker test configuration is supported")
+	if os.Getenv("MANGO_TEST_OPENSANDBOX") != "1" {
+		t.Skip("set MANGO_TEST_OPENSANDBOX=1 to run OpenSandbox service tests")
 	}
-	if len(configs) == 1 {
-		cfg = configs[0]
+	useProxy, err := strconv.ParseBool(firstNonEmpty(
+		os.Getenv("OPEN_SANDBOX_USE_SERVER_PROXY"), "true",
+	))
+	if err != nil {
+		t.Fatalf("OPEN_SANDBOX_USE_SERVER_PROXY: %v", err)
 	}
-	if cfg.ResourceBaseDir == "" {
-		cfg.ResourceBaseDir = t.TempDir()
-	}
-	provider, err := sandbox.NewDockerProvider(cfg)
+	provider, err := sandbox.NewOpenSandboxProvider(sandbox.OpenSandboxConfig{
+		BaseURL:  strings.TrimSpace(os.Getenv("OPEN_SANDBOX_DOMAIN")),
+		APIKey:   strings.TrimSpace(os.Getenv("OPEN_SANDBOX_API_KEY")),
+		Image:    strings.TrimSpace(os.Getenv("OPEN_SANDBOX_IMAGE")),
+		UseProxy: useProxy,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +47,7 @@ func DockerProvider(t testing.TB, configs ...sandbox.DockerConfig) sandbox.Provi
 		for _, box := range tracked.boxes {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			if err := box.Destroy(ctx); err != nil {
-				t.Errorf("clean up Docker sandbox: %v", err)
+				t.Errorf("clean up OpenSandbox sandbox: %v", err)
 			}
 			cancel()
 		}
@@ -66,15 +72,16 @@ func (p *trackedProvider) Create(ctx context.Context, key string, spec sandbox.S
 }
 
 func (p *trackedProvider) SupportsPackageSetup() bool    { return true }
+func (p *trackedProvider) SupportsLimitedNetwork() bool  { return true }
 func (p *trackedProvider) SupportsFileResources() bool   { return true }
 func (p *trackedProvider) SupportsSessionOutputs() bool  { return true }
 func (p *trackedProvider) SupportsSkillBundles() bool    { return true }
 func (p *trackedProvider) SupportsMemoryStores() bool    { return true }
 func (p *trackedProvider) SupportsGitRepositories() bool { return true }
 
-func Docker(t testing.TB) sandbox.Sandbox {
+func OpenSandbox(t testing.TB) sandbox.Sandbox {
 	t.Helper()
-	provider := DockerProvider(t)
+	provider := OpenSandboxProvider(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	_, box, err := provider.Create(ctx, fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), sandbox.Spec{Timeout: 30 * time.Second})
@@ -82,6 +89,15 @@ func Docker(t testing.TB) sandbox.Sandbox {
 		t.Fatal(err)
 	}
 	return box
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // MountSkill publishes an immutable fixture through the real provider boundary.

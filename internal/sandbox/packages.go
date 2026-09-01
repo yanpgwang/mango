@@ -11,6 +11,13 @@ type packageSetupCommand struct {
 	command Command
 }
 
+// packageSetupSandbox separates trusted provisioning from untrusted agent
+// commands when a provider supports per-command identities. Implementations
+// must still execute inside the sandbox boundary.
+type trustedPackageSetupSandbox interface {
+	ExecPackageSetup(context.Context, Command) (*Result, error)
+}
+
 func packageSetupCommands(packages PackageSet) []packageSetupCommand {
 	commands := make([]packageSetupCommand, 0, 7)
 	if len(packages.Apt) > 0 {
@@ -46,8 +53,12 @@ func appendPackageCommand(
 }
 
 func initializeSandbox(ctx context.Context, box Sandbox, spec Spec) error {
+	execute := box.Exec
+	if setupBox, ok := box.(trustedPackageSetupSandbox); ok {
+		execute = setupBox.ExecPackageSetup
+	}
 	for _, setup := range packageSetupCommands(spec.Packages) {
-		result, err := box.Exec(ctx, setup.command)
+		result, err := execute(ctx, setup.command)
 		if err != nil {
 			return fmt.Errorf("sandbox: install %s packages: %w", setup.manager, err)
 		}

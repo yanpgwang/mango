@@ -377,7 +377,7 @@ func (s *skillExecutionSource) SessionSkillsForRuntime(
 
 func TestExecuteTool_RuntimeSkillLoadsFullInstructionsWithoutReadTool(t *testing.T) {
 	ctx := context.Background()
-	box := sandboxtest.Docker(t)
+	box := sandboxtest.OpenSandbox(t)
 
 	const body = "---\nname: report-tools\ndescription: Analyze reports\n---\n\nFollow the complete report workflow.\n"
 	sandboxtest.MountSkill(t, box, domain.SessionSkillsRoot+"/report-tools", body)
@@ -438,7 +438,7 @@ func TestExecuteTool_RuntimeSkillLoadsFullInstructionsWithoutReadTool(t *testing
 
 func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 	ctx := context.Background()
-	box := sandboxtest.Docker(t)
+	box := sandboxtest.OpenSandbox(t)
 
 	root := domain.SessionSkillsRoot + "/.agents/0123456789abcdef01234567"
 	const body = "---\nname: report-tools\ndescription: Child reports\n---\nchild body\n"
@@ -485,7 +485,7 @@ func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 
 func TestExecuteTool_RuntimeSkillStartedStepIsSafelyReloaded(t *testing.T) {
 	ctx := context.Background()
-	box := sandboxtest.Docker(t)
+	box := sandboxtest.OpenSandbox(t)
 	sandboxtest.MountSkill(t, box, domain.SessionSkillsRoot+"/report-tools", "---\nname: report-tools\ndescription: Analyze reports\n---\nbody\n")
 
 	journal := &memoryMCPJournal{step: domain.ToolStep{

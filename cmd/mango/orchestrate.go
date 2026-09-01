@@ -420,14 +420,7 @@ func runOrchestrate() {
 	if err != nil {
 		log.Fatalf("orchestrate: sandbox: %v", err)
 	}
-	providerRegistry, err := sandboxProviderRegistry()
-	if err != nil {
-		log.Fatalf("orchestrate: sandbox registry: %v", err)
-	}
-	providerCapabilities, err := providerRegistry.Capabilities(configuredSandboxProviderName())
-	if err != nil {
-		log.Fatalf("orchestrate: sandbox capabilities: %v", err)
-	}
+	providerCapabilities := openSandboxCapabilities()
 	fileRuntime, err := resolveFiles(ctx, store, ids, realClock{}, false)
 	var resourceReconciler temporalpkg.SandboxResourceReconciler
 	switch {

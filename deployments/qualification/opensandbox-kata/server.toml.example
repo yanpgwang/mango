@@ -1,0 +1,39 @@
+# Qualification template only. Replace every placeholder and render the API
+# key through your secret-management system before deploying OpenSandbox.
+
+[server]
+host = "0.0.0.0"
+port = 8080
+api_key = "REPLACE_WITH_RANDOM_API_KEY"
+max_sandbox_timeout_seconds = 86400
+
+[log]
+level = "INFO"
+
+[runtime]
+type = "kubernetes"
+execd_image = "REPLACE_WITH_EXECD_IMAGE_DIGEST"
+
+[storage]
+allowed_host_paths = []
+volume_default_size = "1Gi"
+
+[kubernetes]
+kubeconfig_path = ""
+namespace = "opensandbox"
+informer_enabled = true
+informer_resync_seconds = 300
+informer_watch_timeout_seconds = 60
+snapshot_create_timeout_seconds = 900
+workload_provider = "batchsandbox"
+image_pull_policy = "IfNotPresent"
+batchsandbox_template_file = "/etc/opensandbox/mango.batchsandbox-template.yaml"
+
+[egress]
+image = "REPLACE_WITH_EGRESS_IMAGE_DIGEST"
+mode = "dns+nft"
+disable_ipv6 = true
+
+[secure_runtime]
+type = "kata"
+k8s_runtime_class = "REPLACE_WITH_KATA_RUNTIME_CLASS"

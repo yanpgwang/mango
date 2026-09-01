@@ -15,7 +15,8 @@ Compose bundle or Kubernetes chart.
 | Asset | Status | Intended use |
 | --- | --- | --- |
 | Root `Dockerfile` | Buildable | Produce the API/worker image on Linux AMD64 or ARM64 |
-| `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, MinIO, API, and worker from the current checkout |
+| `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, MinIO, OpenSandbox, API, and worker from the current checkout |
+| `deployments/qualification/opensandbox-kata` | Qualification | Record and exercise the selected Kubernetes/Kata sandbox contract; does not install a cluster |
 | Production Docker Compose | Planned | Supported single-host installation using versioned release images |
 | Helm chart | Planned | Kubernetes API and worker deployments with external stateful dependencies |
 
@@ -23,6 +24,13 @@ The local stack is intentionally complete so contributors can exercise the
 durable path without installing each dependency. It contains development
 credentials, fixed host ports, and stateful dependencies and must not be
 treated as a high-availability or hardened production configuration.
+
+The OpenSandbox/Kata qualification directory is intentionally different from
+a deployment bundle. It selects the production-candidate execution chain and
+provides configuration templates plus an opt-in live gate, while leaving the
+OpenSandbox, Kubernetes, and Kata release matrix under explicit operator
+control. It must not be presented as a supported chart until that complete
+matrix has repeatable upgrade and rollback evidence.
 
 ## Process topology
 
@@ -79,75 +87,46 @@ concurrent upload, Session Resource copy, or Session output publication. These
 are explicit limits until distributed intent leasing and direct multipart
 object-store operations are implemented.
 
-File-backed Session Resources require `MANGO_SANDBOX=docker`, `e2b`, `cube`,
-`opensandbox`, or `daytona`; the remote providers currently expose writable
-sandbox-local copies. Automatic Session output publication supports the same
-providers. Every remote image must provide `/bin/sh` and `tar`; output archives
-are removed after each snapshot. OpenSandbox and Daytona stream file transfers,
-while E2B and Cube buffer each File Resource and output archive in worker
-memory, so operators must provision memory for the largest accepted transfer.
-A Docker worker must run where the selected Docker
-Engine API is reachable; the provider uses the Moby Go client directly and does
-not require a `docker` CLI binary. Configure a non-default daemon with
-`DOCKER_HOST` and the standard Docker TLS environment variables. The daemon
-must be able to bind the worker's provider-owned staging directory. Set
-`MANGO_SANDBOX_RESOURCE_DIR` to place that directory on a dedicated
-host volume; the default is `mango-resources` beneath the process
-user's home directory. The API and every worker
-on the task queue must agree on the sandbox provider and object-store
-configuration. Host-process execution is not a selectable runtime backend.
+File-backed Session Resources, Git worktrees, Session Outputs, Skills, and
+Memory attachments all use OpenSandbox. The sandbox image must provide
+`/bin/sh`, `tar`, and the POSIX utilities documented in the
+[sandbox runtime guide](sandboxes.md#runtime-image-contract). The API and every
+worker on the task queue must use the same object-store configuration. There is
+no provider selector or host-process/direct-Docker backend.
 
-Memory API contents and immutable Versions live entirely in PostgreSQL and do
-not require S3-compatible storage. Memory-backed Session Resources do require
-`MANGO_SANDBOX=docker`: the API snapshots each attachment, and the
-worker bind-mounts it beneath `/mnt/memory`, then synchronizes tool changes back
-to PostgreSQL. API and worker processes must select the same provider.
-Self-hosted and current remote adapters reject Memory Store attachment while
-the standalone Memory API remains available.
+Memory API contents and immutable Versions live in PostgreSQL and do not
+require S3-compatible storage. An attached Store is one OpenSandbox-managed
+volume mounted publicly as read-only or read-write and privately for trusted
+Mango refresh/writeback. OpenSandbox supplies mount isolation; PostgreSQL
+remains canonical.
 
-### Docker worker configuration
+### OpenSandbox worker configuration
 
-Docker is the default for native processes and the local Compose stack. An
-unreachable daemon fails worker startup; `MANGO_SANDBOX=local` is rejected and
-the former unsafe-local override has no effect. API startup reads the Docker
-capability declaration without needing daemon access. A healthy API alone does
-not establish worker or sandbox readiness.
+Every worker requires `OPEN_SANDBOX_DOMAIN`; production normally also requires
+`OPEN_SANDBOX_API_KEY` and `OPEN_SANDBOX_USE_SERVER_PROXY=true`. Select the
+reviewed sandbox image with `OPEN_SANDBOX_IMAGE`. The API does not need
+OpenSandbox credentials because capability admission is a fixed property of
+this Mango build. A healthy API alone does not establish worker or sandbox
+readiness.
 
-The Compose worker is a trusted daemon controller. It runs as root and mounts
-`/var/run/docker.sock`, or the host Unix socket selected by `MANGO_DOCKER_SOCKET`.
-This grants substantial host authority; do not expose the socket to untrusted
-users. The API has no socket. Session containers receive their own input,
-output, Skill, and Memory mounts, never the daemon socket or model credentials.
-They share the host kernel and are not a hardened hostile multi-tenant boundary.
+The local Compose bundle starts a pinned OpenSandbox service on loopback. Only
+that service mounts the Unix socket selected by `OPEN_SANDBOX_DOCKER_SOCKET`; Mango API
+and worker containers remain non-root and have no Docker socket, host resource
+bind, or daemon credential. Session containers never receive model
+credentials. The Docker runtime shares the host kernel and is not a hardened
+hostile multi-tenant boundary.
 
-For a native Linux worker using a rootful Docker daemon, use the same trusted
-root-worker deployment model. Docker socket group membership alone does not
-grant host filesystem access to container-created bind-mount files. Mango does
-not remap image users or repair arbitrary ownership and permissions: an
-unprivileged native worker can fail to synchronize Memory or clean up nested
-outputs. Docker Desktop's host-file ownership mapping can hide this limitation.
-The API does not need elevated privileges.
+OpenSandbox persists its local control-plane database in the
+`opensandbox-data` volume. Its Session containers and managed volumes survive a
+Mango worker restart and are reattached through persisted bindings. Session
+deletion releases both. Stop and delete Sessions through Mango before
+discarding OpenSandbox state; removing only Mango's database can orphan
+external resources.
 
-`MANGO_SANDBOX_RESOURCE_DIR` defaults to `$HOME/mango-resources` in Compose.
-Its bind source and target are the same absolute path so the worker and host
-daemon resolve generated mount paths identically. A custom value must be an
-absolute directory visible to the daemon; Docker Desktop must share that path.
-Mounting only the socket is insufficient. The default image is
-`python:3.12-alpine`; choose `MANGO_SANDBOX_IMAGE` when other runtimes or package
-managers are required. Alpine does not include `apt-get`.
-
-Restart retains the Session container and reattaches through its persisted
-binding. Missing containers fail explicitly instead of creating empty
-replacement workspaces. Session deletion releases its container and staged
-resources. `make local-down` stops Compose services but deliberately retains
-Session containers and their host directory; it is not Session deletion.
-Delete Sessions through Mango before discarding deployment data. Even
-`VOLUMES=1` does not remove sibling Session containers or host bind directories.
-
-An older local-backed Session cannot resume on this Docker worker. Finish and
-delete those Sessions with the old worker before upgrading; the new binary
-neither migrates their workspaces nor supports a local compatibility executor.
-No development database or existing workspace is automatically erased.
+Production moves the same Mango integration to a private authenticated
+OpenSandbox service using Kubernetes BatchSandbox and a reviewed Kata
+RuntimeClass. Mango does not need a Docker socket or Kubernetes credentials in
+that topology.
 
 The Vault and Webhook APIs are disabled unless `MANGO_VAULT_KEYRING_FILE` points to
 an operator-mounted JSON keyring. A configured but invalid keyring fails API
@@ -226,11 +205,16 @@ A supported Docker or Kubernetes bundle requires:
 1. explicit, versioned schema migration;
 2. dependency-aware API and worker readiness;
 3. graceful API shutdown and worker draining;
-4. repeatable live conformance for remote sandbox adapters;
+4. repeatable live conformance for the OpenSandbox Docker and Kubernetes/Kata profiles;
 5. real PostgreSQL, Temporal, NATS, S3-compatible storage, and sandbox
    integration tests in CI;
 6. distributed Files reconciliation and documented temporary-disk sizing;
 7. versioned images with upgrade and rollback documentation.
+
+For the selected OpenSandbox/Kata sandbox path, promotion additionally requires
+the committed live qualification against the exact pinned Kubernetes, Kata,
+OpenSandbox server/controller, `execd`, egress, and sandbox-image matrix. A
+successful OpenSandbox Docker test does not satisfy the isolation gate.
 
 Kubernetes packaging will use separate API and worker Deployments from the same
 image. Stateful services remain external by default. An Operator is not part

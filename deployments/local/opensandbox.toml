@@ -1,0 +1,48 @@
+# OpenSandbox control plane for Mango's local and CI Docker execution plane.
+# Component tags and multi-architecture digests are pinned to the server 0.2.2
+# release BOM. Upgrade them together and rerun the live conformance suite.
+
+[server]
+host = "0.0.0.0"
+port = 8090
+max_sandbox_timeout_seconds = 86400
+
+[log]
+level = "INFO"
+
+[runtime]
+type = "docker"
+execd_image = "opensandbox/execd:v1.0.21@sha256:1dc98c7de10b9a73450ac75aa0f200ad7972f2c40f5225f6a8998e166b45d6dd"
+
+[storage]
+# Mango does not grant callers arbitrary host-path access. Persistent resource
+# synchronization remains a Mango responsibility.
+allowed_host_paths = []
+
+[store]
+type = "sqlite"
+path = "/var/lib/opensandbox/opensandbox.db"
+
+[docker]
+network_mode = "bridge"
+host_ip = "host.docker.internal"
+# Stay below the usual Linux/macOS ephemeral client-port range. The upstream
+# 40000-60000 default can race unrelated outbound connections on developer
+# machines and make an otherwise valid sandbox create fail at Docker start.
+port_range_min = 20000
+port_range_max = 29999
+drop_capabilities = ["AUDIT_WRITE", "MKNOD", "NET_ADMIN", "NET_RAW", "SYS_ADMIN", "SYS_MODULE", "SYS_PTRACE", "SYS_TIME", "SYS_TTY_CONFIG"]
+no_new_privileges = true
+pids_limit = 4096
+
+[ingress]
+mode = "direct"
+
+[egress]
+image = "opensandbox/egress:v1.1.5@sha256:5788021a4a96620dbe84a1c62baca8d403328d021b81186c6869067d0f98137b"
+mode = "dns+nft"
+disable_ipv6 = true
+
+[renew_intent]
+enabled = false
+min_interval_seconds = 60

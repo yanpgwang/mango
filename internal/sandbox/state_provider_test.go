@@ -9,7 +9,7 @@ import (
 
 // stateProvider is an in-memory protocol double for SessionManager tests. It
 // models resource identity and loss but never creates directories or processes.
-// Real filesystem, command, and daemon recovery contracts run against Docker.
+// Real filesystem, command, and recovery contracts run against OpenSandbox.
 type stateProvider struct {
 	mu    sync.Mutex
 	boxes map[string]*stateSandbox

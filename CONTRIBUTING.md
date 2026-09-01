@@ -32,7 +32,7 @@ Requirements:
 - [golangci-lint](https://golangci-lint.run/docs/welcome/install/local/)
   2.12.x for local lint checks;
 - Node.js 22 or newer for the documentation site and TypeScript SDK;
-- Docker with Compose for service-conformance and Docker sandbox tests.
+- Docker with Compose for service conformance and the local OpenSandbox runtime.
 
 Run the core checks:
 
@@ -69,8 +69,8 @@ make local-config
 make image-smoke
 ```
 
-Run the same PostgreSQL, Temporal, NATS, MinIO, and Docker conformance suite as
-CI:
+Run the same PostgreSQL, Temporal, NATS, MinIO, and OpenSandbox-on-Docker
+conformance suite as CI:
 
 ```bash
 docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
@@ -82,39 +82,34 @@ runs its two layers in parallel:
 
 ```bash
 make test-service-core
-make test-sandbox-docker
+make test-sandbox-opensandbox
 ```
 
 `test-service-core` owns tests that require PostgreSQL, Temporal, NATS, MinIO,
-or a Docker-backed runtime. `test-sandbox-docker` owns the Docker provider,
-filesystem, simulated remote-service, and fixture contracts. Keep new
-service-only packages in `SERVICE_CORE_PACKAGES`; keep sandbox infrastructure
-under the sandbox target. Each layer has an explicit Go timeout below its CI job
-timeout so test cleanup and failure diagnostics still have time to run.
+or an OpenSandbox runtime. `test-sandbox-opensandbox` owns the real sandbox and
+agent-tool contract. Keep new service-only packages in
+`SERVICE_CORE_PACKAGES`; keep sandbox infrastructure under the sandbox target.
+Each layer has an explicit Go timeout below its CI job timeout so test cleanup
+and failure diagnostics still have time to run.
 
-On native Linux, use `make test-service SERVICE_TEST_EXEC='sudo -n -E --'`
-with a trusted local checkout and passwordless sudo. This runs only the test
-binaries as root, matching the Compose worker; Go compilation and caches keep
-your user identity. Container-created bind-mount files retain their numeric
-ownership, so an unprivileged runner cannot reliably remove nested outputs.
-CI uses this mode for service tests while unit tests remain unprivileged.
-Docker Desktop normally maps bind-mount ownership to the desktop user, so the
-plain command above works there. Cleanup errors remain test failures.
+The Go test processes run as the invoking user on Linux and Docker Desktop.
+Only the OpenSandbox service receives the Docker socket; sandbox files and
+managed volumes are created through its API, so Mango tests do not require
+root or a privileged test-binary wrapper. Cleanup errors remain test failures.
 
 Default tests must stay offline and deterministic. Service tests must use
-isolated database schemas and clean up their workflows, File objects, and
-sandboxes. `make test-service` requires a reachable Docker daemon and sets
-`MANGO_TEST_DOCKER=1`; required Docker checks must fail rather than skip when
-the daemon becomes unavailable. The default-runtime test provisions the
-binary's actual default image, verifies Python execution, reattaches its
-workspace, and checks teardown independently of any cookbook application.
-There is no host-process sandbox implementation or fallback. `make test` and
-`make test-race` disable Docker checks; direct `go test` requires the explicit
-flag above to enable them. Pure lifecycle/protocol tests use non-executing
-doubles. Built-in tool tests and simulated remote-service shell scripts run in
-real Docker containers; the latter still simulate the remote provider API and
-are not evidence of a live third-party integration. Test helper containers and
-their temporary mounts are cleaned up even after assertion failures.
+isolated database schemas and clean up their workflows, File objects,
+sandboxes, and OpenSandbox-managed volumes. `make test-service` requires a
+reachable Docker daemon only because it starts the pinned local OpenSandbox
+service. Mango tests never call the Docker API directly. The runtime test
+provisions the actual default image through OpenSandbox, verifies Python
+execution, reattaches its workspace, and checks teardown independently of any
+cookbook application. There is no host-process or direct-Docker fallback.
+`make test` and `make test-race` disable live OpenSandbox checks; direct
+`go test` requires `MANGO_TEST_OPENSANDBOX=1` plus the documented OpenSandbox
+connection variables. Integration packages are serialized against the one
+local server because its Docker host-port allocator is not safe under parallel
+sandbox creation.
 
 A real model endpoint is a separate, explicitly enabled test tier
 because it uses a credentialed network call and may incur cost:
@@ -204,19 +199,19 @@ rollout-only details, and adapt semantics to self-hosting. Prefer standard HTTP,
 simple general data shapes, and existing Mango primitives before introducing a
 new header, wrapper, state, field, or abstraction.
 
-## Sandbox backend changes
+## Sandbox runtime changes
 
-Before adding a substantial sandbox backend, describe the target use case,
-trust boundary, host dependencies, network defaults, resource controls, session
-persistence, and restart behavior in the pull request, a design document, or an
-Issue.
+Before changing the OpenSandbox integration, describe the target use case,
+trust boundary, host dependencies, network defaults, resource controls,
+Session persistence, and restart behavior in the pull request, a design
+document, or an Issue.
 
-Backend changes should preserve the provider contract and session-scoped
-ownership described in the [sandbox backend guide](docs/sandboxes.md). Keep
-external runtimes optional, keep default tests offline, add shared lifecycle
-and tool-contract coverage, and label experimental integrations honestly.
-Command execution alone is not evidence that a backend is production-ready or
-safe for hostile multi-tenant workloads.
+Runtime changes should preserve the Mango lifecycle contract and Session-scoped
+ownership described in the [sandbox guide](docs/sandboxes.md). Keep default
+tests offline, add real OpenSandbox lifecycle and tool-contract coverage, and
+label production-candidate profiles honestly. Command execution alone is not
+evidence that a runtime is production-ready or safe for hostile multi-tenant
+workloads.
 
 ## Architecture expectations
 

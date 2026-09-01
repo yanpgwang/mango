@@ -19,8 +19,8 @@ DELETE /v1/sessions/{session_id}/resources/{resource_id}
 
 A File attachment creates an independent downloadable copy scoped to the
 Session. An explicit path is normalized beneath `/mnt/session/uploads`.
-Docker exposes that path read-only. E2B, CubeSandbox, OpenSandbox, and Daytona
-materialize a writable sandbox-local copy as a current backend limitation;
+OpenSandbox materializes a permission-hardened sandbox-local copy as a current
+backend limitation;
 changing it does not change the S3-backed source or downloadable Session File.
 Write a modified deliverable beneath `/mnt/session/outputs` when output
 publication is available.
@@ -89,14 +89,9 @@ through the normal crash-recoverable File lifecycle.
 
 ## Availability
 
-File and Git repository mounts currently require a cloud Environment backed by
-Docker, E2B, CubeSandbox, OpenSandbox, or Daytona. The pinned E2B/Cube-compatible Go client
-uses whole-value file methods, so those two adapters buffer each File Resource
-in worker memory during materialization and retain provider-default file modes;
-their provider-side copy is also writable. Memory mounts require Docker.
+File, Git, and Memory mounts require a cloud Environment using OpenSandbox.
 GitHub repository resources and update-time token rotation are not Mango API
-variants. Remote repository restoration requires a POSIX `tar` executable in
-the sandbox image; the Docker default image and supported provider images
-satisfy this contract.
+variants. Repository restoration requires a POSIX `tar` executable in the
+sandbox image; the local default image satisfies this contract.
 
 See [Files](files.md) and [Memory](memory.md).
