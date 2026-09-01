@@ -20,12 +20,12 @@ import (
 func TestOpenSandboxLiveConformance(t *testing.T) {
 	requireLive(t, "MANGO_LIVE_OPENSANDBOX")
 	factory := newLiveOpenSandboxProvider
-	runLiveConformance(t, factory)
-	runLiveFileResourceConformance(t, factory)
-	runLiveSessionOutputConformance(t, factory)
-	runLiveSkillBundleConformance(t, factory)
-	runLiveGitRepositoryConformance(t, factory)
-	runLiveMemoryStoreConformance(t, factory)
+	t.Run("lifecycle", func(t *testing.T) { runLiveConformance(t, factory) })
+	t.Run("file-resources", func(t *testing.T) { runLiveFileResourceConformance(t, factory) })
+	t.Run("session-outputs", func(t *testing.T) { runLiveSessionOutputConformance(t, factory) })
+	t.Run("skill-bundles", func(t *testing.T) { runLiveSkillBundleConformance(t, factory) })
+	t.Run("git-repositories", func(t *testing.T) { runLiveGitRepositoryConformance(t, factory) })
+	t.Run("memory-stores", func(t *testing.T) { runLiveMemoryStoreConformance(t, factory) })
 }
 
 // TestOpenSandboxKataLiveQualification verifies the provider and egress parts
@@ -44,11 +44,11 @@ func TestOpenSandboxKataLiveQualification(t *testing.T) {
 	}
 	// The ordinary lifecycle and resource suites remain part of qualification;
 	// Kata is an isolation implementation, not a replacement contract.
-	runLiveConformance(t, newLiveOpenSandboxProvider)
-	runLiveFileResourceConformance(t, newLiveOpenSandboxProvider)
-	runLiveSessionOutputConformance(t, newLiveOpenSandboxProvider)
-	runLiveSkillBundleConformance(t, newLiveOpenSandboxProvider)
-	runLiveGitRepositoryConformance(t, newLiveOpenSandboxProvider)
+	t.Run("lifecycle", func(t *testing.T) { runLiveConformance(t, newLiveOpenSandboxProvider) })
+	t.Run("file-resources", func(t *testing.T) { runLiveFileResourceConformance(t, newLiveOpenSandboxProvider) })
+	t.Run("session-outputs", func(t *testing.T) { runLiveSessionOutputConformance(t, newLiveOpenSandboxProvider) })
+	t.Run("skill-bundles", func(t *testing.T) { runLiveSkillBundleConformance(t, newLiveOpenSandboxProvider) })
+	t.Run("git-repositories", func(t *testing.T) { runLiveGitRepositoryConformance(t, newLiveOpenSandboxProvider) })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()

@@ -433,6 +433,27 @@ type forwardingCountingLease struct {
 	spec  sandbox.Spec
 }
 
+type successfulCommandSandbox struct{}
+
+func (successfulCommandSandbox) Exec(
+	context.Context,
+	sandbox.Command,
+) (*sandbox.Result, error) {
+	return &sandbox.Result{Stdout: []byte("ok")}, nil
+}
+
+func (successfulCommandSandbox) ReadFile(context.Context, string) ([]byte, error) {
+	return nil, errors.New("unexpected file read")
+}
+
+func (successfulCommandSandbox) WriteFile(context.Context, string, []byte) error {
+	return errors.New("unexpected file write")
+}
+
+func (successfulCommandSandbox) Root() string { return "/workspace" }
+
+func (successfulCommandSandbox) Destroy(context.Context) error { return nil }
+
 func (l *forwardingCountingLease) Acquire(
 	ctx context.Context,
 	sessionID string,
@@ -725,11 +746,7 @@ func TestWorkflowTurn_ToolResultWriteRetryDoesNotReexecute(t *testing.T) {
 	ids := domain.NewRandomIDGen()
 	source := storeSource{store: store}
 	journal := &loseFirstCompletionAckJournal{JournalStore: source}
-	manager := sandbox.NewSessionManager(sandboxtest.OpenSandboxProvider(t), store)
-	lease := &forwardingCountingLease{inner: manager}
-	t.Cleanup(func() {
-		_ = manager.Release(context.Background(), sessionID)
-	})
+	lease := &forwardingCountingLease{inner: &fixedSandboxLease{box: successfulCommandSandbox{}}}
 	modelClient := model.NewFake()
 	activities := NewActivities(modelClient, source, journal, lease, ids)
 

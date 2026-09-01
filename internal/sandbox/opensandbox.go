@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	OpenSandboxProviderName = "opensandbox"
-	defaultOpenSandboxImage = "python:3.12-slim"
-	openSandboxAgentUID     = int32(1000)
-	openSandboxAgentGID     = int32(1000)
-	openSandboxAgentCapture = "/tmp/mango-command-output"
+	OpenSandboxProviderName        = "opensandbox"
+	defaultOpenSandboxImage        = "python:3.12-slim"
+	defaultOpenSandboxReadyTimeout = 2 * time.Minute
+	openSandboxAgentUID            = int32(1000)
+	openSandboxAgentGID            = int32(1000)
+	openSandboxAgentCapture        = "/tmp/mango-command-output"
 )
 
 type OpenSandboxConfig struct {
@@ -34,6 +35,9 @@ type OpenSandboxConfig struct {
 	Image      string
 	UseProxy   bool
 	HTTPClient *http.Client
+	// ReadyTimeout bounds image pull, container startup, and execd health checks.
+	// Zero uses a cold-start-safe default.
+	ReadyTimeout time.Duration
 }
 
 type openSandboxResource struct {
@@ -82,6 +86,13 @@ func NewOpenSandboxProvider(cfg OpenSandboxConfig) (Provider, error) {
 	if image == "" {
 		image = defaultOpenSandboxImage
 	}
+	readyTimeout := cfg.ReadyTimeout
+	if readyTimeout == 0 {
+		readyTimeout = defaultOpenSandboxReadyTimeout
+	}
+	if readyTimeout < 0 {
+		return nil, errors.New("sandbox: OpenSandbox ready timeout must be positive")
+	}
 	retry := opensandbox.DefaultRetryConfig()
 	connection := opensandbox.ConnectionConfig{
 		Domain:         baseURL,
@@ -94,9 +105,10 @@ func NewOpenSandboxProvider(cfg OpenSandboxConfig) (Provider, error) {
 	}
 	return &openSandboxProvider{
 		service: &openSandboxSDKService{
-			config:  connection,
-			manager: opensandbox.NewSandboxManager(connection),
-			image:   image,
+			config:       connection,
+			manager:      opensandbox.NewSandboxManager(connection),
+			image:        image,
+			readyTimeout: readyTimeout,
 		},
 		root: remoteDefaultRoot,
 	}, nil
@@ -715,9 +727,10 @@ func (s *openSandboxBox) Destroy(ctx context.Context) error {
 var _ SkillBundleSandbox = (*openSandboxBox)(nil)
 
 type openSandboxSDKService struct {
-	config  opensandbox.ConnectionConfig
-	manager *opensandbox.SandboxManager
-	image   string
+	config       opensandbox.ConnectionConfig
+	manager      *opensandbox.SandboxManager
+	image        string
+	readyTimeout time.Duration
 }
 
 func (s *openSandboxSDKService) List(
@@ -806,6 +819,7 @@ func (s *openSandboxSDKService) Create(
 			ManualCleanup:  true,
 			NetworkPolicy:  policy,
 			Volumes:        volumes,
+			ReadyTimeout:   s.readyTimeout,
 		},
 	)
 	if err != nil {

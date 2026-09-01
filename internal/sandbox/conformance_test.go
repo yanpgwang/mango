@@ -15,8 +15,8 @@ func TestOpenSandboxProviderConformance(t *testing.T) {
 		},
 		Spec: sandbox.Spec{Timeout: 30 * time.Second},
 	}
-	sandboxtest.Run(t, cfg)
-	sandboxtest.RunFileResources(t, cfg)
-	sandboxtest.RunGitRepositories(t, cfg)
-	sandboxtest.RunSessionOutputs(t, cfg)
+	t.Run("lifecycle", func(t *testing.T) { sandboxtest.Run(t, cfg) })
+	t.Run("file-resources", func(t *testing.T) { sandboxtest.RunFileResources(t, cfg) })
+	t.Run("git-repositories", func(t *testing.T) { sandboxtest.RunGitRepositories(t, cfg) })
+	t.Run("session-outputs", func(t *testing.T) { sandboxtest.RunSessionOutputs(t, cfg) })
 }

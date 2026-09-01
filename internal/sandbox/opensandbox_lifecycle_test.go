@@ -17,6 +17,39 @@ type reconciliationOpenSandboxService struct {
 	deleteErr map[string]error
 }
 
+func TestNewOpenSandboxProviderReadyTimeout(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		set  time.Duration
+		want time.Duration
+	}{
+		{name: "cold-start-safe default", want: defaultOpenSandboxReadyTimeout},
+		{name: "explicit override", set: 45 * time.Second, want: 45 * time.Second},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			provider, err := NewOpenSandboxProvider(OpenSandboxConfig{
+				BaseURL: "http://127.0.0.1:8090", ReadyTimeout: test.set,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := provider.(*openSandboxProvider).service.(*openSandboxSDKService)
+			if service.readyTimeout != test.want {
+				t.Fatalf("ready timeout = %s, want %s", service.readyTimeout, test.want)
+			}
+		})
+	}
+}
+
+func TestNewOpenSandboxProviderRejectsNegativeReadyTimeout(t *testing.T) {
+	provider, err := NewOpenSandboxProvider(OpenSandboxConfig{
+		BaseURL: "http://127.0.0.1:8090", ReadyTimeout: -time.Second,
+	})
+	if provider != nil || err == nil {
+		t.Fatalf("provider = %v, error = %v; want invalid ready timeout", provider, err)
+	}
+}
+
 func (s *reconciliationOpenSandboxService) List(
 	context.Context,
 	map[string]string,
