@@ -85,6 +85,45 @@ pull-request requirements.
   and service tests. Passing a third-party SDK test is optional research
   evidence, never the definition of success.
 
+## Paired API and SDK design
+
+- Treat CMA's public API and public SDK source as paired clean-room design
+  references. The API expresses its wire contract and lifecycle; the SDK shows
+  how that contract is mapped into language-idiomatic resources, methods,
+  parameters, types, streams, and helpers. Study both sides for an analogous
+  Mango workflow instead of reviewing either one in isolation.
+- Preserve useful mapping relationships, not just isolated shapes. When Mango
+  adopts or adapts an API concept, map it coherently into the Mango SDK; when an
+  SDK pattern reveals an implicit lifecycle or error requirement, verify that
+  Mango's API and runtime express it. Trace the concept from HTTP and OpenAPI
+  through the generated client and its higher-level helpers.
+- Where Mango and CMA retain the same resource and lifecycle semantics, prefer
+  the same sound resource hierarchy, operation grouping, request/response and
+  event types, pagination and streaming conventions, and division of helper
+  responsibilities. A limitation or convenience of Mango's current generator
+  is not a product reason for gratuitous SDK divergence.
+- Mango's API and SDK remain one independently owned pair. The Mango SDK must
+  faithfully encode, decode, and compose Mango's current public contract, and
+  API or SDK changes should update OpenAPI, generators, documentation, and
+  tests together as applicable. Exact CMA fields and syntax are not goals when
+  Mango's self-hosted semantics require a different design.
+- Use official SDK source for research only. Do not copy its implementation,
+  execute it as a Mango client, add it as a dependency, call CMA, or require
+  hosted credentials in development, CI, or production. Do not inherit hosted
+  authentication, beta headers, rollout constraints, or translation layers
+  without an independent Mango requirement.
+- Validate the Mango API-to-SDK mapping with independently authored raw HTTP
+  contract tests and Mango SDK conformance tests. Cover request encoding,
+  response and error decoding, pagination, event streaming, and helper
+  lifecycle semantics without deriving every expectation from the generator
+  under test. Use comparison with the paired external references to find gaps,
+  not to claim official-client interoperability or complete CMA compatibility.
+- Record the reference versions, adopted mappings, intentional differences,
+  and reasons in provenance or the relevant design document. Retain separate
+  Mango persistence, workflow, recovery, and service tests for durability and
+  side-effect invariants; successful SDK calls do not establish them. Keep
+  cookbook applications separate from contract and system-test harnesses.
+
 ## Product-driven development
 
 - Mango's documented HTTP API and observable runtime behavior define the
