@@ -1,5 +1,5 @@
 # OpenSandbox control plane for Mango's local and CI Docker execution plane.
-# Component tags and multi-architecture digests are pinned to the server 0.2.2
+# Component tags and multi-architecture digests are pinned to the server 0.2.3
 # release BOM. Upgrade them together and rerun the live conformance suite.
 
 [server]
@@ -12,7 +12,7 @@ level = "INFO"
 
 [runtime]
 type = "docker"
-execd_image = "opensandbox/execd:v1.0.21@sha256:1dc98c7de10b9a73450ac75aa0f200ad7972f2c40f5225f6a8998e166b45d6dd"
+execd_image = "opensandbox/execd:v1.0.22@sha256:0d8f44cf4194732719aa79999d4b120c98bdab02bc61e9ad13f75f83af4c2684"
 
 [storage]
 # Mango does not grant callers arbitrary host-path access. Persistent resource
@@ -39,7 +39,7 @@ pids_limit = 4096
 mode = "direct"
 
 [egress]
-image = "opensandbox/egress:v1.1.5@sha256:5788021a4a96620dbe84a1c62baca8d403328d021b81186c6869067d0f98137b"
+image = "opensandbox/egress:v1.1.7@sha256:db7345d567b0970f384b8e3fa7a93a71b7f43d4b16bb2009de34096e9a87b3b5"
 mode = "dns+nft"
 disable_ipv6 = true
 

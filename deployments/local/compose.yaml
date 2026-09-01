@@ -109,7 +109,7 @@ services:
       retries: 20
 
   opensandbox:
-    image: opensandbox/server:v0.2.2@sha256:8f8762af7565ed9c6f9dbcf009dd56727aa1fef8ce58a17f2b007b88cfe542bb
+    image: opensandbox/server:v0.2.3@sha256:ae8dfbb277f40a39ff01ef35e5e1c10675acfe0fa9db15259b8f323e5efab778
     container_name: mango-opensandbox
     restart: unless-stopped
     environment:

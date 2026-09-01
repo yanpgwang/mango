@@ -521,8 +521,14 @@ support, so they run the same credential-free and opt-in live conformance suites
 - Reviewed the OpenSandbox server source, Docker and Kubernetes runtime
   configuration, Go SDK, volume model, network-policy implementation, and
   BatchSandbox integration on 2026-09-01. The local profile pins OpenSandbox
-  server `v0.2.2`, `execd` `v1.0.21`, and egress `v1.1.5` by multi-architecture
+  server `v0.2.3`, `execd` `v1.0.22`, and egress `v1.1.7` by multi-architecture
   digest; Mango pins Go SDK `v1.0.5` in `go.mod`.
+- Mango initially qualified server `v0.2.2`, then CI reproduced its gradual
+  server-proxy connection-pool exhaustion after canceled responses. The
+  [server `v0.2.3` release](https://github.com/opensandbox-group/OpenSandbox/releases/tag/server/v0.2.3)
+  explicitly fixes that leak, so Mango adopted the complete `v0.2.3` helper
+  image bill of materials instead of adding application retries around an
+  unhealthy control-plane proxy.
 - Adopted: the official Go SDK for lifecycle, command/file transport, managed
   PVC or Docker named volumes, server proxying, and network-policy updates.
   Docker and Kubernetes are now OpenSandbox runtimes, not Mango providers. The
@@ -568,6 +574,6 @@ support, so they run the same credential-free and opt-in live conformance suites
   the pinned OpenSandbox server and run all agent, lifecycle, Files, Git,
   Outputs, Skills, Memory, reattachment, exact-output, and cleanup checks
   through its Docker runtime. Integration packages are serialized around one
-  server because OpenSandbox `v0.2.2` can race Docker host-port allocation under
-  concurrent sandbox creation. The separate Kubernetes/Kata gate remains
+  server to keep local resource use bounded and make lifecycle cleanup ordering
+  observable. The separate Kubernetes/Kata gate remains
   required for production isolation and operational claims.

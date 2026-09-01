@@ -58,7 +58,7 @@ through the cluster's secret-management path and mount the rendered server
 configuration from a Kubernetes Secret rather than a ConfigMap; never commit
 the rendered file.
 
-OpenSandbox server `v0.2.2` synthesizes its main and egress containers after
+OpenSandbox server `v0.2.3` synthesizes its main and egress containers after
 loading the BatchSandbox template; the template can set Pod-level fields but
 cannot enforce every generated container security field. The target namespace
 therefore needs a reviewed admission policy that makes

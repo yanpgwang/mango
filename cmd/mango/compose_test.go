@@ -53,7 +53,7 @@ func TestLocalComposeOpenSandboxBoundary(t *testing.T) {
 		t.Fatal("worker must use the OpenSandbox server proxy")
 	}
 	opensandbox := config.Services["opensandbox"]
-	if !strings.Contains(opensandbox.Image, "opensandbox/server:v0.2.2@sha256:") {
+	if !strings.Contains(opensandbox.Image, "opensandbox/server:v0.2.3@sha256:") {
 		t.Fatalf("OpenSandbox image is not version-and-digest pinned: %q", opensandbox.Image)
 	}
 	if len(opensandbox.Ports) != 1 || opensandbox.Ports[0] != "127.0.0.1:8090:8090" {
