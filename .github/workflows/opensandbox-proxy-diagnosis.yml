@@ -1,0 +1,50 @@
+name: OpenSandbox proxy diagnosis
+
+on:
+  push:
+    branches: [codex/opensandbox-upstream-diagnosis]
+
+permissions:
+  contents: read
+
+jobs:
+  service-core:
+    name: ${{ matrix.mode }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [stock, no-keepalive]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Start dependencies
+        run: docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio opensandbox
+      - name: Disable sandbox proxy keep-alive
+        if: matrix.mode == 'no-keepalive'
+        run: |
+          docker exec mango-opensandbox sh -ec 'grep -Fq "httpx.AsyncClient(timeout=180.0)" /app/opensandbox_server/main.py && sed -i "s|httpx.AsyncClient(timeout=180.0)|httpx.AsyncClient(timeout=180.0, limits=httpx.Limits(max_keepalive_connections=0))|" /app/opensandbox_server/main.py'
+          docker restart mango-opensandbox
+          for attempt in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8090/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Run reproducer
+        run: make test-service-core
+      - name: Show OpenSandbox and Docker state
+        if: always()
+        run: |
+          docker compose -f deployments/local/compose.yaml logs --no-color opensandbox
+          docker ps --all --no-trunc
+      - name: Stop dependencies
+        if: always()
+        run: docker compose -f deployments/local/compose.yaml down --volumes
