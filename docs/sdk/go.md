@@ -44,8 +44,8 @@ to recover durable events after disconnects.
 
 `NewWorkPoller` claims and acknowledges Work for one `self_hosted` Environment.
 It is a control-plane iterator, not a sandbox or tool runner. Advancing or
-closing it never stops Work. The later composed Environment worker must
-heartbeat the lease and perform final Stop while it still owns that lease.
+closing it never stops Work. `EnvironmentWorker` composes it with the Session
+runner, lease heartbeat, and final Stop.
 
 ```go
 poller := mango.NewWorkPoller(ctx, client, mango.WorkPollerOptions{
@@ -68,6 +68,40 @@ when the queue is empty. A long-running poller defaults to the API's 999 ms
 long-poll and exits normally when its context is cancelled. If Ack has an
 ambiguous failure, the poller exits without calling Stop; Mango's Work TTL then
 makes the activation reclaimable.
+
+## Composed Environment worker
+
+Use `NewEnvironmentWorker` for the complete provider-neutral Work lifecycle:
+
+```go
+worker := mango.NewEnvironmentWorker(client, mango.EnvironmentWorkerOptions{
+    EnvironmentID: environmentID,
+    Tools:         tools,
+})
+if err := worker.Run(ctx); err != nil {
+    return err
+}
+```
+
+The trusted supervisor client is used only for Poll and Ack. Before executing
+a tool, the worker decodes the acknowledged Work secret, switches to its scoped
+Session token, and obtains a successful conditional heartbeat. That token then
+authorizes heartbeats, Session events, and final Stop. Missing or malformed
+secrets fail closed; there is no Workspace-key fallback.
+
+For a launcher that Polls and Acks outside a Session sandbox, call
+`HandleItem` inside the sandbox with `EnvironmentWorkerHandleItemOptions`.
+Fields may be passed explicitly or through `MANGO_WORK_ID`,
+`MANGO_ENVIRONMENT_ID`, `MANGO_SESSION_ID`, and `MANGO_WORK_SECRET`. The item
+process needs the Mango base URL but must not receive the Workspace key. Tools
+that spawn subprocesses must pass an allowlisted environment or scrub the Work
+secret and other credentials; the library does not mutate process-global
+environment variables owned by its caller.
+
+The worker does not create compute or prepare Files, Git repositories, Skills,
+or Memory. Those are launcher responsibilities. On lease loss it cancels the
+runner, prevents later result submission, returns
+`ErrEnvironmentWorkLeaseLost`, and does not Stop a possibly newer owner's Work.
 
 ## Self-hosted Session tools
 
@@ -96,7 +130,8 @@ if err := runner.Err(); err != nil &&
 `sessionClient` should use the acknowledged Work item's `sessions_token`.
 The runner fails closed on approval-gated or unknown permission values, and
 returns `ErrSessionLeaseLost` when that credential loses authority. It does not
-heartbeat or Stop Work. Tools must honor cancellation and use the stable
+heartbeat or Stop Work; use `EnvironmentWorker` for that composition. Tools
+must honor cancellation and use the stable
 `SessionToolCall.ToolUseID` to make external side effects idempotent.
 
 ## Errors and retry safety

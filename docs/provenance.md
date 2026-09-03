@@ -540,6 +540,44 @@ support, so they run the same credential-free and opt-in live conformance suites
   imported by the test suite, and no hosted credential or sandbox provider is
   required.
 
+## Provider-neutral Environment worker composition
+
+- User/operator problem: a Work poller and a Session tool runner still leave
+  every launcher to implement the most safety-sensitive seam itself: scoped
+  credential handoff, first-heartbeat admission, continuous lease renewal,
+  cancellation after lost ownership, and final Work Stop. Divergent copies
+  would allow a provider choice to change Mango's recovery and security
+  semantics.
+- Reviewed Claude Managed Agents' public self-hosted worker documentation and
+  the `anthropic-sdk-go` v1.69.0 `EnvironmentWorker` at commit
+  `6298207eac7ff589e7fcc8a78f6c034ab09de47f` on 2026-09-03. Mango adopts the
+  useful composition boundary: Poll/Ack remain supervisor operations; the
+  acknowledged item's token authorizes heartbeat, Session execution, and Stop;
+  heartbeat and the Session runner run concurrently; ordinary exit force-Stops
+  the item; known or presumed lease loss cancels execution and skips Stop.
+- Mango changes the security default and startup ordering for its self-hosted
+  trust model. A missing or malformed `sessions_token` is fatal rather than a
+  reason to fall back to a Workspace credential. The first conditional
+  heartbeat must succeed before any tool runs. Its returned TTL bounds the
+  Session runner's ambiguous-result recovery, and repeated transient heartbeat
+  failures are bounded by the last known lease TTL rather than retried forever.
+  Heartbeat intervals account for Mango's one-second minimum TTL instead of
+  waiting until that shortest lease is already expiring.
+- `EnvironmentWorker.Run` provides the trusted, single-process composition.
+  `HandleItem` provides the narrow sandbox-side entry point for a launcher that
+  Polls and Acks elsewhere; it accepts only Work, Environment, and Session IDs
+  plus the opaque Work secret, including through `MANGO_*` variables. Neither
+  path creates compute, prepares File/Git/Skill/Memory inputs, closes tools, or
+  introduces a provider SDK. Environment-scoped Poll credentials remain a
+  future requirement before supervisors are described as untrusted or
+  multi-tenant.
+- Acceptance: HTTP-backed tests independently verify supervisor-versus-item
+  bearer separation, first heartbeat and forced Stop, serial Session tool
+  execution, cancellation with no result or Stop after `412` lease loss,
+  bounded failure when no heartbeat ever succeeds, strict secret/configuration
+  validation, and race-free operation. No hosted credential, provider, example,
+  API change, or persistence migration is involved.
+
 ## Docker-default OSS execution
 
 - User problem: the ordinary local deployment must run tools in a separate

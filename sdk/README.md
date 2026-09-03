@@ -1,7 +1,9 @@
 # Mango SDKs
 
-First-party clients for Mango's own HTTP API. They connect to your Mango
-server; they do not run an Agent loop or call a hosted agent service.
+First-party clients for Mango's own HTTP API. They connect to your Mango server
+and never call a hosted agent service. The Go package additionally provides
+optional, provider-neutral helpers for Mango's self-hosted Work and local tool
+loop; the Mango server still owns the Agent/model runtime and durable state.
 
 | Language | Source and local setup |
 | --- | --- |
@@ -72,6 +74,8 @@ exactly-once delivery or durable consumer storage. To reconnect without missing
 persisted events, open a stream, list history, merge both and deduplicate by
 event ID. Text previews are ephemeral. See [the event contract](../docs/api/events.md).
 
-These packages are API access layers. New worker credential scopes, billing,
-an Agent runner and a workflow DSL are not SDK features. Generation, builds and
-tests do not need a SaaS code-generation account.
+The generated clients remain API access layers. The Go `WorkPoller`,
+`SessionToolRunner`, and `EnvironmentWorker` are independently authored helpers
+over that same public contract; they do not select a sandbox, run the model, or
+define a workflow DSL. Generation, builds, tests, and worker helpers do not need
+a SaaS code-generation account or hosted agent credential.

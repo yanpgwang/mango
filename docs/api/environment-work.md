@@ -65,11 +65,17 @@ in memory when it returns the acknowledged item.
 The Work and Session event APIs provide the worker protocol. The Go SDK ships a
 provider-neutral `WorkPoller` for poll, Ack, drain, and reclaim, plus a
 single-Session `SessionToolRunner` for stream/history recovery, confirmation
-gates, local dispatch, and result submission. Neither helper chooses or creates
-a sandbox, heartbeats Work, or performs final Stop. Mango does not currently
-ship the composed Environment worker or external Skill activation. Applications
-implementing a worker still own workspace preparation and lease renewal until
-that composition lands. See the staged
+gates, local dispatch, and result submission. `EnvironmentWorker` composes both
+with conditional heartbeat, lease-loss cancellation, the scoped Work-secret
+handoff, and final forced Stop. `Run` owns Poll through Stop in one trusted
+process; `HandleItem` runs only an already-acknowledged item and can read its
+narrow identity from `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`,
+`MANGO_SESSION_ID`, and `MANGO_WORK_SECRET` inside a launcher-created sandbox.
+
+These helpers do not choose or create a sandbox and do not prepare File, Git,
+Skill, or Memory inputs. Mango does not currently ship external Skill
+activation. Applications implementing a launcher still own workspace
+preparation and sandbox lifecycle. See the staged
 [self-hosted worker design](../architecture/self-hosted-workers.md).
 
 Workers must honor `evaluated_permission` independently of execution location.
@@ -105,6 +111,9 @@ invalid when the Work stops, its lease expires, or it is reclaimed. An existing
 Session event stream rechecks that ownership once per second and closes after
 invalidation. A Workspace key retains full operator access and must stay in the
 trusted supervisor rather than an untrusted Session sandbox. Mango does not yet
-issue a narrower Environment-level polling key.
+issue a narrower Environment-level polling key. A sandbox runner necessarily
+receives its per-Work token, but tool subprocesses must not inherit that token
+or other launcher credentials; use an explicit allowlisted environment or
+scrub `MANGO_WORK_SECRET` before spawning them.
 
 See [capabilities and limits](../capabilities.md) for the current support boundary.

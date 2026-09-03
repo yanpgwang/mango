@@ -17,7 +17,8 @@ import (
 	"time"
 )
 
-// Config controls transport only. The SDK never executes or schedules agents.
+// Config controls HTTP transport. Agent execution helpers are configured
+// separately and never change the Client's transport settings.
 type Config struct {
 	BaseURL    string
 	APIKey     string
