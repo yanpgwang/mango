@@ -46,10 +46,13 @@ Stop returns `204 No Content`, and an empty Poll returns an empty JSON object.
 
 ## Skills and Session state
 
-The Work and Session event APIs provide the worker protocol; Mango does not
-currently ship an Environment worker runner or external Skill activation.
-Applications implementing a worker own tool execution, workspace preparation,
-and lease-loss cancellation.
+The Work and Session event APIs provide the worker protocol. The Go SDK ships a
+provider-neutral `WorkPoller` for poll, Ack, drain, and reclaim. It deliberately
+does not Stop claimed work, create a sandbox, or execute tools. Mango does not
+currently ship a complete Environment worker runner or external Skill
+activation. Applications implementing a worker still own tool execution,
+workspace preparation, heartbeat, Stop, and lease-loss cancellation. See the
+staged [self-hosted worker design](../architecture/self-hosted-workers.md).
 
 Workers must honor `evaluated_permission` independently of execution location.
 An `ask` call waits for a persisted allow confirmation; a deny must never run.

@@ -1,1 +1,1 @@
-{ "title": "Architecture", "pagesIndex": "../architecture", "pages": ["domain-model", "session-lifecycle", "runtime-and-sandbox", "storage-context-and-tools", "workspace-tenancy"] }
+{ "title": "Architecture", "pagesIndex": "../architecture", "pages": ["domain-model", "session-lifecycle", "runtime-and-sandbox", "self-hosted-workers", "storage-context-and-tools", "workspace-tenancy"] }
