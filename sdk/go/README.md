@@ -125,11 +125,17 @@ for poller.Next() {
 if err := poller.Err(); err != nil { panic(err) }
 ```
 
-The poller never calls Stop. A launched runner must heartbeat and stop its own
-Work item; an ambiguous Ack failure is left for TTL reclaim so an old poller
-cannot terminate a newer owner. The poller itself does not heartbeat or execute
-tools; a first-party `SessionToolRunner` and provider launchers are separate
-staged work.
+The poller never calls Stop. Poll returns a per-claim `work.Secret`; the server
+redacts it from Ack, while `Current` retains the Poll value for the launched
+runner. The URL-safe base64 JSON payload carries a `sessions_token` used by the
+runner after Ack for heartbeat, Stop, Session reads/streaming, tool-result
+events, and pinned immutable inputs. A reclaim rotates that credential; lease
+expiry or Stop also invalidates it and closes an old stream. Treat the payload
+and token as secrets: do not log or persist them.
+
+An ambiguous Ack failure is left for TTL reclaim. The poller itself does not
+heartbeat or execute tools; a first-party `SessionToolRunner` and provider
+launchers are separate staged work.
 
 ## Live events and recovery
 

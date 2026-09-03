@@ -8,6 +8,7 @@ import (
 
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
+	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 //go:embed openapi.yaml
@@ -60,6 +61,13 @@ type EventService interface {
 
 type EventSubscriber interface {
 	SubscribeContext(context.Context, string, map[string]bool) (<-chan app.Frame, func(), error)
+}
+
+// SessionScopeValidator rechecks a long-lived Session credential after the
+// initial HTTP authentication. Implementations must fail closed when the Work
+// lease stops, expires, or changes owner.
+type SessionScopeValidator interface {
+	ValidateSessionScope(context.Context, workspace.SessionScope) error
 }
 
 type ThreadEventSubscriber interface {

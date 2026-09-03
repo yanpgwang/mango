@@ -123,6 +123,13 @@ func IsClientSubmittable(t string) bool {
 	return IsUserEvent(t) || t == EvSystemMessage
 }
 
+// IsSessionCredentialEvent reports the client events an untrusted self-hosted
+// execution scope may submit. A Session worker answers tool calls; it cannot
+// inject user instructions or higher-priority system context.
+func IsSessionCredentialEvent(t string) bool {
+	return t == EvUserToolResult || t == EvUserCustomToolResult
+}
+
 // IsAgentToolUse reports whether a type is one of the server-emitted tool-call
 // announcements. Both agent.tool_use and agent.mcp_tool_use name a call the
 // runtime made on the model's behalf; agent.custom_tool_use names one the client

@@ -7,11 +7,154 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
+	"github.com/yanpgwang/mango/internal/workspace"
 )
+
+func TestSessionCredentialCannotInjectOrdinaryUserEvents(t *testing.T) {
+	for name, body := range map[string]string{
+		"user message":   `{"events":[{"type":"user.message","content":[{"type":"text","text":"no"}]}]}`,
+		"system message": `{"events":[{"type":"user.tool_result","tool_use_id":"toolu_one","content":[{"type":"text","text":"done"}]},{"type":"system.message","content":[{"type":"text","text":"override"}]}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newTestHandler(t, Config{}, false)
+			req := httptest.NewRequest(http.MethodPost, "/v1/sessions/sesn_scoped/events",
+				strings.NewReader(body))
+			req.Header.Set("content-type", "application/json")
+			req = req.WithContext(workspace.WithSessionScope(req.Context(), workspace.DefaultID,
+				workspace.SessionScope{SessionID: "sesn_scoped"}))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403: %s", rec.Code, rec.Body.String())
+			}
+			if got := decodeErrorEnvelope(t, rec.Body.Bytes())["type"]; got != "permission_error" {
+				t.Fatalf("error type = %q, want permission_error", got)
+			}
+		})
+	}
+}
+
+func TestSessionCredentialStreamClosesWhenLeaseIsRevoked(t *testing.T) {
+	authenticator := &revocableSessionAuthenticator{valid: true}
+	hub := app.NewHub(8)
+	session := domain.Session{ID: "sesn_scoped", Status: domain.StatusRunning}
+	server := httptest.NewServer(NewServer(Deps{
+		Sessions: staticSessionService{session: session}, Stream: hub,
+	}, Config{RequireAuth: true, Authenticator: authenticator}).Handler())
+	t.Cleanup(server.Close)
+
+	request, err := http.NewRequest(http.MethodGet,
+		server.URL+"/v1/sessions/"+session.ID+"/events/stream", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("authorization", "Bearer session-token")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("stream status = %d", response.StatusCode)
+	}
+
+	authenticator.revoke()
+	closed := make(chan error, 1)
+	go func() {
+		buffer := make([]byte, 1)
+		_, readErr := response.Body.Read(buffer)
+		closed <- readErr
+	}()
+	select {
+	case readErr := <-closed:
+		if readErr == nil {
+			t.Fatal("revoked stream returned data instead of closing")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("revoked Session credential stream remained open")
+	}
+}
+
+type revocableSessionAuthenticator struct {
+	mu    sync.Mutex
+	valid bool
+}
+
+func (*revocableSessionAuthenticator) AuthenticateAPIKey(context.Context, string) (string, error) {
+	return "", workspace.ErrInvalidAPIKey
+}
+
+func (a *revocableSessionAuthenticator) AuthenticateSessionToken(
+	_ context.Context,
+	token string,
+) (string, workspace.SessionScope, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if token != "session-token" || !a.valid {
+		return "", workspace.SessionScope{}, workspace.ErrInvalidSessionToken
+	}
+	return workspace.DefaultID, workspace.SessionScope{
+		EnvironmentID: "env_scoped", WorkID: "work_scoped", SessionID: "sesn_scoped",
+		CredentialDigest: []byte("digest"),
+	}, nil
+}
+
+func (a *revocableSessionAuthenticator) ValidateSessionScope(
+	_ context.Context,
+	scope workspace.SessionScope,
+) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.valid || scope.WorkID != "work_scoped" {
+		return domain.Precondition("work lease is no longer owned")
+	}
+	return nil
+}
+
+func (a *revocableSessionAuthenticator) revoke() {
+	a.mu.Lock()
+	a.valid = false
+	a.mu.Unlock()
+}
+
+type staticSessionService struct{ session domain.Session }
+
+func (s staticSessionService) Create(context.Context, app.CreateSessionInput) (domain.Session, error) {
+	return s.session, nil
+}
+
+func (s staticSessionService) Get(_ context.Context, id string) (domain.Session, error) {
+	if id != s.session.ID {
+		return domain.Session{}, domain.NotFound("session not found")
+	}
+	return s.session, nil
+}
+
+func (staticSessionService) List(context.Context, app.ListPage) (app.SessionListPage, error) {
+	return app.SessionListPage{}, nil
+}
+
+func (staticSessionService) SendEvent(
+	context.Context, string, []domain.EventDraft,
+) ([]domain.Event, error) {
+	return nil, nil
+}
+
+func (s staticSessionService) Update(context.Context, string, domain.SessionUpdate) (domain.Session, error) {
+	return s.session, nil
+}
+
+func (s staticSessionService) Archive(context.Context, string) (domain.Session, error) {
+	return s.session, nil
+}
+
+func (staticSessionService) Delete(context.Context, string) error { return nil }
 
 func TestSession_FullLifecycleWithSSE(t *testing.T) {
 	h := NewTestHandler(t)

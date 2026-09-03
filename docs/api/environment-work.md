@@ -25,16 +25,29 @@ Poll -> Ack -> Heartbeat(NO_HEARTBEAT) -> Heartbeat(previous timestamp) -> Stop
  queued   starting             active                         stopping/stopped
 ```
 
-- `Poll` tentatively claims the oldest available item. A stale unacknowledged
-  claim may be reclaimed. The optional `worker_id` query parameter contributes
-  to queue statistics and operational correlation; it is not a credential.
+- `Poll` tentatively claims the oldest available item and returns a fresh Work
+  `secret`. It is a URL-safe base64 JSON payload containing the claim's
+  `sessions_token`. A stale unacknowledged claim may be reclaimed; every reclaim
+  rotates the token. The token becomes usable after Ack; the tentative Poll
+  response alone does not authorize Session execution. The optional `worker_id`
+  query parameter contributes to queue statistics and operational correlation;
+  it is not a credential.
 - `Ack` removes the item from the queue and changes it from `queued` to
-  `starting`.
+  `starting`. It uses the polling client's Workspace credential and has no
+  request body. Repeating Ack after a successful transition is idempotent, so a
+  lost success response can be retried.
 - The first heartbeat uses `expected_last_heartbeat=NO_HEARTBEAT`. Every later
-  heartbeat echoes the exact timestamp returned by the previous response. A
-  mismatch returns `412` so a worker that lost its lease stops executing.
+  heartbeat echoes the exact timestamp returned by the previous response.
+  `desired_ttl_seconds`, when supplied, must be from 1 through 300. Healthy
+  workers renew continuously; the five-minute cap bounds stale-owner access.
+  Heartbeat and the worker's final Stop authenticate with `sessions_token`. A
+  stale timestamp or expired current lease returns `412`; reclaim rotates the
+  credential, so an old owner is rejected at authentication.
 - Graceful Stop changes active Work to `stopping`; the next heartbeat tells the
-  worker to cancel. Forced Stop immediately records `stopped`.
+  worker to cancel. A stopping token expires no later than its current TTL even
+  if no poller performs the eventual state cleanup. Forced Stop immediately
+  records `stopped`. A Workspace API key retains operator authority to stop Work
+  without possessing its Session credential.
 
 The API exposes Get, Update, List, Ack, Heartbeat, Poll, Stats, and Stop beneath:
 
@@ -43,6 +56,9 @@ The API exposes Get, Update, List, Ack, Heartbeat, Poll, Stats, and Stop beneath
 ```
 
 Stop returns `204 No Content`, and an empty Poll returns an empty JSON object.
+Get, List, metadata Update, and Ack responses redact the Work secret as `null`;
+only Poll returns the raw payload. The Go WorkPoller preserves the polled value
+in memory when it returns the acknowledged item.
 
 ## Skills and Session state
 
@@ -75,11 +91,17 @@ protocol. See [Skills](skills.md) for Mango-managed sandbox support.
 
 ## Security boundary
 
-Workers send a Workspace API key as a bearer credential for Work, Session,
-event, and Skill requests. Mango limits all of those resources to the same
-Workspace. It does not issue narrower Environment-worker credentials, so
-`worker_id` is not an authorization boundary and Work `secret` remains
-`null`. A surrounding control plane should add Environment-specific policy
-before exposing this surface to untrusted workers.
+The supervisor uses a Workspace API key to Poll and Ack. Poll additionally
+issues an unpredictable per-claim credential payload; only the SHA-256 digest
+of its `sessions_token` is stored. That token is limited to the claimed Work's
+Heartbeat and Stop, the claimed Session's read/event execution routes, and the
+immutable File and Skill inputs pinned to that Session. On the event write
+route it may submit only `user.tool_result` and `user.custom_tool_result`, not
+ordinary user messages, interrupts, approvals, or `system.message`. It becomes
+invalid when the Work stops, its lease expires, or it is reclaimed. An existing
+Session event stream rechecks that ownership once per second and closes after
+invalidation. A Workspace key retains full operator access and must stay in the
+trusted supervisor rather than an untrusted Session sandbox. Mango does not yet
+issue a narrower Environment-level polling key.
 
 See [capabilities and limits](../capabilities.md) for the current support boundary.

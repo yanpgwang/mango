@@ -22,10 +22,14 @@ func environmentWorkToJSON(work domain.EnvironmentWork) map[string]any {
 	if metadata == nil {
 		metadata = map[string]string{}
 	}
+	var secret any
+	if work.Secret != "" {
+		secret = work.Secret
+	}
 	out := map[string]any{
 		"id": work.ID, "type": "work", "environment_id": work.EnvironmentID,
 		"data":  map[string]any{"type": "session", "id": work.SessionID},
-		"state": work.State, "metadata": metadata, "secret": nil,
+		"state": work.State, "metadata": metadata, "secret": secret,
 		"created_at": work.CreatedAt.Format(timeFmt),
 	}
 	setWorkTime := func(name string, value *time.Time) {
@@ -160,12 +164,12 @@ func (s *Server) heartbeatEnvironmentWork(w http.ResponseWriter, r *http.Request
 	var desired *int64
 	if values, present := r.URL.Query()["desired_ttl_seconds"]; present {
 		if len(values) != 1 {
-			writeError(w, domain.Validation("desired_ttl_seconds must be a positive integer"))
+			writeError(w, domain.Validation("desired_ttl_seconds must be an integer from 1 through 300"))
 			return
 		}
 		value, err := strconv.ParseInt(values[0], 10, 64)
-		if err != nil || value <= 0 {
-			writeError(w, domain.Validation("desired_ttl_seconds must be a positive integer"))
+		if err != nil || value <= 0 || value > app.MaxEnvironmentWorkTTLSeconds {
+			writeError(w, domain.Validation("desired_ttl_seconds must be an integer from 1 through 300"))
 			return
 		}
 		desired = &value
@@ -281,7 +285,8 @@ func (s *Server) stopEnvironmentWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.deps.EnvironmentWork.Stop(
-		r.Context(), r.PathValue("environment_id"), r.PathValue("work_id"), body.Force.Value,
+		r.Context(), r.PathValue("environment_id"), r.PathValue("work_id"),
+		body.Force.Value,
 	); err != nil {
 		writeError(w, err)
 		return

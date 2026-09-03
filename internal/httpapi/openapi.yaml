@@ -551,6 +551,10 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '422':
           $ref: '#/components/responses/UnsupportedRequest'
     get:
@@ -1621,6 +1625,9 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
+      description: >-
+        Workspace API key, or the per-Work sessions_token on the limited
+        self-hosted execution routes authorized for that claim.
 
   parameters:
     WebhookID:
@@ -1764,7 +1771,8 @@ components:
     EnvironmentWorkDesiredTTL:
       name: desired_ttl_seconds
       in: query
-      schema: {type: integer, minimum: 1}
+      description: Desired lease TTL in seconds. Healthy workers renew continuously; Mango caps the stale-owner window at five minutes.
+      schema: {type: integer, minimum: 1, maximum: 300}
     SessionID:
       name: session_id
       in: path
@@ -2616,7 +2624,16 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     PreconditionFailed:
-      description: Conditional lease update did not match the stored heartbeat
+      description: Work lease ownership or heartbeat precondition failed
+      headers:
+        request-id:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated credential is not authorized for the operation
       headers:
         request-id:
           $ref: '#/components/headers/RequestID'
@@ -2943,8 +2960,10 @@ components:
               enum:
                 - invalid_request_error
                 - authentication_error
+                - permission_error
                 - not_found_error
                 - conflict_error
+                - precondition_failed_error
                 - memory_precondition_failed_error
                 - request_too_large
                 - api_error
@@ -4382,7 +4401,7 @@ components:
           additionalProperties: {type: string}
         secret:
           type: [string, 'null']
-          description: Always null; Mango does not currently issue Work secrets.
+          description: Base64url credential payload returned only by Poll; null on every other retrieval path.
         created_at: {type: string, format: date-time}
         acknowledged_at: {$ref: '#/components/schemas/NullableTimestamp'}
         started_at: {$ref: '#/components/schemas/NullableTimestamp'}

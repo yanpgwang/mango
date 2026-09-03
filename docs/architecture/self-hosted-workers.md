@@ -78,25 +78,34 @@ opt-in.
 - A Work poller does not Stop acknowledged items. The per-Session runner owns
   heartbeat and final Stop; an ambiguous Ack or invalid Ack response is left for
   TTL reclaim.
-- Mango's current Stop is not fenced to a lease owner. A future runner must not
-  use automatic Stop until the control plane can prevent an expired worker from
-  stopping a reclaimed lease.
+- Poll rotates an unpredictable per-claim `sessions_token` inside the Work
+  secret payload. The worker switches to it for heartbeat, Stop, Session events,
+  and pinned immutable inputs after Ack; reclaim invalidates the old token and
+  closes an established event stream. Lease TTL is capped at five minutes, and
+  a graceful Stop can retain execution access for no longer than that current
+  TTL. Ack continues to use the supervisor credential and every non-Poll Work
+  response redacts the payload.
+- The Session credential may submit tool results only. It cannot manufacture
+  user input, approval decisions, or persistent system context.
 - No model-provider key or broad server credential belongs in a sandbox.
-- Mango currently authorizes workers with a Workspace API key and returns no
-  Work secret. Until scoped Environment credentials exist, workers are trusted
-  peers within that Workspace; examples must state that limitation.
+- Mango currently authorizes supervisor Poll/Ack with a Workspace API key and
+  item execution with the per-Session token. Until scoped Environment polling
+  credentials exist, worker supervisors are trusted peers within the Workspace;
+  only the item token may cross into the Session sandbox.
 
 ## Incremental delivery
 
-1. Add a Mango Go SDK `WorkPoller` over the existing Work endpoints. It handles
+1. Added a Mango Go SDK `WorkPoller` over the existing Work endpoints. It handles
    poll, Ack, drain, reclaim, and cancellation, but neither stops Work, creates
    sandboxes, nor executes tools.
-2. Add an owner-fenced lease transition for heartbeat and Stop. Prove that an
-   expired worker cannot mutate work reclaimed by another worker.
+2. Added the CMA-shaped Work secret payload and per-Session bearer scope.
+   Heartbeat, Stop, Session event execution, and pinned immutable inputs can use
+   the item token; reclaim invalidates it before another worker starts.
 3. Add a provider-neutral single-Session `SessionToolRunner` with recovery and
    lease-loss tests.
-4. Compose those pieces as `EnvironmentWorker` and add scoped worker
-   credentials before claiming an untrusted or multi-tenant boundary.
+4. Compose those pieces as `EnvironmentWorker` and add scoped Environment
+   polling credentials before claiming an untrusted or multi-tenant supervisor
+   boundary.
 5. Build a standalone Docker launcher and run a real Docker end-to-end flow.
 6. Add thin provider examples one at a time. Each must use the same runner and
    document persistence, cancellation, resource limits, network policy, and

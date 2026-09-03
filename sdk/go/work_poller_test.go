@@ -25,6 +25,9 @@ func TestWorkPollerClaimsThenDrainsWithoutChangingWorkState(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/environments/env_test/work/poll" && call == 1:
 			writeWorkPollerJSON(t, w, workPollerFixture("queued"))
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/environments/env_test/work/work_test/ack":
+			if r.ContentLength > 0 {
+				t.Errorf("Ack Content-Length = %d, want no body", r.ContentLength)
+			}
 			writeWorkPollerJSON(t, w, workPollerFixture("starting"))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/environments/env_test/work/poll":
 			writeWorkPollerJSON(t, w, map[string]any{})
@@ -44,7 +47,9 @@ func TestWorkPollerClaimsThenDrainsWithoutChangingWorkState(t *testing.T) {
 	if !poller.Next() {
 		t.Fatalf("Next() = false, error = %v", poller.Err())
 	}
-	if got := poller.Current(); got == nil || got.ID != "work_test" || got.State != EnvironmentWorkStateStarting {
+	if got := poller.Current(); got == nil || got.ID != "work_test" ||
+		got.State != EnvironmentWorkStateStarting || got.Secret == nil ||
+		*got.Secret != "eyJzZXNzaW9uc190b2tlbiI6InNlc3NfbWFuZ29fdGVzdCJ9" {
 		t.Fatalf("Current() = %#v", got)
 	}
 	if poller.Next() {
@@ -166,6 +171,8 @@ func TestWorkPollerValidatesWorkIdentityAndState(t *testing.T) {
 			work["data"] = map[string]any{"type": "session", "id": ""}
 		}},
 		{name: "wrong state", mutate: func(work map[string]any) { work["state"] = "active" }},
+		{name: "missing secret", mutate: func(work map[string]any) { work["secret"] = nil }},
+		{name: "empty secret", mutate: func(work map[string]any) { work["secret"] = "" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -202,6 +209,7 @@ func TestWorkPollerValidatesAcknowledgedIdentityAndState(t *testing.T) {
 			work["data"] = map[string]any{"type": "session", "id": "sesn_other"}
 		}},
 		{name: "wrong state", mutate: func(work map[string]any) { work["state"] = "active" }},
+		{name: "disclosed secret", mutate: func(work map[string]any) { work["secret"] = "unexpected" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -424,10 +432,14 @@ func newWorkPollerTestClient(t *testing.T, baseURL string) *Client {
 }
 
 func workPollerFixture(state string) map[string]any {
+	secret := any(nil)
+	if state == "queued" {
+		secret = "eyJzZXNzaW9uc190b2tlbiI6InNlc3NfbWFuZ29fdGVzdCJ9"
+	}
 	return map[string]any{
 		"id": "work_test", "type": "work", "environment_id": "env_test",
 		"data":  map[string]any{"type": "session", "id": "sesn_test"},
-		"state": state, "metadata": map[string]string{}, "secret": nil,
+		"state": state, "metadata": map[string]string{}, "secret": secret,
 		"created_at": "2026-09-03T00:00:00Z", "acknowledged_at": nil,
 		"started_at": nil, "latest_heartbeat_at": nil,
 		"stop_requested_at": nil, "stopped_at": nil,

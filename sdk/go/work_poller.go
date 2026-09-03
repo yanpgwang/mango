@@ -150,6 +150,9 @@ func (p *WorkPoller) Next() bool {
 			p.err = err
 			return false
 		}
+		// The server exposes the credential payload only on Poll. Preserve it
+		// locally after validating the redacted Ack response.
+		acknowledged.Secret = work.Secret
 		p.current = &acknowledged
 		return true
 	}
@@ -260,6 +263,8 @@ func validatePolledWork(work EnvironmentWork, environmentID string) error {
 		)
 	case work.State != EnvironmentWorkStateQueued:
 		return fmt.Errorf("mango: poll Environment Work returned state %q", work.State)
+	case work.Secret == nil || *work.Secret == "":
+		return errors.New("mango: poll Environment Work returned no claim secret")
 	default:
 		return nil
 	}
@@ -279,6 +284,9 @@ func validateAcknowledgedWork(acknowledged, polled EnvironmentWork) error {
 			"mango: acknowledge Environment Work returned state %q",
 			acknowledged.State,
 		)
+	}
+	if acknowledged.Secret != nil {
+		return errors.New("mango: acknowledge Environment Work disclosed a credential payload")
 	}
 	return nil
 }

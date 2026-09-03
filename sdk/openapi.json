@@ -200,9 +200,11 @@
         }
       },
       "EnvironmentWorkDesiredTTL": {
+        "description": "Desired lease TTL in seconds. Healthy workers renew continuously; Mango caps the stale-owner window at five minutes.",
         "in": "query",
         "name": "desired_ttl_seconds",
         "schema": {
+          "maximum": 300,
           "minimum": 1,
           "type": "integer"
         }
@@ -993,6 +995,21 @@
           }
         }
       },
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Authenticated credential is not authorized for the operation",
+        "headers": {
+          "request-id": {
+            "$ref": "#/components/headers/RequestID"
+          }
+        }
+      },
       "InvalidRequest": {
         "content": {
           "application/json": {
@@ -1151,7 +1168,7 @@
             }
           }
         },
-        "description": "Conditional lease update did not match the stored heartbeat",
+        "description": "Work lease ownership or heartbeat precondition failed",
         "headers": {
           "request-id": {
             "$ref": "#/components/headers/RequestID"
@@ -3693,7 +3710,7 @@
             "type": "object"
           },
           "secret": {
-            "description": "Always null; Mango does not currently issue Work secrets.",
+            "description": "Base64url credential payload returned only by Poll; null on every other retrieval path.",
             "type": [
               "string",
               "null"
@@ -3885,8 +3902,10 @@
                 "enum": [
                   "invalid_request_error",
                   "authentication_error",
+                  "permission_error",
                   "not_found_error",
                   "conflict_error",
+                  "precondition_failed_error",
                   "memory_precondition_failed_error",
                   "request_too_large",
                   "api_error"
@@ -9243,6 +9262,7 @@
     },
     "securitySchemes": {
       "BearerAuth": {
+        "description": "Workspace API key, or the per-Work sessions_token on the limited self-hosted execution routes authorized for that claim.",
         "scheme": "bearer",
         "type": "http"
       }
@@ -11047,11 +11067,17 @@
           "400": {
             "$ref": "#/components/responses/InvalidRequest"
           },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
           },
           "422": {
             "$ref": "#/components/responses/UnsupportedRequest"
