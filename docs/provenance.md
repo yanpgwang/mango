@@ -411,6 +411,47 @@ support, so they run the same credential-free and opt-in live conformance suites
   rather than rolling back across unresolved two-phase calls; dropping approval
   evidence cannot preserve the new lifecycle. No compatibility shim is added.
 
+## Provider-neutral self-hosted worker foundation
+
+- User/operator problem: provider names had become mixed into Mango's core
+  execution path even though a self-hosted Environment needs one stable Work
+  protocol and provider-specific launchers outside the control plane. Without a
+  first-party polling helper, every Docker or remote-compute example would
+  independently reimplement claim, Ack, drain, reclaim, and Stop semantics.
+- Reviewed the public CMA
+  [self-hosted sandbox guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes),
+  the paired Go SDK `WorkPoller`, and the
+  [self-hosted sandbox cookbook](https://github.com/anthropics/claude-cookbooks/tree/main/managed_agents/self_hosted_sandboxes)
+  at commit `26b5cdce81d357596f5df7f44f50908a80be40cf`, and
+  `anthropic-sdk-go` v1.69.0 at commit
+  `6298207eac7ff589e7fcc8a78f6c034ab09de47f` on 2026-09-03. The useful design
+  is the separation between a provider-neutral worker protocol and thin Docker,
+  Cloudflare, Modal, Daytona, or Vercel launchers. The compute providers expose
+  generic infrastructure; they do not define the managed-agent lifecycle.
+- Mango adopts that separation and the pull-style Go iterator relationship:
+  Poll is tentative, Ack precedes yield, and drain ends normally on an empty
+  queue. Mango does not adopt the reference poller's default auto-stop yet.
+  Mango's Stop transition is not owner-fenced and discards a queued or starting
+  activation; after an ambiguous Ack, Stop could lose the activation or mutate
+  a lease reclaimed by another worker. The Mango poller therefore never stops
+  Work; a future heartbeat-owning runner will stop only while its fenced lease
+  remains valid. Mango uses its existing routes, generated types, Workspace
+  credential, and error conventions rather than hosted beta headers or vendor
+  authentication.
+- Acceptance for this first slice: the standalone Go SDK exposes a
+  provider-neutral Work poller with option validation, long-running and drain
+  behavior, cancellation, reclaim and worker query parameters, Ack-before-yield,
+  strict empty-queue decoding, identity validation, no Stop after ambiguous Ack,
+  and jittered retry. Unit tests use an HTTP server and do not execute examples
+  or contact a sandbox provider; a PostgreSQL test proves an acknowledged item
+  is reclaimed after its starting lease expires.
+- Intentional limits: this is not `EnvironmentWorker` or `SessionToolRunner`;
+  it does not heartbeat, execute tools, prepare resources, or claim exactly-once
+  side effects. Environment-scoped credentials and Work secrets remain absent.
+  The old Mango-managed provider path remains until an independently tested
+  Docker worker replaces its OSS workflow; no API or persistence change occurs
+  in this slice.
+
 ## Docker-default OSS execution
 
 - User problem: the ordinary local deployment must run tools in a separate

@@ -171,3 +171,73 @@ func TestEnvironmentWorkForceStopDoesNotRequeueOriginalActivation(t *testing.T) 
 		t.Fatalf("discarded activation requeued: work=%+v err=%v", requeued, err)
 	}
 }
+
+func TestEnvironmentWorkAmbiguousAckIsReclaimedAfterStartingTTL(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	clock := &environmentWorkTestClock{now: time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)}
+	store.clock = clock
+	if err := NewEnvironmentRepository(store).Put(ctx, domain.Environment{
+		ID: "env_ack_reclaim", Name: "Self hosted", ConfigType: "self_hosted",
+		Config: map[string]any{"type": "self_hosted"}, Metadata: map[string]any{},
+		CreatedAt: clock.Now(), UpdatedAt: clock.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	session := newSession("sesn_ack_reclaim")
+	session.EnvironmentID = "env_ack_reclaim"
+	session.EnvironmentType = "self_hosted"
+	if _, err := store.CreateSession(ctx, session, []domain.EventDraft{{
+		Type: domain.EvUserMessage, Payload: map[string]any{"content": "survive an ambiguous Ack"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	repository := NewEnvironmentWorkRepository(store)
+	first, err := repository.PollWork(ctx, session.EnvironmentID, app.EnvironmentWorkPollInput{
+		WorkerID: "worker-lost-response", ReclaimAge: time.Hour,
+	})
+	if err != nil || first == nil {
+		t.Fatalf("first Poll = %+v, err=%v", first, err)
+	}
+	acked, err := repository.AckWork(ctx, session.EnvironmentID, first.ID)
+	if err != nil || acked.State != domain.EnvironmentWorkStarting {
+		t.Fatalf("Ack = %+v, err=%v", acked, err)
+	}
+
+	// Model a committed Ack whose HTTP response never reached the worker. The
+	// worker must not call Stop because it cannot distinguish that outcome from
+	// an uncommitted Ack. Once the starting lease expires, another worker claims
+	// the same activation instead of losing it.
+	clock.Advance(31 * time.Second)
+	reclaimed, err := repository.PollWork(ctx, session.EnvironmentID, app.EnvironmentWorkPollInput{
+		WorkerID: "worker-recovery", ReclaimAge: time.Hour,
+	})
+	if err != nil || reclaimed == nil {
+		t.Fatalf("recovery Poll = %+v, err=%v", reclaimed, err)
+	}
+	if reclaimed.ID != first.ID || reclaimed.State != domain.EnvironmentWorkQueued ||
+		reclaimed.AcknowledgedAt != nil {
+		t.Fatalf("reclaimed Work = %+v, want reset activation %s", reclaimed, first.ID)
+	}
+	if _, err := repository.AckWork(ctx, session.EnvironmentID, reclaimed.ID); err != nil {
+		t.Fatalf("recovery Ack: %v", err)
+	}
+}
+
+type environmentWorkTestClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *environmentWorkTestClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *environmentWorkTestClock) Advance(duration time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(duration)
+}

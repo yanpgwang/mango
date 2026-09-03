@@ -40,6 +40,35 @@ and close the stream. The stream is live-only and does not automatically reconne
 Use the [open-stream-then-list recovery procedure](../api/events.md#stream-events)
 to recover durable events after disconnects.
 
+## Self-hosted Work polling
+
+`NewWorkPoller` claims and acknowledges Work for one `self_hosted` Environment.
+It is a control-plane iterator, not a sandbox or tool runner. Advancing or
+closing it never stops Work. The per-Session runner must heartbeat the lease
+and perform final Stop while it still owns that lease.
+
+```go
+poller := mango.NewWorkPoller(ctx, client, mango.WorkPollerOptions{
+    EnvironmentID: environmentID,
+    Drain:         true,
+})
+defer poller.Close()
+
+for poller.Next() {
+    work := poller.Current()
+    // Launch a per-Session runner for work.Data.ID.
+}
+if err := poller.Err(); err != nil {
+    return err
+}
+```
+
+Drain mode omits `block_ms` unless explicitly configured and returns normally
+when the queue is empty. A long-running poller defaults to the API's 999 ms
+long-poll and exits normally when its context is cancelled. If Ack has an
+ambiguous failure, the poller exits without calling Stop; Mango's Work TTL then
+makes the activation reclaimable.
+
 ## Errors and retry safety
 
 Use `errors.As` with `*mango.APIError` to access `StatusCode`, `Type`, and

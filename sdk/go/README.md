@@ -107,6 +107,30 @@ its own `has_more` and `after_id`/`before_id` convention. Filters and direction 
 preserved; repeated cursors fail instead of looping forever. Manual one-page
 methods remain available.
 
+## Self-hosted Work polling
+
+`NewWorkPoller` wraps the Environment Work claim protocol without choosing or
+starting a sandbox:
+
+```go
+poller := mango.NewWorkPoller(ctx, client, mango.WorkPollerOptions{
+    EnvironmentID: environmentID,
+    Drain:         true,
+})
+defer poller.Close()
+for poller.Next() {
+    work := poller.Current()
+    _ = work // hand the acknowledged item to a per-Session runner
+}
+if err := poller.Err(); err != nil { panic(err) }
+```
+
+The poller never calls Stop. A launched runner must heartbeat and stop its own
+Work item; an ambiguous Ack failure is left for TTL reclaim so an old poller
+cannot terminate a newer owner. The poller itself does not heartbeat or execute
+tools; a first-party `SessionToolRunner` and provider launchers are separate
+staged work.
+
 ## Live events and recovery
 
 ```go
