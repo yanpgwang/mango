@@ -95,9 +95,11 @@ before sending work to observe the new turn. On reconnection, open a new
 stream first, list history while it is connected, and deduplicate the sources
 by event ID. Preview deltas are ephemeral, not durable history.
 
-The SDK does not automatically resend a message or tool result after an
-ambiguous HTTP failure. Check persisted events before deciding to retry; an
-automatic resend could duplicate work. See [Session events](api/events.md).
+The generated one-shot methods do not automatically resend a message or tool
+result after an ambiguous HTTP failure. Check persisted events before deciding
+to retry. The Go `SessionToolRunner` is a narrow workflow helper that performs
+that result-history check before its bounded retry; it still cannot make an
+external tool side effect exactly once. See [Session events](api/events.md).
 
 ## Development and verification
 

@@ -44,8 +44,8 @@ to recover durable events after disconnects.
 
 `NewWorkPoller` claims and acknowledges Work for one `self_hosted` Environment.
 It is a control-plane iterator, not a sandbox or tool runner. Advancing or
-closing it never stops Work. The per-Session runner must heartbeat the lease
-and perform final Stop while it still owns that lease.
+closing it never stops Work. The later composed Environment worker must
+heartbeat the lease and perform final Stop while it still owns that lease.
 
 ```go
 poller := mango.NewWorkPoller(ctx, client, mango.WorkPollerOptions{
@@ -69,11 +69,43 @@ long-poll and exits normally when its context is cancelled. If Ack has an
 ambiguous failure, the poller exits without calling Stop; Mango's Work TTL then
 makes the activation reclaimable.
 
+## Self-hosted Session tools
+
+`NewSessionToolRunner` handles one Session's provider-neutral tool loop. It
+opens SSE before listing durable history, reconciles again on reconnect, and
+maps owned `agent.tool_use` and `agent.custom_tool_use` events to their matching
+result events. MCP calls stay server-side, and unregistered tool names remain
+pending for another owner.
+
+```go
+runner := mango.NewSessionToolRunner(ctx, sessionClient, sessionID,
+    mango.SessionToolRunnerOptions{Tools: tools})
+defer runner.Close()
+
+for runner.Next() {
+    dispatch := runner.Current()
+    // Observe dispatch.Owned, dispatch.IsError, and dispatch.Posted.
+}
+if err := runner.Err(); err != nil &&
+    !errors.Is(err, mango.ErrSessionTerminated) &&
+    !errors.Is(err, mango.ErrIdleTimeout) {
+    return err
+}
+```
+
+`sessionClient` should use the acknowledged Work item's `sessions_token`.
+The runner fails closed on approval-gated or unknown permission values, and
+returns `ErrSessionLeaseLost` when that credential loses authority. It does not
+heartbeat or Stop Work. Tools must honor cancellation and use the stable
+`SessionToolCall.ToolUseID` to make external side effects idempotent.
+
 ## Errors and retry safety
 
 Use `errors.As` with `*mango.APIError` to access `StatusCode`, `Type`, and
 `RequestID`. Avoid logging full error bodies, which may contain application data.
-The SDK does not automatically retry writes after an ambiguous failure.
+Generated one-shot methods do not automatically retry writes after an ambiguous
+failure. `SessionToolRunner` is the narrow exception: it checks durable result
+history before retrying its own transient result submission.
 
 - [Runnable multi-language quickstart](../getting-started.md)
 - [Complete SDK README and examples](https://github.com/yanpgwang/mango/tree/main/sdk/go)

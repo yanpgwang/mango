@@ -134,8 +134,67 @@ expiry or Stop also invalidates it and closes an old stream. Treat the payload
 and token as secrets: do not log or persist them.
 
 An ambiguous Ack failure is left for TTL reclaim. The poller itself does not
-heartbeat or execute tools; a first-party `SessionToolRunner` and provider
-launchers are separate staged work.
+heartbeat, Stop Work, or choose a sandbox.
+
+## Self-hosted Session tools
+
+`NewSessionToolRunner` owns the execution loop for one acknowledged Session. It
+opens the live stream before reconciling paginated history, executes registered
+`agent.tool_use` and `agent.custom_tool_use` calls serially, and posts the
+matching result event. `agent.mcp_tool_use` remains server-side.
+
+```go
+type EchoTool struct{}
+
+func (EchoTool) Name() string { return "echo" }
+func (EchoTool) Execute(
+    ctx context.Context,
+    call mango.SessionToolCall,
+) ([]mango.ResultContentInput, error) {
+    // Use call.ToolUseID as the idempotency key for external side effects.
+    return []mango.ResultContentInput{{
+        TextBlockInput: &mango.TextBlockInput{Type: "text", Text: string(call.Input)},
+    }}, nil
+}
+
+sessionClient, err := mango.New(mango.Config{
+    BaseURL: baseURL,
+    APIKey:  sessionsToken, // decoded from acknowledged Work's secret payload
+})
+if err != nil { panic(err) }
+
+runner := mango.NewSessionToolRunner(ctx, sessionClient, sessionID, mango.SessionToolRunnerOptions{
+    Tools: []mango.SessionTool{EchoTool{}},
+})
+defer runner.Close()
+for runner.Next() {
+    call := runner.Current()
+    // call.Posted is false for denied, unowned, or failed result submissions.
+    _ = call
+}
+if err := runner.Err(); err != nil &&
+    !errors.Is(err, mango.ErrSessionTerminated) &&
+    !errors.Is(err, mango.ErrIdleTimeout) {
+    panic(err)
+}
+```
+
+An absent or `allow` evaluated permission executes immediately. `ask` and
+unknown permission values fail closed until a durable
+`user.tool_confirmation`; denial never executes or posts a result. Unregistered
+tool names are yielded with `Owned=false` and left pending for another owner.
+Tool errors and cooperative timeouts become error results.
+
+Reconnects always reconcile durable event history, and ambiguous result writes
+are checked against that history before retrying. This prevents duplicate event
+submission, but it cannot make an external tool side effect exactly once: a
+process can fail after the tool acts and before its result commits. Tools must
+honor cancellation and use `SessionToolCall.ToolUseID` as their idempotency key.
+
+With a per-Work Session token, `401`, `403`, or `412` stops the runner with
+`ErrSessionLeaseLost`; it never falls back to the Workspace credential. The
+runner does not renew that lease. The later `EnvironmentWorker` composition owns
+heartbeat and Stop while this helper stays provider-neutral.
 
 ## Live events and recovery
 
@@ -152,13 +211,14 @@ for stream.Next() {
 if err := stream.Err(); err != nil { panic(err) }
 ```
 
-The iterator supports fragmented reads, LF/CRLF/CR lines, comments, multiline
-data, an initial UTF-8 BOM, IDs, and retry metadata. Lines and accumulated event
-data have a 64 MiB safety limit. It is **live-only**, does not reconnect, and does
-not claim lossless delivery. The request context controls cancellation. To recover
-durable events, open a stream, buffer incoming events, read paginated
-`ListSessionEvents` or `ListSessionThreadEvents` history, and deduplicate persisted
-events by their IDs before continuing. Best-effort preview deltas are not durable.
+The low-level iterator supports fragmented reads, LF/CRLF/CR lines, comments,
+multiline data, an initial UTF-8 BOM, IDs, and retry metadata. Lines and
+accumulated event data have a 64 MiB safety limit. It is **live-only**, does not
+reconnect, and does not claim lossless delivery. The request context controls
+cancellation. To recover durable events, open a stream, buffer incoming events,
+read paginated `ListSessionEvents` or `ListSessionThreadEvents` history, and
+deduplicate persisted events by their IDs before continuing. Best-effort preview
+deltas are not durable.
 
 SSE and binary downloads are not cut off by `RequestTimeout` or the supplied
 `http.Client.Timeout`. Finite requests default to 60 seconds; override

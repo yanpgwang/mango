@@ -75,9 +75,10 @@ opt-in.
   successful result afterward.
 - Re-delivery and process restart are normal. Event IDs and persisted pending
   actions, not in-memory seen sets, determine whether a result is outstanding.
-- A Work poller does not Stop acknowledged items. The per-Session runner owns
-  heartbeat and final Stop; an ambiguous Ack or invalid Ack response is left for
-  TTL reclaim.
+- A Work poller does not Stop acknowledged items. The composed
+  `EnvironmentWorker` owns heartbeat and final Stop while `SessionToolRunner`
+  owns only the Session event/tool loop; an ambiguous Ack or invalid Ack
+  response is left for TTL reclaim.
 - Poll rotates an unpredictable per-claim `sessions_token` inside the Work
   secret payload. The worker switches to it for heartbeat, Stop, Session events,
   and pinned immutable inputs after Ack; reclaim invalidates the old token and
@@ -101,8 +102,10 @@ opt-in.
 2. Added the CMA-shaped Work secret payload and per-Session bearer scope.
    Heartbeat, Stop, Session event execution, and pinned immutable inputs can use
    the item token; reclaim invalidates it before another worker starts.
-3. Add a provider-neutral single-Session `SessionToolRunner` with recovery and
-   lease-loss tests.
+3. Added a provider-neutral single-Session `SessionToolRunner`. It connects the
+   stream before paginated history reconciliation, dispatches local and custom
+   tools, honors durable confirmation gates, retries ambiguous result writes,
+   and stops on terminal events, end-turn idle, cancellation, or lease loss.
 4. Compose those pieces as `EnvironmentWorker` and add scoped Environment
    polling credentials before claiming an untrusted or multi-tenant supervisor
    boundary.
@@ -115,6 +118,6 @@ opt-in.
    workflow. Mango is pre-release, so the final API change happens directly on
    `/v1` without a compatibility layer.
 
-The first slice deliberately leaves current execution intact. It establishes
-the worker-side API without coupling examples to Temporal or claiming that a
-poller alone is a complete sandbox integration.
+These SDK slices deliberately leave current execution intact. They establish
+the worker-side protocol without coupling examples to Temporal or claiming that
+a poller or tool runner alone is a complete sandbox integration.
