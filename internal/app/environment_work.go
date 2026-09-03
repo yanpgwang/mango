@@ -10,7 +10,11 @@ import (
 const (
 	DefaultEnvironmentWorkListLimit = 100
 	MaxEnvironmentWorkListLimit     = 1000
-	defaultWorkReclaimAge           = 5 * time.Second
+	// MaxEnvironmentWorkTTLSeconds bounds the time a lost worker can retain a
+	// Session execution lease. Healthy workers extend the lease continuously,
+	// so longer individual TTLs only increase the stale-owner window.
+	MaxEnvironmentWorkTTLSeconds = int64(300)
+	defaultWorkReclaimAge        = 5 * time.Second
 )
 
 type EnvironmentWorkListQuery struct {
@@ -121,9 +125,9 @@ func (s *EnvironmentWorkService) Heartbeat(
 	if err := s.validateEnvironment(ctx, environmentID); err != nil {
 		return domain.EnvironmentWorkHeartbeat{}, err
 	}
-	if desiredTTL != nil && *desiredTTL <= 0 {
+	if desiredTTL != nil && (*desiredTTL <= 0 || *desiredTTL > MaxEnvironmentWorkTTLSeconds) {
 		return domain.EnvironmentWorkHeartbeat{}, domain.Validation(
-			"desired_ttl_seconds must be a positive integer",
+			"desired_ttl_seconds must be an integer from 1 through 300",
 		)
 	}
 	return s.repository.HeartbeatWork(ctx, environmentID, workID, expected, desiredTTL)

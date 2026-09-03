@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
+	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 const defaultEventLimit = 100
@@ -95,6 +97,17 @@ func (s *Server) sendEvents(w http.ResponseWriter, r *http.Request) {
 	if err := validateClientEventBatch(in.Events); err != nil {
 		writeError(w, err)
 		return
+	}
+	if requestScope, _ := workspace.FromContext(r.Context()); requestScope.Session != nil {
+		for _, event := range in.Events {
+			typeName, _ := event["type"].(string)
+			if !domain.IsSessionCredentialEvent(typeName) {
+				writeError(w, domain.Permission(
+					"session credential may only send tool-result events",
+				))
+				return
+			}
+		}
 	}
 	drafts := toDrafts(in.Events)
 	out, err := s.deps.Sessions.SendEvent(r.Context(), r.PathValue("id"), drafts)
@@ -655,6 +668,23 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if requestScope, _ := workspace.FromContext(r.Context()); requestScope.Session != nil {
+		validator, ok := s.cfg.Authenticator.(SessionScopeValidator)
+		if !ok {
+			writeErrorEnvelope(w, http.StatusInternalServerError, "api_error",
+				"session credential stream validation is unavailable")
+			return
+		}
+		claim := *requestScope.Session
+		if err := validator.ValidateSessionScope(r.Context(), claim); err != nil {
+			writeError(w, err)
+			return
+		}
+		streamCtx, cancelStream := context.WithCancel(r.Context())
+		defer cancelStream()
+		r = r.WithContext(streamCtx)
+		go monitorSessionStreamLease(streamCtx, cancelStream, validator, claim)
+	}
 
 	// Subscribe before the existence check. Once Get succeeds, a concurrent
 	// delete cannot slip between the check and subscription without delivering
@@ -670,4 +700,27 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeEventStream(w, r, ch)
+}
+
+const sessionStreamLeaseCheckInterval = time.Second
+
+func monitorSessionStreamLease(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	validator SessionScopeValidator,
+	claim workspace.SessionScope,
+) {
+	ticker := time.NewTicker(sessionStreamLeaseCheckInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := validator.ValidateSessionScope(ctx, claim); err != nil {
+				cancel()
+				return
+			}
+		}
+	}
 }

@@ -58,7 +58,7 @@ Resource-specific request shapes are covered in:
 
 ## Headers
 
-Every protected route requires an API key. The default development stack uses
+Every ordinary protected route requires an API key. The default development stack uses
 `sk-mango-local-development`. Send it as a standard bearer credential:
 
 ```http
@@ -71,9 +71,12 @@ File and Skill uploads instead require `multipart/form-data`; File uploads are
 limited to 500 MB and Skill bundles must be smaller than 30 MB. Mango does not
 use provider version or beta headers on its inbound API.
 
-Each bearer key resolves to exactly one Workspace, and every key for that
-Workspace can access the same resources. Workspace IDs are not added to public
-request or response bodies.
+Each API key resolves to exactly one Workspace, and every API key for that
+Workspace can access the same resources. Self-hosted Poll responses are the one
+internal exception: their credential payload contains a per-Work Session token
+accepted after Ack only by the claimed read/stream, tool-result, lease, and
+pinned-input routes. Expiry, Stop, or reclaim revokes the capability. Workspace
+IDs are not added to public request or response bodies.
 
 Mango intentionally has no end-user or role model. A surrounding SaaS may map
 many users to a Workspace and apply its own RBAC before calling Mango. Use the
@@ -110,6 +113,7 @@ original `/v1` design:
 | --- | --- |
 | `400` | `invalid_request_error` |
 | `401` | `authentication_error` |
+| `403` | `permission_error` |
 | `404` | `not_found_error` |
 | `409` | `conflict_error` |
 | `412` | `precondition_failed_error` |

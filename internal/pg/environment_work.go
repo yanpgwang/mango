@@ -2,6 +2,9 @@ package pg
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +15,7 @@ import (
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/pg/pgstore"
+	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 const environmentWorkColumns = `
@@ -36,6 +40,143 @@ func (r *EnvironmentWorkRepository) authorizeEnvironment(ctx context.Context, id
 }
 
 type workScanner interface{ Scan(...any) error }
+
+func newEnvironmentWorkSecret() (string, []byte, error) {
+	var random [32]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", nil, fmt.Errorf("pg: generate Environment Work secret: %w", err)
+	}
+	sessionsToken := "sess_mango_" + base64.RawURLEncoding.EncodeToString(random[:])
+	payload, err := json.Marshal(struct {
+		SessionsToken string `json:"sessions_token"`
+	}{SessionsToken: sessionsToken})
+	if err != nil {
+		return "", nil, fmt.Errorf("pg: encode Environment Work secret: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(payload), hashSessionsToken(sessionsToken), nil
+}
+
+func hashSessionsToken(token string) []byte {
+	digest := sha256.Sum256([]byte(token))
+	return digest[:]
+}
+
+// AuthenticateSessionToken resolves the per-Work bearer carried inside the
+// Poll secret. A reclaim rotates the stored digest, invalidating the former
+// owner's credential without persisting the raw token or payload.
+func (s *Store) AuthenticateSessionToken(
+	ctx context.Context,
+	token string,
+) (string, workspace.SessionScope, error) {
+	if token == "" {
+		return "", workspace.SessionScope{}, workspace.ErrInvalidSessionToken
+	}
+	digest := hashSessionsToken(token)
+	scope := workspace.SessionScope{
+		CredentialDigest: append([]byte(nil), digest...),
+		Skills:           map[workspace.SkillVersion]struct{}{},
+		Files:            map[string]struct{}{},
+	}
+	var workspaceID string
+	err := s.pool.QueryRow(ctx, `
+SELECT environment.workspace_id, work.environment_id, work.id, work.session_id
+FROM environment_work AS work
+JOIN environments AS environment ON environment.id = work.environment_id
+WHERE work.sessions_token_hash = $1
+  AND (
+      (work.state = 'starting' AND
+       work.acknowledged_at >= $2::timestamptz - make_interval(secs => work.ttl_seconds)) OR
+      (work.state = 'active' AND
+       work.latest_heartbeat_at >= $2::timestamptz - make_interval(secs => work.ttl_seconds)) OR
+      (work.state = 'stopping' AND
+       work.stop_requested_at >= $2::timestamptz - make_interval(secs => work.ttl_seconds))
+  )`, digest, s.clock.Now().UTC()).Scan(
+		&workspaceID, &scope.EnvironmentID, &scope.WorkID, &scope.SessionID,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", workspace.SessionScope{}, workspace.ErrInvalidSessionToken
+	}
+	if err != nil {
+		return "", workspace.SessionScope{}, fmt.Errorf("pg: authenticate session token: %w", err)
+	}
+	rows, err := s.pool.Query(ctx, `
+SELECT skill_id, skill_version
+FROM session_skill_versions
+WHERE session_id = $1`, scope.SessionID)
+	if err != nil {
+		return "", workspace.SessionScope{}, fmt.Errorf("pg: load session token skills: %w", err)
+	}
+	for rows.Next() {
+		var skill workspace.SkillVersion
+		if err := rows.Scan(&skill.ID, &skill.Version); err != nil {
+			rows.Close()
+			return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token skill: %w", err)
+		}
+		scope.Skills[skill] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token skills: %w", err)
+	}
+	rows.Close()
+	fileRows, err := s.pool.Query(ctx, `
+SELECT file_id
+FROM session_resources
+WHERE session_id = $1 AND state = 'active'`, scope.SessionID)
+	if err != nil {
+		return "", workspace.SessionScope{}, fmt.Errorf("pg: load session token files: %w", err)
+	}
+	defer fileRows.Close()
+	for fileRows.Next() {
+		var fileID string
+		if err := fileRows.Scan(&fileID); err != nil {
+			return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token file: %w", err)
+		}
+		scope.Files[fileID] = struct{}{}
+	}
+	if err := fileRows.Err(); err != nil {
+		return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token files: %w", err)
+	}
+	return workspaceID, scope, nil
+}
+
+// ValidateSessionScope rechecks an established Session stream against the
+// current lease. Authentication alone is insufficient for a long-lived SSE
+// request because the Work may stop, expire, or be reclaimed after headers are
+// sent.
+func (s *Store) ValidateSessionScope(ctx context.Context, scope workspace.SessionScope) error {
+	if scope.EnvironmentID == "" || scope.WorkID == "" || scope.SessionID == "" ||
+		len(scope.CredentialDigest) == 0 {
+		return domain.Precondition("work lease is no longer owned")
+	}
+	var found bool
+	err := s.pool.QueryRow(ctx, `
+SELECT true
+FROM environment_work
+WHERE id = $1
+  AND environment_id = $2
+  AND session_id = $3
+  AND sessions_token_hash = $4
+  AND (
+      (state = 'starting' AND
+       acknowledged_at >= $5::timestamptz - make_interval(secs => ttl_seconds)) OR
+      (state = 'active' AND
+       latest_heartbeat_at >= $5::timestamptz - make_interval(secs => ttl_seconds)) OR
+      (state = 'stopping' AND
+       stop_requested_at >= $5::timestamptz - make_interval(secs => ttl_seconds))
+  )`, scope.WorkID, scope.EnvironmentID, scope.SessionID, scope.CredentialDigest,
+		s.clock.Now().UTC()).Scan(&found)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Precondition("work lease is no longer owned")
+	}
+	if err != nil {
+		return fmt.Errorf("pg: validate session scope: %w", err)
+	}
+	if !found {
+		return domain.Precondition("work lease is no longer owned")
+	}
+	return nil
+}
 
 func scanEnvironmentWork(row workScanner) (domain.EnvironmentWork, error) {
 	var (
@@ -182,7 +323,11 @@ func (r *EnvironmentWorkRepository) PollWork(
 	}
 	var result *domain.EnvironmentWork
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
-	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
+	secret, secretHash, err := newEnvironmentWorkSecret()
+	if err != nil {
+		return nil, err
+	}
+	err = r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
 		if input.WorkerID != "" {
 			if _, err := tx.Exec(ctx, `
 INSERT INTO environment_work_pollers (environment_id, worker_id, polled_at)
@@ -205,7 +350,8 @@ WHERE environment_id = $1 AND state = 'stopping'
 		if _, err := tx.Exec(ctx, `
 UPDATE environment_work
 SET state = 'queued', acknowledged_at = NULL, started_at = NULL,
-    latest_heartbeat_at = NULL, polled_at = NULL, poll_worker_id = NULL
+    latest_heartbeat_at = NULL, polled_at = NULL, poll_worker_id = NULL,
+    sessions_token_hash = NULL
 WHERE environment_id = $1 AND (
     (state = 'starting' AND acknowledged_at < $2::timestamptz - make_interval(secs => ttl_seconds)) OR
     (state = 'active' AND latest_heartbeat_at < $2::timestamptz - make_interval(secs => ttl_seconds))
@@ -230,11 +376,11 @@ WITH candidate AS (
     LIMIT 1
 )
 UPDATE environment_work AS work
-SET polled_at = $3, poll_worker_id = NULLIF($4, '')
+SET polled_at = $3, poll_worker_id = NULLIF($4, ''), sessions_token_hash = $5
 FROM candidate
 WHERE work.id = candidate.id
 RETURNING `+environmentWorkTargetColumns,
-			environmentID, now.Add(-input.ReclaimAge), now, input.WorkerID)
+			environmentID, now.Add(-input.ReclaimAge), now, input.WorkerID, secretHash)
 		work, err := scanEnvironmentWork(row)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
@@ -242,6 +388,7 @@ RETURNING `+environmentWorkTargetColumns,
 		if err != nil {
 			return err
 		}
+		work.Secret = secret
 		result = &work
 		return nil
 	})
@@ -256,18 +403,43 @@ func (r *EnvironmentWorkRepository) AckWork(
 		return domain.EnvironmentWork{}, err
 	}
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
-	work, err := scanEnvironmentWork(r.store.pool.QueryRow(ctx, `
+	var result domain.EnvironmentWork
+	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
+		if requestScope, _ := workspace.FromContext(ctx); requestScope.Session != nil {
+			return domain.Precondition("session credential cannot acknowledge work")
+		}
+		work, err := scanEnvironmentWork(tx.QueryRow(ctx,
+			`SELECT `+environmentWorkColumns+` FROM environment_work
+WHERE environment_id = $1 AND id = $2 FOR UPDATE`, environmentID, workID))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.NotFound("work item not found")
+		}
+		if err != nil {
+			return err
+		}
+		switch work.State {
+		case domain.EnvironmentWorkQueued:
+			work, err = scanEnvironmentWork(tx.QueryRow(ctx, `
 UPDATE environment_work
 SET state = 'starting', acknowledged_at = $3
-WHERE environment_id = $1 AND id = $2 AND state = 'queued' AND polled_at IS NOT NULL
+WHERE environment_id = $1 AND id = $2 AND polled_at IS NOT NULL
 RETURNING `+environmentWorkColumns, environmentID, workID, now))
-	if errors.Is(err, pgx.ErrNoRows) {
-		if _, getErr := r.GetWork(ctx, environmentID, workID); getErr != nil {
-			return domain.EnvironmentWork{}, getErr
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.Conflict("work item is not awaiting acknowledgement")
+			}
+			if err != nil {
+				return err
+			}
+		case domain.EnvironmentWorkStarting:
+			// Ack is idempotent for the same claim. This lets a worker safely
+			// retry when the first successful response was lost.
+		default:
+			return domain.Conflict("work item is not awaiting acknowledgement")
 		}
-		return domain.EnvironmentWork{}, domain.Conflict("work item is not awaiting acknowledgement")
-	}
-	return work, err
+		result = work
+		return nil
+	})
+	return result, err
 }
 
 func (r *EnvironmentWorkRepository) HeartbeatWork(
@@ -282,14 +454,13 @@ func (r *EnvironmentWorkRepository) HeartbeatWork(
 	var response domain.EnvironmentWorkHeartbeat
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
 	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
-		work, err := scanEnvironmentWork(tx.QueryRow(ctx,
-			`SELECT `+environmentWorkColumns+` FROM environment_work
-WHERE environment_id = $1 AND id = $2 FOR UPDATE`, environmentID, workID))
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.NotFound("work item not found")
-		}
+		work, err := r.workForUpdate(ctx, tx, environmentID, workID)
 		if err != nil {
 			return err
+		}
+		requestScope, _ := workspace.FromContext(ctx)
+		if requestScope.Session != nil && environmentWorkLeaseExpired(work, now) {
+			return domain.Precondition("work lease has expired")
 		}
 		if expected != nil {
 			matches := *expected == "NO_HEARTBEAT" && work.LatestHeartbeatAt == nil
@@ -346,27 +517,26 @@ func (r *EnvironmentWorkRepository) StopWork(
 	}
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
 	return r.store.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
-		var (
-			state, sessionID string
-			activationSeq    int64
-		)
-		err := tx.QueryRow(ctx, `SELECT state, session_id, activation_seq FROM environment_work
-WHERE environment_id = $1 AND id = $2 FOR UPDATE`, environmentID, workID).Scan(
-			&state, &sessionID, &activationSeq,
-		)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.NotFound("work item not found")
-		}
+		work, err := r.workForUpdate(ctx, tx, environmentID, workID)
 		if err != nil {
 			return err
 		}
-		if state == string(domain.EnvironmentWorkStopped) {
+		requestScope, _ := workspace.FromContext(ctx)
+		if requestScope.Session != nil && environmentWorkLeaseExpired(work, now) {
+			return domain.Precondition("work lease has expired")
+		}
+		var activationSeq int64
+		if err := tx.QueryRow(ctx, `SELECT activation_seq FROM environment_work
+WHERE environment_id = $1 AND id = $2`, environmentID, workID).Scan(&activationSeq); err != nil {
+			return err
+		}
+		if work.State == domain.EnvironmentWorkStopped {
 			return domain.Conflict("work item is already stopped")
 		}
 		next := domain.EnvironmentWorkStopping
 		stoppedAt := (*time.Time)(nil)
-		if force || state == string(domain.EnvironmentWorkQueued) ||
-			state == string(domain.EnvironmentWorkStarting) {
+		if force || work.State == domain.EnvironmentWorkQueued ||
+			work.State == domain.EnvironmentWorkStarting {
 			next = domain.EnvironmentWorkStopped
 			stoppedAt = &now
 		}
@@ -381,7 +551,7 @@ WHERE environment_id = $1 AND id = $2`, environmentID, workID, next, now, stoppe
 		// retaining the stopping item, and let Poll serialize the handoff. This
 		// closes the admission-before-Stop race without allowing two workers to
 		// execute the same Session concurrently.
-		maxSeq, err := q.MaxEventSeq(ctx, sessionID)
+		maxSeq, err := q.MaxEventSeq(ctx, work.SessionID)
 		if err != nil {
 			return err
 		}
@@ -399,10 +569,60 @@ WHERE EXISTS (
       )
 )
 ON CONFLICT (session_id) WHERE state IN ('queued', 'starting', 'active') DO NOTHING`,
-			r.store.ids.NewID(domain.PrefixEnvironmentWork), environmentID, sessionID,
+			r.store.ids.NewID(domain.PrefixEnvironmentWork), environmentID, work.SessionID,
 			maxSeq, now, activationSeq)
 		return err
 	})
+}
+
+func (r *EnvironmentWorkRepository) workForUpdate(
+	ctx context.Context,
+	tx pgx.Tx,
+	environmentID, workID string,
+) (domain.EnvironmentWork, error) {
+	requestScope, _ := workspace.FromContext(ctx)
+	query := `SELECT ` + environmentWorkColumns + ` FROM environment_work
+WHERE environment_id = $1 AND id = $2`
+	args := []any{environmentID, workID}
+	if requestScope.Session != nil {
+		claim := requestScope.Session
+		if claim.EnvironmentID != environmentID || claim.WorkID != workID ||
+			len(claim.CredentialDigest) == 0 {
+			return domain.EnvironmentWork{}, domain.Precondition("work lease is no longer owned")
+		}
+		query += ` AND sessions_token_hash = $3`
+		args = append(args, claim.CredentialDigest)
+	}
+	work, err := scanEnvironmentWork(tx.QueryRow(ctx, query+` FOR UPDATE`, args...))
+	if errors.Is(err, pgx.ErrNoRows) {
+		if requestScope.Session != nil {
+			return domain.EnvironmentWork{}, domain.Precondition("work lease is no longer owned")
+		}
+		return domain.EnvironmentWork{}, domain.NotFound("work item not found")
+	}
+	if err == nil && requestScope.Session != nil && work.SessionID != requestScope.Session.SessionID {
+		return domain.EnvironmentWork{}, domain.Precondition("work lease is no longer owned")
+	}
+	return work, err
+}
+
+func environmentWorkLeaseExpired(work domain.EnvironmentWork, now time.Time) bool {
+	var anchor *time.Time
+	switch work.State {
+	case domain.EnvironmentWorkStarting:
+		anchor = work.AcknowledgedAt
+	case domain.EnvironmentWorkActive:
+		anchor = work.LatestHeartbeatAt
+	case domain.EnvironmentWorkStopping:
+		anchor = work.StopRequestedAt
+	default:
+		return false
+	}
+	if anchor == nil || work.TTLSeconds <= 0 ||
+		work.TTLSeconds > app.MaxEnvironmentWorkTTLSeconds {
+		return true
+	}
+	return anchor.Before(now.Add(-time.Duration(work.TTLSeconds) * time.Second))
 }
 
 func (r *EnvironmentWorkRepository) WorkStats(

@@ -1527,9 +1527,11 @@
           }
         },
         {
+          "description": "Desired lease TTL in seconds. Healthy workers renew continuously; Mango caps the stale-owner window at five minutes.",
           "in": "query",
           "name": "desired_ttl_seconds",
           "schema": {
+            "maximum": 300,
             "minimum": 1,
             "type": "integer"
           }

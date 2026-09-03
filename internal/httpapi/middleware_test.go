@@ -19,6 +19,30 @@ func (f workspaceAuthenticatorFunc) AuthenticateAPIKey(ctx context.Context, key 
 	return f(ctx, key)
 }
 
+type sessionTokenTestAuthenticator struct{}
+
+func (sessionTokenTestAuthenticator) AuthenticateAPIKey(context.Context, string) (string, error) {
+	return "", workspace.ErrInvalidAPIKey
+}
+
+func (sessionTokenTestAuthenticator) AuthenticateSessionToken(
+	_ context.Context,
+	token string,
+) (string, workspace.SessionScope, error) {
+	if token != "session-token" {
+		return "", workspace.SessionScope{}, workspace.ErrInvalidSessionToken
+	}
+	return "wrkspc_team", workspace.SessionScope{
+		EnvironmentID: "env_one",
+		WorkID:        "work_one",
+		SessionID:     "sesn_one",
+		Skills: map[workspace.SkillVersion]struct{}{
+			{ID: "skill_one", Version: "v1"}: {},
+		},
+		Files: map[string]struct{}{"file_one": {}},
+	}, nil
+}
+
 func TestWriteError_MapsKinds(t *testing.T) {
 	cases := map[error]int{
 		domain.Validation("x"):  400,
@@ -26,6 +50,7 @@ func TestWriteError_MapsKinds(t *testing.T) {
 		domain.NotFound("x"):    404,
 		domain.Unsupported("x"): 422,
 		domain.TooLarge("x"):    413,
+		domain.Permission("x"):  403,
 	}
 	for err, want := range cases {
 		rec := httptest.NewRecorder()
@@ -163,6 +188,55 @@ func TestAuthMiddleware_AuthenticatesAndScopesWorkspace(t *testing.T) {
 	h.ServeHTTP(invalidRec, invalid)
 	if invalidRec.Code != http.StatusUnauthorized {
 		t.Fatalf("invalid status = %d, want 401", invalidRec.Code)
+	}
+}
+
+func TestAuthMiddleware_SessionTokenIsResourceScoped(t *testing.T) {
+	h := authMiddleware(Config{Authenticator: sessionTokenTestAuthenticator{}}, http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			scope, err := workspace.Require(r.Context())
+			if err != nil || scope.ID != "wrkspc_team" || scope.Session == nil ||
+				scope.Session.SessionID != "sesn_one" {
+				t.Fatalf("scope = %+v, %v", scope, err)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		},
+	))
+	tests := []struct {
+		name, method, path string
+		want               int
+	}{
+		{name: "heartbeat", method: http.MethodPost, path: "/v1/environments/env_one/work/work_one/heartbeat", want: 204},
+		{name: "stop", method: http.MethodPost, path: "/v1/environments/env_one/work/work_one/stop", want: 204},
+		{name: "session", method: http.MethodGet, path: "/v1/sessions/sesn_one", want: 204},
+		{name: "events list", method: http.MethodGet, path: "/v1/sessions/sesn_one/events", want: 204},
+		{name: "events send", method: http.MethodPost, path: "/v1/sessions/sesn_one/events", want: 204},
+		{name: "events stream", method: http.MethodGet, path: "/v1/sessions/sesn_one/events/stream", want: 204},
+		{name: "skill content", method: http.MethodGet, path: "/v1/skills/skill_one/versions/v1/content", want: 204},
+		{name: "file content", method: http.MethodGet, path: "/v1/files/file_one/content", want: 204},
+		{name: "other session", method: http.MethodGet, path: "/v1/sessions/sesn_two", want: 403},
+		{name: "session mutation", method: http.MethodDelete, path: "/v1/sessions/sesn_one", want: 403},
+		{name: "other work", method: http.MethodPost, path: "/v1/environments/env_one/work/work_two/stop", want: 403},
+		{name: "other skill", method: http.MethodGet, path: "/v1/skills/skill_two/versions/v1/content", want: 403},
+		{name: "workspace list", method: http.MethodGet, path: "/v1/sessions", want: 403},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(test.method, test.path, nil)
+			req.Header.Set("authorization", "Bearer session-token")
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != test.want {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, test.want, rec.Body.String())
+			}
+		})
+	}
+	invalid := httptest.NewRequest(http.MethodGet, "/v1/sessions/sesn_one", nil)
+	invalid.Header.Set("authorization", "Bearer wrong-token")
+	invalidRec := httptest.NewRecorder()
+	h.ServeHTTP(invalidRec, invalid)
+	if invalidRec.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid token status = %d, want 401", invalidRec.Code)
 	}
 }
 

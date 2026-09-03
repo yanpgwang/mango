@@ -431,13 +431,11 @@ support, so they run the same credential-free and opt-in live conformance suites
 - Mango adopts that separation and the pull-style Go iterator relationship:
   Poll is tentative, Ack precedes yield, and drain ends normally on an empty
   queue. Mango does not adopt the reference poller's default auto-stop yet.
-  Mango's Stop transition is not owner-fenced and discards a queued or starting
-  activation; after an ambiguous Ack, Stop could lose the activation or mutate
-  a lease reclaimed by another worker. The Mango poller therefore never stops
-  Work; a future heartbeat-owning runner will stop only while its fenced lease
-  remains valid. Mango uses its existing routes, generated types, Workspace
-  credential, and error conventions rather than hosted beta headers or vendor
-  authentication.
+  At that slice Mango's Stop transition was not owner-fenced and could discard a
+  queued or starting activation after an ambiguous Ack. The Mango poller
+  therefore never stops Work; the next credential slice below makes a reclaimed
+  item token unusable. Mango uses its existing routes, generated types, and
+  error conventions rather than hosted beta headers.
 - Acceptance for this first slice: the standalone Go SDK exposes a
   provider-neutral Work poller with option validation, long-running and drain
   behavior, cancellation, reclaim and worker query parameters, Ack-before-yield,
@@ -445,12 +443,61 @@ support, so they run the same credential-free and opt-in live conformance suites
   and jittered retry. Unit tests use an HTTP server and do not execute examples
   or contact a sandbox provider; a PostgreSQL test proves an acknowledged item
   is reclaimed after its starting lease expires.
-- Intentional limits: this is not `EnvironmentWorker` or `SessionToolRunner`;
-  it does not heartbeat, execute tools, prepare resources, or claim exactly-once
-  side effects. Environment-scoped credentials and Work secrets remain absent.
+- Intentional limits at delivery: this was not `EnvironmentWorker` or
+  `SessionToolRunner`; it did not heartbeat, execute tools, prepare resources,
+  or claim exactly-once side effects. Environment-scoped credentials and Work
+  secrets were deferred to the following slice.
   The old Mango-managed provider path remains until an independently tested
   Docker worker replaces its OSS workflow; no API or persistence change occurs
   in this slice.
+
+## Per-Work Session credentials
+
+- User/operator problem: an untrusted Session sandbox must execute its own tool
+  loop without receiving a Workspace-wide key, and a worker whose lease was
+  reclaimed must lose the ability to heartbeat or stop the new activation.
+  `worker_id` remains operational metadata rather than an authorization proof.
+- Reviewed Claude Managed Agents [Work documentation](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+  and the [Go SDK v1.69.0 worker source](https://github.com/anthropics/anthropic-sdk-go/blob/6298207eac7ff589e7fcc8a78f6c034ab09de47f/lib/environments/worker.go)
+  at commit `6298207eac7ff589e7fcc8a78f6c034ab09de47f` on 2026-09-03.
+  The paired reference clarified a detail not obvious from the resource schema:
+  Poll's `secret` is URL-safe base64 JSON carrying a `sessions_token`; Poll/Ack
+  use the Environment credential, while per-item heartbeat, Stop, Session
+  execution, and input download calls switch to that bearer token. The payload
+  is populated only by Poll.
+- Mango adopts that credential handoff and wire relationship. Poll creates a
+  fresh 256-bit `sessions_token`, returns it inside the same base64url payload,
+  and stores only its SHA-256 digest. Ack has no body and every non-Poll Work
+  response redacts `secret`. The token is accepted only for the exact Work's
+  Heartbeat/Stop, the exact Session's read/event routes, and File/Skill inputs
+  relationally pinned to that Session. A Workspace API key retains operator
+  authority; Mango has not yet introduced a distinct Environment polling key.
+- Reclaim rotates the token, so the former bearer fails authentication before
+  reaching a lease mutation. The current owner's expired heartbeat returns
+  `412`; the timestamp compare remains the optimistic-concurrency guard. Ack is
+  idempotent in `starting`, allowing a safe retry after a lost response, and the
+  Go WorkPoller retains the Poll payload across Ack's redacted response.
+- Mango independently caps a requested lease TTL at 300 seconds. A healthy
+  worker renews continuously, while an unbounded TTL would expand stale-owner
+  access and can overflow database interval arithmetic. The token is usable
+  only after Ack; active and starting leases expire from their last ownership
+  timestamp, and a graceful Stop retains access only through
+  `stop_requested_at + ttl`. Established Session SSE connections revalidate the
+  database lease once per second and close after expiry, Stop, or token rotation.
+- The execution credential may send only `user.tool_result` and
+  `user.custom_tool_result`. Mango rejects companion `system.message` from this
+  trust boundary because a sandbox tool runner has no reason to persist
+  higher-priority instructions.
+- Migration 39 adds the nullable, unique indexed token-digest column. Existing
+  unclaimed development Work rows receive a token on their next Poll and any
+  pre-existing TTL above the new bound is clamped to 300 seconds. Rolling the
+  migration back removes the scoped credential and TTL constraint and is not a
+  safe mixed-version deployment; Mango has no supported release requiring a
+  shim.
+- Mango rejects hosted beta headers, organization credentials, fallback to a
+  broad key inside the Session sandbox, and undocumented access to other
+  Workspace resources. A complete `SessionToolRunner`, Environment worker, and
+  scoped Environment polling credential remain separate slices.
 
 ## Docker-default OSS execution
 

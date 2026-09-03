@@ -18,6 +18,10 @@ type WorkspaceAuthenticator interface {
 	AuthenticateAPIKey(context.Context, string) (string, error)
 }
 
+type SessionTokenAuthenticator interface {
+	AuthenticateSessionToken(context.Context, string) (string, workspace.SessionScope, error)
+}
+
 type Config struct {
 	RequireAuth   bool
 	Authenticator WorkspaceAuthenticator
@@ -48,16 +52,38 @@ func authMiddleware(cfg Config, next http.Handler) http.Handler {
 				return
 			}
 			workspaceID, err := cfg.Authenticator.AuthenticateAPIKey(r.Context(), key)
-			if err != nil {
+			if err == nil {
+				r = r.WithContext(workspace.WithScope(r.Context(), workspaceID))
+			} else {
 				if !errors.Is(err, workspace.ErrInvalidAPIKey) {
 					writeError(w, err)
 					return
 				}
-				writeErrorEnvelope(w, http.StatusUnauthorized, "authentication_error",
-					"invalid API key")
-				return
+				sessionAuthenticator, ok := cfg.Authenticator.(SessionTokenAuthenticator)
+				if !ok {
+					writeErrorEnvelope(w, http.StatusUnauthorized, "authentication_error",
+						"invalid API key")
+					return
+				}
+				workspaceID, sessionScope, sessionErr := sessionAuthenticator.AuthenticateSessionToken(
+					r.Context(), key,
+				)
+				if sessionErr != nil {
+					if !errors.Is(sessionErr, workspace.ErrInvalidSessionToken) {
+						writeError(w, sessionErr)
+						return
+					}
+					writeErrorEnvelope(w, http.StatusUnauthorized, "authentication_error",
+						"invalid credential")
+					return
+				}
+				if !sessionScopeAllows(r, sessionScope) {
+					writeErrorEnvelope(w, http.StatusForbidden, "permission_error",
+						"session credential is not authorized for this resource")
+					return
+				}
+				r = r.WithContext(workspace.WithSessionScope(r.Context(), workspaceID, sessionScope))
 			}
-			r = r.WithContext(workspace.WithScope(r.Context(), workspaceID))
 		} else if cfg.RequireAuth && !present {
 			writeErrorEnvelope(w, http.StatusUnauthorized, "authentication_error",
 				"missing authorization header")
@@ -69,6 +95,55 @@ func authMiddleware(cfg Config, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func sessionScopeAllows(r *http.Request, scope workspace.SessionScope) bool {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 3 || parts[0] != "v1" {
+		return false
+	}
+	if len(parts) == 6 && parts[1] == "environments" &&
+		parts[2] == scope.EnvironmentID && parts[3] == "work" && parts[4] == scope.WorkID &&
+		r.Method == http.MethodPost {
+		return parts[5] == "heartbeat" || parts[5] == "stop"
+	}
+	if parts[1] == "sessions" && parts[2] == scope.SessionID {
+		switch {
+		case len(parts) == 3 && r.Method == http.MethodGet:
+			return true
+		case len(parts) == 4 && parts[3] == "events" &&
+			(r.Method == http.MethodGet || r.Method == http.MethodPost):
+			return true
+		case len(parts) == 5 && parts[3] == "events" && parts[4] == "stream" &&
+			r.Method == http.MethodGet:
+			return true
+		}
+	}
+	if r.Method != http.MethodGet {
+		return false
+	}
+	if len(parts) >= 3 && parts[1] == "files" {
+		_, allowed := scope.Files[parts[2]]
+		return allowed && (len(parts) == 3 || (len(parts) == 4 && parts[3] == "content"))
+	}
+	if len(parts) >= 3 && parts[1] == "skills" {
+		if len(parts) == 3 {
+			for skill := range scope.Skills {
+				if skill.ID == parts[2] {
+					return true
+				}
+			}
+			return false
+		}
+		if len(parts) == 5 || (len(parts) == 6 && parts[5] == "content") {
+			if parts[3] != "versions" {
+				return false
+			}
+			_, allowed := scope.Skills[workspace.SkillVersion{ID: parts[2], Version: parts[4]}]
+			return allowed
+		}
+	}
+	return false
 }
 
 func isPublicRequest(r *http.Request) bool {

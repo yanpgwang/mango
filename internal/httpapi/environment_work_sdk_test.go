@@ -78,13 +78,13 @@ func TestAnthropicSDKResearch_EnvironmentWorkSurface(t *testing.T) {
 	polled, err := client.Beta.Environments.Work.Poll(ctx, service.work.EnvironmentID, anthropic.BetaEnvironmentWorkPollParams{
 		BlockMs: param.NewOpt(int64(1)),
 	})
-	if err != nil || polled.ID != service.work.ID {
+	if err != nil || polled.ID != service.work.ID || polled.Secret != service.secret {
 		t.Fatalf("Poll Work = %+v, err=%v", polled, err)
 	}
 	acked, err := client.Beta.Environments.Work.Ack(ctx, service.work.ID, anthropic.BetaEnvironmentWorkAckParams{
 		EnvironmentID: service.work.EnvironmentID,
 	})
-	if err != nil || acked.State != anthropic.BetaSelfHostedWorkStateStarting {
+	if err != nil || acked.State != anthropic.BetaSelfHostedWorkStateStarting || acked.Secret != "" {
 		t.Fatalf("Ack Work = %+v, err=%v", acked, err)
 	}
 	heartbeat, err := client.Beta.Environments.Work.Heartbeat(ctx, service.work.ID, anthropic.BetaEnvironmentWorkHeartbeatParams{
@@ -159,6 +159,30 @@ func TestEnvironmentWorkPollUsesWorkerIDQuery(t *testing.T) {
 	}
 }
 
+func TestEnvironmentWorkHeartbeatRejectsOversizedTTL(t *testing.T) {
+	service := newSDKEnvironmentWorkService()
+	server := httptest.NewServer(NewServer(Deps{EnvironmentWork: service}, Config{
+		RequireAuth: true,
+	}).Handler())
+	t.Cleanup(server.Close)
+
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		server.URL+"/v1/environments/"+service.work.EnvironmentID+"/work/"+
+			service.work.ID+"/heartbeat?desired_ttl_seconds=301", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("authorization", "Bearer test-key")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("oversized TTL status = %d, want 400", response.StatusCode)
+	}
+}
+
 type sdkEnvironmentWorkService struct {
 	mu        sync.Mutex
 	work      domain.EnvironmentWork
@@ -167,11 +191,12 @@ type sdkEnvironmentWorkService struct {
 	acks      int
 	stops     int
 	heartbeat time.Time
+	secret    string
 }
 
 func newSDKEnvironmentWorkService() *sdkEnvironmentWorkService {
 	now := time.Date(2026, 8, 9, 12, 0, 0, 123000000, time.UTC)
-	return &sdkEnvironmentWorkService{work: domain.EnvironmentWork{
+	return &sdkEnvironmentWorkService{secret: "worksec_sdk", work: domain.EnvironmentWork{
 		ID: "work_sdk", EnvironmentID: "env_self_hosted", SessionID: "sesn_sdk",
 		State: domain.EnvironmentWorkQueued, Metadata: map[string]string{},
 		CreatedAt: now, TTLSeconds: 30,
@@ -246,6 +271,7 @@ func (s *sdkEnvironmentWorkService) Poll(
 		return nil, nil
 	}
 	work := s.work
+	work.Secret = s.secret
 	return &work, nil
 }
 

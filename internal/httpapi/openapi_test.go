@@ -63,6 +63,26 @@ func TestOpenAPITransportContract(t *testing.T) {
 	if worker == nil || worker["in"] != "query" {
 		t.Fatalf("worker_id parameter = %#v, want query parameter", worker)
 	}
+
+	heartbeatPath := openAPIMap(t,
+		paths["/v1/environments/{environment_id}/work/{work_id}/heartbeat"],
+		"heartbeat path",
+	)
+	heartbeat := openAPIMap(t, heartbeatPath["post"], "heartbeat operation")
+	var ttl map[string]any
+	for _, parameter := range heartbeat["parameters"].([]any) {
+		resolved := resolveOpenAPIRef(t, doc, parameter)
+		if resolved["name"] == "desired_ttl_seconds" {
+			ttl = resolved
+		}
+	}
+	if ttl == nil {
+		t.Fatal("desired_ttl_seconds parameter is missing")
+	}
+	ttlSchema := openAPIMap(t, ttl["schema"], "desired_ttl_seconds schema")
+	if fmt.Sprint(ttlSchema["minimum"]) != "1" || fmt.Sprint(ttlSchema["maximum"]) != "300" {
+		t.Fatalf("desired_ttl_seconds bounds = %#v, want 1..300", ttlSchema)
+	}
 }
 
 func TestOpenAPIResourceLifecycleContract(t *testing.T) {

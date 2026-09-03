@@ -2414,7 +2414,7 @@ class EnvironmentVariableCredentialUpdateInjectionLocation(TypedDict, total=Fals
 
 class ErrorResponseError(TypedDict, total=False):
     message: Required[str]
-    type: Required[Literal['invalid_request_error', 'authentication_error', 'not_found_error', 'conflict_error', 'memory_precondition_failed_error', 'request_too_large', 'api_error']]
+    type: Required[Literal['invalid_request_error', 'authentication_error', 'permission_error', 'not_found_error', 'conflict_error', 'precondition_failed_error', 'memory_precondition_failed_error', 'request_too_large', 'api_error']]
 
 
 class ModelInputVariant2(TypedDict, total=False):

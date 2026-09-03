@@ -17,9 +17,10 @@ Provider sandbox bindings and File/Skill lifecycle intents are persisted in
 PostgreSQL; File bytes and immutable custom Skill archives live in object
 storage when those optional surfaces are enabled.
 
-The HTTP edge authenticates opaque API keys into a single Workspace tenant
-scope. PostgreSQL roots, asynchronous execution, and object keys preserve that
-scope; end-user identity and enterprise RBAC remain outside Mango. See
+The HTTP edge authenticates opaque API keys into a Workspace tenant scope and
+per-Work Session tokens into a narrow execution scope. PostgreSQL roots,
+asynchronous execution, and object keys preserve those scopes; end-user identity
+and enterprise RBAC remain outside Mango. See
 [Workspace tenancy](architecture/workspace-tenancy.md).
 
 ```mermaid

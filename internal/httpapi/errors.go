@@ -45,6 +45,8 @@ func writeError(w http.ResponseWriter, err error) {
 			status, typ = http.StatusRequestEntityTooLarge, "request_too_large"
 		case domain.KindPrecondition:
 			status, typ = http.StatusPreconditionFailed, "precondition_failed_error"
+		case domain.KindPermission:
+			status, typ = http.StatusForbidden, "permission_error"
 		}
 		if de.Code != "" {
 			typ = de.Code

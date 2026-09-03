@@ -588,6 +588,15 @@ func (s *Store) AdmitEvents(
 	if len(drafts) == 0 {
 		return Admission{}, domain.Validation("no events to admit")
 	}
+	if requestScope, _ := workspace.FromContext(ctx); requestScope.Session != nil {
+		for _, draft := range drafts {
+			if !domain.IsSessionCredentialEvent(draft.Type) {
+				return Admission{}, domain.Permission(
+					"session credential may only send tool-result events",
+				)
+			}
+		}
+	}
 	var admission Admission
 	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
 		row, err := q.LockSession(ctx, sessionID)
@@ -595,6 +604,12 @@ func (s *Store) AdmitEvents(
 			return domain.NotFound("session not found")
 		}
 		if err != nil {
+			return err
+		}
+		// Session is the root lifecycle lock. Take it before the Work lease
+		// lock so admission uses the same order as deletion and cannot deadlock
+		// against the environment_work cascade.
+		if err := s.fenceSessionCredential(ctx, tx, sessionID); err != nil {
 			return err
 		}
 		if row.DeletingAt.Valid {
@@ -619,6 +634,51 @@ func (s *Store) AdmitEvents(
 	}
 	s.notifySession(ctx, sessionID)
 	return admission, nil
+}
+
+// fenceSessionCredential makes a per-Work tool-result write linearizable with
+// lease reclaim. Middleware establishes the narrow route scope; this database
+// check proves the same token still owns a live, heartbeat-established claim in
+// the transaction that appends the event.
+func (s *Store) fenceSessionCredential(ctx context.Context, tx pgx.Tx, sessionID string) error {
+	requestScope, _ := workspace.FromContext(ctx)
+	if requestScope.Session == nil {
+		return nil
+	}
+	claim := requestScope.Session
+	if claim.SessionID != sessionID || len(claim.CredentialDigest) == 0 {
+		return domain.Precondition("work lease is no longer owned")
+	}
+	var found bool
+	err := tx.QueryRow(ctx, `
+SELECT true
+FROM environment_work
+WHERE id = $1
+  AND environment_id = $2
+  AND session_id = $3
+  AND sessions_token_hash = $4
+  AND (
+      (
+          state = 'stopping' AND
+          stop_requested_at >= $5::timestamptz - make_interval(secs => ttl_seconds)
+      ) OR
+      (
+          state = 'active' AND
+          latest_heartbeat_at >= $5::timestamptz - make_interval(secs => ttl_seconds)
+      )
+  )
+FOR SHARE`, claim.WorkID, claim.EnvironmentID, sessionID, claim.CredentialDigest,
+		s.clock.Now().UTC()).Scan(&found)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Precondition("work lease is no longer owned")
+	}
+	if err != nil {
+		return err
+	}
+	if !found {
+		return domain.Precondition("work lease is no longer owned")
+	}
+	return nil
 }
 
 // admitLocked appends the batch under an already-taken session lock (or a

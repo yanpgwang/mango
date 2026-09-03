@@ -9,6 +9,7 @@ const (
 	KindUnsupported
 	KindTooLarge
 	KindPrecondition
+	KindPermission
 )
 
 type DomainError struct {
@@ -29,6 +30,7 @@ func TooLarge(msg string) *DomainError    { return &DomainError{Kind: KindTooLar
 func Precondition(msg string) *DomainError {
 	return &DomainError{Kind: KindPrecondition, Message: msg}
 }
+func Permission(msg string) *DomainError { return &DomainError{Kind: KindPermission, Message: msg} }
 
 func MemoryPrecondition(msg string) *DomainError {
 	return &DomainError{

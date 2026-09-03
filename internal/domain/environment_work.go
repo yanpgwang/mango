@@ -17,9 +17,13 @@ const (
 // it as optional interoperability evidence. It activates the existing Session
 // event/tool-result protocol; it is not a second runtime.
 type EnvironmentWork struct {
-	ID                string
-	EnvironmentID     string
-	SessionID         string
+	ID            string
+	EnvironmentID string
+	SessionID     string
+	// Secret is populated only for the worker that tentatively claimed this
+	// activation. Persistence stores only its digest, and read/list surfaces
+	// redact it.
+	Secret            string
 	State             EnvironmentWorkState
 	Metadata          map[string]string
 	CreatedAt         time.Time
