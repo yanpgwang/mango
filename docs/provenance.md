@@ -496,8 +496,49 @@ support, so they run the same credential-free and opt-in live conformance suites
   shim.
 - Mango rejects hosted beta headers, organization credentials, fallback to a
   broad key inside the Session sandbox, and undocumented access to other
-  Workspace resources. A complete `SessionToolRunner`, Environment worker, and
-  scoped Environment polling credential remain separate slices.
+  Workspace resources. The Session runner, composed Environment worker, and
+  scoped Environment polling credential were left as separate slices.
+
+## Provider-neutral Session tool runner
+
+- User/operator problem: each self-hosted launcher otherwise has to recreate a
+  lossless-enough Session event loop, permission gate, tool/result mapping, and
+  lease-loss behavior. Divergent provider examples would make recovery and
+  security depend on the selected sandbox rather than on one SDK primitive.
+- Reviewed the public Claude Managed Agents
+  [Sessions documentation](https://platform.claude.com/docs/en/managed-agents/sessions),
+  [Go SDK SessionToolRunner source](https://github.com/anthropics/anthropic-sdk-go/blob/6298207eac7ff589e7fcc8a78f6c034ab09de47f/betasessiontoolrunner.go),
+  and [Go SDK tool documentation](https://github.com/anthropics/anthropic-sdk-go/blob/6298207eac7ff589e7fcc8a78f6c034ab09de47f/tools.md)
+  from v1.69.0 at commit `6298207eac7ff589e7fcc8a78f6c034ab09de47f`
+  on 2026-09-03. The useful paired design is stream-first attachment followed
+  by durable history reconciliation, serial local dispatch, explicit mapping
+  of normal/custom tool uses to their matching result events, durable approval
+  gates, bounded retries, and a pull-style iterator for observability.
+- Mango adopts those lifecycle relationships in an independently authored,
+  standard-library-only Go helper. It uses Mango's generated event unions and
+  flat `Client`, reconnects with jitter, ignores server-side MCP calls, copies
+  `session_thread_id`, and checks history after an ambiguous result write before
+  retrying. A terminal/deleted Session and end-turn idle have distinct sentinel
+  errors. Unregistered calls remain pending for split ownership rather than
+  being incorrectly answered.
+- Mango changes the execution boundary for self-hosting. `SessionToolCall`
+  exposes the durable `tool_use_id` as an explicit idempotency key, and scoped
+  request failures (`401`, `403`, or `412`) become `ErrSessionLeaseLost` without
+  credential fallback. The local `SessionTool` interface requires only name and
+  execution: schema and description already belong to the immutable Agent
+  snapshot, so requiring a Messages-API tool definition again would create two
+  authorities. Tools must honor cancellation; event reconciliation cannot make
+  a non-transactional external side effect exactly once. The runner deliberately
+  does not heartbeat Work, Stop Work, decode Work secrets, create a sandbox, or
+  close caller-owned tools. Those belong to the later composed Environment
+  worker or provider launcher.
+- Acceptance: HTTP-backed SDK tests prove stream-before-history recovery and
+  overlap deduplication, approval/denial/unknown-policy behavior, normal and
+  custom result mapping, MCP and unowned-tool separation, ambiguous committed
+  result recovery, cooperative cancellation on lease loss with no later write,
+  end-turn idle, option validation, and race-free operation. No example is
+  imported by the test suite, and no hosted credential or sandbox provider is
+  required.
 
 ## Docker-default OSS execution
 

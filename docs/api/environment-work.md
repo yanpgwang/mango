@@ -10,7 +10,7 @@ Environments. It is not a second Agent runtime. A worker claims a Session,
 listens to the existing Session
 event stream, executes `agent_toolset_20260401` tools in customer-hosted
 infrastructure, and posts results through the existing `user.tool_result`
-event.
+or `user.custom_tool_result` event.
 
 Mango creates a Work item only when a self-hosted Session has runnable input.
 The Work insert, public event admission, Session projection update, and Temporal
@@ -63,19 +63,22 @@ in memory when it returns the acknowledged item.
 ## Skills and Session state
 
 The Work and Session event APIs provide the worker protocol. The Go SDK ships a
-provider-neutral `WorkPoller` for poll, Ack, drain, and reclaim. It deliberately
-does not Stop claimed work, create a sandbox, or execute tools. Mango does not
-currently ship a complete Environment worker runner or external Skill
-activation. Applications implementing a worker still own tool execution,
-workspace preparation, heartbeat, Stop, and lease-loss cancellation. See the
-staged [self-hosted worker design](../architecture/self-hosted-workers.md).
+provider-neutral `WorkPoller` for poll, Ack, drain, and reclaim, plus a
+single-Session `SessionToolRunner` for stream/history recovery, confirmation
+gates, local dispatch, and result submission. Neither helper chooses or creates
+a sandbox, heartbeats Work, or performs final Stop. Mango does not currently
+ship the composed Environment worker or external Skill activation. Applications
+implementing a worker still own workspace preparation and lease renewal until
+that composition lands. See the staged
+[self-hosted worker design](../architecture/self-hosted-workers.md).
 
 Workers must honor `evaluated_permission` independently of execution location.
 An `ask` call waits for a persisted allow confirmation; a deny must never run.
-After allow, execute once and submit `user.tool_result` for the original call.
+After allow, execute and submit `user.tool_result` for the original call.
 An approval alone does not clear the Session's pending-action barrier. On
-reconnect, read confirmations and results as well as tool uses, including the
-owning Thread history for child calls. See
+reconnect, the Go runner reads confirmations and results as well as tool uses,
+copies the owning Thread ID for child-call results, and exposes the original
+event ID so a tool can make its external side effects idempotent. See
 [external tool approvals](events.md#approve-externally-executed-tools).
 
 Creating a self-hosted Session with custom Skills returns `422` with
