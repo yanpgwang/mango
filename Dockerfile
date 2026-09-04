@@ -4,6 +4,7 @@ FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
+COPY sdk/go/go.mod ./sdk/go/go.mod
 ARG GOPROXY=https://proxy.golang.org,direct
 RUN --mount=type=cache,target=/go/pkg/mod GOPROXY=$GOPROXY go mod download
 

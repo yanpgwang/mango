@@ -95,7 +95,7 @@ go run ./cmd/mango-tui --demo
 | Tools and resources | Sandboxed file and shell tools, remote MCP, Files, Git repositories, custom Skills, Memory Stores, and encrypted credentials |
 | Durable execution | Persisted event history, journaled tool calls, retries, park/resume, and restart recovery |
 | Automation and delegation | Scheduled Deployments, Run history, signed durable Webhooks, persistent child Agents, and Advisor consultations |
-| Execution environments | Docker by default, self-hosted worker leases, and Preview remote-sandbox adapters |
+| Execution environments | Docker by default, a first-party self-hosted Docker worker preview, and transitional remote-sandbox adapters |
 | Operator stack | PostgreSQL-authoritative state, Temporal workflows, S3-compatible objects, and NATS live previews |
 
 > [!IMPORTANT]

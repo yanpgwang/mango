@@ -26,6 +26,7 @@ require (
 	github.com/robfig/cron v1.2.0
 	github.com/stretchr/testify v1.11.1
 	github.com/tencentcloud/CubeSandbox/sdk/go v0.0.0-20260730082406-8ad40de9ed5f
+	github.com/yanpgwang/mango/sdk/go v0.0.0
 	go.temporal.io/api v1.63.4
 	go.temporal.io/sdk v1.47.0
 	golang.org/x/oauth2 v0.36.0
@@ -33,6 +34,8 @@ require (
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+replace github.com/yanpgwang/mango/sdk/go => ./sdk/go
 
 require (
 	dario.cat/mergo v1.0.0 // indirect

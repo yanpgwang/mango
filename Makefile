@@ -27,7 +27,9 @@ SERVICE_CORE_PACKAGES ?= \
 SANDBOX_TEST_PACKAGES ?= \
 	./internal/agentruntime/... \
 	./internal/sandbox/... \
+	./internal/selfhosted/... \
 	./internal/testutil/dockertest
+WORKER_TEST_IMAGE ?= mango-self-hosted-worker:test
 MANGO_TEST_DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/mango?sslmode=disable
 MANGO_TEST_TEMPORAL_HOSTPORT ?= localhost:7233
 MANGO_TEST_NATS_URL ?= nats://localhost:4222
@@ -131,8 +133,11 @@ test-service-core:
 
 test-sandbox-docker:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
+	$(DOCKER) build -f deployments/self-hosted/docker/Dockerfile \
+		--tag '$(WORKER_TEST_IMAGE)' .
 	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_LIVE_MODEL=0 \
+	MANGO_TEST_WORKER_IMAGE='$(WORKER_TEST_IMAGE)' \
 	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') \
 		-timeout '$(SANDBOX_TEST_TIMEOUT)' $(SANDBOX_TEST_PACKAGES) -count=1
 

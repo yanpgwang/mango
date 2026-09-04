@@ -180,13 +180,22 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 	itemClient := w.client.withAPIKey(token)
 	log := w.logger.With("work_id", work.ID, "session_id", work.Data.ID)
 
-	sessionCtx, cancelSession := context.WithCancel(ctx)
+	sessionCtx, cancelSession := context.WithCancelCause(ctx)
 	start := make(chan environmentHeartbeatStart, 1)
 	heartbeatDone := make(chan environmentHeartbeatEnd, 1)
 	go func() {
 		end := w.runHeartbeat(sessionCtx, itemClient, work, start, log)
 		heartbeatDone <- end
-		cancelSession()
+		switch {
+		case end.lost():
+			cancelSession(ErrSessionLeaseLost)
+		case end.err != nil:
+			cancelSession(end.err)
+		case end.reason == environmentHeartbeatControlStop:
+			cancelSession(ErrSessionTerminated)
+		default:
+			cancelSession(context.Canceled)
+		}
 	}()
 
 	startup := <-start
@@ -210,7 +219,7 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 		runnerErr = startup.end.err
 	}
 
-	cancelSession()
+	cancelSession(context.Canceled)
 	heartbeatEnd := <-heartbeatDone
 	leaseLost := heartbeatEnd.lost() || errors.Is(runnerErr, ErrSessionLeaseLost)
 	if leaseLost {

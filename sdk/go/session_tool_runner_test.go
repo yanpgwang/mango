@@ -247,6 +247,80 @@ func TestSessionToolRunnerRecognizesAmbiguousCommittedResult(t *testing.T) {
 	}
 }
 
+func TestSessionToolRunnerPostsToolCancellationWithFreshContext(t *testing.T) {
+	t.Parallel()
+	posted := make(chan map[string]any, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || !strings.HasSuffix(request.URL.Path, "/events") {
+			http.Error(w, "unexpected request", http.StatusNotFound)
+			return
+		}
+		if request.Context().Err() != nil {
+			t.Errorf("result request inherited cancelled context: %v", request.Context().Err())
+		}
+		var body struct {
+			Events []map[string]any `json:"events"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Errorf("decode result: %v", err)
+		}
+		if len(body.Events) != 1 {
+			t.Errorf("events = %#v", body.Events)
+		} else {
+			posted <- body.Events[0]
+		}
+		writeSessionToolRunnerJSON(t, w, map[string]any{"data": []any{}})
+	}))
+	defer server.Close()
+
+	started := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	runner := NewSessionToolRunner(ctx, newSessionToolRunnerClient(t, server.URL), "session_cancel", SessionToolRunnerOptions{
+		Tools: []SessionTool{sessionToolFunc{name: "wait", run: func(ctx context.Context, _ SessionToolCall) ([]ResultContentInput, error) {
+			close(started)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}}},
+		SendTimeout: 500 * time.Millisecond, SendRetryWindow: time.Second,
+	})
+	pending := pendingSessionToolCall{toolUse: &AgentToolUseEvent{
+		ID: "tool_cancel", Type: "agent.tool_use", Name: "wait",
+		Input: map[string]json.RawMessage{"value": json.RawMessage(`"hello"`)},
+	}}
+	done := make(chan struct {
+		call DispatchedToolCall
+		err  error
+	}, 1)
+	go func() {
+		call, err := runner.execute(ctx, pending)
+		done <- struct {
+			call DispatchedToolCall
+			err  error
+		}{call: call, err: err}
+	}()
+	<-started
+	cancel()
+	result := <-done
+	if result.err != nil {
+		t.Fatalf("execute after cancellation: %v", result.err)
+	}
+	if !result.call.Posted || !result.call.IsError {
+		t.Fatalf("cancelled call = %#v", result.call)
+	}
+	select {
+	case event := <-posted:
+		if event["tool_use_id"] != "tool_cancel" || event["is_error"] != true {
+			t.Fatalf("posted cancellation = %#v", event)
+		}
+		encoded, _ := json.Marshal(event["content"])
+		if !strings.Contains(string(encoded), context.Canceled.Error()) {
+			t.Fatalf("cancellation content = %s", encoded)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancelled tool result was not posted")
+	}
+}
+
 func TestSessionToolRunnerBoundsHangingResultReconciliation(t *testing.T) {
 	t.Parallel()
 	toolUse := sessionToolUseJSON("tool_hanging_reconcile", "echo", "allow", "")

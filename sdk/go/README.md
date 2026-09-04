@@ -182,6 +182,22 @@ launcher owns those boundaries. Tools must stop on context cancellation;
 `ErrEnvironmentWorkLeaseLost` means the worker deliberately skipped Stop
 because the item may already belong to another owner.
 
+The optional `tools/agenttoolset` package supplies Mango's six core local tool
+executors without claiming to be a sandbox:
+
+```go
+import "github.com/yanpgwang/mango/sdk/go/tools/agenttoolset"
+
+tools, err := agenttoolset.New(agenttoolset.Context{Workdir: "/workspace"})
+if err != nil { panic(err) }
+```
+
+Run it only inside an isolation boundary created by your launcher. It executes
+`bash`, `read`, `write`, `edit`, `glob`, and `grep`, confines file operations to
+`Workdir`, bounds reads and outputs, and removes Mango credentials from shell
+subprocess environments. It does not create compute or implement server-side
+Web tools, Skills, Memory, or resource preparation.
+
 ## Self-hosted Session tools
 
 `NewSessionToolRunner` owns the execution loop for one acknowledged Session. It
