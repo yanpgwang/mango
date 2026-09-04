@@ -106,9 +106,13 @@ opt-in.
    stream before paginated history reconciliation, dispatches local and custom
    tools, honors durable confirmation gates, retries ambiguous result writes,
    and stops on terminal events, end-turn idle, cancellation, or lease loss.
-4. Compose those pieces as `EnvironmentWorker` and add scoped Environment
-   polling credentials before claiming an untrusted or multi-tenant supervisor
-   boundary.
+4. Added a provider-neutral `EnvironmentWorker` composition. It performs a
+   successful conditional heartbeat before tool execution, keeps heartbeating
+   in parallel, derives result retry bounds from the lease TTL, cancels on
+   lease loss, and force-Stops ordinary exits. It requires the per-Work token
+   after Ack and never falls back to the supervisor's Workspace key. Scoped
+   Environment polling credentials remain required before claiming an
+   untrusted or multi-tenant supervisor boundary.
 5. Build a standalone Docker launcher and run a real Docker end-to-end flow.
 6. Add thin provider examples one at a time. Each must use the same runner and
    document persistence, cancellation, resource limits, network policy, and

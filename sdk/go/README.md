@@ -136,6 +136,52 @@ and token as secrets: do not log or persist them.
 An ambiguous Ack failure is left for TTL reclaim. The poller itself does not
 heartbeat, Stop Work, or choose a sandbox.
 
+## Composed self-hosted worker
+
+`NewEnvironmentWorker` composes `WorkPoller` and `SessionToolRunner` with the
+missing lease lifecycle. It sends the first conditional heartbeat before any
+tool executes, renews the lease in parallel, cancels execution if ownership is
+lost, and force-Stops the Work on ordinary exit:
+
+```go
+worker := mango.NewEnvironmentWorker(client, mango.EnvironmentWorkerOptions{
+    EnvironmentID: environmentID,
+    Tools:         tools,
+})
+if err := worker.Run(ctx); err != nil {
+    panic(err)
+}
+```
+
+`client` is the trusted supervisor client used for Poll and Ack. After Ack, the
+worker decodes the `sessions_token` from `work.Secret` and creates a scoped
+client for Heartbeat, Session events, and Stop. An invalid or absent secret is
+an error; the worker never falls back to the Workspace key.
+
+A launcher that Polls and Acks outside the sandbox can run only the item side
+inside it. Construct the item process's client with the Mango base URL and no
+Workspace key, then pass `EnvironmentWorkerHandleItemOptions`. Empty fields
+read `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`, `MANGO_SESSION_ID`, and
+`MANGO_WORK_SECRET`:
+
+```go
+worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
+    Tools: tools,
+})
+err := worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{})
+```
+
+If a tool spawns subprocesses, give them an explicit allowlisted environment or
+strip `MANGO_WORK_SECRET` and other credential variables. `HandleItem` reads the
+process environment but cannot safely mutate global environment variables for
+caller-owned tools.
+
+The helper remains provider-neutral. It does not create a Docker container,
+download Session resources, prepare Skills or Memory, or close tools. A
+launcher owns those boundaries. Tools must stop on context cancellation;
+`ErrEnvironmentWorkLeaseLost` means the worker deliberately skipped Stop
+because the item may already belong to another owner.
+
 ## Self-hosted Session tools
 
 `NewSessionToolRunner` owns the execution loop for one acknowledged Session. It
@@ -193,8 +239,8 @@ honor cancellation and use `SessionToolCall.ToolUseID` as their idempotency key.
 
 With a per-Work Session token, `401`, `403`, or `412` stops the runner with
 `ErrSessionLeaseLost`; it never falls back to the Workspace credential. The
-runner does not renew that lease. The later `EnvironmentWorker` composition owns
-heartbeat and Stop while this helper stays provider-neutral.
+runner does not renew that lease. `EnvironmentWorker` owns heartbeat and Stop
+while this lower-level helper stays provider-neutral.
 
 ## Live events and recovery
 

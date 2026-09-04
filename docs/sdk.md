@@ -97,9 +97,13 @@ by event ID. Preview deltas are ephemeral, not durable history.
 
 The generated one-shot methods do not automatically resend a message or tool
 result after an ambiguous HTTP failure. Check persisted events before deciding
-to retry. The Go `SessionToolRunner` is a narrow workflow helper that performs
-that result-history check before its bounded retry; it still cannot make an
-external tool side effect exactly once. See [Session events](api/events.md).
+to retry. The Go SDK adds three handwritten, provider-neutral workflow helpers:
+`WorkPoller`, `SessionToolRunner`, and their `EnvironmentWorker` composition.
+The Session runner performs the result-history check before its bounded retry;
+it still cannot make an external tool side effect exactly once. The composed
+worker adds heartbeat, lease-loss cancellation, scoped credential handoff, and
+final Stop without selecting a sandbox provider. See
+[Environment Work](api/environment-work.md) and [Session events](api/events.md).
 
 ## Development and verification
 
