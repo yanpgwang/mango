@@ -72,11 +72,42 @@ process; `HandleItem` runs only an already-acknowledged item and can read its
 narrow identity from `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`,
 `MANGO_SESSION_ID`, and `MANGO_WORK_SECRET` inside a launcher-created sandbox.
 
-These helpers do not choose or create a sandbox and do not prepare File, Git,
-Skill, or Memory inputs. Mango does not currently ship external Skill
-activation. Applications implementing a launcher still own workspace
-preparation and sandbox lifecycle. See the staged
+These SDK lifecycle helpers do not choose or create a sandbox and do not
+prepare File, Git, Skill, or Memory inputs. Mango's first-party Docker launcher
+composes them with container and workspace-volume lifecycle; other launchers
+still own that boundary. Mango does not currently ship external Skill
+activation. See the staged
 [self-hosted worker design](../architecture/self-hosted-workers.md).
+
+## First-party Docker worker
+
+Build and run the preview reference worker from the repository root:
+
+```sh
+docker build -f deployments/self-hosted/docker/Dockerfile \
+  -t mango-self-hosted-worker:local .
+
+MANGO_API_KEY=replace-with-a-workspace-key \
+MANGO_ENVIRONMENT_ID=env_replace_me \
+MANGO_BASE_URL=http://localhost:8080 \
+MANGO_DOCKER_BASE_URL=http://host.docker.internal:8080 \
+go run ./cmd/mango-worker docker
+```
+
+The supervisor uses the Workspace key only for Poll and Ack. It creates a
+hardened container for each acknowledged Work item and injects only the opaque
+Work secret plus resource IDs and the sandbox-visible Mango URL. The item
+process performs the first heartbeat before executing tools, continuously
+renews the lease, reconciles Session events, posts tool results, and force-Stops
+ordinary exits. It runs the Go SDK's six core local tools in `/workspace` and
+scrubs Mango credentials from `bash` subprocesses.
+
+Containers are removed after each activation. A Docker named volume derived
+from the Session ID is retained, so later Work for the same Session resumes the
+same workspace. This reference does not yet prepare Skills, Memory, File/Git
+resources, or Session outputs; it is not a hardened hostile multi-tenant
+boundary. See the
+[Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker).
 
 Workers must honor `evaluated_permission` independently of execution location.
 An `ask` call waits for a persisted allow confirmation; a deny must never run.

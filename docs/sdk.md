@@ -104,6 +104,8 @@ it still cannot make an external tool side effect exactly once. The composed
 worker adds heartbeat, lease-loss cancellation, scoped credential handoff, and
 final Stop without selecting a sandbox provider. See
 [Environment Work](api/environment-work.md) and [Session events](api/events.md).
+Its optional `tools/agenttoolset` package supplies the six core local tool
+executors for an already-isolated worker; it does not create a sandbox.
 
 ## Development and verification
 

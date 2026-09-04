@@ -10,3 +10,12 @@ mango.db
 *.db-shm
 *.db-wal
 website
+**/.venv
+**/node_modules
+**/.next
+**/bin
+**/bin/**
+**/dist
+**/dist/**
+**/out
+**/out/**

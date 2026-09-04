@@ -16,6 +16,7 @@ Compose bundle or Kubernetes chart.
 | --- | --- | --- |
 | Root `Dockerfile` | Buildable | Produce the API/worker image on Linux AMD64 or ARM64 |
 | `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, MinIO, API, and worker from the current checkout |
+| `deployments/self-hosted/docker` | Preview | Build and run the standalone Docker Environment Work supervisor and item image |
 | Production Docker Compose | Planned | Supported single-host installation using versioned release images |
 | Helm chart | Planned | Kubernetes API and worker deployments with external stateful dependencies |
 
@@ -23,6 +24,15 @@ The local stack is intentionally complete so contributors can exercise the
 durable path without installing each dependency. It contains development
 credentials, fixed host ports, and stateful dependencies and must not be
 treated as a high-availability or hardened production configuration.
+
+The self-hosted Docker worker is a separate target execution path. Its trusted
+supervisor controls Docker and Polls/Acks Environment Work; each activation
+runs in a fresh container with only the short-lived Work secret and a retained
+per-Session workspace volume. It currently supports the six core shell/file
+tools but not Skill, Memory, File/Git resource preparation, or output
+publication. Follow the
+[worker-specific guide](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
+instead of treating it as a replacement for the complete local stack.
 
 ## Process topology
 

@@ -578,6 +578,52 @@ support, so they run the same credential-free and opt-in live conformance suites
   validation, and race-free operation. No hosted credential, provider, example,
   API change, or persistence migration is involved.
 
+## First-party Docker self-hosted worker
+
+- User/operator problem: Mango had the Environment Work protocol and
+  provider-neutral SDK lifecycle, but no runnable OSS launcher proving that a
+  real sandbox can preserve those semantics. The existing Docker provider runs
+  inside Mango's legacy managed worker and therefore cannot validate the target
+  trust boundary by itself.
+- Reviewed the public Claude
+  [self-hosted cookbook](https://github.com/anthropics/claude-cookbooks/tree/a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5/managed_agents/self_hosted_sandboxes),
+  [self-hosted security guidance](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes-security),
+  `anthropic-sdk-go` v1.69.0 at commit
+  `6298207eac7ff589e7fcc8a78f6c034ab09de47f`, and current SDK `main` at
+  `e9c104e7e5fb80a26ff26e398c0e4e3fe1fe7f33` on 2026-09-04. The current
+  branch changes Workspace ID coverage but not Work polling, item credential,
+  heartbeat, Session handling, or Stop ownership.
+- Mango adopts the useful lifecycle split: the trusted host owns Poll and Ack;
+  one foreground container owns the acknowledged item from first conditional
+  heartbeat through Session processing and final Stop; and a per-Session
+  workspace persists across multiple activations. The Go SDK supplies the
+  provider-neutral item runner and six core local tool executors. Docker only
+  supplies process, resource, network, and volume isolation.
+- Mango makes the current security guide's per-Session credential path
+  mandatory instead of copying the cookbook's broader key handoff or retaining
+  the SDK's Environment-key fallback. The Workspace key remains only on the
+  supervisor, while the container receives the opaque per-Work secret. It runs as uid/gid 65532 with
+  a read-only root filesystem, all capabilities dropped, `no-new-privileges`,
+  bounded `/tmp`, CPU/memory/PID limits, and no Docker socket. Shell
+  subprocesses do not inherit Mango credentials, and untrusted container logs
+  are not embedded into launcher errors.
+- Mango changes or defers hosted-specific behavior deliberately. A Workspace
+  key temporarily substitutes for CMA's narrower Environment host credential;
+  the worker is therefore a trusted Workspace peer. Docker bridge egress is not
+  a network policy, and the image is not advertised as a hostile multi-tenant
+  boundary. Skill, Memory, File/Git input and output preparation, server-side
+  Web-tool ownership, CMA's persistent Bash/restart behavior, and health Work
+  remain explicit gaps rather than fake success paths.
+- Acceptance: unit and race tests verify Poll/Ack credential separation,
+  container hardening, cancellation-versus-lease-loss fencing, bounded tools,
+  path confinement, and credential scrubbing. Opt-in real Docker tests run two
+  Work activations for one Session through Poll and Ack, then cover first and
+  subsequent heartbeat, Session SSE, tool result, forced Stop, container
+  removal, and workspace-volume continuity. A separate in-flight Bash case
+  cancels the host worker and proves that the item posts one error result before
+  Stop. The cookbook remains documentation/example input and is not imported
+  into Mango's tests.
+
 ## Docker-default OSS execution
 
 - User problem: the ordinary local deployment must run tools in a separate

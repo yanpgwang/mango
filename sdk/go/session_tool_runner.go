@@ -95,7 +95,7 @@ type DispatchedToolCall struct {
 // blocks. The runner never closes registered tools.
 type SessionToolRunner struct {
 	ctx       context.Context
-	cancel    context.CancelFunc
+	cancel    context.CancelCauseFunc
 	client    *Client
 	sessionID string
 	opts      SessionToolRunnerOptions
@@ -164,7 +164,7 @@ func (p pendingSessionToolCall) threadID() Optional[string] {
 // NewSessionToolRunner returns an iterator bound to client and sessionID.
 // Configuration errors are reported by Err after Next returns false.
 func NewSessionToolRunner(ctx context.Context, client *Client, sessionID string, opts SessionToolRunnerOptions) *SessionToolRunner {
-	internalCtx, cancel := context.WithCancel(ctx)
+	internalCtx, cancel := context.WithCancelCause(ctx)
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -254,7 +254,7 @@ func (r *SessionToolRunner) Close() error {
 	}
 	r.closed = true
 	started, done := r.started, r.done
-	r.cancel()
+	r.cancel(context.Canceled)
 	r.lifecycleMu.Unlock()
 	if started {
 		<-done
@@ -302,7 +302,7 @@ func (r *SessionToolRunner) start() (<-chan DispatchedToolCall, bool) {
 			err := <-componentDone
 			if err != nil && terminal == nil {
 				terminal = err
-				r.cancel()
+				r.cancel(err)
 			}
 		}
 		r.setErr(terminal)
@@ -663,7 +663,18 @@ func (r *SessionToolRunner) execute(ctx context.Context, pending pendingSessionT
 	case len(blocks) == 0:
 		blocks = textSessionToolResult("(no output)")
 	}
-	return r.postResult(ctx, call, pending.threadID(), blocks)
+	resultCtx := ctx
+	cancelResult := func() {}
+	cause := context.Cause(ctx)
+	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+		// Cancellation must stop the local side effect before Work is released,
+		// but the matching error result still needs a short, independent window
+		// to cross the durable Session boundary. Keep context values while
+		// deliberately detaching only cancellation and deadline propagation.
+		resultCtx, cancelResult = context.WithTimeout(context.WithoutCancel(ctx), r.sendRetryWindow())
+	}
+	defer cancelResult()
+	return r.postResult(resultCtx, call, pending.threadID(), blocks)
 }
 
 func (r *SessionToolRunner) postResult(

@@ -103,6 +103,21 @@ or Memory. Those are launcher responsibilities. On lease loss it cancels the
 runner, prevents later result submission, returns
 `ErrEnvironmentWorkLeaseLost`, and does not Stop a possibly newer owner's Work.
 
+For launchers that need Mango's core shell and file executors, the independent
+`tools/agenttoolset` package returns `bash`, `read`, `write`, `edit`, `glob`, and
+`grep` as `SessionTool` implementations:
+
+```go
+tools, err := agenttoolset.New(agenttoolset.Context{Workdir: "/workspace"})
+if err != nil {
+    return err
+}
+```
+
+This package is not a sandbox. The caller must establish the isolation
+boundary first. File operations remain beneath `Workdir`, reads and outputs are
+bounded, and Mango credentials are removed from `bash` subprocesses.
+
 ## Self-hosted Session tools
 
 `NewSessionToolRunner` handles one Session's provider-neutral tool loop. It
