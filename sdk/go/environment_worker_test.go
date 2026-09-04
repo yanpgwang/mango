@@ -302,11 +302,11 @@ func TestEnvironmentWorkerCancellationStillForceStopsWithFreshContext(t *testing
 	}
 }
 
-func TestEnvironmentWorkerHandleItemReadsLauncherEnvironment(t *testing.T) {
+func TestEnvironmentWorkerHandleItemReadsNonSecretLauncherEnvironment(t *testing.T) {
 	t.Setenv("MANGO_WORK_ID", "work_env")
 	t.Setenv("MANGO_ENVIRONMENT_ID", "env_env")
 	t.Setenv("MANGO_SESSION_ID", "session_env")
-	t.Setenv("MANGO_WORK_SECRET", encodeEnvironmentWorkSecret(t, "sess_mango_env"))
+	secret := encodeEnvironmentWorkSecret(t, "sess_mango_env")
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		paths = append(paths, request.URL.Path)
@@ -325,7 +325,7 @@ func TestEnvironmentWorkerHandleItemReadsLauncherEnvironment(t *testing.T) {
 	defer server.Close()
 
 	worker := NewEnvironmentWorker(newEnvironmentWorkerClient(t, server.URL, ""), EnvironmentWorkerOptions{})
-	if err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{}); err != nil {
+	if err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{WorkSecret: secret}); err != nil {
 		t.Fatalf("HandleItem: %v", err)
 	}
 	want := []string{
@@ -338,7 +338,6 @@ func TestEnvironmentWorkerHandleItemReadsLauncherEnvironment(t *testing.T) {
 }
 
 func TestEnvironmentWorkerRejectsInvalidConfigurationAndSecrets(t *testing.T) {
-	t.Parallel()
 	client := newEnvironmentWorkerClient(t, "http://mango.test", "workspace-key")
 	if err := NewEnvironmentWorker(nil, EnvironmentWorkerOptions{EnvironmentID: "env"}).Run(context.Background()); err == nil {
 		t.Fatal("nil client was accepted")
@@ -352,8 +351,11 @@ func TestEnvironmentWorkerRejectsInvalidConfigurationAndSecrets(t *testing.T) {
 		t.Fatal("invalid desired TTL was accepted")
 	}
 	worker := NewEnvironmentWorker(client, EnvironmentWorkerOptions{})
-	if err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{}); err == nil {
-		t.Fatal("empty item identity was accepted")
+	t.Setenv("MANGO_WORK_SECRET", encodeEnvironmentWorkSecret(t, "sess_mango_forbidden"))
+	if err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{
+		WorkID: "work", EnvironmentID: "env", SessionID: "session",
+	}); err == nil || !strings.Contains(err.Error(), "Work secret is required") {
+		t.Fatalf("environment Work secret fallback error = %v", err)
 	}
 	if err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{
 		WorkID: "work", EnvironmentID: "env", SessionID: "session", WorkSecret: "not-secret",

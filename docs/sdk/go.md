@@ -91,12 +91,14 @@ secrets fail closed; there is no Workspace-key fallback.
 
 For a launcher that Polls and Acks outside a Session sandbox, call
 `HandleItem` inside the sandbox with `EnvironmentWorkerHandleItemOptions`.
-Fields may be passed explicitly or through `MANGO_WORK_ID`,
-`MANGO_ENVIRONMENT_ID`, `MANGO_SESSION_ID`, and `MANGO_WORK_SECRET`. The item
-process needs the Mango base URL but must not receive the Workspace key. Tools
-that spawn subprocesses must pass an allowlisted environment or scrub the Work
-secret and other credentials; the library does not mutate process-global
-environment variables owned by its caller.
+Non-secret identity fields may be passed explicitly or through `MANGO_WORK_ID`,
+`MANGO_ENVIRONMENT_ID`, and `MANGO_SESSION_ID`. Pass `WorkSecret` explicitly
+from a protected launcher transport when the process runs untrusted code. The
+item process needs the Mango base URL but must not receive the Workspace key.
+An allowlisted child environment prevents ordinary inheritance, but on Linux
+the launcher must also keep secrets out of parent environment/command metadata
+and prevent same-identity children from inspecting the trusted runner. The
+first-party Docker launcher uses one-shot stdin and a non-dumpable item process.
 
 The worker does not create compute or prepare Files, Git repositories, Skills,
 or Memory. Those are launcher responsibilities. On lease loss it cancels the

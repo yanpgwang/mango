@@ -160,21 +160,26 @@ an error; the worker never falls back to the Workspace key.
 
 A launcher that Polls and Acks outside the sandbox can run only the item side
 inside it. Construct the item process's client with the Mango base URL and no
-Workspace key, then pass `EnvironmentWorkerHandleItemOptions`. Empty fields
-read `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`, `MANGO_SESSION_ID`, and
-`MANGO_WORK_SECRET`:
+Workspace key, then pass `EnvironmentWorkerHandleItemOptions`. Non-secret empty
+identity fields read `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`, and
+`MANGO_SESSION_ID`; pass `WorkSecret` explicitly when the process runs tools:
 
 ```go
 worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
     Tools: tools,
 })
-err := worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{})
+err := worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{
+    WorkSecret: secretFromProtectedLauncherTransport,
+})
 ```
 
-If a tool spawns subprocesses, give them an explicit allowlisted environment or
-strip `MANGO_WORK_SECRET` and other credential variables. `HandleItem` reads the
-process environment but cannot safely mutate global environment variables for
-caller-owned tools.
+`HandleItem` deliberately has no Work-secret environment fallback. Scrubbing
+child environments alone does not protect a parent process's environment on
+Linux. A launcher that executes untrusted code must
+keep the secret out of process environment and command-line metadata and must
+prevent same-identity child processes from inspecting the trusted runner. The
+first-party Docker launcher uses a one-shot stdin transport plus a non-dumpable
+Linux item process for this boundary.
 
 The helper remains provider-neutral. It does not create a Docker container,
 download Session resources, prepare Skills or Memory, or close tools. A

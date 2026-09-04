@@ -567,11 +567,13 @@ support, so they run the same credential-free and opt-in live conformance suites
 - `EnvironmentWorker.Run` provides the trusted, single-process composition.
   `HandleItem` provides the narrow sandbox-side entry point for a launcher that
   Polls and Acks elsewhere; it accepts only Work, Environment, and Session IDs
-  plus the opaque Work secret, including through `MANGO_*` variables. Neither
-  path creates compute, prepares File/Git/Skill/Memory inputs, closes tools, or
-  introduces a provider SDK. Environment-scoped Poll credentials remain a
-  future requirement before supervisors are described as untrusted or
-  multi-tenant.
+  plus the opaque Work secret. Non-secret IDs may come from environment, but
+  the Work secret is now always explicit because environment is not a safe
+  launcher transport when untrusted code shares the runner's process identity.
+  Neither path creates
+  compute, prepares File/Git/Skill/Memory inputs, closes tools, or introduces a
+  provider SDK. Environment-scoped Poll credentials remain a future requirement
+  before supervisors are described as untrusted or multi-tenant.
 - Acceptance: HTTP-backed tests independently verify supervisor-versus-item
   bearer separation, first heartbeat and forced Stop, serial Session tool
   execution, cancellation with no result or Stop after `412` lease loss,
@@ -603,11 +605,15 @@ support, so they run the same credential-free and opt-in live conformance suites
 - Mango makes the current security guide's per-Session credential path
   mandatory instead of copying the cookbook's broader key handoff or retaining
   the SDK's Environment-key fallback. The Workspace key remains only on the
-  supervisor, while the container receives the opaque per-Work secret. It runs as uid/gid 65532 with
-  a read-only root filesystem, all capabilities dropped, `no-new-privileges`,
-  bounded `/tmp`, CPU/memory/PID limits, and no Docker socket. Shell
-  subprocesses do not inherit Mango credentials, and untrusted container logs
-  are not embedded into launcher errors.
+  supervisor. The opaque per-Work secret is length-framed over a one-shot
+  attached stdin stream rather than persisted in Docker environment or command
+  metadata. Before reading it, the item runner makes itself non-dumpable on
+  Linux; same-UID Bash children therefore cannot use ptrace-gated `/proc`,
+  process memory, or descriptors to bypass the scrubbed child environment. The
+  container otherwise runs as uid/gid 65532 with a read-only root filesystem,
+  all capabilities dropped, `no-new-privileges`, bounded `/tmp`, CPU/memory/PID
+  limits, and no Docker socket. Untrusted container logs are not embedded into
+  launcher errors.
 - Mango changes or defers hosted-specific behavior deliberately. A Workspace
   key temporarily substitutes for CMA's narrower Environment host credential;
   the worker is therefore a trusted Workspace peer. Docker bridge egress is not
@@ -616,8 +622,10 @@ support, so they run the same credential-free and opt-in live conformance suites
   server-side Web-tool ownership, persistent Bash/restart behavior, and health
   Work remained explicit gaps rather than fake success paths.
 - Acceptance: unit and race tests verify Poll/Ack credential separation,
-  container hardening, cancellation-versus-lease-loss fencing, bounded tools,
-  path confinement, and credential scrubbing. Opt-in real Docker tests run two
+  one-shot secret framing, container hardening, cancellation-versus-lease-loss
+  fencing, bounded tools, path confinement, and credential scrubbing. Opt-in
+  real Docker tests prove a Bash child cannot read its parent's `/proc`
+  environment, then run two
   Work activations for one Session through Poll and Ack, then cover first and
   subsequent heartbeat, Session SSE, tool result, forced Stop, container
   removal, and workspace-volume continuity. The follow-up persistent-Bash

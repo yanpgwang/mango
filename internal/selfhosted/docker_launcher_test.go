@@ -1,9 +1,12 @@
 package selfhosted
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,7 +20,7 @@ import (
 	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
-func TestDockerLauncherPollsWithSupervisorAndPassesOnlyWorkSecret(t *testing.T) {
+func TestDockerLauncherPollsWithSupervisorAndTransportsOnlyWorkSecret(t *testing.T) {
 	var mu sync.Mutex
 	polls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +67,6 @@ func TestDockerLauncherPollsWithSupervisorAndPassesOnlyWorkSecret(t *testing.T) 
 	created := engine.created[0]
 	environment := strings.Join(created.Config.Env, "\n")
 	for _, expected := range []string{
-		"MANGO_WORK_SECRET=" + workSecret,
 		"MANGO_WORK_ID=work_test",
 		"MANGO_SESSION_ID=sesn_test",
 		"MANGO_BASE_URL=http://host.docker.internal:8080",
@@ -74,8 +76,24 @@ func TestDockerLauncherPollsWithSupervisorAndPassesOnlyWorkSecret(t *testing.T) 
 			t.Errorf("container environment missing %q: %s", expected, environment)
 		}
 	}
-	if strings.Contains(environment, "workspace-key") || strings.Contains(environment, "MANGO_API_KEY") {
-		t.Fatalf("Workspace credential crossed into container: %s", environment)
+	if strings.Contains(environment, "workspace-key") || strings.Contains(environment, workSecret) ||
+		strings.Contains(environment, "MANGO_API_KEY") || strings.Contains(environment, "MANGO_WORK_SECRET") {
+		t.Fatalf("credential crossed into container environment: %s", environment)
+	}
+	if !created.Config.AttachStdin || !created.Config.OpenStdin || !created.Config.StdinOnce {
+		t.Fatalf("container stdin transport = %+v", created.Config)
+	}
+	select {
+	case encoded := <-engine.attachedInput:
+		secret, err := ReadWorkSecret(bytes.NewReader(encoded))
+		if err != nil || secret != workSecret {
+			t.Fatalf("attached Work secret = %q, %v", secret, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Work secret was not written to attached stdin")
+	}
+	if !engine.attachOptions.Stream || !engine.attachOptions.Stdin || engine.attachOptions.Stdout || engine.attachOptions.Stderr {
+		t.Fatalf("ContainerAttach options = %+v", engine.attachOptions)
 	}
 	if !created.HostConfig.ReadonlyRootfs || len(created.HostConfig.CapDrop) != 1 || created.HostConfig.CapDrop[0] != "ALL" {
 		t.Fatalf("container hardening = %+v", created.HostConfig)
@@ -161,6 +179,30 @@ func TestDockerLauncherReportsContainerCleanupFailure(t *testing.T) {
 	err = launcher.runItem(context.Background(), acknowledgedWork())
 	if err == nil || !strings.Contains(err.Error(), "remove Work container") {
 		t.Fatalf("runItem error = %v", err)
+	}
+}
+
+func TestDockerLauncherCleansUpContainerWhenSecretInputAttachFails(t *testing.T) {
+	client, _ := mango.New(mango.Config{BaseURL: "http://mango.invalid", APIKey: "workspace"})
+	engine := newFakeDockerEngine()
+	engine.attachErr = errors.New("attach failed")
+	launcher, err := NewDockerLauncher(engine, DockerLauncherOptions{
+		Client: client, EnvironmentID: "env_test", SandboxBaseURL: "http://mango.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = launcher.runItem(context.Background(), acknowledgedWork())
+	if err == nil || !strings.Contains(err.Error(), "attach Work secret input") {
+		t.Fatalf("runItem error = %v", err)
+	}
+	if engine.removeCalls != 1 {
+		t.Fatalf("ContainerRemove calls = %d, want 1", engine.removeCalls)
+	}
+	select {
+	case <-engine.started:
+		t.Fatal("container started after input attach failed")
+	default:
 	}
 }
 
@@ -356,6 +398,8 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 type fakeDockerEngine struct {
 	mu              sync.Mutex
 	created         []client.ContainerCreateOptions
+	attachedInput   chan []byte
+	attachOptions   client.ContainerAttachOptions
 	waitImmediately bool
 	waitStatus      int64
 	waitResult      chan container.WaitResponse
@@ -366,13 +410,19 @@ type fakeDockerEngine struct {
 	stopErr         error
 	startErr        error
 	createErr       error
+	attachErr       error
 	removeErr       error
 	inspectResult   client.ContainerInspectResult
 	inspectErr      error
 }
 
 func newFakeDockerEngine() *fakeDockerEngine {
-	return &fakeDockerEngine{waitImmediately: true, started: make(chan struct{}, 1), inspectErr: errdefs.ErrNotFound}
+	return &fakeDockerEngine{
+		waitImmediately: true,
+		started:         make(chan struct{}, 1),
+		attachedInput:   make(chan []byte, 8),
+		inspectErr:      errdefs.ErrNotFound,
+	}
 }
 
 func (f *fakeDockerEngine) ImageInspect(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error) {
@@ -388,6 +438,23 @@ func (f *fakeDockerEngine) ContainerCreate(_ context.Context, options client.Con
 	f.created = append(f.created, options)
 	f.mu.Unlock()
 	return client.ContainerCreateResult{ID: "container_test"}, f.createErr
+}
+
+func (f *fakeDockerEngine) ContainerAttach(_ context.Context, _ string, options client.ContainerAttachOptions) (client.ContainerAttachResult, error) {
+	f.mu.Lock()
+	f.attachOptions = options
+	err := f.attachErr
+	f.mu.Unlock()
+	if err != nil {
+		return client.ContainerAttachResult{}, err
+	}
+	launcher, daemon := net.Pipe()
+	go func() {
+		defer func() { _ = daemon.Close() }()
+		encoded, _ := io.ReadAll(daemon)
+		f.attachedInput <- encoded
+	}()
+	return client.ContainerAttachResult{HijackedResponse: client.NewHijackedResponse(launcher, "")}, nil
 }
 
 func (f *fakeDockerEngine) ContainerStart(context.Context, string, client.ContainerStartOptions) (client.ContainerStartResult, error) {

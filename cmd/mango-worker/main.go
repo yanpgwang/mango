@@ -112,6 +112,17 @@ func runItem(ctx context.Context, arguments []string) (runErr error) {
 	if flags.NArg() != 0 {
 		return errors.New("mango-worker run does not accept positional arguments")
 	}
+	if err := protectProcessCredentials(); err != nil {
+		return err
+	}
+	workSecret, err := selfhosted.ReadWorkSecret(os.Stdin)
+	closeErr := os.Stdin.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close Work secret input: %w", closeErr)
+	}
 	baseURL := envOr("MANGO_BASE_URL", "http://localhost:8080")
 	itemClient, err := mango.New(mango.Config{BaseURL: baseURL})
 	if err != nil {
@@ -129,7 +140,7 @@ func runItem(ctx context.Context, arguments []string) (runErr error) {
 	worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
 		Tools: toolset, MaxIdle: maxIdle,
 	})
-	return worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{})
+	return worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{WorkSecret: workSecret})
 }
 
 func defaultWorkerID() string {

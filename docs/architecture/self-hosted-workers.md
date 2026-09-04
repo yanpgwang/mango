@@ -76,7 +76,7 @@ opt-in.
 | Concern | Public CMA behavior | Mango behavior | Status |
 | --- | --- | --- | --- |
 | Claim boundary | A trusted host Polls and Acks | The Docker supervisor Polls and Acks | Aligned |
-| Item credential | Work can carry a per-Session secret, which the SDK prefers; the SDK can fall back to the Environment key and the Docker cookbook currently passes that broader key into the container | Each container requires `MANGO_WORK_SECRET`; the Workspace key stays on the supervisor and is never a fallback | Same scoped normal path; intentionally stricter fallback |
+| Item credential | Work can carry a per-Session secret, which the SDK prefers; the SDK can fall back to the Environment key and the Docker cookbook currently passes that broader key into the container | The scoped Work secret crosses one-shot stdin into a non-dumpable item runner; it is absent from Docker environment and command metadata, while the Workspace key stays on the supervisor | Same scoped normal path; intentionally stricter fallback and child-process boundary |
 | Lease ownership | The item runner performs first heartbeat, continuous renewal, Session handling, and Stop | `EnvironmentWorker.HandleItem` owns the same sequence | Aligned |
 | Workspace continuity | Docker examples retain a per-Session workspace across activations | A named `/workspace` volume is keyed by Session ID and retained after each Work container exits | Aligned |
 | Agent tools | Core shell/file tools execute inside customer infrastructure; Web tools remain server-side | The Docker image executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`; portable server-side Web-tool ownership is not complete | Partial |

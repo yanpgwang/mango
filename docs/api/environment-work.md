@@ -70,7 +70,8 @@ with conditional heartbeat, lease-loss cancellation, the scoped Work-secret
 handoff, and final forced Stop. `Run` owns Poll through Stop in one trusted
 process; `HandleItem` runs only an already-acknowledged item and can read its
 narrow identity from `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`,
-`MANGO_SESSION_ID`, and `MANGO_WORK_SECRET` inside a launcher-created sandbox.
+and `MANGO_SESSION_ID`. Its Work secret must be supplied through a protected
+launcher transport whenever untrusted subprocesses share the sandbox.
 
 These SDK lifecycle helpers do not choose or create a sandbox and do not
 prepare File, Git, Skill, or Memory inputs. Mango's first-party Docker launcher
@@ -95,8 +96,12 @@ go run ./cmd/mango-worker docker
 ```
 
 The supervisor uses the Workspace key only for Poll and Ack. It creates a
-hardened container for each acknowledged Work item and injects only the opaque
-Work secret plus resource IDs and the sandbox-visible Mango URL. The item
+hardened container for each acknowledged Work item. Resource IDs and the
+sandbox-visible Mango URL are non-secret environment values; the opaque Work
+secret crosses a one-shot attached stdin stream and is absent from container
+environment and command metadata. Before reading it, the item runner becomes a
+non-dumpable Linux process so same-UID Bash children cannot inspect its `/proc`
+environment, memory, or descriptors. The item
 process performs the first heartbeat before executing tools, continuously
 renews the lease, reconciles Session events, posts tool results, and force-Stops
 ordinary exits. It runs the Go SDK's six core local tools in `/workspace` and
@@ -155,7 +160,8 @@ invalidation. A Workspace key retains full operator access and must stay in the
 trusted supervisor rather than an untrusted Session sandbox. Mango does not yet
 issue a narrower Environment-level polling key. A sandbox runner necessarily
 receives its per-Work token, but tool subprocesses must not inherit that token
-or other launcher credentials; use an explicit allowlisted environment or
-scrub `MANGO_WORK_SECRET` before spawning them.
+or be able to inspect it through their parent process. An allowlisted child
+environment is necessary but not sufficient when untrusted code shares a Linux
+process identity with the trusted runner.
 
 See [capabilities and limits](../capabilities.md) for the current support boundary.

@@ -3,7 +3,7 @@
 This is Mango's first reference launcher for a `self_hosted` Environment. The
 trusted host process polls and acknowledges Environment Work with
 `MANGO_API_KEY`; each acknowledged item runs in a separate Docker container
-with only its short-lived `MANGO_WORK_SECRET`.
+with only its short-lived Work credential.
 
 Build the sandbox image from the repository root:
 
@@ -43,10 +43,13 @@ examples:
 Mango makes CMA's narrower per-Session credential path mandatory rather than
 retaining the SDK's Environment-key fallback or the Docker cookbook script's
 broader handoff. The Workspace key is never placed in the container. The Work
-secret is passed only to that item process, decoded there into the per-Session
-token, and scrubbed from `bash` subprocesses. It is never written to a Docker
-label or volume. Launcher errors report an exit code and container identity
-without automatically embedding untrusted container logs.
+secret is length-framed over an attached stdin stream, decoded only by that item
+process, and absent from the container environment, command, labels, and volume.
+The item process becomes non-dumpable before reading the secret; together with
+the scrubbed Bash environment and dropped capabilities, this prevents same-UID
+commands from recovering it through `/proc`, process memory, or inherited file
+descriptors. Launcher errors report an exit code and container identity without
+automatically embedding untrusted container logs.
 
 The reference image runs as uid/gid `65532`, drops all Linux capabilities, sets
 `no-new-privileges`, uses a read-only root filesystem, gives `/tmp` a bounded

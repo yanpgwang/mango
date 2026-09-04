@@ -90,6 +90,7 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 			}}
 			if activation == 1 {
 				calls = []dockerBashCall{
+					{ID: "tool_e2e_credential_boundary", Input: map[string]any{"command": "if cat /proc/$PPID/environ >/tmp/mango-parent-environ 2>/dev/null; then printf parent-readable; else printf parent-protected; fi"}},
 					{ID: "tool_e2e_state_1", Input: map[string]any{"command": "mkdir -p state-dir; cd state-dir; export PROOF=docker-e2e; printf ready"}},
 					{ID: "tool_e2e_state_2", Input: map[string]any{"command": "printf '%s|%s' \"$PROOF\" \"$PWD\""}},
 					{ID: "tool_e2e_restart", Input: map[string]any{"restart": true, "command": "printf '[%s]|%s' \"$PROOF\" \"$PWD\""}},
@@ -120,11 +121,12 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 			encoded, _ := json.Marshal(body)
 			result := string(encoded)
 			expected := map[string]string{
-				"tool_e2e_state_1": "ready",
-				"tool_e2e_state_2": "docker-e2e|/workspace/state-dir",
-				"tool_e2e_restart": "[]|/workspace",
-				"tool_e2e_file":    "docker-e2e",
-				"tool_e2e_resume":  "docker-e2e",
+				"tool_e2e_credential_boundary": "parent-protected",
+				"tool_e2e_state_1":             "ready",
+				"tool_e2e_state_2":             "docker-e2e|/workspace/state-dir",
+				"tool_e2e_restart":             "[]|/workspace",
+				"tool_e2e_file":                "docker-e2e",
+				"tool_e2e_resume":              "docker-e2e",
 			}
 			matched := false
 			for toolUseID, text := range expected {
@@ -194,7 +196,7 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	}
 	assertContainerRemoved(t, engine, dockerWorkName(work.ID))
 	assertContainerRemoved(t, engine, dockerWorkName(second.ID))
-	if polls.Load() != 3 || acknowledgements.Load() != 2 || firstHeartbeats.Load() != 2 || renewals.Load() < 2 || streams.Load() != 2 || results.Load() != 5 || stops.Load() != 2 {
+	if polls.Load() != 3 || acknowledgements.Load() != 2 || firstHeartbeats.Load() != 2 || renewals.Load() < 2 || streams.Load() != 2 || results.Load() != 6 || stops.Load() != 2 {
 		t.Fatalf("polls=%d acknowledgements=%d first_heartbeats=%d renewals=%d streams=%d results=%d stops=%d", polls.Load(), acknowledgements.Load(), firstHeartbeats.Load(), renewals.Load(), streams.Load(), results.Load(), stops.Load())
 	}
 }

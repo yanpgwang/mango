@@ -47,8 +47,9 @@ type EnvironmentWorkerOptions struct {
 }
 
 // EnvironmentWorkerHandleItemOptions identifies one already-acknowledged Work
-// item. Empty values fall back to the matching MANGO_* environment variables,
-// allowing a launcher to pass only this narrow identity into a sandbox.
+// item. Empty non-secret IDs fall back to matching MANGO_* environment
+// variables. WorkSecret is always explicit so a launcher cannot accidentally
+// expose it through process environment to untrusted subprocesses.
 type EnvironmentWorkerHandleItemOptions struct {
 	WorkID        string
 	EnvironmentID string
@@ -127,7 +128,7 @@ func (w *EnvironmentWorker) HandleItem(ctx context.Context, opts EnvironmentWork
 	workID := firstNonEmpty(opts.WorkID, os.Getenv("MANGO_WORK_ID"))
 	environmentID := firstNonEmpty(opts.EnvironmentID, w.opts.EnvironmentID, os.Getenv("MANGO_ENVIRONMENT_ID"))
 	sessionID := firstNonEmpty(opts.SessionID, os.Getenv("MANGO_SESSION_ID"))
-	secret := firstNonEmpty(opts.WorkSecret, os.Getenv("MANGO_WORK_SECRET"))
+	secret := opts.WorkSecret
 	for _, required := range []struct{ name, value string }{
 		{"work ID", workID}, {"environment ID", environmentID},
 		{"session ID", sessionID}, {"Work secret", secret},
