@@ -183,6 +183,37 @@ func TestEnvironmentWorkHeartbeatRejectsOversizedTTL(t *testing.T) {
 	}
 }
 
+func TestEnvironmentWorkFailureCommitsWorkerMessage(t *testing.T) {
+	service := newSDKEnvironmentWorkService()
+	server := httptest.NewServer(NewServer(Deps{EnvironmentWork: service}, Config{
+		RequireAuth: true,
+	}).Handler())
+	t.Cleanup(server.Close)
+
+	request, err := http.NewRequestWithContext(
+		context.Background(), http.MethodPost,
+		server.URL+"/v1/environments/"+service.work.EnvironmentID+"/work/"+
+			service.work.ID+"/fail",
+		bytes.NewBufferString(`{"message":"invalid frozen Skill archive"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("authorization", "Bearer test-key")
+	request.Header.Set("content-type", "application/json")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	service.mu.Lock()
+	failure := service.failure
+	service.mu.Unlock()
+	if response.StatusCode != http.StatusNoContent || failure != "invalid frozen Skill archive" {
+		t.Fatalf("failure status=%d message=%q", response.StatusCode, failure)
+	}
+}
+
 type sdkEnvironmentWorkService struct {
 	mu        sync.Mutex
 	work      domain.EnvironmentWork
@@ -190,6 +221,7 @@ type sdkEnvironmentWorkService struct {
 	workerID  string
 	acks      int
 	stops     int
+	failure   string
 	heartbeat time.Time
 	secret    string
 }
@@ -279,6 +311,14 @@ func (s *sdkEnvironmentWorkService) Stop(context.Context, string, string, bool) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stops++
+	s.work.State = domain.EnvironmentWorkStopped
+	return nil
+}
+
+func (s *sdkEnvironmentWorkService) Fail(_ context.Context, _, _ string, message string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failure = message
 	s.work.State = domain.EnvironmentWorkStopped
 	return nil
 }

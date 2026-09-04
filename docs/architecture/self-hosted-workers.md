@@ -101,11 +101,13 @@ Session container merely to copy the cookbook script.
 - Re-delivery and process restart are normal. Event IDs and persisted pending
   actions, not in-memory seen sets, determine whether a result is outstanding.
 - A Work poller does not Stop acknowledged items. The composed
-  `EnvironmentWorker` owns heartbeat and final Stop while `SessionToolRunner`
+  `EnvironmentWorker` owns heartbeat, permanent-input Fail, and final Stop while
+  `SessionToolRunner`
   owns only the Session event/tool loop; an ambiguous Ack or invalid Ack
   response is left for TTL reclaim.
 - Poll rotates an unpredictable per-claim `sessions_token` inside the Work
-  secret payload. The worker switches to it for heartbeat, Stop, Session events,
+  secret payload. The worker switches to it for heartbeat, Fail, Stop, Session
+  events,
   and pinned immutable inputs after Ack; reclaim invalidates the old token and
   closes an established event stream. Lease TTL is capped at five minutes, and
   a graceful Stop can retain execution access for no longer than that current

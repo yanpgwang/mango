@@ -329,6 +329,22 @@ func TestSessionWorkflow_UsesWorkflowOwnedLoop(t *testing.T) {
 	require.Equal(t, 1, source.completions("evt_1"))
 }
 
+func TestSessionWorkflowExitsWhenProjectionWasExternallyTerminated(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	source := newFakeSource([]domain.Event{{
+		ID: "sevt_terminated", Sequence: 1, Type: domain.EvSessionStatusTerminated,
+	}})
+	recorder := registerCurrentTurnActivities(env, source, nil)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(WakeupSignalName, WakeupSignal{MaxEventSeq: 1})
+	}, time.Millisecond)
+	env.SetTestTimeout(10 * time.Second)
+	env.ExecuteWorkflow(sessionWorkflow, SessionWorkflowInput{SessionID: "sesn_failed_input"}, 100)
+	require.NoError(t, env.GetWorkflowError())
+	require.Empty(t, recorder.snapshot())
+}
+
 func TestSessionWorkflow_ParksUntilFullBarrierThenPreservesQueuedMessage(t *testing.T) {
 	var ts testsuite.WorkflowTestSuite
 	env := ts.NewTestWorkflowEnvironment()

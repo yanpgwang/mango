@@ -47,6 +47,7 @@ var Operations = []Operation{
 	{"deleteWebhook", "DELETE", "/v1/webhooks/{webhook_id}"},
 	{"downloadFile", "GET", "/v1/files/{file_id}/content"},
 	{"downloadSkillVersion", "GET", "/v1/skills/{skill_id}/versions/{version}/content"},
+	{"failEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/fail"},
 	{"getAgent", "GET", "/v1/agents/{agent_id}"},
 	{"getDeployment", "GET", "/v1/deployments/{deployment_id}"},
 	{"getDeploymentRun", "GET", "/v1/deployment_runs/{deployment_run_id}"},
@@ -426,6 +427,13 @@ func (c *Client) DownloadSkillVersion(ctx context.Context, skill_id string, vers
 	query := make(url.Values)
 	path := "/v1/skills/" + escapePath(skill_id) + "/versions/" + escapePath(version) + "/content"
 	return c.download(ctx, "GET", path, query, "application/zip", true)
+}
+
+// FailEnvironmentWork Terminate a Session whose immutable worker inputs are invalid (POST /v1/environments/{environment_id}/work/{work_id}/fail).
+func (c *Client) FailEnvironmentWork(ctx context.Context, environment_id string, work_id string, body EnvironmentWorkFailureRequest) error {
+	query := make(url.Values)
+	path := "/v1/environments/" + escapePath(environment_id) + "/work/" + escapePath(work_id) + "/fail"
+	return c.doJSON(ctx, "POST", path, query, body, nil, true)
 }
 
 // GetAgent Get an Agent (GET /v1/agents/{agent_id}).

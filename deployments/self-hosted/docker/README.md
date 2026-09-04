@@ -60,6 +60,8 @@ hostile multi-tenant guarantee.
 
 The reference executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`
 inside `/workspace`. Before tool dispatch it downloads the Session's immutable
-primary and roster custom Skill pins into the same workspace and removes those
-directories when the Work item exits. Memory preparation and automatic Session
+primary and roster custom Skill pins into one integrity-checked, atomically
+published tree and removes it when the Work item exits. Permanent bad input
+terminates the Session; temporary retrieval failures remain eligible for lease
+reclaim. Memory preparation and automatic Session
 output publication remain explicit follow-up work.

@@ -373,15 +373,20 @@ support, so they run the same credential-free and opt-in live conformance suites
 - Mango adopts that lifecycle for its independently owned Go worker and direct
   `/v1` contract. The per-Work token already authorizes only the Session and
   its immutable Skill pins. The worker accepts Mango's canonical zip archive,
-  bounds compressed bytes, expanded bytes, and member count, rejects path
-  escapes and non-regular members, publishes through a sibling staging
-  directory, and fails the item if any promised Skill cannot be prepared.
+  verifies the public Version's exact byte length and SHA-256 digest, bounds
+  per-archive and whole-Session compressed bytes, expanded bytes, and member
+  count, and rejects path escapes and non-regular members. It stages the entire
+  tree as a fresh direct child of the canonical Workdir and replaces only the
+  final `skills` entry, so an earlier tool-controlled symlink is never traversed.
 - Mango deliberately extends preparation to resolved roster Agents. Primary
   and `self` copies share `<workdir>/skills`; external Agents use the stable
   opaque scope already recorded in model context. This avoids name/version
-  collisions in a shared Session workspace. Per-Skill failure is fail-closed
-  rather than CMA Go's tolerant logging because Mango must not execute a
-  Session whose frozen inputs are only partially present.
+  collisions in a shared Session workspace. A permanent validation failure is
+  fail-closed and durably terminates the Work, Session, Threads, and active
+  attempts. Temporary HTTP, network, or object-store failures retry and then
+  leave the lease for queue reclaim rather than silently Stop the activation.
+  This distinction is stricter than CMA Go's tolerant logging because Mango
+  must neither execute a partial snapshot nor lose an operator-recoverable turn.
 - The Agent loop remains in Mango's control plane for both managed and
   self-hosted execution. Skill activation therefore reads and verifies the
   immutable canonical archive in object storage; it never calls back into the
@@ -390,6 +395,13 @@ support, so they run the same credential-free and opt-in live conformance suites
   paths are relative to the launcher's configured Workdir; cloud runtime paths
   remain concrete sandbox paths. This preserves one execution-environment
   abstraction without coupling Temporal to Docker or a future provider launcher.
+- Mango adds its own `POST .../work/{work_id}/fail` lifecycle operation and
+  `session_input_failed_error`; these are not claimed as CMA wire compatibility.
+  They express Mango's PostgreSQL/Temporal invariant that a permanent external
+  preparation failure must commit a terminal public history atomically, while
+  a transient failure stays reclaimable. Mango also exposes archive size and
+  checksum on Skill Versions because an untrusted transport must be checked
+  against the frozen control-plane record.
 - Mango does not adopt Anthropic credentials, beta headers, Environment-key
   fallback, tar archive variants, hosted infrastructure behavior, or vendor
   SDK code. Memory synchronization, File/Git preparation, health-check Work,
@@ -483,7 +495,7 @@ support, so they run the same credential-free and opt-in live conformance suites
   fresh 256-bit `sessions_token`, returns it inside the same base64url payload,
   and stores only its SHA-256 digest. Ack has no body and every non-Poll Work
   response redacts `secret`. The token is accepted only for the exact Work's
-  Heartbeat/Stop, the exact Session's read/event routes, and File/Skill inputs
+  Heartbeat/Fail/Stop, the exact Session's read/event routes, and File/Skill inputs
   relationally pinned to that Session. A Workspace API key retains operator
   authority; Mango has not yet introduced a distinct Environment polling key.
 - Reclaim rotates the token, so the former bearer fails authentication before

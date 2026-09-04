@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -95,6 +96,8 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 			writeJSON(t, w, map[string]any{
 				"id": "1", "skill_id": "skill_docker", "version": "1",
 				"name": "docker-skill", "directory": "docker-skill",
+				"size_bytes":      len(skillArchive),
+				"checksum_sha256": fmt.Sprintf("%x", sha256.Sum256(skillArchive)),
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/skills/skill_docker/versions/1/content":
 			assertItemAuthorization(t, r)

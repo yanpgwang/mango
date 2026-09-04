@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"sort"
@@ -146,7 +148,7 @@ func (s *sdkSkillService) Create(_ context.Context, input app.SkillCreateInput) 
 		ID: "skill_sdk", CreatedAt: now, UpdatedAt: now, DisplayTitle: *input.DisplayTitle,
 		LatestVersion: version, Source: "custom", Ready: true,
 	}
-	s.versions[version] = sdkVersion(s.skill.ID, version, now, int64(len(input.Files[0].Body)))
+	s.versions[version] = sdkVersion(s.skill.ID, version, now, input.Files[0].Body)
 	s.archives[version] = append([]byte(nil), input.Files[0].Body...)
 	s.next += 100
 	return s.skill, nil
@@ -186,7 +188,7 @@ func (s *sdkSkillService) CreateVersion(
 		return domain.SkillVersion{}, domain.Validation("unexpected SDK multipart request")
 	}
 	version := strconv.Itoa(s.next)
-	item := sdkVersion(skillID, version, s.skill.CreatedAt.Add(time.Second), int64(len(files[0].Body)))
+	item := sdkVersion(skillID, version, s.skill.CreatedAt.Add(time.Second), files[0].Body)
 	s.versions[version] = item
 	s.archives[version] = append([]byte(nil), files[0].Body...)
 	s.skill.LatestVersion = version
@@ -242,11 +244,12 @@ func (s *sdkSkillService) Download(
 	}, nil
 }
 
-func sdkVersion(skillID, version string, createdAt time.Time, size int64) domain.SkillVersion {
+func sdkVersion(skillID, version string, createdAt time.Time, body []byte) domain.SkillVersion {
+	checksum := sha256.Sum256(body)
 	return domain.SkillVersion{
 		ID: version, SkillID: skillID, Version: version, CreatedAt: createdAt,
 		Description: "Reviews code when a user requests feedback.",
-		Directory:   "reviewing-code", Name: "reviewing-code", SizeBytes: size,
-		State: domain.SkillVersionReady,
+		Directory:   "reviewing-code", Name: "reviewing-code", SizeBytes: int64(len(body)),
+		ChecksumSHA256: fmt.Sprintf("%x", checksum), State: domain.SkillVersionReady,
 	}
 }

@@ -87,7 +87,7 @@ if err := worker.Run(ctx); err != nil {
 The trusted supervisor client is used only for Poll and Ack. Before executing
 a tool, the worker decodes the acknowledged Work secret, switches to its scoped
 Session token, and obtains a successful conditional heartbeat. That token then
-authorizes heartbeats, Session events, and final Stop. Missing or malformed
+authorizes heartbeats, Fail, Session events, and final Stop. Missing or malformed
 secrets fail closed; there is no Workspace-key fallback.
 
 For a launcher that Polls and Acks outside a Session sandbox, call
@@ -103,8 +103,11 @@ first-party Docker launcher uses one-shot stdin and a non-dumpable item process.
 
 After the first successful heartbeat, the worker fetches the frozen Session and
 prepares its immutable custom Skill pins beneath `Workdir` before dispatching a
-tool. It fails closed on incomplete setup and removes its downloaded Skill
-directories when the Work item ends. Self-hosted Skill paths exposed to the
+tool. It verifies frozen size/checksum metadata, publishes one symlink-safe
+tree, and applies whole-Session byte/file limits. Permanent invalid input is
+committed through Work Fail and terminates the Session; temporary retrieval
+failure remains reclaimable. The tree is removed when the Work item ends.
+Self-hosted Skill paths exposed to the
 model are relative to the same `Workdir`. The worker does not create compute or
 prepare Files, Git repositories, or Memory; those remain launcher
 responsibilities. On lease loss it cancels the runner, prevents later result

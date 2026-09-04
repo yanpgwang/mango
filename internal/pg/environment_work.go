@@ -575,6 +575,146 @@ ON CONFLICT (session_id) WHERE state IN ('queued', 'starting', 'active') DO NOTH
 	})
 }
 
+// FailWork is the worker-owned terminal boundary for invalid immutable Session
+// inputs. It fences the current lease, closes every Thread and active attempt,
+// publishes an observable terminal error, and wakes orchestration in the same
+// transaction. Transient preparation errors must not call this method: their
+// Work lease is allowed to expire so another worker can retry the activation.
+func (r *EnvironmentWorkRepository) FailWork(
+	ctx context.Context,
+	environmentID, workID, message string,
+) error {
+	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
+		return err
+	}
+	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
+	return r.store.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
+		var sessionID string
+		if err := tx.QueryRow(ctx, `
+SELECT session_id FROM environment_work
+WHERE environment_id = $1 AND id = $2`, environmentID, workID).Scan(&sessionID); errors.Is(err, pgx.ErrNoRows) {
+			return domain.NotFound("work item not found")
+		} else if err != nil {
+			return err
+		}
+
+		row, err := q.LockSession(ctx, sessionID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.NotFound("session not found")
+		}
+		if err != nil {
+			return err
+		}
+		if row.DeletingAt.Valid {
+			return domain.Conflict("session deletion is in progress")
+		}
+		session, err := sessionFromLockRow(row)
+		if err != nil {
+			return err
+		}
+		work, err := r.workForUpdate(ctx, tx, environmentID, workID)
+		if err != nil {
+			return err
+		}
+		requestScope, _ := workspace.FromContext(ctx)
+		if requestScope.Session != nil && environmentWorkLeaseExpired(work, now) {
+			return domain.Precondition("work lease has expired")
+		}
+		if work.State == domain.EnvironmentWorkStopped {
+			return domain.Conflict("work item is already stopped")
+		}
+		if work.State == domain.EnvironmentWorkStopping {
+			return domain.Conflict("work item is stopping")
+		}
+		if work.SessionID != session.ID {
+			return domain.Conflict("work item does not belong to its Session")
+		}
+
+		if session.Status != domain.StatusTerminated {
+			primaryID, err := q.GetPrimarySessionThreadID(ctx, session.ID)
+			if err != nil {
+				return err
+			}
+			primary, err := loadSessionThreadForUpdate(ctx, tx, session.ID, primaryID)
+			if err != nil {
+				return err
+			}
+			if err := r.store.interruptSessionThreadAttemptsLocked(
+				ctx, tx, q, session.ID, primaryID,
+			); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `
+DELETE FROM pending_actions
+WHERE session_id = $1 AND thread_id = $2 AND resolved_at IS NULL`,
+				session.ID, primaryID,
+			); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `
+UPDATE events
+SET processed_at = COALESCE(processed_at, $3)
+WHERE session_id = $1 AND thread_id = $2 AND processed_at IS NULL`,
+				session.ID, primaryID, now,
+			); err != nil {
+				return err
+			}
+
+			maxSeq, err := q.MaxEventSeq(ctx, session.ID)
+			if err != nil {
+				return err
+			}
+			errorEventID := r.store.ids.NewID(domain.PrefixEvent)
+			_, maxSeq, err = r.store.appendThreadDraftsAt(
+				ctx, q, session.ID, primaryID,
+				[]domain.EventDraft{{
+					ID: errorEventID, Type: domain.EvSessionError,
+					Payload: map[string]any{"error": map[string]any{
+						"type": "session_input_failed_error", "message": message,
+						"retry_status": map[string]any{"type": "terminal"},
+					}},
+				}}, maxSeq, nil, now,
+			)
+			if err != nil {
+				return err
+			}
+			_, maxSeq, err = r.store.terminateChildSessionThreadsLocked(
+				ctx, tx, q, session.ID, primaryID, errorEventID, maxSeq, now,
+			)
+			if err != nil {
+				return err
+			}
+			_, maxSeq, err = r.store.appendThreadDraftsAt(
+				ctx, q, session.ID, primaryID,
+				[]domain.EventDraft{{Type: domain.EvSessionStatusTerminated, Payload: map[string]any{}}},
+				maxSeq, nil, now,
+			)
+			if err != nil {
+				return err
+			}
+			primary.TransitionStatus(domain.StatusTerminated, now)
+			if err := putSessionThreadTx(ctx, tx, primary); err != nil {
+				return err
+			}
+			session.TransitionStatus(domain.StatusTerminated, now)
+			if err := putSessionOnlyTx(ctx, tx, session); err != nil {
+				return err
+			}
+			if err := q.UpsertOutbox(ctx, pgstore.UpsertOutboxParams{
+				SessionID: session.ID, MaxEventSeq: maxSeq, EnqueuedAt: tsUTC(now),
+			}); err != nil {
+				return err
+			}
+		}
+
+		_, err = tx.Exec(ctx, `
+UPDATE environment_work
+SET state = 'stopped', stop_requested_at = COALESCE(stop_requested_at, $3), stopped_at = $3
+WHERE environment_id = $1 AND id = $2`, environmentID, workID, now)
+		return err
+	})
+}
+
 func (r *EnvironmentWorkRepository) workForUpdate(
 	ctx context.Context,
 	tx pgx.Tx,

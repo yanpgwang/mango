@@ -2,6 +2,7 @@ package mango
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -96,10 +97,12 @@ func TestEnvironmentWorkerHandleItemUsesScopedCredentialForLifecycle(t *testing.
 	}
 }
 
-func TestEnvironmentWorkerSkillSetupFailureStopsBeforeToolDispatch(t *testing.T) {
+func TestEnvironmentWorkerPermanentSkillSetupFailureTerminatesBeforeToolDispatch(t *testing.T) {
 	t.Parallel()
 	var eventRequests atomic.Int32
 	var stops atomic.Int32
+	var failures atomic.Int32
+	broken := []byte("not a zip archive")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/heartbeat"):
@@ -115,13 +118,22 @@ func TestEnvironmentWorkerSkillSetupFailureStopsBeforeToolDispatch(t *testing.T)
 			writeEnvironmentWorkerJSON(t, w, map[string]any{
 				"id": "1", "skill_id": "skill_broken", "version": "1",
 				"name": "broken", "directory": "broken",
+				"size_bytes": len(broken), "checksum_sha256": fmt.Sprintf("%x", sha256.Sum256(broken)),
 			})
 		case request.Method == http.MethodGet && request.URL.Path == "/v1/skills/skill_broken/versions/1/content":
 			w.Header().Set("Content-Type", "application/zip")
-			_, _ = w.Write([]byte("not a zip archive"))
+			_, _ = w.Write(broken)
 		case strings.Contains(request.URL.Path, "/events"):
 			eventRequests.Add(1)
 			http.Error(w, "tool dispatch must not start", http.StatusInternalServerError)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fail"):
+			failures.Add(1)
+			var body EnvironmentWorkFailureRequest
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil ||
+				!strings.Contains(body.Message, "stored Skill archive is invalid") {
+				t.Errorf("failure body = %#v, err = %v", body, err)
+			}
+			w.WriteHeader(http.StatusNoContent)
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/stop"):
 			stops.Add(1)
 			w.WriteHeader(http.StatusNoContent)
@@ -143,8 +155,98 @@ func TestEnvironmentWorkerSkillSetupFailureStopsBeforeToolDispatch(t *testing.T)
 	if err == nil || !strings.Contains(err.Error(), "prepare Skill skill_broken@1") {
 		t.Fatalf("HandleItem error = %v", err)
 	}
-	if eventRequests.Load() != 0 || stops.Load() != 1 {
-		t.Fatalf("event requests=%d stops=%d", eventRequests.Load(), stops.Load())
+	if eventRequests.Load() != 0 || failures.Load() != 1 || stops.Load() != 0 {
+		t.Fatalf("event requests=%d failures=%d stops=%d", eventRequests.Load(), failures.Load(), stops.Load())
+	}
+}
+
+func TestEnvironmentWorkerRetriesTransientSessionInputFailure(t *testing.T) {
+	t.Parallel()
+	var sessionGets atomic.Int32
+	var stops atomic.Int32
+	var failures atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/heartbeat"):
+			writeEnvironmentWorkerJSON(t, w, environmentHeartbeatFixture("2026-09-03T00:00:01Z", "active", true, 30))
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions/session_retry":
+			if sessionGets.Add(1) == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				fmt.Fprint(w, `{"error":{"type":"server_error","message":"temporary"}}`)
+				return
+			}
+			writeEnvironmentWorkerJSON(t, w, emptySessionFixture("session_retry"))
+		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/events"):
+			writeEnvironmentWorkerJSON(t, w, map[string]any{"data": []any{}, "next_page": nil})
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fail"):
+			failures.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/stop"):
+			stops.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	worker := NewEnvironmentWorker(
+		newEnvironmentWorkerClient(t, server.URL, "workspace-key"),
+		EnvironmentWorkerOptions{Workdir: t.TempDir(), MaxIdle: durationPointer(0)},
+	)
+	worker.retryDelay = func(int) time.Duration { return 0 }
+	worker.sleep = func(context.Context, time.Duration) {}
+	if err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{
+		WorkID: "work_retry", EnvironmentID: "env_retry", SessionID: "session_retry",
+		WorkSecret: encodeEnvironmentWorkSecret(t, "sess_mango_retry"),
+	}); err != nil {
+		t.Fatalf("HandleItem: %v", err)
+	}
+	if sessionGets.Load() != 2 || stops.Load() != 1 || failures.Load() != 0 {
+		t.Fatalf("session gets=%d stops=%d failures=%d", sessionGets.Load(), stops.Load(), failures.Load())
+	}
+}
+
+func TestEnvironmentWorkerLeavesExhaustedTransientInputForLeaseReclaim(t *testing.T) {
+	t.Parallel()
+	var sessionGets atomic.Int32
+	var stops atomic.Int32
+	var failures atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/heartbeat"):
+			writeEnvironmentWorkerJSON(t, w, environmentHeartbeatFixture("2026-09-03T00:00:01Z", "active", true, 30))
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions/session_outage":
+			sessionGets.Add(1)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"error":{"type":"server_error","message":"temporary"}}`)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fail"):
+			failures.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/stop"):
+			stops.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	worker := NewEnvironmentWorker(
+		newEnvironmentWorkerClient(t, server.URL, "workspace-key"),
+		EnvironmentWorkerOptions{Workdir: t.TempDir()},
+	)
+	worker.retryDelay = func(int) time.Duration { return 0 }
+	err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{
+		WorkID: "work_outage", EnvironmentID: "env_outage", SessionID: "session_outage",
+		WorkSecret: encodeEnvironmentWorkSecret(t, "sess_mango_outage"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "failed after 5 attempts") {
+		t.Fatalf("HandleItem error = %v", err)
+	}
+	if sessionGets.Load() != maxSessionInputPreparationAttempts ||
+		stops.Load() != 0 || failures.Load() != 0 {
+		t.Fatalf("session gets=%d stops=%d failures=%d", sessionGets.Load(), stops.Load(), failures.Load())
 	}
 }
 

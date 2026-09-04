@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ const (
 	defaultEnvironmentHeartbeatCeiling = 30 * time.Second
 	defaultEnvironmentStopTimeout      = 15 * time.Second
 	maxEnvironmentWorkSecretBytes      = 16 << 10
+	maxSessionInputPreparationAttempts = 5
 	noEnvironmentHeartbeat             = "NO_HEARTBEAT"
 )
 
@@ -62,9 +64,9 @@ type EnvironmentWorkerHandleItemOptions struct {
 }
 
 // EnvironmentWorker composes WorkPoller and SessionToolRunner. It owns Work
-// heartbeat, immutable custom Skill preparation, and final Stop, but it does
-// not create a sandbox or own registered tools. Provider launchers remain
-// separate from this loop.
+// heartbeat, immutable custom Skill preparation, permanent-input failure, and
+// final Stop, but it does not create a sandbox or own registered tools.
+// Provider launchers remain separate from this loop.
 type EnvironmentWorker struct {
 	client *Client
 	opts   EnvironmentWorkerOptions
@@ -213,36 +215,57 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 
 	startup := <-start
 	var runnerErr error
+	abandonWork := false
+	failureCommitted := false
 	if startup.ready {
-		session, err := itemClient.GetSession(sessionCtx, work.Data.ID)
-		if err != nil {
-			runnerErr = fmt.Errorf("mango: retrieve Session inputs: %w", err)
+		skills, preparationErr, permanent := w.prepareSessionInputs(
+			sessionCtx, itemClient, work.Data.ID, log,
+		)
+		if preparationErr != nil {
+			runnerErr = preparationErr
+			if sessionCtx.Err() == nil && permanent {
+				failureCtx, cancelFailure := context.WithTimeout(
+					context.WithoutCancel(ctx), min(w.stopTimeout, startup.ttl),
+				)
+				failErr := itemClient.FailEnvironmentWork(
+					failureCtx, work.EnvironmentID, work.ID,
+					EnvironmentWorkFailureRequest{Message: sessionInputFailureMessage(preparationErr)},
+				)
+				cancelFailure()
+				if failErr == nil || isAPIStatus(failErr, http.StatusConflict) {
+					failureCommitted = true
+				} else {
+					abandonWork = true
+					log.Warn("permanent Session input failure could not be committed; leaving Work for lease reclaim", "error", failErr)
+				}
+			} else if sessionCtx.Err() == nil {
+				// A transient control-plane or object-store outage must never be
+				// converted into a successful Stop. Reclaim rotates the token and
+				// gives another worker a clean retry.
+				abandonWork = true
+			}
 		} else {
-			skills, err := PrepareSessionSkills(
-				sessionCtx, itemClient, session, w.opts.Workdir,
-			)
-			if err != nil {
+			defer func() {
+				if err := skills.Cleanup(); err != nil {
+					log.Warn("Session Skill cleanup failed", "error", err)
+				}
+			}()
+			runner := NewSessionToolRunner(sessionCtx, itemClient, work.Data.ID, SessionToolRunnerOptions{
+				Tools: w.opts.Tools, MaxIdle: w.opts.MaxIdle,
+				ToolTimeout: w.opts.ToolTimeout, SendTimeout: w.opts.SendTimeout,
+				SendRetryWindow: startup.ttl, Logger: log,
+			})
+			for runner.Next() {
+				call := runner.Current()
+				log.Info("dispatched tool", "tool", call.Name, "tool_use_id", call.ToolUseID,
+					"is_error", call.IsError, "posted", call.Posted)
+			}
+			runnerErr = runner.Err()
+			if err := runner.Close(); err != nil && runnerErr == nil {
 				runnerErr = err
-			} else {
-				defer func() {
-					if err := skills.Cleanup(); err != nil {
-						log.Warn("Session Skill cleanup failed", "error", err)
-					}
-				}()
-				runner := NewSessionToolRunner(sessionCtx, itemClient, work.Data.ID, SessionToolRunnerOptions{
-					Tools: w.opts.Tools, MaxIdle: w.opts.MaxIdle,
-					ToolTimeout: w.opts.ToolTimeout, SendTimeout: w.opts.SendTimeout,
-					SendRetryWindow: startup.ttl, Logger: log,
-				})
-				for runner.Next() {
-					call := runner.Current()
-					log.Info("dispatched tool", "tool", call.Name, "tool_use_id", call.ToolUseID,
-						"is_error", call.IsError, "posted", call.Posted)
-				}
-				runnerErr = runner.Err()
-				if err := runner.Close(); err != nil && runnerErr == nil {
-					runnerErr = err
-				}
+			}
+			if err := skills.Cleanup(); err != nil {
+				log.Warn("Session Skill cleanup failed", "error", err)
 			}
 		}
 	} else {
@@ -264,6 +287,12 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 			return fmt.Errorf("%w: work %s: %v", ErrEnvironmentWorkLeaseLost, work.ID, cause)
 		}
 		return fmt.Errorf("%w: work %s", ErrEnvironmentWorkLeaseLost, work.ID)
+	}
+	if failureCommitted || abandonWork {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return runnerErr
 	}
 
 	stopCtx, cancelStop := context.WithTimeout(context.WithoutCancel(ctx), w.stopTimeout)
@@ -289,6 +318,79 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 		return heartbeatEnd.err
 	}
 	return stopErr
+}
+
+func (w *EnvironmentWorker) prepareSessionInputs(
+	ctx context.Context,
+	client *Client,
+	sessionID string,
+	log *slog.Logger,
+) (*SessionSkillSetup, error, bool) {
+	var lastErr error
+	for attempt := 1; attempt <= maxSessionInputPreparationAttempts; attempt++ {
+		session, err := client.GetSession(ctx, sessionID)
+		if err != nil {
+			lastErr = fmt.Errorf("mango: retrieve Session inputs: %w", err)
+		} else {
+			var setup *SessionSkillSetup
+			setup, err = PrepareSessionSkills(ctx, client, session, w.opts.Workdir)
+			if err == nil {
+				return setup, nil, false
+			}
+			lastErr = err
+		}
+		if ctx.Err() != nil {
+			return nil, lastErr, false
+		}
+		if !retryableSessionInputError(lastErr) {
+			return nil, lastErr, true
+		}
+		if attempt == maxSessionInputPreparationAttempts {
+			break
+		}
+		delay := w.retryDelay(attempt)
+		log.Warn("transient Session input preparation failure", "attempt", attempt, "delay", delay, "error", lastErr)
+		w.sleep(ctx, delay)
+	}
+	return nil, fmt.Errorf(
+		"mango: Session input preparation failed after %d attempts: %w",
+		maxSessionInputPreparationAttempts, lastErr,
+	), false
+}
+
+func retryableSessionInputError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var apiError *APIError
+	if errors.As(err, &apiError) {
+		return apiError.StatusCode == http.StatusRequestTimeout ||
+			apiError.StatusCode == http.StatusConflict ||
+			apiError.StatusCode == http.StatusTooEarly ||
+			apiError.StatusCode == http.StatusTooManyRequests ||
+			apiError.StatusCode >= http.StatusInternalServerError
+	}
+	var pathError *os.PathError
+	if errors.As(err, &pathError) {
+		return true
+	}
+	var temporary interface{ Temporary() bool }
+	return errors.As(err, &temporary) && temporary.Temporary()
+}
+
+func sessionInputFailureMessage(err error) string {
+	message := strings.ToValidUTF8("Session input preparation failed: "+err.Error(), "�")
+	runes := []rune(message)
+	if len(runes) > 1024 {
+		message = string(runes[:1024])
+	}
+	return message
 }
 
 type environmentHeartbeatReason int

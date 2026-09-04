@@ -448,6 +448,10 @@ class EnvironmentWorkData(TypedDict, total=False):
     type: Required[Literal['session']]
 
 
+class EnvironmentWorkFailureRequest(TypedDict, total=False):
+    message: Required[str]
+
+
 class EnvironmentWorkHeartbeat(TypedDict, total=False):
     last_heartbeat: Required[str]
     lease_extended: Required[bool]
@@ -1183,7 +1187,7 @@ class SessionExecutionError(TypedDict, total=False):
     mcp_server_name: str
     message: Required[str]
     retry_status: 'SessionExecutionErrorRetryStatus'
-    type: Required[Literal['unknown_error', 'model_overloaded_error', 'model_rate_limited_error', 'model_request_failed_error', 'mcp_connection_failed_error', 'mcp_authentication_failed_error', 'billing_error', 'credential_host_unreachable_error', 'api_error']]
+    type: Required[Literal['unknown_error', 'model_overloaded_error', 'model_rate_limited_error', 'model_request_failed_error', 'mcp_connection_failed_error', 'mcp_authentication_failed_error', 'billing_error', 'credential_host_unreachable_error', 'session_input_failed_error', 'api_error']]
     vault_id: str
 
 
@@ -1411,11 +1415,13 @@ class SkillUploadRequest(TypedDict, total=False):
 
 
 class SkillVersion(TypedDict, total=False):
+    checksum_sha256: Required[str]
     created_at: Required[str]
     description: Required[str]
     directory: Required[str]
     id: Required[str]
     name: Required[str]
+    size_bytes: Required[int]
     skill_id: Required[str]
     type: Required[Literal['skill_version']]
     version: Required[str]
@@ -1855,6 +1861,12 @@ DownloadSkillVersionSkillIdParameter: TypeAlias = str
 
 
 DownloadSkillVersionVersionParameter: TypeAlias = str
+
+
+FailEnvironmentWorkEnvironmentIdParameter: TypeAlias = str
+
+
+FailEnvironmentWorkWorkIdParameter: TypeAlias = str
 
 
 GetAgentAgentIdParameter: TypeAlias = str
@@ -2558,6 +2570,7 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'EnvironmentVariableCredentialUpdateInjectionLocation',
  'EnvironmentWork',
  'EnvironmentWorkData',
+ 'EnvironmentWorkFailureRequest',
  'EnvironmentWorkHeartbeat',
  'EnvironmentWorkList',
  'EnvironmentWorkQueueStats',
@@ -2572,6 +2585,8 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'EventStart',
  'EventStartPreview',
  'EventStreamFrame',
+ 'FailEnvironmentWorkEnvironmentIdParameter',
+ 'FailEnvironmentWorkWorkIdParameter',
  'File',
  'FileDeleted',
  'FileDocumentSourceInput',

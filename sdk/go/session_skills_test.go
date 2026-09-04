@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -52,6 +53,7 @@ func TestPrepareSessionSkillsMaterializesPrimaryAndRosterPins(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": version, "skill_id": skillID, "version": version,
 			"name": name, "directory": directory,
+			"size_bytes": len(archive), "checksum_sha256": fmt.Sprintf("%x", sha256.Sum256(archive)),
 		})
 	}))
 	defer server.Close()
@@ -128,9 +130,14 @@ func TestPrepareSessionSkillsRejectsArchiveEscapeAndCleansPriorSkill(t *testing.
 			return
 		}
 		name := strings.TrimPrefix(skillID, "skill_")
+		archive := hostile.Bytes()
+		if skillID == "skill_good" {
+			archive = good
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": version, "skill_id": skillID, "version": version,
 			"name": name, "directory": name,
+			"size_bytes": len(archive), "checksum_sha256": fmt.Sprintf("%x", sha256.Sum256(archive)),
 		})
 	}))
 	defer server.Close()
@@ -156,6 +163,142 @@ func TestPrepareSessionSkillsRejectsArchiveEscapeAndCleansPriorSkill(t *testing.
 	if _, statErr := os.Stat(filepath.Join(workdir, "escape")); !os.IsNotExist(statErr) {
 		t.Fatalf("archive escaped workdir: %v", statErr)
 	}
+}
+
+func TestPrepareSessionSkillsDoesNotFollowPriorOrReplacementRootSymlink(t *testing.T) {
+	t.Parallel()
+	archive := sessionSkillArchive(t, "safe", map[string]string{"SKILL.md": "body"})
+	server := singleSessionSkillServer(t, "skill_safe", "1", "safe", "safe", archive, "")
+	defer server.Close()
+	client, err := New(Config{BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workdir := t.TempDir()
+	outside := t.TempDir()
+	sentinel := filepath.Join(outside, "keep.txt")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workdir, "skills")); err != nil {
+		t.Fatal(err)
+	}
+	session := Session{Agent: AgentSnapshot{Skills: []SkillReferenceResponse{{
+		ResolvedSkillReference: &ResolvedSkillReference{
+			Type: "custom", SkillID: "skill_safe", Version: "1",
+		},
+	}}}}
+	setup, err := PrepareSessionSkills(context.Background(), client, session, workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatalf("publishing followed prior root symlink: %v", err)
+	}
+	rootInfo, err := os.Lstat(filepath.Join(workdir, "skills"))
+	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("published root = %#v, %v", rootInfo, err)
+	}
+	if err := os.RemoveAll(filepath.Join(workdir, "skills")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workdir, "skills")); err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.Cleanup(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatalf("cleanup followed replacement root symlink: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(workdir, "skills")); !os.IsNotExist(err) {
+		t.Fatalf("replacement root symlink survived cleanup: %v", err)
+	}
+}
+
+func TestPrepareSessionSkillsRejectsIntegrityMismatch(t *testing.T) {
+	t.Parallel()
+	archive := sessionSkillArchive(t, "safe", map[string]string{"SKILL.md": "body"})
+	server := singleSessionSkillServer(
+		t, "skill_safe", "1", "safe", "safe", archive, strings.Repeat("0", 64),
+	)
+	defer server.Close()
+	client, err := New(Config{BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = PrepareSessionSkills(context.Background(), client, Session{Agent: AgentSnapshot{
+		Skills: []SkillReferenceResponse{{ResolvedSkillReference: &ResolvedSkillReference{
+			Type: "custom", SkillID: "skill_safe", Version: "1",
+		}}},
+	}}, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("integrity error = %v", err)
+	}
+}
+
+func TestPrepareSessionSkillsAppliesAggregateExpandedAndFileBudgets(t *testing.T) {
+	t.Parallel()
+	archive := sessionSkillArchive(t, "safe", map[string]string{
+		"SKILL.md": strings.Repeat("a", 1000), "notes.txt": strings.Repeat("b", 1000),
+	})
+	server := singleSessionSkillServer(t, "skill_safe", "1", "safe", "safe", archive, "")
+	defer server.Close()
+	client, err := New(Config{BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := Session{Agent: AgentSnapshot{Skills: []SkillReferenceResponse{{
+		ResolvedSkillReference: &ResolvedSkillReference{
+			Type: "custom", SkillID: "skill_safe", Version: "1",
+		},
+	}}}}
+	base := sessionSkillBudget{
+		archiveLimit: 1 << 20, fileLimit: 100, countLimit: 10,
+		totalByteLimit: 1 << 20, totalFileLimit: 100,
+	}
+	byteBudget := base
+	byteBudget.totalByteLimit = 500
+	if _, err := prepareSessionSkills(
+		context.Background(), client, session, t.TempDir(), &byteBudget,
+	); err == nil || !strings.Contains(err.Error(), "expanded-size") {
+		t.Fatalf("expanded budget error = %v", err)
+	}
+	fileBudget := base
+	fileBudget.totalFileLimit = 1
+	if _, err := prepareSessionSkills(
+		context.Background(), client, session, t.TempDir(), &fileBudget,
+	); err == nil || !strings.Contains(err.Error(), "file limit") {
+		t.Fatalf("file budget error = %v", err)
+	}
+}
+
+func singleSessionSkillServer(
+	t *testing.T,
+	skillID, version, name, directory string,
+	archive []byte,
+	checksum string,
+) *httptest.Server {
+	t.Helper()
+	if checksum == "" {
+		checksum = fmt.Sprintf("%x", sha256.Sum256(archive))
+	}
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v1/skills/"+skillID+"/versions/"+version+"/content" {
+			w.Header().Set("Content-Type", "application/zip")
+			_, _ = w.Write(archive)
+			return
+		}
+		if request.URL.Path == "/v1/skills/"+skillID+"/versions/"+version {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": version, "skill_id": skillID, "version": version,
+				"name": name, "directory": directory,
+				"size_bytes": len(archive), "checksum_sha256": checksum,
+			})
+			return
+		}
+		http.NotFound(w, request)
+	}))
 }
 
 func sessionSkillArchive(t *testing.T, root string, files map[string]string) []byte {

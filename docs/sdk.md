@@ -102,8 +102,8 @@ to retry. The Go SDK adds three handwritten, provider-neutral workflow helpers:
 The Session runner performs the result-history check before its bounded retry;
 it still cannot make an external tool side effect exactly once. The composed
 worker adds heartbeat, lease-loss cancellation, scoped credential handoff,
-immutable custom Skill preparation, and final Stop without selecting a sandbox
-provider. See
+integrity-checked custom Skill preparation, transient retry/reclaim, durable
+permanent-input failure, and final Stop without selecting a sandbox provider. See
 [Environment Work](api/environment-work.md) and [Session events](api/events.md).
 Its optional `tools/agenttoolset` package supplies the six core local tool
 executors for an already-isolated worker; it does not create a sandbox.

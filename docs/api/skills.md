@@ -31,6 +31,10 @@ files smaller than 30 MB. A bundle contains one top-level directory and a root
 `SKILL.md`; validation rejects traversal, absolute paths, links, duplicate
 paths, and invalid frontmatter metadata.
 
+Every Version response includes `size_bytes` and `checksum_sha256` for the
+exact canonical zip returned by its content endpoint. Workers must verify both
+before using the archive; transport success alone is not an integrity check.
+
 Agent references use the documented custom union. An omitted Version or
 `latest` is replaced by a concrete ready Version before the Agent Version or
 Session snapshot is stored. Active Agent and Session pins prevent deleting an
@@ -53,11 +57,13 @@ For self-hosted Environments, the Go Environment Worker downloads the frozen
 primary and roster Agent pins before starting tool dispatch. Primary Skills use
 `<workdir>/skills/<name>` and external roster Agents use the same stable scoped
 layout as the Agent loop. The worker accepts only Mango's canonical zip shape,
-bounds compressed and expanded content, rejects path escapes and non-regular
-members, atomically publishes each directory, and removes its downloaded
-directories when the Work item ends. Model-visible paths are relative
+bounds per-archive and whole-Session compressed/expanded content and file
+count, rejects path escapes and non-regular members, and atomically publishes
+one symlink-safe Session tree. It removes that tree when the Work item ends.
+Model-visible paths are relative
 `skills/...` paths rooted at that `workdir`, so a launcher may choose a location
-other than `/workspace`. A setup failure fails closed.
+other than `/workspace`. Permanent validation failures durably terminate the
+Session; temporary retrieval failures remain eligible for Work lease reclaim.
 
 External managed catalogs and repository auto-loading are not implemented.
 Cloud Session creation still returns `422` when its transitional sandbox
