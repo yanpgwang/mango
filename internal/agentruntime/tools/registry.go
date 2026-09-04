@@ -184,3 +184,31 @@ func Schema(name string) map[string]any {
 		return nil
 	}
 }
+
+// SelfHostedSchema returns the model-facing contract implemented by an
+// Environment worker. Only the worker-owned bash tool has additional lifecycle
+// controls; the transitional Mango-managed executor remains a one-shot process
+// and continues to use Schema.
+func SelfHostedSchema(name string) map[string]any {
+	if name != "bash" {
+		return Schema(name)
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"command": map[string]any{
+				"type":        "string",
+				"description": "Shell command to run. State such as the working directory and environment variables persists across calls.",
+			},
+			"restart": map[string]any{
+				"type":        "boolean",
+				"description": "Restart the persistent shell before running command. When command is omitted, only restart the shell.",
+			},
+			"timeout_ms": map[string]any{
+				"type":        "integer",
+				"minimum":     0,
+				"description": "Shell-call timeout in milliseconds. Zero or omission uses the worker default; the runner-wide tool deadline remains an upper bound.",
+			},
+		},
+	}
+}

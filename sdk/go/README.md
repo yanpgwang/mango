@@ -190,13 +190,21 @@ import "github.com/yanpgwang/mango/sdk/go/tools/agenttoolset"
 
 tools, err := agenttoolset.New(agenttoolset.Context{Workdir: "/workspace"})
 if err != nil { panic(err) }
+defer agenttoolset.CloseAll(tools)
 ```
 
 Run it only inside an isolation boundary created by your launcher. It executes
 `bash`, `read`, `write`, `edit`, `glob`, and `grep`, confines file operations to
 `Workdir`, bounds reads and outputs, and removes Mango credentials from shell
-subprocess environments. It does not create compute or implement server-side
-Web tools, Skills, Memory, or resource preparation.
+environments. Bash is a persistent PTY session: cwd, exported variables, and
+background jobs survive calls, while `restart` and `timeout_ms` provide an
+explicit reset and shell-call bound; the runner-wide tool deadline remains the
+upper bound. A timeout, cancellation, or broken shell is discarded before the
+next invocation. Bash is unrestricted inside the process, so the launcher's
+sandbox remains the security boundary. The toolset creator must call
+`CloseAll`; `SessionToolRunner` deliberately borrows tools. The package does
+not create compute or implement server-side Web tools, Skills, Memory, or
+resource preparation.
 
 ## Self-hosted Session tools
 

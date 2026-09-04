@@ -72,10 +72,11 @@ release is never an automatic roadmap.
 - Mango retains its existing `path`, `file_text`, `old_str`, and `new_str`
   fields where they remain clear. The public SDK is design evidence, not a
   field-for-field compatibility target or a runtime executor dependency.
-- Mango does not advertise `bash.restart` because sandbox commands currently
-  execute independently and there is no persistent shell session to restart.
-  A future persistent-shell lifecycle must work through Mango's sandbox
-  abstraction before that capability can be exposed honestly.
+- Mango advertises `bash.restart` and `bash.timeout_ms` only for `self_hosted`
+  Sessions whose SDK toolset owns a persistent shell. The transitional
+  Mango-managed executor still starts independent commands and keeps its
+  narrower command-only schema; a shared tool name is not evidence that two
+  execution owners support the same lifecycle.
 - Mango caps each built-in `read` at 64 KiB inside the sandbox so untrusted
   files cannot make worker memory scale without bound. Larger files and
   persisted tool outputs use ordinary `bash` byte slicing (`dd`, `head`,
@@ -611,18 +612,59 @@ support, so they run the same credential-free and opt-in live conformance suites
   key temporarily substitutes for CMA's narrower Environment host credential;
   the worker is therefore a trusted Workspace peer. Docker bridge egress is not
   a network policy, and the image is not advertised as a hostile multi-tenant
-  boundary. Skill, Memory, File/Git input and output preparation, server-side
-  Web-tool ownership, CMA's persistent Bash/restart behavior, and health Work
-  remain explicit gaps rather than fake success paths.
+  boundary. At this slice, Skill, Memory, File/Git input and output preparation,
+  server-side Web-tool ownership, persistent Bash/restart behavior, and health
+  Work remained explicit gaps rather than fake success paths.
 - Acceptance: unit and race tests verify Poll/Ack credential separation,
   container hardening, cancellation-versus-lease-loss fencing, bounded tools,
   path confinement, and credential scrubbing. Opt-in real Docker tests run two
   Work activations for one Session through Poll and Ack, then cover first and
   subsequent heartbeat, Session SSE, tool result, forced Stop, container
-  removal, and workspace-volume continuity. A separate in-flight Bash case
+  removal, and workspace-volume continuity. The follow-up persistent-Bash
+  slice expands the same real container path to cover state reuse and explicit
+  restart. A separate in-flight Bash case
   cancels the host worker and proves that the item posts one error result before
   Stop. The cookbook remains documentation/example input and is not imported
   into Mango's tests.
+
+## Persistent Bash in self-hosted workers
+
+- User problem: coding agents need shell state such as cwd, exported variables,
+  and background jobs to survive related tool calls, while timeout or
+  cancellation must not leak stale output into the next call. A stateless
+  `/bin/bash -c` loop made the worker's coding-tool behavior weaker than the
+  lifecycle Mango intended to study.
+- Reviewed the public `anthropic-sdk-go`
+  [Bash source and tests](https://github.com/anthropics/anthropic-sdk-go/tree/e9c104e7e5fb80a26ff26e398c0e4e3fe1fe7f33/tools/agenttoolset)
+  at current `main` commit `e9c104e7e5fb80a26ff26e398c0e4e3fe1fe7f33`
+  and the `anthropic-sdk-typescript`
+  [Bash input type](https://github.com/anthropics/anthropic-sdk-typescript/blob/4140e0eaa597c0ad35218ffb20b66ef7fce7f639/src/resources/beta/agents/agents.ts#L279-L299)
+  at current `main` commit `4140e0eaa597c0ad35218ffb20b66ef7fce7f639`
+  on 2026-09-04. Mango adopted the useful public contract: a persistent Bash
+  session, optional `restart`,
+  per-call `timeout_ms`, combined output, non-zero exit reporting, stdin EOF,
+  unpredictable completion framing, bounded output, and automatic replacement
+  after timeout, cancellation, shell exit, or framing failure.
+- Mango's implementation is independent and self-hosted-specific. It keeps the
+  existing Mango field naming outside Bash, strips the `MANGO_*` namespace,
+  exposes lifecycle fields only through the self-hosted model schema, and
+  treats the Work container rather than the SDK as the isolation boundary.
+  Shell state lasts for one Work activation; the Session volume, not the Bash
+  process, is the persistence mechanism across activations.
+- The open upstream
+  [Bash close wedge report](https://github.com/anthropics/anthropic-sdk-go/issues/390)
+  supplied failure evidence rather than code: Mango starts process reaping at
+  shell creation, kills the process group on reset, and bounds Close waiting so
+  a detached descendant or platform failure cannot park Work indefinitely.
+  `SessionToolRunner` continues to borrow tools; the launcher-created item
+  process owns `CloseAll` and reports cleanup failure.
+- Acceptance: SDK race tests cover cwd/environment persistence, restart-only
+  and restart-with-command, non-zero exits, stdin EOF, unspoofable framing,
+  bounded tail output, timeout/cancellation contamination fences, input
+  validation, idempotent close, and interruption of an in-flight command. The
+  real Docker Environment Work test executes multiple Bash calls in one
+  activation, observes state persistence and restart, then verifies only the
+  workspace file survives a second activation.
 
 ## Docker-default OSS execution
 

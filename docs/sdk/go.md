@@ -112,11 +112,19 @@ tools, err := agenttoolset.New(agenttoolset.Context{Workdir: "/workspace"})
 if err != nil {
     return err
 }
+defer agenttoolset.CloseAll(tools)
 ```
 
 This package is not a sandbox. The caller must establish the isolation
 boundary first. File operations remain beneath `Workdir`, reads and outputs are
-bounded, and Mango credentials are removed from `bash` subprocesses.
+bounded, and Mango credentials are removed from the Bash environment. Bash uses
+one persistent PTY session per toolset, so cwd, exported variables, and
+background jobs survive calls. Its input accepts `command`, `restart`, and
+`timeout_ms`; the runner-wide tool deadline remains the hard upper bound. A
+timeout or cancellation replaces the shell before the next call. Bash is not
+path-confined inside the host process, so the caller's sandbox is the security
+boundary. The caller owns `CloseAll` because `SessionToolRunner` borrows tools
+and never closes them.
 
 ## Self-hosted Session tools
 

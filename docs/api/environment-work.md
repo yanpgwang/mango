@@ -100,14 +100,25 @@ Work secret plus resource IDs and the sandbox-visible Mango URL. The item
 process performs the first heartbeat before executing tools, continuously
 renews the lease, reconciles Session events, posts tool results, and force-Stops
 ordinary exits. It runs the Go SDK's six core local tools in `/workspace` and
-scrubs Mango credentials from `bash` subprocesses.
+scrubs Mango credentials from the shell environment. Bash is a persistent PTY
+session within one Work container: working-directory and environment changes
+survive later calls, `restart` creates a fresh shell, and `timeout_ms` overrides
+the shell-call timeout without extending the runner-wide tool deadline. Timeout,
+cancellation, shell termination, or
+corrupt completion framing closes the old shell before another call can run.
 
 Containers are removed after each activation. A Docker named volume derived
 from the Session ID is retained, so later Work for the same Session resumes the
-same workspace. This reference does not yet prepare Skills, Memory, File/Git
+same workspace; shell process state deliberately does not survive that
+container boundary. This reference does not yet prepare Skills, Memory, File/Git
 resources, or Session outputs; it is not a hardened hostile multi-tenant
 boundary. See the
 [Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker).
+
+The file tools are confined to `/workspace`. Bash itself is intentionally not
+path-confined within the container, so the Docker boundary and its mounts,
+credentials, user, capabilities, resources, and network policy remain the
+security boundary.
 
 Workers must honor `evaluated_permission` independently of execution location.
 An `ask` call waits for a persisted allow confirmation; a deny must never run.

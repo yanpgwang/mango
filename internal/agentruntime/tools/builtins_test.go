@@ -86,6 +86,16 @@ func TestBuiltinSchemasOnlyAdvertiseImplementedSemantics(t *testing.T) {
 	if _, advertised := bashProperties["restart"]; advertised {
 		t.Fatal("bash schema advertises a persistent-shell restart that the executor does not implement")
 	}
+	selfHostedBash := SelfHostedSchema("bash")
+	selfHostedProperties := selfHostedBash["properties"].(map[string]any)
+	for _, name := range []string{"command", "restart", "timeout_ms"} {
+		if _, advertised := selfHostedProperties[name]; !advertised {
+			t.Fatalf("self-hosted bash schema omitted %q", name)
+		}
+	}
+	if _, required := selfHostedBash["required"]; required {
+		t.Fatal("self-hosted bash schema requires command even though restart-only input is valid")
+	}
 	readProperties := Schema("read")["properties"].(map[string]any)
 	if _, advertised := readProperties["view_range"]; !advertised {
 		t.Fatal("read schema omitted the implemented view_range")

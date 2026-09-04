@@ -101,7 +101,7 @@ func runDocker(ctx context.Context, arguments []string) error {
 	return launcher.Run(ctx)
 }
 
-func runItem(ctx context.Context, arguments []string) error {
+func runItem(ctx context.Context, arguments []string) (runErr error) {
 	flags := flag.NewFlagSet("mango-worker run", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	workdir := flags.String("workdir", envOr("MANGO_WORKDIR", "/workspace"), "sandbox workspace")
@@ -121,6 +121,11 @@ func runItem(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := selfhosted.CloseSandboxTools(toolset); err != nil {
+			runErr = errors.Join(runErr, err)
+		}
+	}()
 	worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
 		Tools: toolset, MaxIdle: maxIdle,
 	})
