@@ -28,6 +28,9 @@ Issues = "https://github.com/yanpgwang/mango/issues"
 [dependency-groups]
 dev = ["pytest==8.4.2", "mypy==1.18.2", "ruff==0.13.3"]
 
+[tool.uv]
+index-url = "https://pypi.org/simple"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/mango_sdk"]
 
