@@ -62,6 +62,7 @@ type DockerLauncherOptions struct {
 
 type dockerEngine interface {
 	ContainerCreate(context.Context, client.ContainerCreateOptions) (client.ContainerCreateResult, error)
+	ContainerAttach(context.Context, string, client.ContainerAttachOptions) (client.ContainerAttachResult, error)
 	ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error)
 	ContainerStart(context.Context, string, client.ContainerStartOptions) (client.ContainerStartResult, error)
 	ContainerStop(context.Context, string, client.ContainerStopOptions) (client.ContainerStopResult, error)
@@ -184,11 +185,14 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 	createOptions := client.ContainerCreateOptions{
 		Name: name,
 		Config: &container.Config{
-			Image:      l.opts.Image,
-			Entrypoint: []string{l.opts.RunnerPath, "run"},
-			WorkingDir: defaultSandboxWorkdir,
-			User:       l.opts.User,
-			Env:        l.itemEnvironment(work),
+			Image:       l.opts.Image,
+			Entrypoint:  []string{l.opts.RunnerPath, "run"},
+			WorkingDir:  defaultSandboxWorkdir,
+			User:        l.opts.User,
+			Env:         l.itemEnvironment(work),
+			AttachStdin: true,
+			OpenStdin:   true,
+			StdinOnce:   true,
 			Labels: map[string]string{
 				dockerManagedLabel: "true", dockerWorkIDLabel: work.ID,
 				dockerSessionIDLabel: work.Data.ID, dockerEnvironmentLabel: work.EnvironmentID,
@@ -225,7 +229,15 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 			runErr = errors.Join(runErr, cleanupErr)
 		}
 	}()
+	secretInput, err := l.attachContainerInput(ctx, containerID)
+	if err != nil {
+		return err
+	}
+	defer secretInput.Close()
 	if err := l.startContainer(ctx, containerID); err != nil {
+		return err
+	}
+	if err := sendContainerWorkSecret(secretInput, *work.Secret); err != nil {
 		return err
 	}
 	l.log.Info("started Work container", "work_id", work.ID, "session_id", work.Data.ID, "container_id", shortContainerID(containerID))
@@ -257,6 +269,35 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 		}
 		return nil
 	}
+}
+
+func (l *DockerLauncher) attachContainerInput(ctx context.Context, containerID string) (*client.ContainerAttachResult, error) {
+	attachCtx, cancel := context.WithTimeout(ctx, defaultWorkerStopTimeout)
+	attached, err := l.engine.ContainerAttach(attachCtx, containerID, client.ContainerAttachOptions{
+		Stream: true,
+		Stdin:  true,
+	})
+	cancel()
+	if err != nil {
+		return nil, fmt.Errorf("selfhosted: attach Work secret input: %w", err)
+	}
+	if attached.Conn == nil {
+		return nil, errors.New("selfhosted: Docker Engine returned an empty Work secret input connection")
+	}
+	return &attached, nil
+}
+
+func sendContainerWorkSecret(attached *client.ContainerAttachResult, secret string) error {
+	if err := attached.Conn.SetWriteDeadline(time.Now().Add(defaultWorkerStopTimeout)); err != nil {
+		return fmt.Errorf("selfhosted: bound Work secret input: %w", err)
+	}
+	if err := WriteWorkSecret(attached.Conn, secret); err != nil {
+		return err
+	}
+	if err := attached.CloseWrite(); err != nil {
+		return fmt.Errorf("selfhosted: close Work secret input: %w", err)
+	}
+	return nil
 }
 
 func (l *DockerLauncher) createContainer(
@@ -337,7 +378,6 @@ func (l *DockerLauncher) itemEnvironment(work mango.EnvironmentWork) []string {
 		"MANGO_WORK_ID=" + work.ID,
 		"MANGO_ENVIRONMENT_ID=" + work.EnvironmentID,
 		"MANGO_SESSION_ID=" + work.Data.ID,
-		"MANGO_WORK_SECRET=" + *work.Secret,
 		"MANGO_WORKDIR=" + defaultSandboxWorkdir,
 	}
 	values = append(values, "MANGO_WORKER_MAX_IDLE="+l.opts.MaxIdle.String())

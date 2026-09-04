@@ -616,7 +616,7 @@ func EnabledSelfHostedToolSchemas(ts domain.ToolSet) []model.ToolSchema {
 		if enabled, _ := ts.BuiltinEnabled(name); !enabled {
 			continue
 		}
-		schema := tools.Schema(name)
+		schema := tools.SelfHostedSchema(name)
 		if schema == nil {
 			continue
 		}

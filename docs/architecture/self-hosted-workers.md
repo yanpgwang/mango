@@ -76,11 +76,11 @@ opt-in.
 | Concern | Public CMA behavior | Mango behavior | Status |
 | --- | --- | --- | --- |
 | Claim boundary | A trusted host Polls and Acks | The Docker supervisor Polls and Acks | Aligned |
-| Item credential | Work can carry a per-Session secret, which the SDK prefers; the SDK can fall back to the Environment key and the Docker cookbook currently passes that broader key into the container | Each container requires `MANGO_WORK_SECRET`; the Workspace key stays on the supervisor and is never a fallback | Same scoped normal path; intentionally stricter fallback |
+| Item credential | Work can carry a per-Session secret, which the SDK prefers; the SDK can fall back to the Environment key and the Docker cookbook currently passes that broader key into the container | The scoped Work secret crosses one-shot stdin into a non-dumpable item runner; it is absent from Docker environment and command metadata, while the Workspace key stays on the supervisor | Same scoped normal path; intentionally stricter fallback and child-process boundary |
 | Lease ownership | The item runner performs first heartbeat, continuous renewal, Session handling, and Stop | `EnvironmentWorker.HandleItem` owns the same sequence | Aligned |
 | Workspace continuity | Docker examples retain a per-Session workspace across activations | A named `/workspace` volume is keyed by Session ID and retained after each Work container exits | Aligned |
 | Agent tools | Core shell/file tools execute inside customer infrastructure; Web tools remain server-side | The Docker image executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`; portable server-side Web-tool ownership is not complete | Partial |
-| Shell lifecycle | The current SDK keeps a persistent Bash process and supports restart/per-call timeout | Mango starts an independent `/bin/bash` process for each call and does not advertise restart | Command language aligned; persistent lifecycle remains a gap |
+| Shell lifecycle | The current SDK keeps a persistent Bash process and supports restart/per-call timeout | The self-hosted Go toolset keeps one PTY-backed Bash per Work container, exposes `restart` and `timeout_ms`, and replaces the shell after timeout, cancellation, or framing failure | Aligned lifecycle; Mango additionally bounds shutdown reaping |
 | Session inputs | The public worker prepares supported Skill and Memory state before execution | Self-hosted Skill and Memory activation is rejected at admission; File/Git/output preparation is not yet wired into this launcher | Gap |
 
 This table is a behavioral audit, not a compatibility claim. CMA's current
@@ -143,14 +143,17 @@ Session container merely to copy the cookbook script.
    and retains one named workspace volume per Session. A real Docker test covers
    Poll through Stop and proves that a second activation reads the first
    activation's file from that volume.
-6. Complete the shared self-hosted behavior before multiplying providers:
-   core tool semantics (including persistent shell lifecycle), Skill and Memory
-   preparation, supported File/Git inputs and outputs, server-side Web-tool
-   ownership, and restart/health evidence.
-7. Add thin provider examples one at a time. Each must use the same runner and
+6. Added the persistent self-hosted Bash lifecycle. One PTY-backed shell keeps
+   cwd, environment variables, and background jobs within an activation;
+   explicit restart, per-call timeout, cancellation recovery, bounded output,
+   and bounded shutdown are SDK-owned rather than Docker-specific.
+7. Complete the remaining shared self-hosted behavior before multiplying
+   providers: Skill and Memory preparation, supported File/Git inputs and
+   outputs, server-side Web-tool ownership, and restart/health evidence.
+8. Add thin provider examples one at a time. Each must use the same runner and
    document persistence, cancellation, resource limits, network policy, and
    restart behavior.
-8. Remove the old Mango-managed `cloud` Environment path and compiled provider
+9. Remove the old Mango-managed `cloud` Environment path and compiled provider
    registry only after the Docker worker replaces their observable OSS
    workflow. Mango is pre-release, so the final API change happens directly on
    `/v1` without a compatibility layer.

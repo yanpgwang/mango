@@ -359,7 +359,7 @@ func TestValidateToolCapabilities_RejectsApprovalForNativeWeb(t *testing.T) {
 	}
 }
 
-func TestEnabledSelfHostedToolSchemasDeclaresWebAsClientTool(t *testing.T) {
+func TestEnabledSelfHostedToolSchemasExposeWorkerOwnedContracts(t *testing.T) {
 	toolSet, err := domain.ParseTools([]any{map[string]any{
 		"type": domain.BuiltinToolsetType,
 	}})
@@ -368,6 +368,14 @@ func TestEnabledSelfHostedToolSchemasDeclaresWebAsClientTool(t *testing.T) {
 	}
 	webTools := 0
 	for _, schema := range EnabledSelfHostedToolSchemas(toolSet) {
+		if schema.Name == "bash" {
+			properties := schema.InputSchema["properties"].(map[string]any)
+			for _, field := range []string{"command", "restart", "timeout_ms"} {
+				if _, ok := properties[field]; !ok {
+					t.Fatalf("self-hosted bash schema omitted %q: %#v", field, schema.InputSchema)
+				}
+			}
+		}
 		if schema.Name != "web_search" && schema.Name != "web_fetch" {
 			continue
 		}

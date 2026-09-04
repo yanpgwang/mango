@@ -2,11 +2,11 @@
 
 package agenttoolset
 
-import (
-	"os/exec"
-	"time"
-)
+import "os"
 
-func configureCommandCancellation(command *exec.Cmd) {
-	command.WaitDelay = 2 * time.Second
+func killProcessGroup(process *os.Process) error {
+	if process == nil {
+		return nil
+	}
+	return process.Kill()
 }

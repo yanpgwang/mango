@@ -70,7 +70,8 @@ with conditional heartbeat, lease-loss cancellation, the scoped Work-secret
 handoff, and final forced Stop. `Run` owns Poll through Stop in one trusted
 process; `HandleItem` runs only an already-acknowledged item and can read its
 narrow identity from `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`,
-`MANGO_SESSION_ID`, and `MANGO_WORK_SECRET` inside a launcher-created sandbox.
+and `MANGO_SESSION_ID`. Its Work secret must be supplied through a protected
+launcher transport whenever untrusted subprocesses share the sandbox.
 
 These SDK lifecycle helpers do not choose or create a sandbox and do not
 prepare File, Git, Skill, or Memory inputs. Mango's first-party Docker launcher
@@ -95,19 +96,34 @@ go run ./cmd/mango-worker docker
 ```
 
 The supervisor uses the Workspace key only for Poll and Ack. It creates a
-hardened container for each acknowledged Work item and injects only the opaque
-Work secret plus resource IDs and the sandbox-visible Mango URL. The item
+hardened container for each acknowledged Work item. Resource IDs and the
+sandbox-visible Mango URL are non-secret environment values; the opaque Work
+secret crosses a one-shot attached stdin stream and is absent from container
+environment and command metadata. Before reading it, the item runner becomes a
+non-dumpable Linux process so same-UID Bash children cannot inspect its `/proc`
+environment, memory, or descriptors. The item
 process performs the first heartbeat before executing tools, continuously
 renews the lease, reconciles Session events, posts tool results, and force-Stops
 ordinary exits. It runs the Go SDK's six core local tools in `/workspace` and
-scrubs Mango credentials from `bash` subprocesses.
+scrubs Mango credentials from the shell environment. Bash is a persistent PTY
+session within one Work container: working-directory and environment changes
+survive later calls, `restart` creates a fresh shell, and `timeout_ms` overrides
+the shell-call timeout without extending the runner-wide tool deadline. Timeout,
+cancellation, shell termination, or
+corrupt completion framing closes the old shell before another call can run.
 
 Containers are removed after each activation. A Docker named volume derived
 from the Session ID is retained, so later Work for the same Session resumes the
-same workspace. This reference does not yet prepare Skills, Memory, File/Git
+same workspace; shell process state deliberately does not survive that
+container boundary. This reference does not yet prepare Skills, Memory, File/Git
 resources, or Session outputs; it is not a hardened hostile multi-tenant
 boundary. See the
 [Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker).
+
+The file tools are confined to `/workspace`. Bash itself is intentionally not
+path-confined within the container, so the Docker boundary and its mounts,
+credentials, user, capabilities, resources, and network policy remain the
+security boundary.
 
 Workers must honor `evaluated_permission` independently of execution location.
 An `ask` call waits for a persisted allow confirmation; a deny must never run.
@@ -144,7 +160,8 @@ invalidation. A Workspace key retains full operator access and must stay in the
 trusted supervisor rather than an untrusted Session sandbox. Mango does not yet
 issue a narrower Environment-level polling key. A sandbox runner necessarily
 receives its per-Work token, but tool subprocesses must not inherit that token
-or other launcher credentials; use an explicit allowlisted environment or
-scrub `MANGO_WORK_SECRET` before spawning them.
+or be able to inspect it through their parent process. An allowlisted child
+environment is necessary but not sufficient when untrusted code shares a Linux
+process identity with the trusted runner.
 
 See [capabilities and limits](../capabilities.md) for the current support boundary.

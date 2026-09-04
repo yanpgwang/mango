@@ -17,3 +17,10 @@ func SandboxTools(workdir string) ([]mango.SessionTool, error) {
 	}
 	return agenttoolset.New(agenttoolset.Context{Workdir: workdir})
 }
+
+// CloseSandboxTools releases stateful tool processes. The Environment worker
+// intentionally borrows its tool slice, so the sandbox entrypoint that creates
+// the tools also owns this cleanup.
+func CloseSandboxTools(tools []mango.SessionTool) error {
+	return agenttoolset.CloseAll(tools)
+}

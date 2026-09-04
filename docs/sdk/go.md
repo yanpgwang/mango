@@ -91,12 +91,14 @@ secrets fail closed; there is no Workspace-key fallback.
 
 For a launcher that Polls and Acks outside a Session sandbox, call
 `HandleItem` inside the sandbox with `EnvironmentWorkerHandleItemOptions`.
-Fields may be passed explicitly or through `MANGO_WORK_ID`,
-`MANGO_ENVIRONMENT_ID`, `MANGO_SESSION_ID`, and `MANGO_WORK_SECRET`. The item
-process needs the Mango base URL but must not receive the Workspace key. Tools
-that spawn subprocesses must pass an allowlisted environment or scrub the Work
-secret and other credentials; the library does not mutate process-global
-environment variables owned by its caller.
+Non-secret identity fields may be passed explicitly or through `MANGO_WORK_ID`,
+`MANGO_ENVIRONMENT_ID`, and `MANGO_SESSION_ID`. Pass `WorkSecret` explicitly
+from a protected launcher transport when the process runs untrusted code. The
+item process needs the Mango base URL but must not receive the Workspace key.
+An allowlisted child environment prevents ordinary inheritance, but on Linux
+the launcher must also keep secrets out of parent environment/command metadata
+and prevent same-identity children from inspecting the trusted runner. The
+first-party Docker launcher uses one-shot stdin and a non-dumpable item process.
 
 The worker does not create compute or prepare Files, Git repositories, Skills,
 or Memory. Those are launcher responsibilities. On lease loss it cancels the
@@ -112,11 +114,19 @@ tools, err := agenttoolset.New(agenttoolset.Context{Workdir: "/workspace"})
 if err != nil {
     return err
 }
+defer agenttoolset.CloseAll(tools)
 ```
 
 This package is not a sandbox. The caller must establish the isolation
 boundary first. File operations remain beneath `Workdir`, reads and outputs are
-bounded, and Mango credentials are removed from `bash` subprocesses.
+bounded, and Mango credentials are removed from the Bash environment. Bash uses
+one persistent PTY session per toolset, so cwd, exported variables, and
+background jobs survive calls. Its input accepts `command`, `restart`, and
+`timeout_ms`; the runner-wide tool deadline remains the hard upper bound. A
+timeout or cancellation replaces the shell before the next call. Bash is not
+path-confined inside the host process, so the caller's sandbox is the security
+boundary. The caller owns `CloseAll` because `SessionToolRunner` borrows tools
+and never closes them.
 
 ## Self-hosted Session tools
 

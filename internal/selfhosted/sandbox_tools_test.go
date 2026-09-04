@@ -26,6 +26,7 @@ func TestSandboxToolsRequireLauncherMarkerAndScrubCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = CloseSandboxTools(toolset) })
 	bash := findTool(t, toolset, "bash")
 	blocks, err := bash.Execute(context.Background(), mango.SessionToolCall{
 		Name:  "bash",
@@ -39,6 +40,40 @@ func TestSandboxToolsRequireLauncherMarkerAndScrubCredentials(t *testing.T) {
 	}
 }
 
+func TestSandboxToolsPersistentBashLifecycle(t *testing.T) {
+	t.Setenv("MANGO_SANDBOXED", "1")
+	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolset, err := SandboxTools(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = CloseSandboxTools(toolset) })
+	bash := findTool(t, toolset, "bash")
+	execute := func(input string) string {
+		t.Helper()
+		blocks, err := bash.Execute(context.Background(), mango.SessionToolCall{
+			Name: "bash", Input: json.RawMessage(input),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return blocks[0].TextBlockInput.Text
+	}
+	if got := execute(`{"command":"export PROOF=self-hosted; cd /tmp; printf first"}`); got != "first" {
+		t.Fatalf("first bash result = %q", got)
+	}
+	if got := execute(`{"command":"printf '%s|%s' \"$PROOF\" \"$PWD\""}`); got != "self-hosted|/tmp" {
+		t.Fatalf("persistent bash result = %q", got)
+	}
+	if got := execute(`{"restart":true,"command":"printf '[%s]|%s' \"$PROOF\" \"$PWD\""}`); got != "[]|"+root {
+		t.Fatalf("restarted bash result = %q", got)
+	}
+}
+
 func TestSandboxToolsReadWriteEditGlobAndGrep(t *testing.T) {
 	t.Setenv("MANGO_SANDBOXED", "1")
 	root := t.TempDir()
@@ -46,6 +81,7 @@ func TestSandboxToolsReadWriteEditGlobAndGrep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = CloseSandboxTools(toolset) })
 	execute := func(name, input string) (string, error) {
 		t.Helper()
 		blocks, err := findTool(t, toolset, name).Execute(context.Background(), mango.SessionToolCall{

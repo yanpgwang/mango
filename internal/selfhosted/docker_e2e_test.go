@@ -36,7 +36,7 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	second := work
 	second.ID += "_resume"
 	works := []mango.EnvironmentWork{work, second}
-	var polls, acknowledgements, firstHeartbeats, renewals, results, stops atomic.Int32
+	var polls, acknowledgements, firstHeartbeats, renewals, streams, results, stops atomic.Int32
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/environments/env_test/work/poll":
@@ -84,16 +84,26 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 				t.Error("response writer cannot flush SSE")
 				return
 			}
-			attempt := results.Load() + 1
-			command := "cat proof.txt"
-			if attempt == 1 {
-				command = "printf docker-e2e > proof.txt && cat proof.txt"
+			activation := streams.Add(1)
+			calls := []dockerBashCall{{
+				ID: "tool_e2e_resume", Input: map[string]any{"command": "cat proof.txt"},
+			}}
+			if activation == 1 {
+				calls = []dockerBashCall{
+					{ID: "tool_e2e_credential_boundary", Input: map[string]any{"command": "if cat /proc/$PPID/environ >/tmp/mango-parent-environ 2>/dev/null; then printf parent-readable; else printf parent-protected; fi"}},
+					{ID: "tool_e2e_state_1", Input: map[string]any{"command": "mkdir -p state-dir; cd state-dir; export PROOF=docker-e2e; printf ready"}},
+					{ID: "tool_e2e_state_2", Input: map[string]any{"command": "printf '%s|%s' \"$PROOF\" \"$PWD\""}},
+					{ID: "tool_e2e_restart", Input: map[string]any{"restart": true, "command": "printf '[%s]|%s' \"$PROOF\" \"$PWD\""}},
+					{ID: "tool_e2e_file", Input: map[string]any{"command": "printf docker-e2e > proof.txt && cat proof.txt"}},
+				}
 			}
-			if _, err := fmt.Fprintf(w, "event: agent.tool_use\ndata: {\"id\":\"tool_e2e_%d\",\"type\":\"agent.tool_use\",\"processed_at\":null,\"input\":{\"command\":%q},\"name\":\"bash\",\"evaluated_permission\":\"allow\"}\n\n", attempt, command); err != nil {
-				t.Errorf("write tool event: %v", err)
-				return
+			for _, call := range calls {
+				if err := writeDockerBashEvent(w, call); err != nil {
+					t.Errorf("write tool event: %v", err)
+					return
+				}
 			}
-			if _, err := fmt.Fprintf(w, "event: session.status_idle\ndata: {\"id\":\"idle_e2e_%d\",\"type\":\"session.status_idle\",\"processed_at\":null,\"stop_reason\":{\"type\":\"end_turn\"}}\n\n", attempt); err != nil {
+			if _, err := fmt.Fprintf(w, "event: session.status_idle\ndata: {\"id\":\"idle_e2e_%d\",\"type\":\"session.status_idle\",\"processed_at\":null,\"stop_reason\":{\"type\":\"end_turn\"}}\n\n", activation); err != nil {
 				t.Errorf("write idle event: %v", err)
 				return
 			}
@@ -109,8 +119,26 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 				t.Errorf("decode result: %v", err)
 			}
 			encoded, _ := json.Marshal(body)
-			if !strings.Contains(string(encoded), "docker-e2e") || !strings.Contains(string(encoded), "tool_e2e_") {
-				t.Errorf("tool result = %s", encoded)
+			result := string(encoded)
+			expected := map[string]string{
+				"tool_e2e_credential_boundary": "parent-protected",
+				"tool_e2e_state_1":             "ready",
+				"tool_e2e_state_2":             "docker-e2e|/workspace/state-dir",
+				"tool_e2e_restart":             "[]|/workspace",
+				"tool_e2e_file":                "docker-e2e",
+				"tool_e2e_resume":              "docker-e2e",
+			}
+			matched := false
+			for toolUseID, text := range expected {
+				if strings.Contains(result, toolUseID) {
+					matched = true
+					if !strings.Contains(result, text) {
+						t.Errorf("tool result for %s omitted %q: %s", toolUseID, text, encoded)
+					}
+				}
+			}
+			if !matched {
+				t.Errorf("unexpected tool result = %s", encoded)
 			}
 			results.Add(1)
 			writeJSON(t, w, map[string]any{"data": []any{}})
@@ -168,9 +196,23 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	}
 	assertContainerRemoved(t, engine, dockerWorkName(work.ID))
 	assertContainerRemoved(t, engine, dockerWorkName(second.ID))
-	if polls.Load() != 3 || acknowledgements.Load() != 2 || firstHeartbeats.Load() != 2 || renewals.Load() < 2 || results.Load() != 2 || stops.Load() != 2 {
-		t.Fatalf("polls=%d acknowledgements=%d first_heartbeats=%d renewals=%d results=%d stops=%d", polls.Load(), acknowledgements.Load(), firstHeartbeats.Load(), renewals.Load(), results.Load(), stops.Load())
+	if polls.Load() != 3 || acknowledgements.Load() != 2 || firstHeartbeats.Load() != 2 || renewals.Load() < 2 || streams.Load() != 2 || results.Load() != 6 || stops.Load() != 2 {
+		t.Fatalf("polls=%d acknowledgements=%d first_heartbeats=%d renewals=%d streams=%d results=%d stops=%d", polls.Load(), acknowledgements.Load(), firstHeartbeats.Load(), renewals.Load(), streams.Load(), results.Load(), stops.Load())
 	}
+}
+
+type dockerBashCall struct {
+	ID    string
+	Input map[string]any
+}
+
+func writeDockerBashEvent(writer http.ResponseWriter, call dockerBashCall) error {
+	input, err := json.Marshal(call.Input)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(writer, "event: agent.tool_use\ndata: {\"id\":%q,\"type\":\"agent.tool_use\",\"processed_at\":null,\"input\":%s,\"name\":\"bash\",\"evaluated_permission\":\"allow\"}\n\n", call.ID, input)
+	return err
 }
 
 func TestDockerLauncherCancellationPostsToolErrorBeforeStop(t *testing.T) {

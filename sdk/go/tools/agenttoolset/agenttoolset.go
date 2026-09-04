@@ -13,11 +13,11 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	mango "github.com/yanpgwang/mango/sdk/go"
 )
@@ -28,18 +28,27 @@ const (
 	defaultMaxOutputBytes = int64(100_000)
 	defaultMaxWalkEntries = 50_000
 	defaultMaxGlobResults = 200
+	defaultBashTimeout    = 120 * time.Second
+	defaultBashCloseWait  = 2 * time.Second
 )
 
 // Context configures a core agent toolset rooted at Workdir. Workdir must be
 // an existing directory inside an isolation boundary owned by the caller.
 // Environment defaults to os.Environ. Mango credentials are always removed
-// before a bash subprocess is started.
+// before the persistent bash process is started. File tools are confined to
+// Workdir; bash is unrestricted within the caller's isolation boundary.
 type Context struct {
 	Workdir        string
 	Environment    []string
 	MaxReadBytes   int64
 	MaxEditBytes   int64
 	MaxOutputBytes int64
+	// BashTimeout bounds a bash invocation when its input omits timeout_ms or
+	// sets it to zero. Zero uses 120 seconds.
+	BashTimeout time.Duration
+	// BashCloseTimeout bounds process reaping when the toolset is closed or a
+	// damaged shell is restarted. Zero uses two seconds.
+	BashCloseTimeout time.Duration
 }
 
 // New returns bash, read, write, edit, glob, and grep executors in stable order.
@@ -50,12 +59,14 @@ func New(options Context) ([]mango.SessionTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	names := []string{"bash", "read", "write", "edit", "glob", "grep"}
-	tools := make([]mango.SessionTool, 0, len(names))
-	for _, name := range names {
-		tools = append(tools, &tool{name: name, workspace: workspace})
-	}
-	return tools, nil
+	return []mango.SessionTool{
+		newBashTool(workspace),
+		&tool{name: "read", workspace: workspace},
+		&tool{name: "write", workspace: workspace},
+		&tool{name: "edit", workspace: workspace},
+		&tool{name: "glob", workspace: workspace},
+		&tool{name: "grep", workspace: workspace},
+	}, nil
 }
 
 type tool struct {
@@ -78,8 +89,6 @@ func (t *tool) Execute(ctx context.Context, call mango.SessionToolCall) ([]mango
 	var output string
 	var err error
 	switch t.name {
-	case "bash":
-		output, err = t.workspace.bash(ctx, stringInput(input, "command"))
 	case "read":
 		output, err = t.workspace.read(ctx, input)
 	case "write":
@@ -105,6 +114,8 @@ type workspace struct {
 	maxRead   int64
 	maxEdit   int64
 	maxOutput int64
+	bashTO    time.Duration
+	closeTO   time.Duration
 }
 
 func newWorkspace(options Context) (*workspace, error) {
@@ -129,6 +140,12 @@ func newWorkspace(options Context) (*workspace, error) {
 	if options.MaxReadBytes < 0 || options.MaxEditBytes < 0 || options.MaxOutputBytes < 0 {
 		return nil, errors.New("agenttoolset: byte limits must be non-negative")
 	}
+	if options.MaxOutputBytes > int64(^uint64(0)>>1)-bashFramingAllowance {
+		return nil, errors.New("agenttoolset: max output bytes exceeds supported range")
+	}
+	if options.BashTimeout < 0 || options.BashCloseTimeout < 0 {
+		return nil, errors.New("agenttoolset: bash timeouts must be non-negative")
+	}
 	if options.MaxReadBytes == 0 {
 		options.MaxReadBytes = defaultMaxReadBytes
 	}
@@ -138,6 +155,12 @@ func newWorkspace(options Context) (*workspace, error) {
 	if options.MaxOutputBytes == 0 {
 		options.MaxOutputBytes = defaultMaxOutputBytes
 	}
+	if options.BashTimeout == 0 {
+		options.BashTimeout = defaultBashTimeout
+	}
+	if options.BashCloseTimeout == 0 {
+		options.BashCloseTimeout = defaultBashCloseWait
+	}
 	environment := options.Environment
 	if environment == nil {
 		environment = os.Environ()
@@ -145,35 +168,8 @@ func newWorkspace(options Context) (*workspace, error) {
 	return &workspace{
 		root: root, env: scrubCredentials(environment), maxRead: options.MaxReadBytes,
 		maxEdit: options.MaxEditBytes, maxOutput: options.MaxOutputBytes,
+		bashTO: options.BashTimeout, closeTO: options.BashCloseTimeout,
 	}, nil
-}
-
-func (w *workspace) bash(ctx context.Context, command string) (string, error) {
-	if strings.TrimSpace(command) == "" {
-		return "", errors.New("bash: command is required")
-	}
-	cmd := exec.CommandContext(ctx, "/bin/bash", "-c", command)
-	cmd.Dir = w.root
-	cmd.Env = append([]string(nil), w.env...)
-	configureCommandCancellation(cmd)
-	output := &limitedBuffer{limit: w.maxOutput}
-	cmd.Stdout = output
-	cmd.Stderr = output
-	err := cmd.Run()
-	text := output.String()
-	if output.truncated {
-		text += fmt.Sprintf("\n[output truncated at %d bytes]", w.maxOutput)
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		if text != "" {
-			return "", fmt.Errorf("bash: %w\n%s", err, text)
-		}
-		return "", fmt.Errorf("bash: %w", err)
-	}
-	return text, nil
 }
 
 func (w *workspace) read(ctx context.Context, input map[string]json.RawMessage) (string, error) {
@@ -624,28 +620,5 @@ func limitText(value string, limit int64) string {
 	}
 	return value[:limit] + fmt.Sprintf("\n[output truncated at %d bytes]", limit)
 }
-
-type limitedBuffer struct {
-	buffer    bytes.Buffer
-	limit     int64
-	truncated bool
-}
-
-func (b *limitedBuffer) Write(data []byte) (int, error) {
-	original := len(data)
-	remaining := b.limit - int64(b.buffer.Len())
-	if remaining <= 0 {
-		b.truncated = b.truncated || original > 0
-		return original, nil
-	}
-	if int64(len(data)) > remaining {
-		data = data[:remaining]
-		b.truncated = true
-	}
-	_, _ = b.buffer.Write(data)
-	return original, nil
-}
-
-func (b *limitedBuffer) String() string { return b.buffer.String() }
 
 var _ mango.SessionTool = (*tool)(nil)

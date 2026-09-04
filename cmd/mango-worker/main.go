@@ -101,7 +101,7 @@ func runDocker(ctx context.Context, arguments []string) error {
 	return launcher.Run(ctx)
 }
 
-func runItem(ctx context.Context, arguments []string) error {
+func runItem(ctx context.Context, arguments []string) (runErr error) {
 	flags := flag.NewFlagSet("mango-worker run", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	workdir := flags.String("workdir", envOr("MANGO_WORKDIR", "/workspace"), "sandbox workspace")
@@ -112,6 +112,17 @@ func runItem(ctx context.Context, arguments []string) error {
 	if flags.NArg() != 0 {
 		return errors.New("mango-worker run does not accept positional arguments")
 	}
+	if err := protectProcessCredentials(); err != nil {
+		return err
+	}
+	workSecret, err := selfhosted.ReadWorkSecret(os.Stdin)
+	closeErr := os.Stdin.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close Work secret input: %w", closeErr)
+	}
 	baseURL := envOr("MANGO_BASE_URL", "http://localhost:8080")
 	itemClient, err := mango.New(mango.Config{BaseURL: baseURL})
 	if err != nil {
@@ -121,10 +132,15 @@ func runItem(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := selfhosted.CloseSandboxTools(toolset); err != nil {
+			runErr = errors.Join(runErr, err)
+		}
+	}()
 	worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
 		Tools: toolset, MaxIdle: maxIdle,
 	})
-	return worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{})
+	return worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{WorkSecret: workSecret})
 }
 
 func defaultWorkerID() string {
