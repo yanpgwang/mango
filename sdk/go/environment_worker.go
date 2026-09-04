@@ -38,6 +38,10 @@ type EnvironmentWorkerOptions struct {
 	// DesiredTTLSeconds, when set, is requested on every heartbeat. The server
 	// remains authoritative and its returned TTL bounds result-send recovery.
 	DesiredTTLSeconds Optional[int64]
+	// Workdir is the Session workspace whose skills directory is prepared before
+	// tool dispatch. It defaults to the process working directory captured by
+	// NewEnvironmentWorker.
+	Workdir string
 
 	Tools       []SessionTool
 	MaxIdle     *time.Duration
@@ -58,8 +62,9 @@ type EnvironmentWorkerHandleItemOptions struct {
 }
 
 // EnvironmentWorker composes WorkPoller and SessionToolRunner. It owns Work
-// heartbeat and final Stop, but it does not create a sandbox, download inputs,
-// or own registered tools. Provider launchers remain separate from this loop.
+// heartbeat, immutable custom Skill preparation, and final Stop, but it does
+// not create a sandbox or own registered tools. Provider launchers remain
+// separate from this loop.
 type EnvironmentWorker struct {
 	client *Client
 	opts   EnvironmentWorkerOptions
@@ -77,6 +82,13 @@ type EnvironmentWorker struct {
 // NewEnvironmentWorker returns a worker bound to a trusted supervisor client.
 // Configuration errors are returned by Run or HandleItem before any request.
 func NewEnvironmentWorker(client *Client, opts EnvironmentWorkerOptions) *EnvironmentWorker {
+	if opts.Workdir == "" {
+		if workdir, err := os.Getwd(); err == nil {
+			opts.Workdir = workdir
+		} else {
+			opts.Workdir = "."
+		}
+	}
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -202,19 +214,36 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 	startup := <-start
 	var runnerErr error
 	if startup.ready {
-		runner := NewSessionToolRunner(sessionCtx, itemClient, work.Data.ID, SessionToolRunnerOptions{
-			Tools: w.opts.Tools, MaxIdle: w.opts.MaxIdle,
-			ToolTimeout: w.opts.ToolTimeout, SendTimeout: w.opts.SendTimeout,
-			SendRetryWindow: startup.ttl, Logger: log,
-		})
-		for runner.Next() {
-			call := runner.Current()
-			log.Info("dispatched tool", "tool", call.Name, "tool_use_id", call.ToolUseID,
-				"is_error", call.IsError, "posted", call.Posted)
-		}
-		runnerErr = runner.Err()
-		if err := runner.Close(); err != nil && runnerErr == nil {
-			runnerErr = err
+		session, err := itemClient.GetSession(sessionCtx, work.Data.ID)
+		if err != nil {
+			runnerErr = fmt.Errorf("mango: retrieve Session inputs: %w", err)
+		} else {
+			skills, err := PrepareSessionSkills(
+				sessionCtx, itemClient, session, w.opts.Workdir,
+			)
+			if err != nil {
+				runnerErr = err
+			} else {
+				defer func() {
+					if err := skills.Cleanup(); err != nil {
+						log.Warn("Session Skill cleanup failed", "error", err)
+					}
+				}()
+				runner := NewSessionToolRunner(sessionCtx, itemClient, work.Data.ID, SessionToolRunnerOptions{
+					Tools: w.opts.Tools, MaxIdle: w.opts.MaxIdle,
+					ToolTimeout: w.opts.ToolTimeout, SendTimeout: w.opts.SendTimeout,
+					SendRetryWindow: startup.ttl, Logger: log,
+				})
+				for runner.Next() {
+					call := runner.Current()
+					log.Info("dispatched tool", "tool", call.Name, "tool_use_id", call.ToolUseID,
+						"is_error", call.IsError, "posted", call.Posted)
+				}
+				runnerErr = runner.Err()
+				if err := runner.Close(); err != nil && runnerErr == nil {
+					runnerErr = err
+				}
+			}
 		}
 	} else {
 		runnerErr = startup.end.err

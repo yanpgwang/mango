@@ -49,13 +49,21 @@ and preserve the canonical archive in Mango storage.
 Primary and `self` Agent bundles use `/workspace/skills/<name>/`; external
 roster Agents use isolated namespaces below `/workspace/skills/.agents/`.
 
-External managed catalogs, repository auto-loading, and Environment Worker
-runtime activation are not implemented. Session creation returns `422` when
-the effective primary Agent or any resolved roster member has custom Skills
-but the selected Environment cannot execute them. This includes every
-self-hosted Environment and cloud Environments using a sandbox adapter without
-Skill support. Session overrides are applied before this check; Skills storage
-and Agent definitions do not depend on the configured sandbox capability.
+For self-hosted Environments, the Go Environment Worker downloads the frozen
+primary and roster Agent pins before starting tool dispatch. Primary Skills use
+`<workdir>/skills/<name>` and external roster Agents use the same stable scoped
+layout as the Agent loop. The worker accepts only Mango's canonical zip shape,
+bounds compressed and expanded content, rejects path escapes and non-regular
+members, atomically publishes each directory, and removes its downloaded
+directories when the Work item ends. Model-visible paths are relative
+`skills/...` paths rooted at that `workdir`, so a launcher may choose a location
+other than `/workspace`. A setup failure fails closed.
+
+External managed catalogs and repository auto-loading are not implemented.
+Cloud Session creation still returns `422` when its transitional sandbox
+adapter cannot execute custom Skills. Session overrides are applied before
+this check; Skills storage and Agent definitions do not depend on the
+configured sandbox capability.
 
 See [Environment Work](environment-work.md) for the external worker boundary
 and [Sandbox backends](../sandboxes.md#custom-skill-mounts) for the remote-copy

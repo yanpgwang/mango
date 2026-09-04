@@ -232,11 +232,6 @@ func (s *SessionService) Create(
 	for _, member := range roster {
 		hasSkills = hasSkills || len(member.Skills) > 0
 	}
-	if environment.ConfigType == "self_hosted" && hasSkills {
-		return domain.Session{}, domain.Unsupported(
-			"custom Skills are unavailable for self-hosted Sessions",
-		)
-	}
 	if environment.ConfigType == "cloud" && hasSkills && !s.cloudSkillBundles {
 		return domain.Session{}, domain.Unsupported(
 			"custom Skills are unavailable for the configured cloud sandbox provider",

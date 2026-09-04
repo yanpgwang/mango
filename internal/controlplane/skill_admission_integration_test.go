@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +13,15 @@ import (
 	"github.com/yanpgwang/mango/internal/pg"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 )
+
+type controlplaneSkillInstructionLoader struct{}
+
+func (controlplaneSkillInstructionLoader) LoadSkillInstructions(
+	context.Context,
+	domain.SkillVersion,
+) ([]byte, error) {
+	return []byte("---\nname: admission\ndescription: Admission Skill\n---\nUse it.\n"), nil
+}
 
 func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T) {
 	fixture := newPostgresFixture(t)
@@ -64,7 +72,6 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 			`,"multiagent":{"type":"coordinator","agents":[{"type":"agent","id":"`+skilledID+`","version":1}]}}`)
 	quote := func(id string) string { return `"` + id + `"` }
 	const initial = `[{"type":"user.message","content":[{"type":"text","text":"start"}]}]`
-	const unsupported = "custom Skills are unavailable for self-hosted Sessions"
 	for _, tc := range []struct {
 		name         string
 		agent        string
@@ -73,16 +80,16 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 		omitInitial  bool
 		wantError    string
 	}{
-		{name: "primary", agent: quote(skilledID), wantError: unsupported},
-		{name: "idle Session still rejects Skills", agent: quote(skilledID), omitInitial: true, wantError: unsupported},
-		{name: "pinned primary", agent: `{"type":"agent","id":"` + skilledID + `","version":1}`, wantError: unsupported},
-		{name: "override adds Skills", agent: `{"type":"agent_with_overrides","id":"` + plainID + `","skills":` + skillJSON + `}`, wantError: unsupported},
-		{name: "external roster", agent: quote(peerID), wantError: unsupported},
-		{name: "clearing primary does not clear peer", agent: `{"type":"agent_with_overrides","id":"` + peerID + `","skills":[]}`, wantError: unsupported},
-		{name: "self roster", agent: quote(selfID), wantError: unsupported},
+		{name: "primary", agent: quote(skilledID)},
+		{name: "idle Session accepts Skills", agent: quote(skilledID), omitInitial: true},
+		{name: "pinned primary", agent: `{"type":"agent","id":"` + skilledID + `","version":1}`},
+		{name: "override adds Skills", agent: `{"type":"agent_with_overrides","id":"` + plainID + `","skills":` + skillJSON + `}`},
+		{name: "external roster", agent: quote(peerID)},
+		{name: "clearing primary does not clear peer", agent: `{"type":"agent_with_overrides","id":"` + peerID + `","skills":[]}`},
+		{name: "self roster", agent: quote(selfID)},
 		{name: "override clears primary and self", agent: `{"type":"agent_with_overrides","id":"` + selfID + `","skills":[]}`},
 		{name: "plain external", agent: quote(plainID)},
-		{name: "external rejects even with cloud support", agent: quote(skilledID), cloudBundles: true, wantError: unsupported},
+		{name: "external ignores cloud capability flag", agent: quote(skilledID), cloudBundles: true},
 		{name: "cloud rejects without capability", agent: quote(skilledID), cloud: true, wantError: "custom Skills are unavailable for the configured cloud sandbox provider"},
 		{name: "cloud accepts with capability", agent: quote(peerID), cloud: true, cloudBundles: true},
 	} {
@@ -127,8 +134,15 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 				return // Bundle execution is covered by the Docker Skill service test.
 			}
 			after := skillAdmissionCounts(t, fixture, selfHostedID)
-			if after != [3]int{before[0] + 1, before[1] + 1, before[2] + 1} {
-				t.Fatalf("accepted input did not commit Session, Work and wakeup: before=%v after=%v", before, after)
+			expected := [3]int{before[0] + 1, before[1] + 1, before[2] + 1}
+			if tc.omitInitial {
+				expected = [3]int{before[0] + 1, before[1], before[2]}
+			}
+			if after != expected {
+				t.Fatalf("accepted input durable counts: before=%v after=%v want=%v", before, after, expected)
+			}
+			if tc.omitInitial {
+				return
 			}
 			events, err := fixture.store.QueryEvents(ctx, created.ID, app.EventQuery{
 				Limit: 10, Types: []string{domain.EvUserMessage},
@@ -138,49 +152,51 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 			}
 			prepared, err := temporalpkg.NewActivities(
 				nil, temporalpkg.NewStoreSource(fixture.store), nil, nil, fixture.ids,
-			).PrepareTurn(ctx, temporalpkg.PrepareTurnInput{SessionID: created.ID, TriggerEventID: events[0].ID})
+			).WithSkillInstructionLoader(controlplaneSkillInstructionLoader{}).
+				PrepareTurn(ctx, temporalpkg.PrepareTurnInput{SessionID: created.ID, TriggerEventID: events[0].ID})
 			if err != nil || prepared.FatalError != "" {
 				t.Fatalf("accepted external configuration failed preparation: %+v, %v", prepared, err)
 			}
 		})
 	}
 
-	// Deployment templates may outlive runtime capability changes. Both launch
-	// paths must use the Session gate, record a failed Run, and leave no work.
-	for _, agentID := range []string{skilledID, peerID} {
-		t.Run("deployment/"+agentID, func(t *testing.T) {
-			deploymentID := createResource(t, handler, "/v1/deployments",
-				`{"name":"unsupported Skills","agent":"`+agentID+`","environment_id":"`+selfHostedID+
-					`","initial_events":`+initial+`,"schedule":{"type":"cron","expression":"0 * * * *","timezone":"UTC"}}`)
-			before := skillAdmissionCounts(t, fixture, selfHostedID)
-			manual := request(t, handler, http.MethodPost, "/v1/deployments/"+deploymentID+"/run", "")
-			if manual.Code != http.StatusOK || !strings.Contains(manual.Body.String(), `"session_creation_rejected_error"`) ||
-				!strings.Contains(manual.Body.String(), `"session_id":null`) {
-				t.Fatalf("manual launch must record rejection: %d %s", manual.Code, manual.Body.String())
-			}
-			item, err := deployments.Get(ctx, deploymentID)
-			if err != nil || item.Status != domain.DeploymentStatusActive {
-				t.Fatalf("manual failure paused schedule: %+v, %v", item, err)
-			}
-			scheduledAt := item.Schedule.UpcomingRunsAt[0]
-			run, err := deployments.RunScheduled(ctx, deploymentID, scheduledAt)
-			if err != nil || run.SessionID != nil || run.ErrorType != "session_creation_rejected_error" {
-				t.Fatalf("scheduled launch = %+v, %v", run, err)
-			}
-			item, err = deployments.Get(ctx, deploymentID)
-			if err != nil || item.Status != domain.DeploymentStatusPaused || item.PausedReason == nil ||
-				item.PausedReason.ErrorType != run.ErrorType {
-				t.Fatalf("unsupported schedule must pause: %+v, %v", item, err)
-			}
-			replayed, err := deployments.RunScheduled(ctx, deploymentID, scheduledAt)
-			if err != nil || replayed.ID != run.ID {
-				t.Fatalf("scheduled occurrence replay = %+v, %v", replayed, err)
-			}
-			if after := skillAdmissionCounts(t, fixture, selfHostedID); after != before {
-				t.Fatalf("failed launches left durable work: before=%v after=%v", before, after)
-			}
-		})
-	}
+	t.Run("deployment Runs preserve self-hosted Skill pins", func(t *testing.T) {
+		deploymentID := createResource(t, handler, "/v1/deployments",
+			`{"name":"self-hosted Skills","agent":"`+skilledID+`","environment_id":"`+selfHostedID+
+				`","initial_events":`+initial+`,"schedule":{"type":"cron","expression":"0 * * * *","timezone":"UTC"}}`)
+		before := skillAdmissionCounts(t, fixture, selfHostedID)
+		manual := request(t, handler, http.MethodPost, "/v1/deployments/"+deploymentID+"/run", "")
+		if manual.Code != http.StatusOK {
+			t.Fatalf("manual Run -> %d: %s", manual.Code, manual.Body.String())
+		}
+		var manualRun struct {
+			SessionID *string `json:"session_id"`
+			ErrorType string  `json:"error_type"`
+		}
+		if err := json.Unmarshal(manual.Body.Bytes(), &manualRun); err != nil ||
+			manualRun.SessionID == nil || manualRun.ErrorType != "" {
+			t.Fatalf("manual Run = %+v, %v", manualRun, err)
+		}
+		item, err := deployments.Get(ctx, deploymentID)
+		if err != nil || item.Status != domain.DeploymentStatusActive || item.Schedule == nil {
+			t.Fatalf("deployment after manual Run = %+v, %v", item, err)
+		}
+		scheduled, err := deployments.RunScheduled(
+			ctx, deploymentID, item.Schedule.UpcomingRunsAt[0],
+		)
+		if err != nil || scheduled.SessionID == nil || scheduled.ErrorType != "" {
+			t.Fatalf("scheduled Run = %+v, %v", scheduled, err)
+		}
+		item, err = deployments.Get(ctx, deploymentID)
+		if err != nil || item.Status != domain.DeploymentStatusActive {
+			t.Fatalf("deployment after scheduled Run = %+v, %v", item, err)
+		}
+		after := skillAdmissionCounts(t, fixture, selfHostedID)
+		want := [3]int{before[0] + 2, before[1] + 2, before[2] + 2}
+		if after != want {
+			t.Fatalf("deployment Run durable counts: before=%v after=%v want=%v", before, after, want)
+		}
+	})
 }
 
 func skillAdmissionCounts(t *testing.T, fixture postgresFixture, environmentID string) [3]int {

@@ -358,35 +358,48 @@ support, so they run the same credential-free and opt-in live conformance suites
 - Mango did not adopt Anthropic beta headers, hosted authentication, the
   `anthropic` managed catalog, cloud-only repository scanning, rollout timing,
   or a requirement to mirror hosted/self-hosted feature differences. Repository
-  Skills and Environment Worker activation remain separate product decisions.
+  Skills remain a separate product decision; Environment Worker activation is
+  described below.
 
-## OSS execution capability admission
+## Self-hosted custom Skill preparation
 
-- Reviewed the public [CMA self-hosted sandbox guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
-  and [Skills guide](https://platform.claude.com/docs/en/managed-agents/skills)
-  on 2026-08-31. CMA's external worker helpers prepare a workspace and activate
-  pinned Skills; the existence of a Work API alone does not supply that runtime.
-- Mango's user problem is narrower: a Session must not be admitted with a
-  statically known capability mismatch and fail only after execution starts.
-  Mango keeps version-pinned Skills but rejects self-hosted Session creation
-  when the effective primary Agent or any resolved roster member has Skills.
-  Overrides apply before admission, including to `self` roster copies.
-- The rejection precedes Session persistence, Work activation, and execution
-  wakeups. Deployment Runs reuse the same admission path, record the existing
-  `session_creation_rejected_error`, and pause a scheduled Deployment for an
-  unsupported capability. Manual Run failures do not pause it. Replaying a
-  scheduled occurrence returns the same immutable failure record.
-- Acceptance is verified through Mango HTTP and isolated PostgreSQL tests:
-  inherited, pinned, override-added, and roster-only Skills are rejected;
-  clearing effective Skills permits an otherwise valid self-hosted Session;
-  capable Mango-managed sandboxes retain Skill admission. No hosted agent
-  credentials, vendor SDK worker, new authentication scheme, or migration is
-  required.
-- This slice also clarifies existing limits rather than changing their
-  semantics: Outcome grading is tool-free evidence evaluation, archive does
-  not release a sandbox, and Environment Work is a protocol without a
-  first-party runner. Artifact verification, SDK workflow helpers, sandbox
-  reclamation, and OSS cost accounting are separate delivery slices.
+- Reviewed the current public [CMA self-hosted sandbox guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes),
+  [security model](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes-security),
+  and the Go SDK `EnvironmentWorker` and `AgentToolContext` source at v1.69.0
+  on 2026-09-04. The paired references establish the useful lifecycle: fetch
+  one frozen Session snapshot with the item credential, keep the Work lease
+  alive while preparing inputs, download pinned Skills before tool dispatch,
+  and clean worker-owned directories after the item ends.
+- Mango adopts that lifecycle for its independently owned Go worker and direct
+  `/v1` contract. The per-Work token already authorizes only the Session and
+  its immutable Skill pins. The worker accepts Mango's canonical zip archive,
+  bounds compressed bytes, expanded bytes, and member count, rejects path
+  escapes and non-regular members, publishes through a sibling staging
+  directory, and fails the item if any promised Skill cannot be prepared.
+- Mango deliberately extends preparation to resolved roster Agents. Primary
+  and `self` copies share `<workdir>/skills`; external Agents use the stable
+  opaque scope already recorded in model context. This avoids name/version
+  collisions in a shared Session workspace. Per-Skill failure is fail-closed
+  rather than CMA Go's tolerant logging because Mango must not execute a
+  Session whose frozen inputs are only partially present.
+- The Agent loop remains in Mango's control plane for both managed and
+  self-hosted execution. Skill activation therefore reads and verifies the
+  immutable canonical archive in object storage; it never calls back into the
+  worker filesystem. The worker independently materializes the same pin so
+  later `read` and `bash` calls can access supporting files. Self-hosted model
+  paths are relative to the launcher's configured Workdir; cloud runtime paths
+  remain concrete sandbox paths. This preserves one execution-environment
+  abstraction without coupling Temporal to Docker or a future provider launcher.
+- Mango does not adopt Anthropic credentials, beta headers, Environment-key
+  fallback, tar archive variants, hosted infrastructure behavior, or vendor
+  SDK code. Memory synchronization, File/Git preparation, health-check Work,
+  and additional launchers remain separate slices. No persistence migration or
+  public wire-shape change is required.
+- Acceptance: unit and PostgreSQL tests cover primary, override, idle,
+  Deployment, and roster admission plus immutable instruction loading and
+  fail-closed extraction. The real Docker worker test covers scoped download,
+  container-side supporting-file access, cleanup, lease renewal, cancellation,
+  and re-preparation on a later activation.
 
 ## External tool approvals
 
@@ -570,10 +583,11 @@ support, so they run the same credential-free and opt-in live conformance suites
   plus the opaque Work secret. Non-secret IDs may come from environment, but
   the Work secret is now always explicit because environment is not a safe
   launcher transport when untrusted code shares the runner's process identity.
-  Neither path creates
-  compute, prepares File/Git/Skill/Memory inputs, closes tools, or introduces a
-  provider SDK. Environment-scoped Poll credentials remain a future requirement
-  before supervisors are described as untrusted or multi-tenant.
+  Neither path creates compute, prepares File/Git/Memory inputs, closes
+  caller-owned tools, or introduces a provider SDK. Custom Skill preparation is
+  now the shared worker behavior described above. Environment-scoped Poll
+  credentials remain a future requirement before supervisors are described as
+  untrusted or multi-tenant.
 - Acceptance: HTTP-backed tests independently verify supervisor-versus-item
   bearer separation, first heartbeat and forced Stop, serial Session tool
   execution, cancellation with no result or Stop after `412` lease loss,

@@ -115,9 +115,9 @@ corrupt completion framing closes the old shell before another call can run.
 Containers are removed after each activation. A Docker named volume derived
 from the Session ID is retained, so later Work for the same Session resumes the
 same workspace; shell process state deliberately does not survive that
-container boundary. This reference does not yet prepare Skills, Memory, File/Git
-resources, or Session outputs; it is not a hardened hostile multi-tenant
-boundary. See the
+container boundary. Before dispatch, the worker prepares the frozen custom
+Skill pins described below. It does not yet prepare Memory, File/Git resources,
+or Session outputs, and it is not a hardened hostile multi-tenant boundary. See the
 [Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker).
 
 The file tools are confined to `/workspace`. Bash itself is intentionally not
@@ -134,16 +134,21 @@ copies the owning Thread ID for child-call results, and exposes the original
 event ID so a tool can make its external side effects idempotent. See
 [external tool approvals](events.md#approve-externally-executed-tools).
 
-Creating a self-hosted Session with custom Skills returns `422` with
-`error.type: "invalid_request_error"` before any Session, Work item, or execution
-wakeup is created. Admission checks the effective primary Agent and every
-resolved roster member after Session overrides. Clearing the primary Agent's
-Skills does not clear Skills on independently referenced roster Agents.
+Before it starts the tool runner, the Go `EnvironmentWorker` fetches the frozen
+Session snapshot with the scoped item credential and downloads every primary
+and roster Agent custom Skill pin. Primary Skills are expanded below
+`<workdir>/skills/<name>`; external roster Agents receive stable isolated roots
+below `<workdir>/skills/.agents/`. Downloads are bounded, reject unsafe or
+non-regular archive members, publish through a sibling staging directory, and
+are removed when the Work item ends. A failed input download fails the item
+rather than silently running without a promised Skill.
 
-Skills storage and Agent definitions remain available when configured, but
-neither object storage nor a Skill-capable cloud adapter enables external
-worker Skill execution. A self-hosted Session without Skills can use the Work
-protocol. See [Skills](skills.md) for Mango-managed sandbox support.
+The Agent loop activates a Skill from Mango's own immutable archive, so it does
+not require inbound access to the worker filesystem. Supporting files and
+scripts are read or executed from the independently materialized worker copy.
+Model-visible self-hosted paths start with `skills/` and are relative to the
+worker's configured `workdir`; the control plane never assumes that a future
+provider mounts it at `/workspace`. See [Skills](skills.md).
 
 ## Security boundary
 

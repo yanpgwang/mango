@@ -359,6 +359,14 @@ type SkillRuntimeReconciler interface {
 	SupportsSkillRuntime() bool
 }
 
+// SkillInstructionLoader reads the immutable instruction entry owned by the
+// control plane. The Agent loop uses the same canonical source for every
+// execution environment; self-hosted workers independently receive the pinned
+// bundle for supporting-file access, without reverse filesystem access.
+type SkillInstructionLoader interface {
+	LoadSkillInstructions(context.Context, domain.SkillVersion) ([]byte, error)
+}
+
 type SessionOutputPublisher interface {
 	SupportsSessionOutputs() bool
 	PublishSessionOutputs(context.Context, string, sandbox.Sandbox) error
@@ -438,6 +446,7 @@ type Activities struct {
 	mcpAuth               mcpclient.AuthSource
 	contextTokenBudget    int
 	skillRuntimeSupported bool
+	skillInstructions     SkillInstructionLoader
 }
 
 func NewActivities(
@@ -497,6 +506,11 @@ func (a *Activities) WithSessionOutputPublisher(
 // about paths that a local or unsupported adapter cannot serve.
 func (a *Activities) WithSkillRuntimeSupported(supported bool) *Activities {
 	a.skillRuntimeSupported = supported
+	return a
+}
+
+func (a *Activities) WithSkillInstructionLoader(loader SkillInstructionLoader) *Activities {
+	a.skillInstructions = loader
 	return a
 }
 
@@ -846,14 +860,14 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 	}
 	runtimeSkills := domain.SkillRuntime{Root: domain.SessionSkillsRoot}
 	if len(executionAgent.Skills) > 0 {
-		if selfHosted {
-			return PrepareTurnResult{
-				FatalError: "custom Skills are unavailable for self-hosted Sessions",
-			}, nil
-		}
-		if !a.skillRuntimeSupported {
+		if !selfHosted && !a.skillRuntimeSupported {
 			return PrepareTurnResult{
 				FatalError: "custom Skills are unavailable on the configured sandbox provider",
+			}, nil
+		}
+		if a.skillInstructions == nil {
+			return PrepareTurnResult{
+				FatalError: "custom Skill instruction loading is unavailable",
 			}, nil
 		}
 		if source, ok := a.source.(SessionThreadSkillSource); ok && trigger.ThreadID != "" {
@@ -869,6 +883,15 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 		}
 		if err != nil {
 			return PrepareTurnResult{}, err
+		}
+		if selfHosted {
+			var valid bool
+			runtimeSkills, valid = selfHostedSkillRuntime(runtimeSkills)
+			if !valid {
+				return PrepareTurnResult{
+					FatalError: "custom Skill runtime path is outside the Skill root",
+				}, nil
+			}
 		}
 		if validationErr := validateRuntimeSkillPins(
 			executionAgent.Skills, runtimeSkills.Versions,
@@ -2034,14 +2057,22 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 	if kind == TurnToolAdvisor {
 		return a.executeAdvisorTool(ctx, in, step.ID)
 	}
+	if kind == TurnToolRuntimeSkill {
+		session, err := a.source.GetSession(ctx, in.SessionID)
+		if err != nil {
+			return ExecuteToolResult{}, err
+		}
+		return a.executeRuntimeSkill(
+			workspace.WithScope(ctx, session.WorkspaceID), in, step.ID,
+			retrySafeStarted, session.EnvironmentType == "self_hosted",
+		)
+	}
 	if a.sandboxes == nil {
 		return ExecuteToolResult{}, fmt.Errorf(
 			"temporal: sandbox tool execution requires a sandbox",
 		)
 	}
 	var executor tools.Executor
-	var skillSource SessionSkillSource
-	var threadSkillSource SessionThreadSkillSource
 	switch kind {
 	case TurnToolBuiltin:
 		var ok bool
@@ -2054,13 +2085,6 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 		if a.mcp == nil || in.MCPServer.Name == "" ||
 			in.MCPServer.URL == "" || in.MCPToolName == "" {
 			out.FatalError = "MCP tool execution is missing its pinned server definition"
-			return out, nil
-		}
-	case TurnToolRuntimeSkill:
-		skillSource, _ = a.source.(SessionSkillSource)
-		threadSkillSource, _ = a.source.(SessionThreadSkillSource)
-		if skillSource == nil && threadSkillSource == nil {
-			out.FatalError = "custom Skill runtime metadata is unavailable"
 			return out, nil
 		}
 	default:
@@ -2130,99 +2154,7 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 		}
 	}
 
-	if kind == TurnToolRuntimeSkill {
-		name, inputErr := agentruntime.RuntimeSkillName(in.Input)
-		if inputErr != nil {
-			out.Result = domain.ToolStepResult{
-				Content: []any{map[string]any{"type": "text", "text": inputErr.Error()}},
-				IsError: true,
-			}
-		} else if in.SkillAlreadyLoaded {
-			out.Result = domain.ToolStepResult{
-				Content: []any{map[string]any{
-					"type": "text",
-					"text": "Skill " + name + " is already loaded",
-				}},
-			}
-		} else {
-			runtime := domain.SkillRuntime{Root: domain.SessionSkillsRoot}
-			if threadSkillSource != nil && in.ThreadID != "" {
-				runtime, err = threadSkillSource.SessionThreadSkillRuntime(
-					ctx, in.SessionID, in.ThreadID,
-				)
-			} else if skillSource != nil {
-				runtime.Versions, err = skillSource.SessionSkillsForRuntime(
-					ctx, in.SessionID,
-				)
-			} else {
-				out.FatalError = "custom Skill runtime metadata is unavailable"
-				return out, nil
-			}
-			if err != nil {
-				return ExecuteToolResult{}, err
-			}
-			if in.SkillRuntimeRoot != "" && in.SkillRuntimeRoot != runtime.Root {
-				out.FatalError = "custom Skill runtime scope changed after turn preparation"
-				return out, nil
-			}
-			available := false
-			for _, version := range runtime.Versions {
-				if version.Name == name {
-					available = true
-					break
-				}
-			}
-			if !available {
-				out.Result = domain.ToolStepResult{
-					Content: []any{map[string]any{
-						"type": "text",
-						"text": "Skill: unknown or unavailable Skill " + name,
-					}},
-					IsError: true,
-				}
-			} else {
-				runtimePath := runtime.SkillPath(name)
-				if !strings.HasPrefix(runtimePath, domain.SessionSkillsRoot+"/") {
-					out.FatalError = "custom Skill runtime path is outside the Skill root"
-					return out, nil
-				}
-				body, readErr := box.ReadFile(
-					ctx,
-					runtimePath+"/SKILL.md",
-				)
-				switch {
-				case readErr != nil:
-					out.Result = domain.ToolStepResult{
-						Content: []any{map[string]any{
-							"type": "text",
-							"text": "Skill: load failed: " + readErr.Error(),
-						}},
-						IsError: true,
-					}
-				case !utf8.Valid(body):
-					out.Result = domain.ToolStepResult{
-						Content: []any{map[string]any{
-							"type": "text",
-							"text": "Skill: SKILL.md is not valid UTF-8",
-						}},
-						IsError: true,
-					}
-				default:
-					out.Result = domain.ToolStepResult{
-						Content: []any{map[string]any{
-							"type": "text",
-							"text": "Launching skill: " + name,
-						}},
-						InjectedContent: []domain.ContentBlock{
-							agentruntime.RuntimeSkillInjectionAt(
-								runtime.Root, name, body,
-							),
-						},
-					}
-				}
-			}
-		}
-	} else if kind == TurnToolMCP {
+	if kind == TurnToolMCP {
 		// Crossing StartToolStep is the side-effect uncertainty boundary. A
 		// transport failure after this point may have happened after the remote
 		// server executed the tool, so the Activity error intentionally becomes
@@ -2318,6 +2250,141 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 	}
 	out.Result = workflowToolResult(out.Result)
 	return out, nil
+}
+
+func (a *Activities) executeRuntimeSkill(
+	ctx context.Context,
+	in ExecuteToolInput,
+	stepID string,
+	retrySafeStarted bool,
+	selfHosted bool,
+) (ExecuteToolResult, error) {
+	out := ExecuteToolResult{}
+	if a.skillInstructions == nil {
+		out.FatalError = "custom Skill instruction loading is unavailable"
+		return out, nil
+	}
+	skillSource, hasSkills := a.source.(SessionSkillSource)
+	threadSkillSource, hasThreadSkills := a.source.(SessionThreadSkillSource)
+	if !hasSkills && !hasThreadSkills {
+		out.FatalError = "custom Skill runtime metadata is unavailable"
+		return out, nil
+	}
+	if !retrySafeStarted {
+		dctx, cancel := durableCtx(ctx)
+		err := a.journal.StartToolStep(dctx, stepID)
+		cancel()
+		if err != nil {
+			return ExecuteToolResult{}, err
+		}
+	}
+
+	name, inputErr := agentruntime.RuntimeSkillName(in.Input)
+	switch {
+	case inputErr != nil:
+		out.Result = domain.ToolStepResult{
+			Content: []any{map[string]any{"type": "text", "text": inputErr.Error()}},
+			IsError: true,
+		}
+	case in.SkillAlreadyLoaded:
+		out.Result = domain.ToolStepResult{Content: []any{map[string]any{
+			"type": "text", "text": "Skill " + name + " is already loaded",
+		}}}
+	default:
+		runtime := domain.SkillRuntime{Root: domain.SessionSkillsRoot}
+		var err error
+		if hasThreadSkills && in.ThreadID != "" {
+			runtime, err = threadSkillSource.SessionThreadSkillRuntime(
+				ctx, in.SessionID, in.ThreadID,
+			)
+		} else if hasSkills {
+			runtime.Versions, err = skillSource.SessionSkillsForRuntime(ctx, in.SessionID)
+		} else {
+			out.FatalError = "custom Skill runtime metadata is unavailable"
+			return out, nil
+		}
+		if err != nil {
+			return ExecuteToolResult{}, err
+		}
+		if selfHosted {
+			var valid bool
+			runtime, valid = selfHostedSkillRuntime(runtime)
+			if !valid {
+				out.FatalError = "custom Skill runtime path is outside the Skill root"
+				return out, nil
+			}
+		}
+		if in.SkillRuntimeRoot != "" && in.SkillRuntimeRoot != runtime.Root {
+			out.FatalError = "custom Skill runtime scope changed after turn preparation"
+			return out, nil
+		}
+		var selected *domain.SkillVersion
+		for index := range runtime.Versions {
+			if runtime.Versions[index].Name == name {
+				selected = &runtime.Versions[index]
+				break
+			}
+		}
+		if selected == nil {
+			out.Result = domain.ToolStepResult{
+				Content: []any{map[string]any{
+					"type": "text", "text": "Skill: unknown or unavailable Skill " + name,
+				}},
+				IsError: true,
+			}
+		} else {
+			runtimePath := runtime.SkillPath(name)
+			expectedRoot := domain.SessionSkillsRoot
+			if selfHosted {
+				expectedRoot = domain.SessionSkillsRelativeRoot
+			}
+			if !strings.HasPrefix(runtimePath, expectedRoot+"/") {
+				out.FatalError = "custom Skill runtime path is outside the Skill root"
+				return out, nil
+			}
+			body, err := a.skillInstructions.LoadSkillInstructions(ctx, *selected)
+			if err != nil {
+				if sandbox.IsPermanent(err) {
+					out.FatalError = err.Error()
+					return out, nil
+				}
+				return ExecuteToolResult{}, err
+			}
+			if !utf8.Valid(body) {
+				out.Result = domain.ToolStepResult{
+					Content: []any{map[string]any{
+						"type": "text", "text": "Skill: SKILL.md is not valid UTF-8",
+					}},
+					IsError: true,
+				}
+			} else {
+				out.Result = domain.ToolStepResult{
+					Content: []any{map[string]any{
+						"type": "text", "text": "Launching skill: " + name,
+					}},
+					InjectedContent: []domain.ContentBlock{
+						agentruntime.RuntimeSkillInjectionAt(runtime.Root, name, body),
+					},
+				}
+			}
+		}
+	}
+	if err := completeToolResultDurably(ctx, a.journal, stepID, out.Result); err != nil {
+		return ExecuteToolResult{}, err
+	}
+	out.Result = workflowToolResult(out.Result)
+	return out, nil
+}
+
+func selfHostedSkillRuntime(runtime domain.SkillRuntime) (domain.SkillRuntime, bool) {
+	prefix := domain.SessionRepositoryRoot + "/"
+	relative, ok := strings.CutPrefix(runtime.Root, prefix)
+	if !ok || (relative != domain.SessionSkillsRelativeRoot &&
+		!strings.HasPrefix(relative, domain.SessionSkillsRelativeRoot+"/.agents/")) {
+		return domain.SkillRuntime{}, false
+	}
+	runtime.Root = relative
+	return runtime, true
 }
 
 func (a *Activities) executeAdvisorTool(

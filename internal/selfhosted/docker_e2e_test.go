@@ -1,6 +1,8 @@
 package selfhosted
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -36,6 +38,7 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	second := work
 	second.ID += "_resume"
 	works := []mango.EnvironmentWork{work, second}
+	skillArchive := dockerSkillArchive(t)
 	var polls, acknowledgements, firstHeartbeats, renewals, streams, results, stops atomic.Int32
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -76,6 +79,27 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 				"type": "work_heartbeat", "last_heartbeat": "2026-09-04T00:00:01Z",
 				"lease_extended": true, "state": "active", "ttl_seconds": 1,
 			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions/"+work.Data.ID:
+			assertItemAuthorization(t, r)
+			writeJSON(t, w, map[string]any{
+				"id": work.Data.ID,
+				"agent": map[string]any{
+					"id": "agent_docker", "version": 1,
+					"skills": []any{map[string]any{
+						"type": "custom", "skill_id": "skill_docker", "version": "1",
+					}},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/skills/skill_docker/versions/1":
+			assertItemAuthorization(t, r)
+			writeJSON(t, w, map[string]any{
+				"id": "1", "skill_id": "skill_docker", "version": "1",
+				"name": "docker-skill", "directory": "docker-skill",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/skills/skill_docker/versions/1/content":
+			assertItemAuthorization(t, r)
+			w.Header().Set("Content-Type", "application/zip")
+			_, _ = w.Write(skillArchive)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/events/stream"):
 			assertItemAuthorization(t, r)
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -85,9 +109,10 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 				return
 			}
 			activation := streams.Add(1)
-			calls := []dockerBashCall{{
-				ID: "tool_e2e_resume", Input: map[string]any{"command": "cat proof.txt"},
-			}}
+			calls := []dockerBashCall{
+				{ID: "tool_e2e_resume", Input: map[string]any{"command": "cat proof.txt"}},
+				{ID: "tool_e2e_skill_resume", Input: map[string]any{"command": "grep -o self-hosted-skill skills/docker-skill/SKILL.md"}},
+			}
 			if activation == 1 {
 				calls = []dockerBashCall{
 					{ID: "tool_e2e_credential_boundary", Input: map[string]any{"command": "if cat /proc/$PPID/environ >/tmp/mango-parent-environ 2>/dev/null; then printf parent-readable; else printf parent-protected; fi"}},
@@ -95,6 +120,7 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 					{ID: "tool_e2e_state_2", Input: map[string]any{"command": "printf '%s|%s' \"$PROOF\" \"$PWD\""}},
 					{ID: "tool_e2e_restart", Input: map[string]any{"restart": true, "command": "printf '[%s]|%s' \"$PROOF\" \"$PWD\""}},
 					{ID: "tool_e2e_file", Input: map[string]any{"command": "printf docker-e2e > proof.txt && cat proof.txt"}},
+					{ID: "tool_e2e_skill", Input: map[string]any{"command": "grep -o self-hosted-skill skills/docker-skill/SKILL.md"}},
 				}
 			}
 			for _, call := range calls {
@@ -127,6 +153,8 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 				"tool_e2e_restart":             "[]|/workspace",
 				"tool_e2e_file":                "docker-e2e",
 				"tool_e2e_resume":              "docker-e2e",
+				"tool_e2e_skill":               "self-hosted-skill",
+				"tool_e2e_skill_resume":        "self-hosted-skill",
 			}
 			matched := false
 			for toolUseID, text := range expected {
@@ -196,7 +224,7 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	}
 	assertContainerRemoved(t, engine, dockerWorkName(work.ID))
 	assertContainerRemoved(t, engine, dockerWorkName(second.ID))
-	if polls.Load() != 3 || acknowledgements.Load() != 2 || firstHeartbeats.Load() != 2 || renewals.Load() < 2 || streams.Load() != 2 || results.Load() != 6 || stops.Load() != 2 {
+	if polls.Load() != 3 || acknowledgements.Load() != 2 || firstHeartbeats.Load() != 2 || renewals.Load() < 2 || streams.Load() != 2 || results.Load() != 8 || stops.Load() != 2 {
 		t.Fatalf("polls=%d acknowledgements=%d first_heartbeats=%d renewals=%d streams=%d results=%d stops=%d", polls.Load(), acknowledgements.Load(), firstHeartbeats.Load(), renewals.Load(), streams.Load(), results.Load(), stops.Load())
 	}
 }
@@ -239,6 +267,14 @@ func TestDockerLauncherCancellationPostsToolErrorBeforeStop(t *testing.T) {
 			writeJSON(t, w, map[string]any{
 				"type": "work_heartbeat", "last_heartbeat": "2026-09-04T00:00:01Z",
 				"lease_extended": true, "state": "active", "ttl_seconds": 30,
+			})
+		case r.Method == http.MethodGet &&
+			strings.HasPrefix(r.URL.Path, "/v1/sessions/") &&
+			!strings.Contains(strings.TrimPrefix(r.URL.Path, "/v1/sessions/"), "/"):
+			assertItemAuthorization(t, r)
+			writeJSON(t, w, map[string]any{
+				"id":    strings.TrimPrefix(r.URL.Path, "/v1/sessions/"),
+				"agent": map[string]any{"skills": []any{}},
 			})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/events/stream"):
 			assertItemAuthorization(t, r)
@@ -364,6 +400,23 @@ func dockerWorkFixture(work mango.EnvironmentWork, state string, includeSecret b
 		"started_at": nil, "latest_heartbeat_at": nil,
 		"stop_requested_at": nil, "stopped_at": nil,
 	}
+}
+
+func dockerSkillArchive(t *testing.T) []byte {
+	t.Helper()
+	var body bytes.Buffer
+	writer := zip.NewWriter(&body)
+	header := &zip.FileHeader{Name: "docker-skill/SKILL.md", Method: zip.Deflate}
+	header.SetMode(0o644)
+	entry, err := writer.CreateHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = fmt.Fprint(entry, "---\nname: docker-skill\ndescription: Docker E2E\n---\nself-hosted-skill\n")
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return body.Bytes()
 }
 
 func assertContainerRemoved(t *testing.T, engine *client.Client, name string) {

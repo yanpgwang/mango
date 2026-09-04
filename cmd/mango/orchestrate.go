@@ -69,6 +69,17 @@ func (r *retryingSessionResourceReconciler) SupportsSessionOutputs() bool {
 	return r.sessionOutputs
 }
 
+func (r *retryingSessionResourceReconciler) LoadSkillInstructions(
+	ctx context.Context,
+	version domain.SkillVersion,
+) ([]byte, error) {
+	materializer, err := r.resolveMaterializer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return materializer.LoadSkillInstructions(ctx, version)
+}
+
 func (r *retryingSessionResourceReconciler) PublishSessionOutputs(
 	ctx context.Context,
 	sessionID string,

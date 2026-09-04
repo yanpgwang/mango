@@ -214,10 +214,12 @@ func TestPrepareTurn_ProjectsPinnedSkillDiscoveryMetadata(t *testing.T) {
 	}
 	prepared, err := NewActivities(
 		nil, source, nil, nil, &testIDGen{},
-	).WithSkillRuntimeSupported(true).PrepareTurn(
-		context.Background(),
-		PrepareTurnInput{SessionID: "sess_skill", TriggerEventID: "sevt_skill"},
-	)
+	).WithSkillRuntimeSupported(true).
+		WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte("body")}).
+		PrepareTurn(
+			context.Background(),
+			PrepareTurnInput{SessionID: "sess_skill", TriggerEventID: "sevt_skill"},
+		)
 	require.NoError(t, err)
 	require.Empty(t, prepared.FatalError)
 	require.Contains(t, prepared.Request.System, "<available_skills>")
@@ -240,6 +242,23 @@ func TestPrepareTurn_ProjectsPinnedSkillDiscoveryMetadata(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Contains(t, unsupported.FatalError, "configured sandbox provider")
+
+	source.session.EnvironmentType = "self_hosted"
+	selfHosted, err := NewActivities(
+		nil, source, nil, nil, &testIDGen{},
+	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte("body")}).
+		PrepareTurn(
+			context.Background(),
+			PrepareTurnInput{SessionID: "sess_skill", TriggerEventID: "sevt_skill"},
+		)
+	require.NoError(t, err)
+	require.Empty(t, selfHosted.FatalError)
+	require.Contains(t, summarizeModelTools(selfHosted.Request.Tools), modelToolSummary{
+		Name: agentruntime.RuntimeSkillToolName,
+	})
+	require.Equal(t, domain.SessionSkillsRelativeRoot, selfHosted.SkillRuntimeRoot)
+	require.Contains(t, selfHosted.Request.System,
+		`"skill_md":"skills/report-tools/SKILL.md"`)
 }
 
 func TestPrepareTurn_SelectsThreadAgentRuntimeConfiguration(t *testing.T) {
@@ -286,12 +305,14 @@ func TestPrepareTurn_SelectsThreadAgentRuntimeConfiguration(t *testing.T) {
 	}
 	prepared, err := NewActivities(
 		nil, source, nil, nil, &testIDGen{},
-	).WithSkillRuntimeSupported(true).PrepareTurn(
-		context.Background(),
-		PrepareTurnInput{
-			SessionID: "sess_child_skill", TriggerEventID: "sevt_child_skill",
-		},
-	)
+	).WithSkillRuntimeSupported(true).
+		WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte("body")}).
+		PrepareTurn(
+			context.Background(),
+			PrepareTurnInput{
+				SessionID: "sess_child_skill", TriggerEventID: "sevt_child_skill",
+			},
+		)
 	require.NoError(t, err)
 	require.Empty(t, prepared.FatalError)
 	require.Equal(t, "sthr_child", prepared.ThreadID)
@@ -752,7 +773,9 @@ func TestPrepareTurn_ReattachesInvokedSkillFromTranscriptAfterWorkerRestart(t *t
 	}
 	prepared, err := NewActivities(
 		nil, source, nil, nil, &testIDGen{},
-	).WithSkillRuntimeSupported(true).WithContextTokenBudget(9000).PrepareTurn(
+	).WithSkillRuntimeSupported(true).
+		WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte("body")}).
+		WithContextTokenBudget(9000).PrepareTurn(
 		context.Background(),
 		PrepareTurnInput{
 			SessionID: "sess_restart_skill", TriggerEventID: "sevt_current_skill",

@@ -58,8 +58,8 @@ egress is still unrestricted. Configure firewall or Docker network policy for
 the destinations your tools require; container isolation alone is not a
 hostile multi-tenant guarantee.
 
-The initial reference executes `bash`, `read`, `write`, `edit`, `glob`, and
-`grep` inside `/workspace`. Self-hosted Skill and Memory preparation and
-automatic Session output publication remain explicit follow-up work; Session
-admission continues to reject those unsupported combinations until the worker
-can honor them.
+The reference executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`
+inside `/workspace`. Before tool dispatch it downloads the Session's immutable
+primary and roster custom Skill pins into the same workspace and removes those
+directories when the Work item exits. Memory preparation and automatic Session
+output publication remain explicit follow-up work.

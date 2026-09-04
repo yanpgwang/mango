@@ -116,8 +116,17 @@ func runtimeSkillInjectionName(block domain.ContentBlock) (string, bool) {
 	if !found {
 		return "", false
 	}
-	prefix := domain.SessionSkillsRoot + "/"
-	if !strings.HasPrefix(line, prefix) {
+	prefix := ""
+	for _, candidate := range []string{
+		domain.SessionSkillsRoot + "/",
+		domain.SessionSkillsRelativeRoot + "/",
+	} {
+		if strings.HasPrefix(line, candidate) {
+			prefix = candidate
+			break
+		}
+	}
+	if prefix == "" {
 		return "", false
 	}
 	parts := strings.Split(strings.TrimPrefix(line, prefix), "/")

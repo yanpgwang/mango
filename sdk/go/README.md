@@ -146,6 +146,7 @@ lost, and force-Stops the Work on ordinary exit:
 ```go
 worker := mango.NewEnvironmentWorker(client, mango.EnvironmentWorkerOptions{
     EnvironmentID: environmentID,
+    Workdir:       "/workspace",
     Tools:         tools,
 })
 if err := worker.Run(ctx); err != nil {
@@ -166,7 +167,8 @@ identity fields read `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`, and
 
 ```go
 worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
-    Tools: tools,
+    Workdir: "/workspace",
+    Tools:   tools,
 })
 err := worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{
     WorkSecret: secretFromProtectedLauncherTransport,
@@ -181,11 +183,14 @@ prevent same-identity child processes from inspecting the trusted runner. The
 first-party Docker launcher uses a one-shot stdin transport plus a non-dumpable
 Linux item process for this boundary.
 
-The helper remains provider-neutral. It does not create a Docker container,
-download Session resources, prepare Skills or Memory, or close tools. A
-launcher owns those boundaries. Tools must stop on context cancellation;
-`ErrEnvironmentWorkLeaseLost` means the worker deliberately skipped Stop
-because the item may already belong to another owner.
+The helper remains provider-neutral. After its first successful heartbeat it
+downloads the frozen Session's immutable custom Skill pins beneath `Workdir`,
+then removes those downloaded directories when the Work item ends. The Agent
+loop describes their files with `skills/...` paths relative to the same
+`Workdir`. It does not create a Docker container, prepare File/Git or Memory
+inputs, or close tools. A launcher owns those remaining boundaries. Tools must
+stop on context cancellation; `ErrEnvironmentWorkLeaseLost` means the worker
+deliberately skipped Stop because the item may already belong to another owner.
 
 The optional `tools/agenttoolset` package supplies Mango's six core local tool
 executors without claiming to be a sandbox:

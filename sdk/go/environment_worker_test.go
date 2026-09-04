@@ -37,6 +37,8 @@ func TestEnvironmentWorkerHandleItemUsesScopedCredentialForLifecycle(t *testing.
 				t.Errorf("desired_ttl_seconds = %q", got)
 			}
 			writeEnvironmentWorkerJSON(t, w, environmentHeartbeatFixture("2026-09-03T00:00:01Z", "active", true, 30))
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions/session_one":
+			writeEnvironmentWorkerJSON(t, w, emptySessionFixture("session_one"))
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/events/stream"):
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
@@ -91,6 +93,58 @@ func TestEnvironmentWorkerHandleItemUsesScopedCredentialForLifecycle(t *testing.
 	}
 	if executions.Load() != 1 || heartbeats.Load() != 1 || stops.Load() != 1 {
 		t.Fatalf("executions=%d heartbeats=%d stops=%d", executions.Load(), heartbeats.Load(), stops.Load())
+	}
+}
+
+func TestEnvironmentWorkerSkillSetupFailureStopsBeforeToolDispatch(t *testing.T) {
+	t.Parallel()
+	var eventRequests atomic.Int32
+	var stops atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/heartbeat"):
+			writeEnvironmentWorkerJSON(t, w, environmentHeartbeatFixture("2026-09-03T00:00:01Z", "active", true, 30))
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions/session_skill_failure":
+			writeEnvironmentWorkerJSON(t, w, map[string]any{
+				"id": "session_skill_failure",
+				"agent": map[string]any{"skills": []any{map[string]any{
+					"type": "custom", "skill_id": "skill_broken", "version": "1",
+				}}},
+			})
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/skills/skill_broken/versions/1":
+			writeEnvironmentWorkerJSON(t, w, map[string]any{
+				"id": "1", "skill_id": "skill_broken", "version": "1",
+				"name": "broken", "directory": "broken",
+			})
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/skills/skill_broken/versions/1/content":
+			w.Header().Set("Content-Type", "application/zip")
+			_, _ = w.Write([]byte("not a zip archive"))
+		case strings.Contains(request.URL.Path, "/events"):
+			eventRequests.Add(1)
+			http.Error(w, "tool dispatch must not start", http.StatusInternalServerError)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/stop"):
+			stops.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	worker := NewEnvironmentWorker(
+		newEnvironmentWorkerClient(t, server.URL, "workspace-key"),
+		EnvironmentWorkerOptions{Workdir: t.TempDir()},
+	)
+	err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{
+		WorkID: "work_skill_failure", EnvironmentID: "env_skill_failure",
+		SessionID:  "session_skill_failure",
+		WorkSecret: encodeEnvironmentWorkSecret(t, "sess_mango_skill_failure"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "prepare Skill skill_broken@1") {
+		t.Fatalf("HandleItem error = %v", err)
+	}
+	if eventRequests.Load() != 0 || stops.Load() != 1 {
+		t.Fatalf("event requests=%d stops=%d", eventRequests.Load(), stops.Load())
 	}
 }
 
@@ -169,6 +223,8 @@ func TestEnvironmentWorkerLeaseLossCancelsToolWithoutResultOrStop(t *testing.T) 
 			}
 			w.WriteHeader(http.StatusPreconditionFailed)
 			fmt.Fprint(w, `{"error":{"type":"lease_lost","message":"reclaimed"}}`)
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions/session_lost":
+			writeEnvironmentWorkerJSON(t, w, emptySessionFixture("session_lost"))
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/events/stream"):
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
@@ -267,6 +323,8 @@ func TestEnvironmentWorkerCancellationStillForceStopsWithFreshContext(t *testing
 		switch {
 		case strings.HasSuffix(request.URL.Path, "/heartbeat"):
 			writeEnvironmentWorkerJSON(t, w, environmentHeartbeatFixture("2026-09-03T00:00:01Z", "active", true, 30))
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions/session_cancel":
+			writeEnvironmentWorkerJSON(t, w, emptySessionFixture("session_cancel"))
 		case strings.HasSuffix(request.URL.Path, "/events/stream"):
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
@@ -399,6 +457,15 @@ func environmentHeartbeatFixture(last, state string, extended bool, ttl int64) m
 	return map[string]any{
 		"type": "work_heartbeat", "last_heartbeat": last, "state": state,
 		"lease_extended": extended, "ttl_seconds": ttl,
+	}
+}
+
+func emptySessionFixture(id string) map[string]any {
+	return map[string]any{
+		"id": id,
+		"agent": map[string]any{
+			"skills": []any{},
+		},
 	}
 }
 

@@ -76,6 +76,7 @@ Use `NewEnvironmentWorker` for the complete provider-neutral Work lifecycle:
 ```go
 worker := mango.NewEnvironmentWorker(client, mango.EnvironmentWorkerOptions{
     EnvironmentID: environmentID,
+    Workdir:       "/workspace",
     Tools:         tools,
 })
 if err := worker.Run(ctx); err != nil {
@@ -100,10 +101,15 @@ the launcher must also keep secrets out of parent environment/command metadata
 and prevent same-identity children from inspecting the trusted runner. The
 first-party Docker launcher uses one-shot stdin and a non-dumpable item process.
 
-The worker does not create compute or prepare Files, Git repositories, Skills,
-or Memory. Those are launcher responsibilities. On lease loss it cancels the
-runner, prevents later result submission, returns
-`ErrEnvironmentWorkLeaseLost`, and does not Stop a possibly newer owner's Work.
+After the first successful heartbeat, the worker fetches the frozen Session and
+prepares its immutable custom Skill pins beneath `Workdir` before dispatching a
+tool. It fails closed on incomplete setup and removes its downloaded Skill
+directories when the Work item ends. Self-hosted Skill paths exposed to the
+model are relative to the same `Workdir`. The worker does not create compute or
+prepare Files, Git repositories, or Memory; those remain launcher
+responsibilities. On lease loss it cancels the runner, prevents later result
+submission, returns `ErrEnvironmentWorkLeaseLost`, and does not Stop a possibly
+newer owner's Work.
 
 For launchers that need Mango's core shell and file executors, the independent
 `tools/agenttoolset` package returns `bash`, `read`, `write`, `edit`, `glob`, and

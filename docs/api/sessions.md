@@ -92,11 +92,13 @@ descriptions bounded to one percent of the configured context window.
 When it invokes the private `Skill` dispatcher, the runtime returns
 `Launching skill: <name>` and injects the complete selected `SKILL.md`, prefixed
 with its base directory, into the provider conversation. Referenced supporting
-files remain on disk for ordinary `read` or `bash` access. Sessions using an
-incapable sandbox adapter or a self-hosted Environment reject custom Skills at
-creation with `422`, before any Session, Work item, or execution wakeup is created. This
-check covers the effective primary Agent and every resolved roster member
-after overrides, including a `self` copy. See
+files remain on disk for ordinary `read` or `bash` access. Self-hosted workers
+download the same immutable primary and roster pins before tool dispatch; the
+server-side Agent loop reads the main instruction entry directly from Mango's
+canonical archive rather than reaching into the worker filesystem. Their
+model-visible `skills/...` paths are relative to the worker's configured
+workdir. Cloud Sessions using an incapable legacy sandbox adapter reject custom Skills at
+creation with `422`. See
 [Sandbox backends](../sandboxes.md#custom-skill-mounts) for the remote-copy
 limitation.
 

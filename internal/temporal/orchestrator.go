@@ -209,6 +209,9 @@ func NewRuntime(config RuntimeConfig) *Runtime {
 		hasSkillCapability && skillCapability.SupportsSkillBundles() &&
 			hasSkillResources && skillResources.SupportsSkillRuntime(),
 	)
+	if loader, ok := config.Resources.(SkillInstructionLoader); ok {
+		acts.WithSkillInstructionLoader(loader)
+	}
 	outputCapability, hasOutputCapability := config.SandboxProvider.(sandbox.SessionOutputProvider)
 	outputPublisher, hasOutputPublisher := config.Resources.(SessionOutputPublisher)
 	if hasOutputCapability && outputCapability.SupportsSessionOutputs() &&

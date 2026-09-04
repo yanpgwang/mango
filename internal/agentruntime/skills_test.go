@@ -62,6 +62,17 @@ func TestRuntimeSkillInjectionRecognizesAgentScopedBaseDirectory(t *testing.T) {
 	}
 }
 
+func TestRuntimeSkillInjectionRecognizesSelfHostedRelativeBaseDirectory(t *testing.T) {
+	root := domain.SessionSkillsRelativeRoot + "/.agents/0123456789abcdef01234567"
+	block := RuntimeSkillInjectionAt(root, "report-tools", []byte("child body"))
+	loaded := LoadedRuntimeSkills([]domain.Message{{
+		Role: domain.RoleUser, Content: []domain.ContentBlock{block},
+	}})
+	if _, ok := loaded["report-tools"]; !ok {
+		t.Fatalf("relative self-hosted Skill was not recognized: %#v", loaded)
+	}
+}
+
 func TestRuntimeSkillInjectionIsReattachedAfterCompaction(t *testing.T) {
 	injection := RuntimeSkillInjection(
 		"report-tools",
