@@ -62,6 +62,47 @@ func TestAgents_CreateGetVersionArchive(t *testing.T) {
 	}
 }
 
+func TestAgents_WebToolPermissionContract(t *testing.T) {
+	for _, name := range []string{"web_search", "web_fetch"} {
+		for _, tc := range []struct {
+			policy  string
+			enabled bool
+			status  int
+		}{
+			{policy: "always_allow", enabled: true, status: http.StatusOK},
+			{policy: "always_ask", enabled: true, status: http.StatusBadRequest},
+			{policy: "always_ask", enabled: false, status: http.StatusOK},
+		} {
+			t.Run(fmt.Sprintf("%s/%s/enabled=%t", name, tc.policy, tc.enabled), func(t *testing.T) {
+				body := fmt.Sprintf(`{"name":"researcher","model":"test-model","tools":[{
+					"type":"agent_toolset_20260401","default_config":{"enabled":false},
+					"configs":[{"name":%q,"enabled":%t,"permission_policy":{"type":%q}}]}]}`,
+					name, tc.enabled, tc.policy)
+				rec := do(newTestServer(t), http.MethodPost, "/v1/agents", body)
+				if rec.Code != tc.status {
+					t.Fatalf("status = %d, want %d: %s", rec.Code, tc.status, rec.Body)
+				}
+				if tc.status == http.StatusBadRequest {
+					var response struct {
+						Type  string `json:"type"`
+						Error struct {
+							Type    string `json:"type"`
+							Message string `json:"message"`
+						} `json:"error"`
+					}
+					if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+						t.Fatal(err)
+					}
+					want := "invalid tool configuration: " + name + " requires always_allow while it is provider-native"
+					if response.Type != "error" || response.Error.Type != "invalid_request_error" || response.Error.Message != want {
+						t.Fatalf("unexpected permission error: %s", rec.Body)
+					}
+				}
+			})
+		}
+	}
+}
+
 // TestAgents_ClearSystemWithNull verifies that sending {"system":null} clears the
 // system field, that the version bumps, and that a subsequent update without the
 // system key does NOT resurrect the field.

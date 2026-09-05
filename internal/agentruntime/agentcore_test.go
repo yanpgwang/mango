@@ -359,7 +359,7 @@ func TestValidateToolCapabilities_RejectsApprovalForNativeWeb(t *testing.T) {
 	}
 }
 
-func TestEnabledSelfHostedToolSchemasExposeWorkerOwnedContracts(t *testing.T) {
+func TestEnabledSelfHostedToolSchemasKeepWebOnProviderAndBashOnWorker(t *testing.T) {
 	toolSet, err := domain.ParseTools([]any{map[string]any{
 		"type": domain.BuiltinToolsetType,
 	}})
@@ -380,12 +380,41 @@ func TestEnabledSelfHostedToolSchemasExposeWorkerOwnedContracts(t *testing.T) {
 			continue
 		}
 		webTools++
-		if schema.Type != "" || schema.InputSchema == nil {
-			t.Fatalf("self-hosted web schema = %+v, want ordinary client tool", schema)
+		if schema.Type != schema.Name+"_20260318" || schema.InputSchema != nil {
+			t.Fatalf("self-hosted web schema = %+v, want provider-native tool", schema)
 		}
 	}
 	if webTools != 2 {
 		t.Fatalf("self-hosted schemas included %d web tools, want 2", webTools)
+	}
+}
+
+func TestEnabledSelfHostedToolSchemasHonorDisabledWebAndCustomTools(t *testing.T) {
+	toolSet, err := domain.ParseTools([]any{
+		map[string]any{
+			"type": domain.BuiltinToolsetType,
+			"configs": []any{
+				map[string]any{"name": "web_search", "enabled": false},
+				map[string]any{"name": "web_fetch", "enabled": false},
+			},
+		},
+		map[string]any{"type": "custom", "name": "lookup", "description": "Look up a record",
+			"input_schema": map[string]any{"type": "object"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemas := EnabledSelfHostedToolSchemas(toolSet)
+	if len(schemas) != 7 {
+		t.Fatalf("schemas = %+v, want six sandbox tools and one custom tool", schemas)
+	}
+	for _, schema := range schemas {
+		if schema.Type != "" || schema.Name == "web_search" || schema.Name == "web_fetch" {
+			t.Fatalf("disabled Web tool was offered: %+v", schema)
+		}
+	}
+	if last := schemas[len(schemas)-1]; last.Name != "lookup" || last.Description != "Look up a record" || last.InputSchema["type"] != "object" {
+		t.Fatalf("custom tool changed: %+v", last)
 	}
 }
 

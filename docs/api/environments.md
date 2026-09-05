@@ -68,7 +68,13 @@ built-in sandbox tools execute on the configured worker sandbox. In
 `user.tool_result`. The server then resumes the same model loop without
 executing the tool a second time.
 
-`always_ask` also applies to self-hosted built-ins. The client first submits
+Web Search and Web Fetch execute through the configured model endpoint in both
+Environment types. They are never dispatched to the self-hosted worker and do
+not create `user.tool_result` waits. The endpoint must support Mango's current
+native Web declarations; otherwise disable those tools. Native Web tools
+require `always_allow`: Mango cannot pause a provider request for approval.
+
+`always_ask` also applies to self-hosted shell/file tools. The client first submits
 `user.tool_confirmation`; an allow authorizes external execution but does not
 resume the model until the correlated `user.tool_result` arrives. A denial
 requires no external execution or result. See

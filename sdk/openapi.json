@@ -2436,6 +2436,7 @@
       },
       "BuiltinToolset": {
         "additionalProperties": false,
+        "description": "Shell and file tools execute in the Environment's sandbox. Web Search and Web Fetch execute through the configured model endpoint in both cloud and self_hosted Environments, require native Web-tool support and always_allow permission, and never request a worker user.tool_result.",
         "properties": {
           "configs": {
             "items": {

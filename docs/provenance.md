@@ -19,6 +19,36 @@ and self-hosted. Public surface definitions may be design inputs, but external
 implementation code and non-public types must not be copied, and an external
 release is never an automatic roadmap.
 
+## Self-hosted Web execution and convergence scope
+
+- Reviewed the public [CMA tool execution boundary](https://platform.claude.com/docs/en/managed-agents/tools#restrict-web-search-and-web-fetch-domains)
+  and [self-hosted resource boundary](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes#start-a-session)
+  on 2026-09-05 alongside the Python SDK worker and Session runner at
+  `62de60b27d04f0927a0ccf0f2610597fafcfab6a` and the Docker cookbook at
+  `a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5`. The SDK composes the six local
+  shell/file tools with the Session event protocol; the documented Web tools
+  execute server-side for either Environment type.
+- Mango's concrete defect was declaring Web tools as external client calls
+  while the first-party self-hosted worker implemented only shell/file tools.
+  Mango adopts the same ownership split and reuses its configured Messages
+  endpoint's existing native Web path. Web responses remain lossless in the
+  private PostgreSQL transcript, including after an external-result wait and
+  orchestration-worker restart. Provider-owned tools are absent from the local
+  dispatch table, so a malformed ordinary Web `tool_use` cannot become a
+  sandbox execution or external result barrier.
+- Mango keeps the existing `always_allow` requirement and explicit dependence
+  on the configured endpoint's native Web capabilities. It does not claim CMA's
+  Web approval, domain-filter, or public Web-event behavior. The existing text
+  and usage projections are unchanged. There is no CMA call, hosted credential,
+  third-party SDK dependency, new provider service, or schema migration.
+- CMA self-hosted Sessions reject File/Git resource mounts and leave file
+  preparation and deliverable retrieval to the operator. Mango removed those
+  conveniences from its mandatory CMA convergence prerequisites. They can be
+  selected independently for a Mango workflow. The next convergence work is
+  complete Docker/control-plane recovery evidence and a self-hosted default
+  deployment, followed by removal of the transitional provider registry. A
+  future operator-managed sandbox launcher can reuse the same Work protocol.
+
 ## HTTP transport
 
 - Claude Managed Agents documentation and public SDK behavior informed early

@@ -86,6 +86,13 @@ composes them with container and workspace-volume lifecycle; other launchers
 still own that boundary. See the staged
 [self-hosted worker design](../architecture/self-hosted-workers.md).
 
+Web Search and Web Fetch stay on the configured model endpoint. The worker
+handles the six shell/file tools and any custom tools registered by its
+operator; it never needs a Web executor or the model credential. Native Web
+responses remain in the durable model transcript, and only the existing text
+and usage projections are public. Web tools require `always_allow` and an
+endpoint that supports the native Web declarations. Disable them otherwise.
+
 ## First-party Docker worker
 
 Build and run the preview reference worker from the repository root:
