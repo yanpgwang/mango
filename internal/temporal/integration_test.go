@@ -771,10 +771,11 @@ func TestVerticalSlice_LiveModelToolStepEndToEnd(t *testing.T) {
 			"Use the bash tool exactly once. Pass the text between <command> tags as the command without changes; do not include the tags. <command>printf '%s' > live-tool.txt && cat live-tool.txt</command> After you receive the tool result, reply with a short confirmation and do not call another tool.",
 			marker,
 		),
-		tools:              bashOnlyToolset(t),
-		expectedTool:       bashToolName,
-		expectedToolOutput: marker,
-		timeout:            2 * time.Minute,
+		tools:                bashOnlyToolset(t),
+		expectedTool:         bashToolName,
+		expectedToolOutput:   marker,
+		expectSandboxBinding: true,
+		timeout:              2 * time.Minute,
 	})
 }
 
@@ -797,21 +798,23 @@ func TestVerticalSlice_DockerToolStepEndToEnd(t *testing.T) {
 			command:   "test -f /.dockerenv && test \"$(pwd)\" = /workspace && printf '" + marker + "' > probe.txt && cat probe.txt",
 			finalText: "Docker probe completed",
 		},
-		modelID:            "fake",
-		sessionPrefix:      "sess_docker_tool_e2e_",
-		prompt:             "run a tool",
-		tools:              []any{map[string]any{"type": domain.BuiltinToolsetType}},
-		expectedTool:       bashToolName,
-		expectedToolOutput: marker,
-		timeout:            30 * time.Second,
+		modelID:              "fake",
+		sessionPrefix:        "sess_docker_tool_e2e_",
+		prompt:               "run a tool",
+		tools:                []any{map[string]any{"type": domain.BuiltinToolsetType}},
+		expectedTool:         bashToolName,
+		expectedToolOutput:   marker,
+		expectSandboxBinding: true,
+		timeout:              30 * time.Second,
 	})
 }
 
 // TestVerticalSlice_DockerSkillRuntimeEndToEnd proves the complete custom Skill
 // execution path: PostgreSQL pins one immutable Version, PrepareTurn exposes its
-// discovery metadata and private Skill dispatcher, the pre-tool reconciler
-// extracts the canonical archive, and the runtime injects the complete SKILL.md
-// without asking the model to call read or bash.
+// discovery metadata and private Skill dispatcher, the control plane loads the
+// canonical immutable instructions, and the runtime injects the complete
+// SKILL.md without provisioning a sandbox or asking the model to call read or
+// bash.
 func TestVerticalSlice_DockerSkillRuntimeEndToEnd(t *testing.T) {
 	if os.Getenv("MANGO_TEST_DATABASE_URL") == "" ||
 		os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT") == "" {
@@ -864,16 +867,17 @@ func TestVerticalSlice_DockerSkillRuntimeEndToEnd(t *testing.T) {
 }
 
 type toolStepCase struct {
-	provider           sandbox.Provider
-	modelClient        model.Client
-	modelID            string
-	sessionPrefix      string
-	prompt             string
-	tools              []any
-	expectedTool       string
-	expectedToolOutput string
-	timeout            time.Duration
-	setup              func(
+	provider             sandbox.Provider
+	modelClient          model.Client
+	modelID              string
+	sessionPrefix        string
+	prompt               string
+	tools                []any
+	expectedTool         string
+	expectedToolOutput   string
+	expectSandboxBinding bool
+	timeout              time.Duration
+	setup                func(
 		*testing.T,
 		context.Context,
 		*pg.Store,
@@ -1105,8 +1109,12 @@ func runToolStepEndToEnd(t *testing.T, tc toolStepCase) {
 	if err != nil {
 		t.Fatalf("get sandbox binding: %v", err)
 	}
-	if !found || binding.Ref.Provider != tc.provider.Name() || binding.Ref.ID == "" {
-		t.Fatalf("sandbox binding = %+v, found=%v", binding, found)
+	if tc.expectSandboxBinding {
+		if !found || binding.Ref.Provider != tc.provider.Name() || binding.Ref.ID == "" {
+			t.Fatalf("sandbox binding = %+v, found=%v", binding, found)
+		}
+	} else if found {
+		t.Fatalf("sandbox binding created without a sandbox tool call: %+v", binding)
 	}
 	if err := store.PrepareSessionDeletion(ctx, sessID); err != nil {
 		t.Fatalf("prepare session deletion: %v", err)

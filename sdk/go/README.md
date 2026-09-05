@@ -128,13 +128,13 @@ if err := poller.Err(); err != nil { panic(err) }
 The poller never calls Stop. Poll returns a per-claim `work.Secret`; the server
 redacts it from Ack, while `Current` retains the Poll value for the launched
 runner. The URL-safe base64 JSON payload carries a `sessions_token` used by the
-runner after Ack for heartbeat, Stop, Session reads/streaming, tool-result
+runner after Ack for heartbeat, Fail, Stop, Session reads/streaming, tool-result
 events, and pinned immutable inputs. A reclaim rotates that credential; lease
 expiry or Stop also invalidates it and closes an old stream. Treat the payload
 and token as secrets: do not log or persist them.
 
 An ambiguous Ack failure is left for TTL reclaim. The poller itself does not
-heartbeat, Stop Work, or choose a sandbox.
+heartbeat, Fail or Stop Work, or choose a sandbox.
 
 ## Composed self-hosted worker
 
@@ -146,6 +146,7 @@ lost, and force-Stops the Work on ordinary exit:
 ```go
 worker := mango.NewEnvironmentWorker(client, mango.EnvironmentWorkerOptions{
     EnvironmentID: environmentID,
+    Workdir:       "/workspace",
     Tools:         tools,
 })
 if err := worker.Run(ctx); err != nil {
@@ -155,7 +156,7 @@ if err := worker.Run(ctx); err != nil {
 
 `client` is the trusted supervisor client used for Poll and Ack. After Ack, the
 worker decodes the `sessions_token` from `work.Secret` and creates a scoped
-client for Heartbeat, Session events, and Stop. An invalid or absent secret is
+client for Heartbeat, Fail, Session events, and Stop. An invalid or absent secret is
 an error; the worker never falls back to the Workspace key.
 
 A launcher that Polls and Acks outside the sandbox can run only the item side
@@ -166,7 +167,8 @@ identity fields read `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`, and
 
 ```go
 worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
-    Tools: tools,
+    Workdir: "/workspace",
+    Tools:   tools,
 })
 err := worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{
     WorkSecret: secretFromProtectedLauncherTransport,
@@ -181,11 +183,17 @@ prevent same-identity child processes from inspecting the trusted runner. The
 first-party Docker launcher uses a one-shot stdin transport plus a non-dumpable
 Linux item process for this boundary.
 
-The helper remains provider-neutral. It does not create a Docker container,
-download Session resources, prepare Skills or Memory, or close tools. A
-launcher owns those boundaries. Tools must stop on context cancellation;
-`ErrEnvironmentWorkLeaseLost` means the worker deliberately skipped Stop
-because the item may already belong to another owner.
+The helper remains provider-neutral. After its first successful heartbeat it
+downloads and verifies the frozen Session's immutable custom Skill pins beneath
+`Workdir`, atomically publishes one symlink-safe tree, then removes it when the
+Work item ends. Temporary retrieval failures retry and remain reclaimable;
+permanent invalid input is committed through Work Fail and terminates the
+Session. The Agent
+loop describes their files with `skills/...` paths relative to the same
+`Workdir`. It does not create a Docker container, prepare File/Git or Memory
+inputs, or close tools. A launcher owns those remaining boundaries. Tools must
+stop on context cancellation; `ErrEnvironmentWorkLeaseLost` means the worker
+deliberately skipped Stop because the item may already belong to another owner.
 
 The optional `tools/agenttoolset` package supplies Mango's six core local tool
 executors without claiming to be a sandbox:
@@ -268,7 +276,8 @@ honor cancellation and use `SessionToolCall.ToolUseID` as their idempotency key.
 
 With a per-Work Session token, `401`, `403`, or `412` stops the runner with
 `ErrSessionLeaseLost`; it never falls back to the Workspace credential. The
-runner does not renew that lease. `EnvironmentWorker` owns heartbeat and Stop
+runner does not renew that lease. `EnvironmentWorker` owns heartbeat, permanent
+input Fail, and Stop
 while this lower-level helper stays provider-neutral.
 
 ## Live events and recovery

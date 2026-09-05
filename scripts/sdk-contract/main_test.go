@@ -33,8 +33,8 @@ func TestRepositoryOperationsAreComplete(t *testing.T) {
 			t.Fatalf("protected operation %s became public", op.ID)
 		}
 	}
-	if len(ops) != 98 {
-		t.Fatalf("operations = %d, expected 98; review SDK coverage when adding routes", len(ops))
+	if len(ops) != 99 {
+		t.Fatalf("operations = %d, expected 99; review SDK coverage when adding routes", len(ops))
 	}
 	for _, id := range []string{"health", "readiness", "openAPI"} {
 		if !seen[id].Public {
@@ -43,6 +43,9 @@ func TestRepositoryOperationsAreComplete(t *testing.T) {
 	}
 	if op := seen["stopEnvironmentWork"]; op.ResponseStatus != 204 || op.ResponseContentType != "" {
 		t.Errorf("empty response metadata = %+v", op)
+	}
+	if op := seen["failEnvironmentWork"]; op.ResponseStatus != 204 || op.ResponseContentType != "" {
+		t.Errorf("failure response metadata = %+v", op)
 	}
 	if op := seen["streamSessionEvents"]; op.ResponseContentType != "text/event-stream" {
 		t.Errorf("stream media type = %q", op.ResponseContentType)

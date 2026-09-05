@@ -81,7 +81,7 @@ opt-in.
 | Workspace continuity | Docker examples retain a per-Session workspace across activations | A named `/workspace` volume is keyed by Session ID and retained after each Work container exits | Aligned |
 | Agent tools | Core shell/file tools execute inside customer infrastructure; Web tools remain server-side | The Docker image executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`; portable server-side Web-tool ownership is not complete | Partial |
 | Shell lifecycle | The current SDK keeps a persistent Bash process and supports restart/per-call timeout | The self-hosted Go toolset keeps one PTY-backed Bash per Work container, exposes `restart` and `timeout_ms`, and replaces the shell after timeout, cancellation, or framing failure | Aligned lifecycle; Mango additionally bounds shutdown reaping |
-| Session inputs | The public worker prepares supported Skill and Memory state before execution | Self-hosted Skill and Memory activation is rejected at admission; File/Git/output preparation is not yet wired into this launcher | Gap |
+| Session inputs | The public worker prepares supported Skill and Memory state before execution | The Go worker prepares immutable primary/roster Skill bundles before tool dispatch while its lease heartbeat runs; Memory and File/Git preparation remain open | Partial |
 
 This table is a behavioral audit, not a compatibility claim. CMA's current
 security guide recommends passing a Work item's per-Session secret only to that
@@ -101,11 +101,13 @@ Session container merely to copy the cookbook script.
 - Re-delivery and process restart are normal. Event IDs and persisted pending
   actions, not in-memory seen sets, determine whether a result is outstanding.
 - A Work poller does not Stop acknowledged items. The composed
-  `EnvironmentWorker` owns heartbeat and final Stop while `SessionToolRunner`
+  `EnvironmentWorker` owns heartbeat, permanent-input Fail, and final Stop while
+  `SessionToolRunner`
   owns only the Session event/tool loop; an ambiguous Ack or invalid Ack
   response is left for TTL reclaim.
 - Poll rotates an unpredictable per-claim `sessions_token` inside the Work
-  secret payload. The worker switches to it for heartbeat, Stop, Session events,
+  secret payload. The worker switches to it for heartbeat, Fail, Stop, Session
+  events,
   and pinned immutable inputs after Ack; reclaim invalidates the old token and
   closes an established event stream. Lease TTL is capped at five minutes, and
   a graceful Stop can retain execution access for no longer than that current
@@ -141,15 +143,15 @@ Session container merely to copy the cookbook script.
 5. Added a standalone Docker launcher. A trusted supervisor polls and Acks,
    creates one hardened container per Work item, gives it only the Work secret,
    and retains one named workspace volume per Session. A real Docker test covers
-   Poll through Stop and proves that a second activation reads the first
-   activation's file from that volume.
+   Poll through Stop, Skill preparation before dispatch, and a second activation
+   reading both its re-prepared Skill and the first activation's persistent file.
 6. Added the persistent self-hosted Bash lifecycle. One PTY-backed shell keeps
    cwd, environment variables, and background jobs within an activation;
    explicit restart, per-call timeout, cancellation recovery, bounded output,
    and bounded shutdown are SDK-owned rather than Docker-specific.
 7. Complete the remaining shared self-hosted behavior before multiplying
-   providers: Skill and Memory preparation, supported File/Git inputs and
-   outputs, server-side Web-tool ownership, and restart/health evidence.
+   providers: Memory preparation, supported File/Git inputs and outputs,
+   server-side Web-tool ownership, and restart/health evidence.
 8. Add thin provider examples one at a time. Each must use the same runner and
    document persistence, cancellation, resource limits, network policy, and
    restart behavior.

@@ -2,10 +2,14 @@ package httpapi
 
 import (
 	"bytes"
+	"encoding/json"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/yanpgwang/mango/internal/domain"
 )
 
 func TestSkillsHTTP_BearerMultipartAndLimits(t *testing.T) {
@@ -63,6 +67,41 @@ func TestSkillsHTTP_DisabledAndListValidation(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("GET %s = %d: %s", target, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+func TestSkillsHTTP_VersionIntegrityMetadataShape(t *testing.T) {
+	service := newSDKSkillService()
+	now := time.Date(2026, 9, 5, 12, 0, 0, 123000000, time.UTC)
+	service.skill = domain.Skill{ID: "skill_sdk", LatestVersion: "1"}
+	service.versions["1"] = domain.SkillVersion{
+		ID: "1", SkillID: "skill_sdk", Version: "1", CreatedAt: now,
+		Name: "reviewing-code", Directory: "reviewing-code",
+		Description: "Reviews code.", SizeBytes: 321,
+		ChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	}
+	req := httptest.NewRequest(
+		http.MethodGet, "/v1/skills/skill_sdk/versions/1", nil,
+	)
+	rec := httptest.NewRecorder()
+	NewServer(Deps{Skills: service}, Config{}).Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Get Skill Version = %d: %s", rec.Code, rec.Body.String())
+	}
+	expected := map[string]any{
+		"id": "1", "skill_id": "skill_sdk", "version": "1",
+		"type": "skill_version", "created_at": now.Format(timeFmt),
+		"name": "reviewing-code", "directory": "reviewing-code",
+		"description": "Reviews code.", "size_bytes": float64(321),
+		"checksum_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	}
+	assertJSONFields(t, rec.Body.Bytes(), expected)
+	var response map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response) != len(expected) {
+		t.Fatalf("Skill Version fields = %#v", response)
 	}
 }
 

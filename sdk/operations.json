@@ -925,6 +925,41 @@
       "public": false
     },
     {
+      "id": "failEnvironmentWork",
+      "method": "POST",
+      "path": "/v1/environments/{environment_id}/work/{work_id}/fail",
+      "tag": "Environment Work",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "work_id",
+          "required": true,
+          "schema": {
+            "pattern": "^work_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/EnvironmentWorkFailureRequest"
+      },
+      "request_required": true,
+      "response_content_type": "",
+      "response_schema": null,
+      "response_status": 204,
+      "public": false
+    },
+    {
       "id": "getAgent",
       "method": "GET",
       "path": "/v1/agents/{agent_id}",

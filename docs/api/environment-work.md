@@ -23,6 +23,7 @@ creates a new activation.
 ```text
 Poll -> Ack -> Heartbeat(NO_HEARTBEAT) -> Heartbeat(previous timestamp) -> Stop
  queued   starting             active                         stopping/stopped
+                                          permanent bad input -> Fail -> stopped
 ```
 
 - `Poll` tentatively claims the oldest available item and returns a fresh Work
@@ -40,16 +41,21 @@ Poll -> Ack -> Heartbeat(NO_HEARTBEAT) -> Heartbeat(previous timestamp) -> Stop
   heartbeat echoes the exact timestamp returned by the previous response.
   `desired_ttl_seconds`, when supplied, must be from 1 through 300. Healthy
   workers renew continuously; the five-minute cap bounds stale-owner access.
-  Heartbeat and the worker's final Stop authenticate with `sessions_token`. A
+  Heartbeat, Fail, and the worker's final Stop authenticate with `sessions_token`. A
   stale timestamp or expired current lease returns `412`; reclaim rotates the
   credential, so an old owner is rejected at authentication.
+- `Fail` is the terminal path for a permanent immutable-input error. It marks
+  the Work stopped and atomically terminates the Session and all of its Threads
+  with `session_input_failed_error`. A transient API, object-store, or network
+  error does not call Fail or Stop: the worker retries five times, then leaves
+  the lease to expire so queue reclaim can retry the same activation.
 - Graceful Stop changes active Work to `stopping`; the next heartbeat tells the
   worker to cancel. A stopping token expires no later than its current TTL even
   if no poller performs the eventual state cleanup. Forced Stop immediately
   records `stopped`. A Workspace API key retains operator authority to stop Work
   without possessing its Session credential.
 
-The API exposes Get, Update, List, Ack, Heartbeat, Poll, Stats, and Stop beneath:
+The API exposes Get, Update, List, Ack, Heartbeat, Fail, Poll, Stats, and Stop beneath:
 
 ```text
 /v1/environments/{environment_id}/work
@@ -73,11 +79,11 @@ narrow identity from `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`,
 and `MANGO_SESSION_ID`. Its Work secret must be supplied through a protected
 launcher transport whenever untrusted subprocesses share the sandbox.
 
-These SDK lifecycle helpers do not choose or create a sandbox and do not
-prepare File, Git, Skill, or Memory inputs. Mango's first-party Docker launcher
+These SDK lifecycle helpers do not choose or create a sandbox. The composed Go
+worker prepares immutable custom Skills; File, Git, and Memory inputs remain
+outside this slice. Mango's first-party Docker launcher
 composes them with container and workspace-volume lifecycle; other launchers
-still own that boundary. Mango does not currently ship external Skill
-activation. See the staged
+still own that boundary. See the staged
 [self-hosted worker design](../architecture/self-hosted-workers.md).
 
 ## First-party Docker worker
@@ -115,9 +121,9 @@ corrupt completion framing closes the old shell before another call can run.
 Containers are removed after each activation. A Docker named volume derived
 from the Session ID is retained, so later Work for the same Session resumes the
 same workspace; shell process state deliberately does not survive that
-container boundary. This reference does not yet prepare Skills, Memory, File/Git
-resources, or Session outputs; it is not a hardened hostile multi-tenant
-boundary. See the
+container boundary. Before dispatch, the worker prepares the frozen custom
+Skill pins described below. It does not yet prepare Memory, File/Git resources,
+or Session outputs, and it is not a hardened hostile multi-tenant boundary. See the
 [Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker).
 
 The file tools are confined to `/workspace`. Bash itself is intentionally not
@@ -134,23 +140,32 @@ copies the owning Thread ID for child-call results, and exposes the original
 event ID so a tool can make its external side effects idempotent. See
 [external tool approvals](events.md#approve-externally-executed-tools).
 
-Creating a self-hosted Session with custom Skills returns `422` with
-`error.type: "invalid_request_error"` before any Session, Work item, or execution
-wakeup is created. Admission checks the effective primary Agent and every
-resolved roster member after Session overrides. Clearing the primary Agent's
-Skills does not clear Skills on independently referenced roster Agents.
+Before it starts the tool runner, the Go `EnvironmentWorker` fetches the frozen
+Session snapshot with the scoped item credential and downloads every primary
+and roster Agent custom Skill pin. Primary Skills are expanded below
+`<workdir>/skills/<name>`; external roster Agents receive stable isolated roots
+below `<workdir>/skills/.agents/`. One fresh tree is staged directly below the
+canonical Workdir and atomically replaces the prior Session tree, so paths that
+an earlier tool replaced with symlinks are never traversed. Downloads verify
+the frozen compressed length and SHA-256 digest, reject unsafe or non-regular
+archive members, and share Session-wide limits of 500 unique scope-pins,
+500 MiB compressed and expanded bytes, and 10,000 files. The tree is removed
+when Work ends. Permanent validation failures durably terminate the Session;
+temporary retrieval failures remain reclaimable.
 
-Skills storage and Agent definitions remain available when configured, but
-neither object storage nor a Skill-capable cloud adapter enables external
-worker Skill execution. A self-hosted Session without Skills can use the Work
-protocol. See [Skills](skills.md) for Mango-managed sandbox support.
+The Agent loop activates a Skill from Mango's own immutable archive, so it does
+not require inbound access to the worker filesystem. Supporting files and
+scripts are read or executed from the independently materialized worker copy.
+Model-visible self-hosted paths start with `skills/` and are relative to the
+worker's configured `workdir`; the control plane never assumes that a future
+provider mounts it at `/workspace`. See [Skills](skills.md).
 
 ## Security boundary
 
 The supervisor uses a Workspace API key to Poll and Ack. Poll additionally
 issues an unpredictable per-claim credential payload; only the SHA-256 digest
 of its `sessions_token` is stored. That token is limited to the claimed Work's
-Heartbeat and Stop, the claimed Session's read/event execution routes, and the
+Heartbeat, Fail, and Stop, the claimed Session's read/event execution routes, and the
 immutable File and Skill inputs pinned to that Session. On the event write
 route it may submit only `user.tool_result` and `user.custom_tool_result`, not
 ordinary user messages, interrupts, approvals, or `system.message`. It becomes

@@ -338,8 +338,10 @@ func skillToJSON(item domain.Skill) map[string]any {
 func skillVersionToJSON(item domain.SkillVersion) map[string]any {
 	return map[string]any{
 		"id": item.ID, "created_at": item.CreatedAt.Format(timeFmt),
+		"checksum_sha256": item.ChecksumSHA256,
 		"description": item.Description, "directory": item.Directory,
 		"name": item.Name, "skill_id": item.SkillID,
+		"size_bytes": item.SizeBytes,
 		"type": "skill_version", "version": item.Version,
 	}
 }

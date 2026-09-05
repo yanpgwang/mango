@@ -247,6 +247,13 @@ OPERATIONS: dict[str, dict[str, Any]] = {'acknowledge_environment_work': {'id': 
                             'public': False,
                             'accept': 'application/zip',
                             'request': 'json'},
+ 'fail_environment_work': {'id': 'failEnvironmentWork',
+                           'method': 'POST',
+                           'path': '/v1/environments/{environment_id}/work/{work_id}/fail',
+                           'mode': 'empty',
+                           'public': False,
+                           'accept': '*/*',
+                           'request': 'json'},
  'get_agent': {'id': 'getAgent',
                'method': 'GET',
                'path': '/v1/agents/{agent_id}',
@@ -965,6 +972,16 @@ class Mango(BaseClient):
     ) -> BinaryStream:
         """GET /v1/skills/{skill_id}/versions/{version}/content."""
         return self._binary(OPERATIONS['download_skill_version'], {'skill_id': skill_id, 'version': version}, {})
+
+    def fail_environment_work(
+        self,
+        environment_id: models.FailEnvironmentWorkEnvironmentIdParameter,
+        work_id: models.FailEnvironmentWorkWorkIdParameter,
+        *,
+        body: models.EnvironmentWorkFailureRequest,
+    ) -> None:
+        """POST /v1/environments/{environment_id}/work/{work_id}/fail."""
+        return cast(None, self._request(OPERATIONS['fail_environment_work'], {'environment_id': environment_id, 'work_id': work_id}, {}, body))
 
     def get_agent(
         self,
@@ -2079,6 +2096,16 @@ class AsyncMango(AsyncBaseClient):
     ) -> AsyncBinaryStream:
         """GET /v1/skills/{skill_id}/versions/{version}/content."""
         return self._binary(OPERATIONS['download_skill_version'], {'skill_id': skill_id, 'version': version}, {})
+
+    async def fail_environment_work(
+        self,
+        environment_id: models.FailEnvironmentWorkEnvironmentIdParameter,
+        work_id: models.FailEnvironmentWorkWorkIdParameter,
+        *,
+        body: models.EnvironmentWorkFailureRequest,
+    ) -> None:
+        """POST /v1/environments/{environment_id}/work/{work_id}/fail."""
+        return cast(None, await self._request(OPERATIONS['fail_environment_work'], {'environment_id': environment_id, 'work_id': work_id}, {}, body))
 
     async def get_agent(
         self,

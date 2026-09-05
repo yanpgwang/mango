@@ -98,6 +98,45 @@ func TestSessionSkillMaterializerUsesPinnedMetadataAndIsIdempotent(t *testing.T)
 	}
 }
 
+func TestSessionSkillMaterializerLoadsInstructionsFromImmutableBundle(t *testing.T) {
+	instructions := []byte("---\nname: reports\ndescription: Analyze reports\n---\nRead inputs.\n")
+	bundle, err := prepareSkillBundle([]SkillUploadFile{{
+		Filename: "reports/SKILL.md", Body: instructions,
+	}, {
+		Filename: "reports/scripts/run.sh", Body: []byte("#!/bin/sh\n"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := ComputeBlobInfo(bundle.Archive)
+	version := domain.SkillVersion{
+		SkillID: "skill_reports", Version: "100", Name: bundle.Name,
+		Directory: bundle.Directory, BlobKey: "skills/skill_reports/100.zip",
+		SizeBytes: info.SizeBytes, ChecksumSHA256: info.ChecksumSHA256,
+	}
+	blobs := newMemoryBlobStore()
+	blobs.objects[version.BlobKey] = append([]byte(nil), bundle.Archive...)
+	materializer := NewSessionSkillMaterializer(staticSessionSkillRepository{}, blobs)
+
+	loaded, err := materializer.LoadSkillInstructions(context.Background(), version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(loaded, instructions) {
+		t.Fatalf("instructions = %q", loaded)
+	}
+	composed := NewSessionRuntimeMaterializer(nil, materializer)
+	loaded, err = composed.LoadSkillInstructions(context.Background(), version)
+	if err != nil || !bytes.Equal(loaded, instructions) {
+		t.Fatalf("composed instructions = %q, %v", loaded, err)
+	}
+
+	version.ChecksumSHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if _, err := materializer.LoadSkillInstructions(context.Background(), version); !sandbox.IsPermanent(err) {
+		t.Fatalf("corrupt metadata error = %v, want permanent", err)
+	}
+}
+
 func TestSessionSkillMaterializerRejectsUnsupportedSandboxPermanently(t *testing.T) {
 	version := domain.SkillVersion{
 		SkillID: "skill_reports", Version: "100", Name: "reports",

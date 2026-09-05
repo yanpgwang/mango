@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/yanpgwang/mango/internal/domain"
 )
@@ -39,6 +41,7 @@ type EnvironmentWorkRepository interface {
 	PollWork(context.Context, string, EnvironmentWorkPollInput) (*domain.EnvironmentWork, error)
 	AckWork(context.Context, string, string) (domain.EnvironmentWork, error)
 	HeartbeatWork(context.Context, string, string, *string, *int64) (domain.EnvironmentWorkHeartbeat, error)
+	FailWork(context.Context, string, string, string) error
 	StopWork(context.Context, string, string, bool) error
 	WorkStats(context.Context, string) (domain.EnvironmentWorkQueueStats, error)
 }
@@ -184,6 +187,23 @@ func (s *EnvironmentWorkService) Stop(
 		return err
 	}
 	return s.repository.StopWork(ctx, environmentID, workID, force)
+}
+
+func (s *EnvironmentWorkService) Fail(
+	ctx context.Context,
+	environmentID, workID, message string,
+) error {
+	if err := s.validateEnvironment(ctx, environmentID); err != nil {
+		return err
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return domain.Validation("message is required")
+	}
+	if !utf8.ValidString(message) || utf8.RuneCountInString(message) > 1024 {
+		return domain.Validation("message must contain at most 1024 valid UTF-8 characters")
+	}
+	return s.repository.FailWork(ctx, environmentID, workID, message)
 }
 
 func (s *EnvironmentWorkService) Stats(

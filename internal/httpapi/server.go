@@ -40,6 +40,7 @@ type EnvironmentWorkService interface {
 	List(context.Context, string, app.EnvironmentWorkListQuery) (app.EnvironmentWorkListPage, error)
 	Ack(context.Context, string, string) (domain.EnvironmentWork, error)
 	Heartbeat(context.Context, string, string, *string, *int64) (domain.EnvironmentWorkHeartbeat, error)
+	Fail(context.Context, string, string, string) error
 	Poll(context.Context, string, string, time.Duration, *time.Duration) (*domain.EnvironmentWork, error)
 	Stop(context.Context, string, string, bool) error
 	Stats(context.Context, string) (domain.EnvironmentWorkQueueStats, error)
@@ -221,6 +222,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v1/environments/{environment_id}/work/{work_id}", s.updateEnvironmentWork)
 	s.mux.HandleFunc("POST /v1/environments/{environment_id}/work/{work_id}/ack", s.ackEnvironmentWork)
 	s.mux.HandleFunc("POST /v1/environments/{environment_id}/work/{work_id}/heartbeat", s.heartbeatEnvironmentWork)
+	s.mux.HandleFunc("POST /v1/environments/{environment_id}/work/{work_id}/fail", s.failEnvironmentWork)
 	s.mux.HandleFunc("POST /v1/environments/{environment_id}/work/{work_id}/stop", s.stopEnvironmentWork)
 
 	s.mux.HandleFunc("POST /v1/files", s.uploadFile)

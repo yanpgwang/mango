@@ -89,6 +89,12 @@ const (
 	// directory's original casing.
 	SessionSkillsRoot = "/workspace/skills"
 
+	// SessionSkillsRelativeRoot is the model-visible root for self-hosted
+	// workers. Their concrete Workdir is launcher-owned and intentionally absent
+	// from the Environment API, so the control plane must describe Skill files
+	// relative to that root rather than assume /workspace.
+	SessionSkillsRelativeRoot = "skills"
+
 	// UnknownSkillUncompressedSize marks Versions created before the runtime
 	// started persisting exact expanded archive sizes. Their archive checksum is
 	// still authoritative; extraction applies the normal per-bundle upper bound.

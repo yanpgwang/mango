@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -114,20 +113,22 @@ func TestPostgresAgentAndSessionSkillVersionResolution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create self-hosted Environment: %v", err)
 	}
-	_, err = sessions.Create(ctx, app.CreateSessionInput{
+	selfHostedSession, err := sessions.Create(ctx, app.CreateSessionInput{
 		AgentID: agent.ID, EnvironmentID: selfHosted.ID,
 		InitialEvents: []domain.EventDraft{{
 			Type: domain.EvUserMessage, Payload: map[string]any{"content": "use the Skill"},
 		}},
 	})
-	var capabilityErr *domain.DomainError
-	if !errors.As(err, &capabilityErr) || capabilityErr.Kind != domain.KindUnsupported {
-		t.Fatalf("self-hosted Session with Skill must fail admission: %v", err)
+	if err != nil {
+		t.Fatalf("create self-hosted Session with Skill: %v", err)
+	}
+	if got := selfHostedSession.AgentSnapshot.Skills[0].Version; got != first.Version {
+		t.Fatalf("self-hosted Session pin = %q, want %q", got, first.Version)
 	}
 	work, err := pg.NewEnvironmentWorkRepository(fixture.store).ListWork(
 		ctx, selfHosted.ID, app.EnvironmentWorkListQuery{Limit: 10},
 	)
-	if err != nil || len(work.Work) != 0 {
+	if err != nil || len(work.Work) != 1 || work.Work[0].SessionID != selfHostedSession.ID {
 		t.Fatalf("self-hosted Skill Work = %+v, err=%v", work, err)
 	}
 	for _, version := range []string{first.Version, second.Version} {

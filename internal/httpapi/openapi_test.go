@@ -268,8 +268,8 @@ func TestOpenAPIFullManagedAgentsOperationInventory(t *testing.T) {
 			count++
 		}
 	}
-	if count != 95 {
-		t.Fatalf("Mango operation count = %d, want 95", count)
+	if count != 96 {
+		t.Fatalf("Mango operation count = %d, want 96", count)
 	}
 }
 
@@ -476,6 +476,7 @@ func TestOpenAPIEnvironmentWorkContract(t *testing.T) {
 		"/v1/environments/{environment_id}/work/stats":               {"get"},
 		"/v1/environments/{environment_id}/work/{work_id}":           {"get", "post"},
 		"/v1/environments/{environment_id}/work/{work_id}/ack":       {"post"},
+		"/v1/environments/{environment_id}/work/{work_id}/fail":      {"post"},
 		"/v1/environments/{environment_id}/work/{work_id}/heartbeat": {"post"},
 		"/v1/environments/{environment_id}/work/{work_id}/stop":      {"post"},
 	}
@@ -493,8 +494,8 @@ func TestOpenAPIEnvironmentWorkContract(t *testing.T) {
 			count++
 		}
 	}
-	if count != 8 {
-		t.Fatalf("Environment Work operation count = %d, want 8", count)
+	if count != 9 {
+		t.Fatalf("Environment Work operation count = %d, want 9", count)
 	}
 	stop := openAPIMap(t,
 		openAPIMap(t, paths["/v1/environments/{environment_id}/work/{work_id}/stop"], "Stop path")["post"],

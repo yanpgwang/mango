@@ -79,6 +79,36 @@ func TestSessionThreadWorkflow_AcknowledgesIdleInterruptOnOwningThread(t *testin
 	require.Equal(t, SessionThreadWorkflowType, canErr.WorkflowType.Name)
 }
 
+func TestSessionThreadWorkflowExitsWhenProjectionWasExternallyTerminated(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	env.RegisterActivityWithOptions(
+		func(context.Context, LoadPendingActionsInput) (LoadPendingActionsResult, error) {
+			return LoadPendingActionsResult{}, nil
+		},
+		activity.RegisterOptions{Name: ActivityLoadPendingActions},
+	)
+	env.RegisterActivityWithOptions(
+		func(context.Context, LoadEventsInput) (LoadEventsResult, error) {
+			return LoadEventsResult{Events: []EventRef{{
+				ID: "sevt_thread_terminated", Seq: 1,
+				Type: domain.EvSessionThreadStatusTerminated,
+			}}}, nil
+		},
+		activity.RegisterOptions{Name: ActivityLoadEvents},
+	)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(WakeupSignalName, WakeupSignal{MaxEventSeq: 1})
+	}, time.Millisecond)
+	env.SetTestTimeout(10 * time.Second)
+	env.ExecuteWorkflow(
+		sessionThreadWorkflow,
+		SessionThreadWorkflowInput{SessionID: "sesn_failed", ThreadID: "sthr_failed"},
+		100,
+	)
+	require.NoError(t, env.GetWorkflowError())
+}
+
 func TestSessionThreadWorkflowOwnsIndependentCursorAndTurn(t *testing.T) {
 	var ts testsuite.WorkflowTestSuite
 	env := ts.NewTestWorkflowEnvironment()

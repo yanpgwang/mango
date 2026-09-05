@@ -294,3 +294,24 @@ func (s *Server) stopEnvironmentWork(w http.ResponseWriter, r *http.Request) {
 	ensureRequestID(w)
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (s *Server) failEnvironmentWork(w http.ResponseWriter, r *http.Request) {
+	if !s.environmentWorkConfigured(w) {
+		return
+	}
+	var body struct {
+		Message string `json:"message"`
+	}
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.deps.EnvironmentWork.Fail(
+		r.Context(), r.PathValue("environment_id"), r.PathValue("work_id"), body.Message,
+	); err != nil {
+		writeError(w, err)
+		return
+	}
+	ensureRequestID(w)
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -25,7 +25,7 @@ async function serverFor(t, handler) {
 
 test('every OpenAPI operation has a generated, callable method with correct wire routing', async () => {
   const manifest = JSON.parse(await readFile(new URL('../../operations.json', import.meta.url), 'utf8'));
-  assert.equal(Object.keys(operations).length, 98);
+  assert.equal(Object.keys(operations).length, 99);
   assert.deepEqual(Object.keys(operations).sort(), manifest.operations.map(op => op.id).sort());
   for (const op of manifest.operations) {
     let called = 0;

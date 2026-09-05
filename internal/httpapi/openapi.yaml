@@ -320,6 +320,30 @@ paths:
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
         '412': {$ref: '#/components/responses/PreconditionFailed'}
+  /v1/environments/{environment_id}/work/{work_id}/fail:
+    parameters:
+      - $ref: '#/components/parameters/EnvironmentID'
+      - $ref: '#/components/parameters/EnvironmentWorkID'
+    post:
+      operationId: failEnvironmentWork
+      tags: [Environment Work]
+      summary: Terminate a Session whose immutable worker inputs are invalid
+      description: >-
+        This terminal operation is reserved for permanent preparation failures.
+        A worker experiencing a transient retrieval failure leaves the Work
+        active so lease expiry and queue reclaim can retry it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnvironmentWorkFailureRequest'}
+      responses:
+        '204':
+          description: Work and Session failure committed; no response body
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
   /v1/environments/{environment_id}/work/{work_id}/stop:
     parameters:
       - $ref: '#/components/parameters/EnvironmentID'
@@ -3460,11 +3484,15 @@ components:
     SkillVersion:
       type: object
       additionalProperties: false
-      required: [id, created_at, description, directory, name, skill_id, type, version]
+      required: [id, checksum_sha256, created_at, description, directory, name, size_bytes, skill_id, type, version]
       properties:
         id:
           type: string
           pattern: '^[0-9]+$'
+        checksum_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 digest of the exact canonical zip bytes returned by the content endpoint.
         created_at:
           type: string
           format: date-time
@@ -3479,6 +3507,11 @@ components:
           type: string
           pattern: '^[a-z0-9-]+$'
           maxLength: 64
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Exact byte length of the canonical zip returned by the content endpoint.
         skill_id:
           type: string
           pattern: '^skill_'
@@ -4432,6 +4465,15 @@ components:
       additionalProperties: false
       properties:
         force: {type: boolean, default: false}
+    EnvironmentWorkFailureRequest:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1024
     EnvironmentWorkHeartbeat:
       type: object
       additionalProperties: false
@@ -5758,6 +5800,7 @@ components:
             - mcp_authentication_failed_error
             - billing_error
             - credential_host_unreachable_error
+            - session_input_failed_error
             - api_error
         message: {type: string}
         retry_status:

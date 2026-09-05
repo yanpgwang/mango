@@ -152,7 +152,6 @@ func TestClassifyDeploymentRunGitRepositoryFailure(t *testing.T) {
 func TestClassifyDeploymentRunUnsupportedCapabilityIsPermanent(t *testing.T) {
 	t.Parallel()
 	for _, message := range []string{
-		"custom Skills are unavailable for self-hosted Sessions",
 		"custom Skills are unavailable for the configured cloud sandbox provider",
 	} {
 		errorType, detail := classifyDeploymentRunError(domain.Unsupported(message))

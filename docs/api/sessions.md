@@ -81,8 +81,9 @@ the same transaction as the Session; deleting a pinned Version is rejected
 until the Session is physically deleted. The pin migration backfills concrete,
 still-ready custom references from existing Session snapshots; former opaque
 values remain readable but are not treated as executable references. Up to 500
-Skills are accepted, subject to a 500 MB aggregate expanded-size limit and
-unique runtime names. Docker, E2B, CubeSandbox, OpenSandbox, and Daytona verify
+unique scope-pinned Skills are accepted across the primary and complete roster,
+subject to one 500 MiB aggregate expanded-size limit and unique runtime names
+per execution scope. Docker, E2B, CubeSandbox, OpenSandbox, and Daytona verify
 pinned archives and expose them at `/workspace/skills/<name>/`; external roster
 Agents use isolated subdirectories below `/workspace/skills/.agents/`. Docker
 enforces a read-only bind mount, while remote providers expose a
@@ -92,11 +93,15 @@ descriptions bounded to one percent of the configured context window.
 When it invokes the private `Skill` dispatcher, the runtime returns
 `Launching skill: <name>` and injects the complete selected `SKILL.md`, prefixed
 with its base directory, into the provider conversation. Referenced supporting
-files remain on disk for ordinary `read` or `bash` access. Sessions using an
-incapable sandbox adapter or a self-hosted Environment reject custom Skills at
-creation with `422`, before any Session, Work item, or execution wakeup is created. This
-check covers the effective primary Agent and every resolved roster member
-after overrides, including a `self` copy. See
+files remain on disk for ordinary `read` or `bash` access. Self-hosted workers
+download the same immutable primary and roster pins before tool dispatch,
+verify each canonical archive's advertised byte length and SHA-256 digest, and
+add a 500 MiB compressed-byte plus 10,000-file Session guard; the
+server-side Agent loop reads the main instruction entry directly from Mango's
+canonical archive rather than reaching into the worker filesystem. Their
+model-visible `skills/...` paths are relative to the worker's configured
+workdir. Cloud Sessions using an incapable legacy sandbox adapter reject custom Skills at
+creation with `422`. See
 [Sandbox backends](../sandboxes.md#custom-skill-mounts) for the remote-copy
 limitation.
 

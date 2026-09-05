@@ -5,6 +5,7 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 	"unicode/utf8"
 
@@ -43,6 +44,10 @@ type OutcomeRubricReader interface {
 // before event admission.
 type MessageFileReader interface {
 	ReadMessageFile(context.Context, string) (domain.FileMessageContent, error)
+}
+
+type sessionSkillVersionReader interface {
+	GetVersion(context.Context, string, string) (domain.SkillVersion, error)
 }
 
 // SessionService owns public Session validation and delegates the atomic
@@ -214,6 +219,9 @@ func (s *SessionService) Create(
 	if err != nil {
 		return domain.Session{}, err
 	}
+	if err := s.validateSessionSkillBudget(ctx, snapshot, roster); err != nil {
+		return domain.Session{}, err
+	}
 	modelsPriceable := domain.HasAnthropicPublicListPrice(snapshot.Model)
 	for _, member := range roster {
 		modelsPriceable = modelsPriceable && domain.HasAnthropicPublicListPrice(member.Model)
@@ -231,11 +239,6 @@ func (s *SessionService) Create(
 	hasSkills := len(snapshot.Skills) > 0
 	for _, member := range roster {
 		hasSkills = hasSkills || len(member.Skills) > 0
-	}
-	if environment.ConfigType == "self_hosted" && hasSkills {
-		return domain.Session{}, domain.Unsupported(
-			"custom Skills are unavailable for self-hosted Sessions",
-		)
 	}
 	if environment.ConfigType == "cloud" && hasSkills && !s.cloudSkillBundles {
 		return domain.Session{}, domain.Unsupported(
@@ -365,6 +368,81 @@ func (s *SessionService) Create(
 		}
 	}
 	return created, err
+}
+
+// validateSessionSkillBudget applies one admission budget to every execution
+// scope the Session snapshot can activate. Agent-level validation remains
+// useful feedback, but without this Session-wide check a coordinator roster
+// could multiply that limit once per child sandbox or worker directory.
+func (s *SessionService) validateSessionSkillBudget(
+	ctx context.Context,
+	primary domain.Agent,
+	roster []domain.Agent,
+) error {
+	type scope struct {
+		key        string
+		references []domain.SkillReference
+	}
+	scopes := []scope{{key: "primary", references: primary.Skills}}
+	for _, member := range roster {
+		key := member.ID + "\x00" + fmt.Sprint(member.Version)
+		if member.ID == primary.ID && member.Version == primary.Version {
+			key = "primary"
+		}
+		scopes = append(scopes, scope{key: key, references: member.Skills})
+	}
+	seen := make(map[string]struct{})
+	for _, current := range scopes {
+		for _, reference := range current.references {
+			seen[current.key+"\x00"+reference.SkillID+"\x00"+reference.Version] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	if len(seen) > app.MaxSessionSkills {
+		return domain.TooLarge("Session Skills exceed the 500-bundle aggregate limit")
+	}
+	reader, ok := s.skillRef.(sessionSkillVersionReader)
+	if !ok {
+		return domain.Unsupported("Session Skill size validation is unavailable")
+	}
+	var expandedBytes int64
+	counted := make(map[string]struct{}, len(seen))
+	validate := func(scopeKey string, references []domain.SkillReference) error {
+		for _, reference := range references {
+			pin := scopeKey + "\x00" + reference.SkillID + "\x00" + reference.Version
+			if _, duplicate := counted[pin]; duplicate {
+				continue
+			}
+			counted[pin] = struct{}{}
+			version, err := reader.GetVersion(ctx, reference.SkillID, reference.Version)
+			if err != nil {
+				return err
+			}
+			expanded, valid := app.SkillExpandedBudgetBytes(version.UncompressedSizeBytes)
+			if !valid || expanded > app.MaxSessionSkillBytes-expandedBytes {
+				return domain.TooLarge(
+					"Session Skills exceed the 500 MB expanded-size aggregate limit",
+				)
+			}
+			expandedBytes += expanded
+		}
+		return nil
+	}
+	if err := validate("primary", primary.Skills); err != nil {
+		return err
+	}
+	for _, member := range roster {
+		key := member.ID + "\x00" + fmt.Sprint(member.Version)
+		if member.ID == primary.ID && member.Version == primary.Version {
+			key = "primary"
+		}
+		if err := validate(key, member.Skills); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // resolveSessionMultiagentRoster expands the immutable version pins stored on

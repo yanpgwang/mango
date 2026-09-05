@@ -207,6 +207,7 @@ func TestAuthMiddleware_SessionTokenIsResourceScoped(t *testing.T) {
 		want               int
 	}{
 		{name: "heartbeat", method: http.MethodPost, path: "/v1/environments/env_one/work/work_one/heartbeat", want: 204},
+		{name: "fail", method: http.MethodPost, path: "/v1/environments/env_one/work/work_one/fail", want: 204},
 		{name: "stop", method: http.MethodPost, path: "/v1/environments/env_one/work/work_one/stop", want: 204},
 		{name: "session", method: http.MethodGet, path: "/v1/sessions/sesn_one", want: 204},
 		{name: "events list", method: http.MethodGet, path: "/v1/sessions/sesn_one/events", want: 204},

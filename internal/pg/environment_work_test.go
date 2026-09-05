@@ -246,6 +246,88 @@ func TestEnvironmentWorkForceStopDoesNotRequeueOriginalActivation(t *testing.T) 
 	}
 }
 
+func TestEnvironmentWorkFailureDurablyTerminatesSession(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	if err := NewEnvironmentRepository(store).Put(ctx, domain.Environment{
+		ID: "env_input_failure", Name: "Self hosted", ConfigType: "self_hosted",
+		Config: map[string]any{"type": "self_hosted"}, Metadata: map[string]any{},
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	session := newSession("sesn_input_failure")
+	session.EnvironmentID = "env_input_failure"
+	session.EnvironmentType = "self_hosted"
+	if _, err := store.CreateSession(ctx, session, []domain.EventDraft{{
+		Type: domain.EvUserMessage, Payload: map[string]any{"content": "run"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewEnvironmentWorkRepository(store)
+	work, err := repository.PollWork(ctx, session.EnvironmentID, app.EnvironmentWorkPollInput{
+		WorkerID: "worker-bad-input", ReclaimAge: time.Hour,
+	})
+	if err != nil || work == nil {
+		t.Fatalf("Poll = %+v, err=%v", work, err)
+	}
+	if _, err := repository.AckWork(ctx, session.EnvironmentID, work.ID); err != nil {
+		t.Fatalf("Ack: %v", err)
+	}
+	token := decodeSessionsToken(t, work.Secret)
+	workspaceID, scope, err := store.AuthenticateSessionToken(ctx, token)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	workCtx := workspace.WithSessionScope(ctx, workspaceID, scope)
+	expected := "NO_HEARTBEAT"
+	if _, err := repository.HeartbeatWork(
+		workCtx, session.EnvironmentID, work.ID, &expected, nil,
+	); err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+	if err := repository.FailWork(
+		workCtx, session.EnvironmentID, work.ID, "stored Skill archive checksum mismatch",
+	); err != nil {
+		t.Fatalf("Fail Work: %v", err)
+	}
+
+	failed, err := store.GetSession(ctx, session.ID)
+	if err != nil || failed.Status != domain.StatusTerminated || failed.TerminatedAt == nil {
+		t.Fatalf("failed Session = %+v, err=%v", failed, err)
+	}
+	storedWork, err := repository.GetWork(ctx, session.EnvironmentID, work.ID)
+	if err != nil || storedWork.State != domain.EnvironmentWorkStopped || storedWork.StoppedAt == nil {
+		t.Fatalf("failed Work = %+v, err=%v", storedWork, err)
+	}
+	if _, _, err := store.AuthenticateSessionToken(ctx, token); !errors.Is(err, workspace.ErrInvalidSessionToken) {
+		t.Fatalf("failed Work token authentication error = %T %v", err, err)
+	}
+	events, err := store.EventsAfter(ctx, session.ID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) < 3 || events[len(events)-2].Type != domain.EvSessionError ||
+		events[len(events)-1].Type != domain.EvSessionStatusTerminated {
+		t.Fatalf("terminal events = %+v", events)
+	}
+	errorPayload, _ := events[len(events)-2].Payload["error"].(map[string]any)
+	if errorPayload["type"] != "session_input_failed_error" ||
+		errorPayload["message"] != "stored Skill archive checksum mismatch" {
+		t.Fatalf("Session failure payload = %#v", errorPayload)
+	}
+	if wakeup, ok, err := store.PendingWakeup(ctx, session.ID); err != nil || !ok ||
+		wakeup.MaxEventSeq != events[len(events)-1].Sequence {
+		t.Fatalf("terminal wakeup = %+v, exists=%t, err=%v", wakeup, ok, err)
+	}
+	if next, err := repository.PollWork(ctx, session.EnvironmentID, app.EnvironmentWorkPollInput{
+		WorkerID: "worker-next", ReclaimAge: 0,
+	}); err != nil || next != nil {
+		t.Fatalf("terminal Session requeued Work = %+v, err=%v", next, err)
+	}
+}
+
 func TestEnvironmentWorkAmbiguousAckIsReclaimedAfterStartingTTL(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()

@@ -200,6 +200,11 @@ func sessionWorkflow(ctx workflow.Context, in SessionWorkflowInput, canThreshold
 				if event.Seq <= cursor {
 					continue
 				}
+				if event.Type == domain.EvSessionStatusTerminated {
+					cursor = event.Seq
+					terminated = true
+					return false, nil
+				}
 				if event.Type == domain.EvUserMessage ||
 					event.Type == domain.EvUserDefineOutcome ||
 					event.Type == domain.EvAgentThreadMessageReceived {

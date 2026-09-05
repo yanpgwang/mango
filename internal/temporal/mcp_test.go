@@ -360,6 +360,18 @@ type threadSkillExecutionSource struct {
 	runtime domain.SkillRuntime
 }
 
+type staticSkillInstructionLoader struct {
+	body []byte
+	err  error
+}
+
+func (l staticSkillInstructionLoader) LoadSkillInstructions(
+	context.Context,
+	domain.SkillVersion,
+) ([]byte, error) {
+	return append([]byte(nil), l.body...), l.err
+}
+
 func (s *threadSkillExecutionSource) SessionThreadSkillRuntime(
 	context.Context,
 	string,
@@ -377,10 +389,7 @@ func (s *skillExecutionSource) SessionSkillsForRuntime(
 
 func TestExecuteTool_RuntimeSkillLoadsFullInstructionsWithoutReadTool(t *testing.T) {
 	ctx := context.Background()
-	box := sandboxtest.Docker(t)
-
 	const body = "---\nname: report-tools\ndescription: Analyze reports\n---\n\nFollow the complete report workflow.\n"
-	sandboxtest.MountSkill(t, box, domain.SessionSkillsRoot+"/report-tools", body)
 
 	journal := &memoryMCPJournal{}
 	source := &skillExecutionSource{
@@ -399,12 +408,8 @@ func TestExecuteTool_RuntimeSkillLoadsFullInstructionsWithoutReadTool(t *testing
 		}},
 	}
 	activities := NewActivities(
-		nil,
-		source,
-		journal,
-		&fixedSandboxLease{box: box},
-		&testIDGen{},
-	)
+		nil, source, journal, nil, &testIDGen{},
+	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte(body)})
 
 	result, err := activities.ExecuteTool(ctx, ExecuteToolInput{
 		SessionID: "sess_skill_execute", TriggerEventID: "sevt_trigger",
@@ -436,13 +441,47 @@ func TestExecuteTool_RuntimeSkillLoadsFullInstructionsWithoutReadTool(t *testing
 	require.Equal(t, result.Result, recovered.Result)
 }
 
+func TestExecuteTool_SelfHostedRuntimeSkillDoesNotAcquireServerSandbox(t *testing.T) {
+	const body = "---\nname: report-tools\ndescription: Analyze reports\n---\nself-hosted body\n"
+	source := &skillExecutionSource{
+		mcpPrepareSource: &mcpPrepareSource{
+			fakeSource: newFakeSource(nil),
+			session: domain.Session{
+				ID: "sess_self_hosted_skill", WorkspaceID: "wrkspc_test",
+				EnvironmentType: "self_hosted",
+			},
+		},
+		skills: []domain.SkillVersion{{
+			SkillID: "skill_reports", Version: "100", Name: "report-tools",
+		}},
+	}
+	journal := &memoryMCPJournal{}
+	activities := NewActivities(
+		nil, source, journal, nil, &testIDGen{},
+	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte(body)})
+
+	result, err := activities.ExecuteTool(context.Background(), ExecuteToolInput{
+		SessionID: "sess_self_hosted_skill", TriggerEventID: "sevt_trigger",
+		AttemptID: "ratm_self_hosted_skill", Ordinal: 0,
+		ToolUseEventID: "sevt_skill_use", ToolStepID: "tstep_skill",
+		ToolName: agentruntime.RuntimeSkillToolName,
+		ToolKind: TurnToolRuntimeSkill,
+		Input:    map[string]any{"skill": "report-tools"},
+	})
+	require.NoError(t, err)
+	require.Empty(t, result.FatalError)
+	require.False(t, result.Result.IsError)
+	require.Contains(t, result.Result.InjectedContent[0].Text, body)
+	require.Contains(t, result.Result.InjectedContent[0].Text,
+		"Base directory for this skill: skills/report-tools")
+	require.Equal(t, result.Result, journal.result)
+}
+
 func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 	ctx := context.Background()
-	box := sandboxtest.Docker(t)
 
 	root := domain.SessionSkillsRoot + "/.agents/0123456789abcdef01234567"
 	const body = "---\nname: report-tools\ndescription: Child reports\n---\nchild body\n"
-	sandboxtest.MountSkill(t, box, root+"/report-tools", body)
 	source := &threadSkillExecutionSource{
 		skillExecutionSource: &skillExecutionSource{
 			mcpPrepareSource: &mcpPrepareSource{
@@ -459,10 +498,8 @@ func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 	}
 	journal := &memoryMCPJournal{}
 	activities := NewActivities(
-		nil, source, journal,
-		&fixedSandboxLease{box: box},
-		&testIDGen{},
-	)
+		nil, source, journal, nil, &testIDGen{},
+	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte(body)})
 	result, err := activities.ExecuteTool(ctx, ExecuteToolInput{
 		SessionID: "sess_child_skill", ThreadID: "sthr_child",
 		TriggerEventID: "sevt_child_trigger", AttemptID: "ratm_child_skill",
@@ -485,8 +522,7 @@ func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 
 func TestExecuteTool_RuntimeSkillStartedStepIsSafelyReloaded(t *testing.T) {
 	ctx := context.Background()
-	box := sandboxtest.Docker(t)
-	sandboxtest.MountSkill(t, box, domain.SessionSkillsRoot+"/report-tools", "---\nname: report-tools\ndescription: Analyze reports\n---\nbody\n")
+	body := []byte("---\nname: report-tools\ndescription: Analyze reports\n---\nbody\n")
 
 	journal := &memoryMCPJournal{step: domain.ToolStep{
 		ID: "tstep_started_skill", AttemptID: "ratm_started_skill",
@@ -503,17 +539,16 @@ func TestExecuteTool_RuntimeSkillStartedStepIsSafelyReloaded(t *testing.T) {
 		skills: []domain.SkillVersion{{Name: "report-tools"}},
 	}
 	result, err := NewActivities(
-		nil, source, journal,
-		&fixedSandboxLease{box: box},
-		&testIDGen{},
-	).ExecuteTool(ctx, ExecuteToolInput{
-		SessionID: "sess_started_skill", TriggerEventID: "sevt_trigger",
-		AttemptID: "ratm_started_skill", Ordinal: 0,
-		ToolUseEventID: "sevt_started_skill", ToolStepID: "tstep_started_skill",
-		ToolName: agentruntime.RuntimeSkillToolName,
-		ToolKind: TurnToolRuntimeSkill,
-		Input:    map[string]any{"skill": "report-tools"},
-	})
+		nil, source, journal, nil, &testIDGen{},
+	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: body}).
+		ExecuteTool(ctx, ExecuteToolInput{
+			SessionID: "sess_started_skill", TriggerEventID: "sevt_trigger",
+			AttemptID: "ratm_started_skill", Ordinal: 0,
+			ToolUseEventID: "sevt_started_skill", ToolStepID: "tstep_started_skill",
+			ToolName: agentruntime.RuntimeSkillToolName,
+			ToolKind: TurnToolRuntimeSkill,
+			Input:    map[string]any{"skill": "report-tools"},
+		})
 	require.NoError(t, err)
 	require.False(t, result.Ambiguous)
 	require.False(t, result.Result.IsError)

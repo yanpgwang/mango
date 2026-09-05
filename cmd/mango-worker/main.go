@@ -138,7 +138,7 @@ func runItem(ctx context.Context, arguments []string) (runErr error) {
 		}
 	}()
 	worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
-		Tools: toolset, MaxIdle: maxIdle,
+		Tools: toolset, MaxIdle: maxIdle, Workdir: *workdir,
 	})
 	return worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{WorkSecret: workSecret})
 }

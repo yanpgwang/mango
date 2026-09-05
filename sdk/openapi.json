@@ -3768,6 +3768,20 @@
         ],
         "type": "object"
       },
+      "EnvironmentWorkFailureRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "EnvironmentWorkHeartbeat": {
         "additionalProperties": false,
         "properties": {
@@ -6941,6 +6955,7 @@
               "mcp_authentication_failed_error",
               "billing_error",
               "credential_host_unreachable_error",
+              "session_input_failed_error",
               "api_error"
             ],
             "type": "string"
@@ -7834,6 +7849,11 @@
       "SkillVersion": {
         "additionalProperties": false,
         "properties": {
+          "checksum_sha256": {
+            "description": "SHA-256 digest of the exact canonical zip bytes returned by the content endpoint.",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -7856,6 +7876,12 @@
             "pattern": "^[a-z0-9-]+$",
             "type": "string"
           },
+          "size_bytes": {
+            "description": "Exact byte length of the canonical zip returned by the content endpoint.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "skill_id": {
             "pattern": "^skill_",
             "type": "string"
@@ -7871,10 +7897,12 @@
         },
         "required": [
           "id",
+          "checksum_sha256",
           "created_at",
           "description",
           "directory",
           "name",
+          "size_bytes",
           "skill_id",
           "type",
           "version"
@@ -10095,6 +10123,51 @@
           }
         },
         "summary": "Acknowledge a polled Work item and transition it to starting",
+        "tags": [
+          "Environment Work"
+        ]
+      }
+    },
+    "/v1/environments/{environment_id}/work/{work_id}/fail": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/EnvironmentID"
+        },
+        {
+          "$ref": "#/components/parameters/EnvironmentWorkID"
+        }
+      ],
+      "post": {
+        "description": "This terminal operation is reserved for permanent preparation failures. A worker experiencing a transient retrieval failure leaves the Work active so lease expiry and queue reclaim can retry it.",
+        "operationId": "failEnvironmentWork",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentWorkFailureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Work and Session failure committed; no response body"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        },
+        "summary": "Terminate a Session whose immutable worker inputs are invalid",
         "tags": [
           "Environment Work"
         ]

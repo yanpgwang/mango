@@ -136,8 +136,8 @@ func NewDockerLauncher(engine dockerEngine, opts DockerLauncherOptions) (*Docker
 
 // Run owns Poll and Ack on the host and waits for each item container to exit.
 // The item-side EnvironmentWorker inside the container owns heartbeat, Session
-// execution, and final Stop. Individual item failures are logged and left for
-// the normal Environment Work reclaim path.
+// execution, permanent-input Fail, and final Stop. Transient item failures are
+// logged and left for the normal Environment Work reclaim path.
 func (l *DockerLauncher) Run(ctx context.Context) error {
 	if _, err := l.engine.ImageInspect(ctx, l.opts.Image); err != nil {
 		return fmt.Errorf("selfhosted: worker image %q is unavailable: %w", l.opts.Image, err)

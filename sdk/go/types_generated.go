@@ -774,6 +774,10 @@ type EnvironmentWorkData struct {
 	Type string `json:"type"`
 }
 
+type EnvironmentWorkFailureRequest struct {
+	Message string `json:"message"`
+}
+
 type EnvironmentWorkHeartbeat struct {
 	LastHeartbeat string               `json:"last_heartbeat"`
 	LeaseExtended bool                 `json:"lease_extended"`
@@ -2536,14 +2540,16 @@ type SkillUploadRequest struct {
 }
 
 type SkillVersion struct {
-	CreatedAt   string `json:"created_at"`
-	Description string `json:"description"`
-	Directory   string `json:"directory"`
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	SkillID     string `json:"skill_id"`
-	Type        string `json:"type"`
-	Version     string `json:"version"`
+	ChecksumSHA256 string `json:"checksum_sha256"`
+	CreatedAt      string `json:"created_at"`
+	Description    string `json:"description"`
+	Directory      string `json:"directory"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	SizeBytes      int64  `json:"size_bytes"`
+	SkillID        string `json:"skill_id"`
+	Type           string `json:"type"`
+	Version        string `json:"version"`
 }
 
 type SkillVersionDeleted struct {

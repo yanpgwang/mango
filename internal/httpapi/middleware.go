@@ -105,7 +105,7 @@ func sessionScopeAllows(r *http.Request, scope workspace.SessionScope) bool {
 	if len(parts) == 6 && parts[1] == "environments" &&
 		parts[2] == scope.EnvironmentID && parts[3] == "work" && parts[4] == scope.WorkID &&
 		r.Method == http.MethodPost {
-		return parts[5] == "heartbeat" || parts[5] == "stop"
+		return parts[5] == "heartbeat" || parts[5] == "fail" || parts[5] == "stop"
 	}
 	if parts[1] == "sessions" && parts[2] == scope.SessionID {
 		switch {

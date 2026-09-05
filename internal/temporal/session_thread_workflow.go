@@ -171,6 +171,11 @@ func sessionThreadWorkflow(
 				if event.Seq <= cursor {
 					continue
 				}
+				if event.Type == domain.EvSessionThreadStatusTerminated ||
+					event.Type == domain.EvSessionStatusTerminated {
+					cursor = event.Seq
+					return true, nil
+				}
 				if event.Type == domain.EvAgentThreadMessageReceived {
 					var interrupts *turnInterruptWatcher
 					if interruptsEnabled {
