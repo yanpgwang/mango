@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +85,62 @@ func TestToolsetRejectsTraversalAndEscapingSymlink(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outside, "escape")); !os.IsNotExist(err) {
 		t.Fatalf("outside file exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestToolsetAllowsMemoryRootsAndEnforcesReadOnlyFileTools(t *testing.T) {
+	workdir := t.TempDir()
+	writable := t.TempDir()
+	readOnly := t.TempDir()
+	if err := os.WriteFile(filepath.Join(writable, "notes.txt"), []byte("writable"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(readOnly, "facts.txt"), []byte("fixed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tools, err := New(Context{
+		Workdir: workdir, AllowedRoots: []string{writable, readOnly},
+		ReadOnlyRoots: []string{readOnly},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = CloseAll(tools) })
+	execute := func(name, input string) (string, error) {
+		t.Helper()
+		blocks, err := findTool(t, tools, name).Execute(context.Background(), mango.SessionToolCall{
+			Name: name, Input: json.RawMessage(input),
+		})
+		if err != nil {
+			return "", err
+		}
+		return blocks[0].TextBlockInput.Text, nil
+	}
+	if got, err := execute("read", `{"path":`+strconv.Quote(filepath.Join(readOnly, "facts.txt"))+`}`); err != nil || got != "fixed" {
+		t.Fatalf("read-only read = %q, %v", got, err)
+	}
+	canonicalReadOnly, err := filepath.EvalSymlinks(readOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := execute("glob", `{"pattern":"*.txt","path":`+strconv.Quote(readOnly)+`}`); err != nil || got != filepath.ToSlash(filepath.Join(canonicalReadOnly, "facts.txt")) {
+		t.Fatalf("read-only glob = %q, %v", got, err)
+	}
+	if _, err := execute("write", `{"path":`+strconv.Quote(filepath.Join(readOnly, "facts.txt"))+`,"file_text":"changed"}`); err == nil || !strings.Contains(err.Error(), "read-only") {
+		t.Fatalf("read-only write error = %v", err)
+	}
+	if _, err := execute("edit", `{"path":`+strconv.Quote(filepath.Join(readOnly, "facts.txt"))+`,"old_str":"fixed","new_str":"changed"}`); err == nil || !strings.Contains(err.Error(), "read-only") {
+		t.Fatalf("read-only edit error = %v", err)
+	}
+	created := filepath.Join(writable, "new.txt")
+	if _, err := execute("write", `{"path":`+strconv.Quote(created)+`,"file_text":"new"}`); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(created); err != nil || string(data) != "new" {
+		t.Fatalf("writable memory = %q, %v", data, err)
+	}
+	if _, err := execute("read", `{"path":`+strconv.Quote(filepath.Join(t.TempDir(), "outside"))+`}`); err == nil {
+		t.Fatal("read accepted an absolute path outside configured roots")
 	}
 }
 

@@ -16,8 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 65532 mango \
     && useradd --uid 65532 --gid 65532 --home-dir /workspace --no-create-home mango \
-    && mkdir -p /workspace \
-    && chown 65532:65532 /workspace
+    && mkdir -p /workspace /mnt/memory \
+    && chown 65532:65532 /workspace /mnt/memory
 
 COPY --from=build /out/mango-worker /usr/local/bin/mango-worker
 WORKDIR /workspace

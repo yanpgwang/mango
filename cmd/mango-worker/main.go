@@ -101,7 +101,7 @@ func runDocker(ctx context.Context, arguments []string) error {
 	return launcher.Run(ctx)
 }
 
-func runItem(ctx context.Context, arguments []string) (runErr error) {
+func runItem(ctx context.Context, arguments []string) error {
 	flags := flag.NewFlagSet("mango-worker run", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	workdir := flags.String("workdir", envOr("MANGO_WORKDIR", "/workspace"), "sandbox workspace")
@@ -128,17 +128,10 @@ func runItem(ctx context.Context, arguments []string) (runErr error) {
 	if err != nil {
 		return err
 	}
-	toolset, err := selfhosted.SandboxTools(*workdir)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := selfhosted.CloseSandboxTools(toolset); err != nil {
-			runErr = errors.Join(runErr, err)
-		}
-	}()
 	worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
-		Tools: toolset, MaxIdle: maxIdle, Workdir: *workdir,
+		ToolsFunc: selfhosted.SandboxToolsForSession,
+		MaxIdle:   maxIdle,
+		Workdir:   *workdir,
 	})
 	return worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{WorkSecret: workSecret})
 }

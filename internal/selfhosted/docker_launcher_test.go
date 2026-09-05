@@ -101,6 +101,10 @@ func TestDockerLauncherPollsWithSupervisorAndTransportsOnlyWorkSecret(t *testing
 	if got := created.HostConfig.Mounts[0].Source; got != dockerSessionVolume("sesn_test") {
 		t.Fatalf("workspace volume = %q", got)
 	}
+	if memoryTmpfs := created.HostConfig.Tmpfs["/mnt/memory"]; !strings.Contains(memoryTmpfs, "rw") ||
+		!strings.Contains(memoryTmpfs, "noexec") || !strings.Contains(memoryTmpfs, "mode=1777") {
+		t.Fatalf("Memory Store tmpfs = %q", memoryTmpfs)
+	}
 }
 
 func TestDockerLauncherReplacesMatchingPreviousAttempt(t *testing.T) {

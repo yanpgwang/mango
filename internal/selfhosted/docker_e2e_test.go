@@ -40,6 +40,8 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	second.ID += "_resume"
 	works := []mango.EnvironmentWork{work, second}
 	skillArchive := dockerSkillArchive(t)
+	var memoryMu sync.Mutex
+	memoryContent := "memory-initial"
 	var polls, acknowledgements, firstHeartbeats, renewals, streams, results, stops atomic.Int32
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -90,6 +92,10 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 						"type": "custom", "skill_id": "skill_docker", "version": "1",
 					}},
 				},
+				"resources": []any{map[string]any{
+					"type": "memory_store", "memory_store_id": "memstore_docker", "name": "Docker memory",
+					"description": "", "instructions": nil, "mount_path": "/mnt/memory/docker-memory", "access": "read_write",
+				}},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/skills/skill_docker/versions/1":
 			assertItemAuthorization(t, r)
@@ -103,6 +109,39 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 			assertItemAuthorization(t, r)
 			w.Header().Set("Content-Type", "application/zip")
 			_, _ = w.Write(skillArchive)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/memory_stores/memstore_docker/memories":
+			assertItemAuthorization(t, r)
+			memoryMu.Lock()
+			item := dockerMemoryFixture(memoryContent, r.URL.Query().Get("view") == "full")
+			memoryMu.Unlock()
+			writeJSON(t, w, map[string]any{"data": []any{item}, "has_more": false, "next_page": nil})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/memory_stores/memstore_docker/memories/mem_docker":
+			assertItemAuthorization(t, r)
+			var body mango.MemoryUpdateRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode Memory update: %v", err)
+				http.Error(w, "bad Memory update", http.StatusBadRequest)
+				return
+			}
+			content, present := body.Content.Get()
+			if !present {
+				t.Error("Memory update omitted content")
+				http.Error(w, "missing content", http.StatusBadRequest)
+				return
+			}
+			memoryMu.Lock()
+			precondition, hasPrecondition := body.Precondition.Get()
+			wantSHA := fmt.Sprintf("%x", sha256.Sum256([]byte(memoryContent)))
+			if !hasPrecondition || string(precondition.ContentSHA256) != wantSHA {
+				memoryMu.Unlock()
+				t.Errorf("Memory precondition = %+v, %v; want %s", precondition, hasPrecondition, wantSHA)
+				http.Error(w, "stale Memory", http.StatusConflict)
+				return
+			}
+			memoryContent = content
+			item := dockerMemoryFixture(memoryContent, true)
+			memoryMu.Unlock()
+			writeJSON(t, w, item)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/events/stream"):
 			assertItemAuthorization(t, r)
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -115,6 +154,7 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 			calls := []dockerBashCall{
 				{ID: "tool_e2e_resume", Input: map[string]any{"command": "cat proof.txt"}},
 				{ID: "tool_e2e_skill_resume", Input: map[string]any{"command": "grep -o self-hosted-skill skills/docker-skill/SKILL.md"}},
+				{ID: "tool_e2e_memory_resume", Input: map[string]any{"command": "cat /mnt/memory/docker-memory/notes.txt"}},
 			}
 			if activation == 1 {
 				calls = []dockerBashCall{
@@ -124,6 +164,8 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 					{ID: "tool_e2e_restart", Input: map[string]any{"restart": true, "command": "printf '[%s]|%s' \"$PROOF\" \"$PWD\""}},
 					{ID: "tool_e2e_file", Input: map[string]any{"command": "printf docker-e2e > proof.txt && cat proof.txt"}},
 					{ID: "tool_e2e_skill", Input: map[string]any{"command": "grep -o self-hosted-skill skills/docker-skill/SKILL.md"}},
+					{ID: "tool_e2e_memory_read", Input: map[string]any{"command": "cat /mnt/memory/docker-memory/notes.txt"}},
+					{ID: "tool_e2e_memory_write", Input: map[string]any{"command": "printf memory-updated > /mnt/memory/docker-memory/notes.txt && cat /mnt/memory/docker-memory/notes.txt"}},
 				}
 			}
 			for _, call := range calls {
@@ -158,6 +200,9 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 				"tool_e2e_resume":              "docker-e2e",
 				"tool_e2e_skill":               "self-hosted-skill",
 				"tool_e2e_skill_resume":        "self-hosted-skill",
+				"tool_e2e_memory_read":         "memory-initial",
+				"tool_e2e_memory_write":        "memory-updated",
+				"tool_e2e_memory_resume":       "memory-updated",
 			}
 			matched := false
 			for toolUseID, text := range expected {
@@ -227,8 +272,27 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	}
 	assertContainerRemoved(t, engine, dockerWorkName(work.ID))
 	assertContainerRemoved(t, engine, dockerWorkName(second.ID))
-	if polls.Load() != 3 || acknowledgements.Load() != 2 || firstHeartbeats.Load() != 2 || renewals.Load() < 2 || streams.Load() != 2 || results.Load() != 8 || stops.Load() != 2 {
+	memoryMu.Lock()
+	finalMemory := memoryContent
+	memoryMu.Unlock()
+	if finalMemory != "memory-updated" {
+		t.Fatalf("final Memory = %q", finalMemory)
+	}
+	if polls.Load() != 3 || acknowledgements.Load() != 2 || firstHeartbeats.Load() != 2 || renewals.Load() < 2 || streams.Load() != 2 || results.Load() != 11 || stops.Load() != 2 {
 		t.Fatalf("polls=%d acknowledgements=%d first_heartbeats=%d renewals=%d streams=%d results=%d stops=%d", polls.Load(), acknowledgements.Load(), firstHeartbeats.Load(), renewals.Load(), streams.Load(), results.Load(), stops.Load())
+	}
+}
+
+func dockerMemoryFixture(content string, full bool) map[string]any {
+	var body any
+	if full {
+		body = content
+	}
+	return map[string]any{
+		"id": "mem_docker", "type": "memory", "memory_store_id": "memstore_docker",
+		"memory_version_id": "memver_docker", "path": "/notes.txt", "content": body,
+		"content_size_bytes": len(content), "content_sha256": fmt.Sprintf("%x", sha256.Sum256([]byte(content))),
+		"created_at": "2026-09-05T00:00:00Z", "updated_at": "2026-09-05T00:00:00Z",
 	}
 }
 

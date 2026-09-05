@@ -36,9 +36,13 @@ const (
 // an existing directory inside an isolation boundary owned by the caller.
 // Environment defaults to os.Environ. Mango credentials are always removed
 // before the persistent bash process is started. File tools are confined to
-// Workdir; bash is unrestricted within the caller's isolation boundary.
+// Workdir and AllowedRoots; write and edit reject paths beneath ReadOnlyRoots.
+// Bash is unrestricted within the caller's isolation boundary, so read-only
+// roots are a file-tool policy rather than a filesystem mount guarantee.
 type Context struct {
 	Workdir        string
+	AllowedRoots   []string
+	ReadOnlyRoots  []string
 	Environment    []string
 	MaxReadBytes   int64
 	MaxEditBytes   int64
@@ -110,6 +114,8 @@ func (t *tool) Execute(ctx context.Context, call mango.SessionToolCall) ([]mango
 
 type workspace struct {
 	root      string
+	roots     []string
+	readOnly  []string
 	env       []string
 	maxRead   int64
 	maxEdit   int64
@@ -136,6 +142,20 @@ func newWorkspace(options Context) (*workspace, error) {
 	}
 	if !info.IsDir() {
 		return nil, errors.New("agenttoolset: workdir must be a directory")
+	}
+	allowedRoots, err := canonicalDirectories("allowed root", options.AllowedRoots)
+	if err != nil {
+		return nil, err
+	}
+	readOnlyRoots, err := canonicalDirectories("read-only root", options.ReadOnlyRoots)
+	if err != nil {
+		return nil, err
+	}
+	roots := append([]string{root}, allowedRoots...)
+	for _, readOnlyRoot := range readOnlyRoots {
+		if !withinAnyRoot(roots, readOnlyRoot) {
+			return nil, fmt.Errorf("agenttoolset: read-only root %q is not an allowed root", readOnlyRoot)
+		}
 	}
 	if options.MaxReadBytes < 0 || options.MaxEditBytes < 0 || options.MaxOutputBytes < 0 {
 		return nil, errors.New("agenttoolset: byte limits must be non-negative")
@@ -166,10 +186,46 @@ func newWorkspace(options Context) (*workspace, error) {
 		environment = os.Environ()
 	}
 	return &workspace{
-		root: root, env: scrubCredentials(environment), maxRead: options.MaxReadBytes,
+		root: root, roots: deduplicatePaths(roots), readOnly: deduplicatePaths(readOnlyRoots),
+		env: scrubCredentials(environment), maxRead: options.MaxReadBytes,
 		maxEdit: options.MaxEditBytes, maxOutput: options.MaxOutputBytes,
 		bashTO: options.BashTimeout, closeTO: options.BashCloseTimeout,
 	}, nil
+}
+
+func canonicalDirectories(kind string, paths []string) ([]string, error) {
+	result := make([]string, 0, len(paths))
+	for _, value := range paths {
+		if !filepath.IsAbs(value) {
+			return nil, fmt.Errorf("agenttoolset: %s %q must be absolute", kind, value)
+		}
+		resolved, err := filepath.EvalSymlinks(filepath.Clean(value))
+		if err != nil {
+			return nil, fmt.Errorf("agenttoolset: resolve %s %q: %w", kind, value, err)
+		}
+		info, err := os.Stat(resolved)
+		if err != nil {
+			return nil, fmt.Errorf("agenttoolset: stat %s %q: %w", kind, value, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("agenttoolset: %s %q must be a directory", kind, value)
+		}
+		result = append(result, resolved)
+	}
+	return result, nil
+}
+
+func deduplicatePaths(paths []string) []string {
+	seen := make(map[string]struct{}, len(paths))
+	result := make([]string, 0, len(paths))
+	for _, value := range paths {
+		if _, duplicate := seen[value]; duplicate {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func (w *workspace) read(ctx context.Context, input map[string]json.RawMessage) (string, error) {
@@ -242,7 +298,7 @@ func (w *workspace) edit(ctx context.Context, path, oldValue, newValue string) (
 	if oldValue == "" {
 		return "", errors.New("edit: old_str is required")
 	}
-	resolved, err := w.resolveExisting(path)
+	resolved, err := w.resolveExistingForWrite(path)
 	if err != nil {
 		return "", fmt.Errorf("edit: %w", err)
 	}
@@ -301,13 +357,13 @@ func (w *workspace) glob(ctx context.Context, pattern, root string) (string, err
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
-		relative, err := filepath.Rel(w.root, path)
+		relative, err := filepath.Rel(searchRoot, path)
 		if err != nil {
 			return err
 		}
-		relative = filepath.ToSlash(relative)
-		if matcher.MatchString(relative) {
-			matches = append(matches, relative)
+		display := w.displayPath(path)
+		if matcher.MatchString(filepath.ToSlash(relative)) {
+			matches = append(matches, display)
 		}
 		return nil
 	})
@@ -382,11 +438,7 @@ func (w *workspace) grep(ctx context.Context, pattern, root string) (string, err
 		if err != nil {
 			return "", fmt.Errorf("grep: %w", err)
 		}
-		relative, err := filepath.Rel(w.root, path)
-		if err != nil {
-			file.Close()
-			return "", fmt.Errorf("grep: %w", err)
-		}
+		display := w.displayPath(path)
 		scanner := bufio.NewScanner(io.LimitReader(file, w.maxEdit+1))
 		scanner.Buffer(make([]byte, 64<<10), int(w.maxEdit))
 		line := 0
@@ -394,7 +446,7 @@ func (w *workspace) grep(ctx context.Context, pattern, root string) (string, err
 			line++
 			value := scanner.Text()
 			if matcher.MatchString(value) {
-				fmt.Fprintf(&output, "%s:%d:%s\n", filepath.ToSlash(relative), line, value)
+				fmt.Fprintf(&output, "%s:%d:%s\n", display, line, value)
 				if int64(output.Len()) > w.maxOutput {
 					break
 				}
@@ -403,7 +455,7 @@ func (w *workspace) grep(ctx context.Context, pattern, root string) (string, err
 		scanErr := scanner.Err()
 		file.Close()
 		if scanErr != nil {
-			return "", fmt.Errorf("grep: scan %s: %w", filepath.ToSlash(relative), scanErr)
+			return "", fmt.Errorf("grep: scan %s: %w", display, scanErr)
 		}
 		if int64(output.Len()) > w.maxOutput {
 			break
@@ -421,8 +473,19 @@ func (w *workspace) resolveExisting(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !pathWithin(w.root, resolved) {
+	if !withinAnyRoot(w.roots, resolved) {
 		return "", errors.New("path escapes the workspace")
+	}
+	return resolved, nil
+}
+
+func (w *workspace) resolveExistingForWrite(path string) (string, error) {
+	resolved, err := w.resolveExisting(path)
+	if err != nil {
+		return "", err
+	}
+	if w.isReadOnly(path, resolved) {
+		return "", errors.New("path is read-only")
 	}
 	return resolved, nil
 }
@@ -433,8 +496,11 @@ func (w *workspace) resolveForWrite(path string) (string, error) {
 		return "", err
 	}
 	if resolved, err := filepath.EvalSymlinks(candidate); err == nil {
-		if !pathWithin(w.root, resolved) {
+		if !withinAnyRoot(w.roots, resolved) {
 			return "", errors.New("path escapes the workspace")
+		}
+		if w.isReadOnly(path, resolved) {
+			return "", errors.New("path is read-only")
 		}
 		return resolved, nil
 	}
@@ -442,13 +508,16 @@ func (w *workspace) resolveForWrite(path string) (string, error) {
 	for {
 		resolvedParent, evalErr := filepath.EvalSymlinks(parent)
 		if evalErr == nil {
-			if !pathWithin(w.root, resolvedParent) {
+			if !withinAnyRoot(w.roots, resolvedParent) {
 				return "", errors.New("path escapes the workspace")
+			}
+			if w.isReadOnly(path, resolvedParent) {
+				return "", errors.New("path is read-only")
 			}
 			break
 		}
 		next := filepath.Dir(parent)
-		if next == parent || !pathWithin(w.root, next) {
+		if next == parent {
 			return "", evalErr
 		}
 		parent = next
@@ -458,7 +527,7 @@ func (w *workspace) resolveForWrite(path string) (string, error) {
 
 func (w *workspace) lexicalPath(path string) (string, error) {
 	if filepath.IsAbs(path) {
-		return "", errors.New("absolute paths are not allowed")
+		return filepath.Clean(path), nil
 	}
 	clean := filepath.Clean(path)
 	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
@@ -469,6 +538,29 @@ func (w *workspace) lexicalPath(path string) (string, error) {
 		return "", errors.New("path escapes the workspace")
 	}
 	return candidate, nil
+}
+
+func (w *workspace) isReadOnly(inputPath, resolved string) bool {
+	candidate := resolved
+	if filepath.IsAbs(inputPath) {
+		candidate = filepath.Clean(inputPath)
+	}
+	for _, root := range w.readOnly {
+		if pathWithin(root, candidate) || pathWithin(root, resolved) {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *workspace) displayPath(path string) string {
+	if pathWithin(w.root, path) {
+		relative, err := filepath.Rel(w.root, path)
+		if err == nil {
+			return filepath.ToSlash(relative)
+		}
+	}
+	return filepath.ToSlash(path)
 }
 
 func readBounded(path string, limit int64) ([]byte, error) {
@@ -594,6 +686,15 @@ func globRegexp(pattern string) (*regexp.Regexp, error) {
 func pathWithin(root, path string) bool {
 	relative, err := filepath.Rel(root, path)
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+func withinAnyRoot(roots []string, path string) bool {
+	for _, root := range roots {
+		if pathWithin(root, path) {
+			return true
+		}
+	}
+	return false
 }
 
 func scrubCredentials(environment []string) []string {

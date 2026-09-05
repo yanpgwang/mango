@@ -14,6 +14,7 @@ import (
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/pg/pgstore"
+	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 var _ app.MemoryRepository = (*MemoryRepository)(nil)
@@ -22,6 +23,26 @@ type MemoryRepository struct{ store *Store }
 
 func NewMemoryRepository(store *Store) *MemoryRepository {
 	return &MemoryRepository{store: store}
+}
+
+// fenceSessionMemoryWrite makes a worker-side Memory mutation linearizable
+// with Work reclaim. Route authorization narrows the token to an attached,
+// read-write Store; this in-transaction check proves the same token still owns
+// the live Session lease at the instant the Store is changed.
+func (r *MemoryRepository) fenceSessionMemoryWrite(
+	ctx context.Context,
+	tx pgx.Tx,
+	storeID string,
+) error {
+	requestScope, _ := workspace.FromContext(ctx)
+	if requestScope.Session == nil {
+		return nil
+	}
+	access, attached := requestScope.Session.Memories[storeID]
+	if !attached || access != domain.MemoryAccessReadWrite {
+		return domain.Precondition("memory store is not writable by this Session")
+	}
+	return r.store.fenceSessionCredential(ctx, tx, requestScope.Session.SessionID)
 }
 
 func (r *MemoryRepository) CreateStore(ctx context.Context, item domain.MemoryStore) (domain.MemoryStore, error) {
@@ -250,6 +271,9 @@ func (r *MemoryRepository) CreateMemory(ctx context.Context, item domain.Memory,
 	normalizeMemoryTimes(&item, &version)
 	var created domain.Memory
 	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
+		if err := r.fenceSessionMemoryWrite(ctx, tx, item.MemoryStoreID); err != nil {
+			return err
+		}
 		var archivedAt *time.Time
 		if err := tx.QueryRow(ctx, `SELECT archived_at FROM memory_stores WHERE id = $1 FOR UPDATE`, item.MemoryStoreID).Scan(&archivedAt); errors.Is(err, pgx.ErrNoRows) {
 			return domain.NotFound("memory store not found")
@@ -339,6 +363,9 @@ func (r *MemoryRepository) UpdateMemory(
 	}
 	var updated domain.Memory
 	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
+		if err := r.fenceSessionMemoryWrite(ctx, tx, storeID); err != nil {
+			return err
+		}
 		var storeArchivedAt *time.Time
 		if err := tx.QueryRow(ctx, `
 SELECT archived_at FROM memory_stores WHERE id = $1 FOR UPDATE`, storeID).Scan(&storeArchivedAt); errors.Is(err, pgx.ErrNoRows) {
@@ -421,6 +448,9 @@ func (r *MemoryRepository) DeleteMemory(
 	}
 	var deleted domain.Memory
 	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
+		if err := r.fenceSessionMemoryWrite(ctx, tx, storeID); err != nil {
+			return err
+		}
 		var storeArchivedAt *time.Time
 		if err := tx.QueryRow(ctx, `
 SELECT archived_at FROM memory_stores WHERE id = $1 FOR UPDATE`, storeID).Scan(&storeArchivedAt); errors.Is(err, pgx.ErrNoRows) {

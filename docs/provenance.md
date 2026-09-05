@@ -700,6 +700,60 @@ support, so they run the same credential-free and opt-in live conformance suites
   activation, observes state persistence and restart, then verifies only the
   workspace file survives a second activation.
 
+## Self-hosted Memory Store preparation
+
+- User/operator problem: a self-hosted Session could snapshot a Memory Store in
+  the control plane, but the external worker neither materialized that Store nor
+  synchronized tool changes. Running anyway would give the model a mount path
+  that did not exist and would make execution behavior depend on a
+  provider-specific launcher.
+- Reviewed the public CMA self-hosted worker and Memory implementations in
+  `anthropic-sdk-go` commit
+  [`de6914c544629b14a67c0695ce147edae6a291e0`](https://github.com/anthropics/anthropic-sdk-go/tree/de6914c544629b14a67c0695ce147edae6a291e0/lib/environments),
+  `anthropic-sdk-python` commit
+  [`62de60b27d04f0927a0ccf0f2610597fafcfab6a`](https://github.com/anthropics/anthropic-sdk-python/tree/62de60b27d04f0927a0ccf0f2610597fafcfab6a/src/anthropic/lib),
+  and `anthropic-sdk-typescript` commit
+  [`ba14b1f4fdf2e840a7b32297965342a099f6201d`](https://github.com/anthropics/anthropic-sdk-typescript/tree/ba14b1f4fdf2e840a7b32297965342a099f6201d/src),
+  plus the public self-hosted cookbook at commit
+  [`a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5`](https://github.com/anthropics/claude-cookbooks/tree/a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5/managed_agents/self_hosted_sandboxes),
+  on 2026-09-05. The three SDKs independently expose the same important
+  lifecycle: start heartbeating before one Session fetch; prepare Skills and
+  Memory before a per-Session tool factory; expose allowed/read-only roots;
+  reconcile on a bounded cadence; run a final sync on clean completion and an
+  independently bounded push-only flush on every exit.
+- Mango adopts those lifecycle and failure invariants because they solve the
+  same self-hosted problem. Store content remains server-authoritative on a
+  simultaneous edit; uploads use content SHA-256 preconditions; read-only
+  Stores never push; local deletion requires a later corroboration and a
+  per-pass cap; and a Store-specific marker prevents an altered directory from
+  driving uploads, deletes, or unsafe cleanup. An invalid frozen Store
+  declaration is a permanent input failure. Retryable API/transport failures,
+  worker-local filesystem failures, and per-Session tool-construction failures
+  are retried locally and then left for lease reclaim rather than terminating
+  the Session.
+- Mango changes the wire and trust details. The worker uses Mango's existing
+  `/v1/memory_stores/{id}/memories` contract rather than adding a parallel
+  synchronization API. Its per-Work Session token is mandatory, can reach only
+  the Stores frozen on that Session, and may mutate only `read_write`
+  attachments. Each mutation rechecks the live lease inside the same PostgreSQL
+  transaction, closing the authorization-to-reclaim race. There is no
+  Environment-key fallback, Anthropic header, beta identifier, hosted
+  credential, or runtime dependency on an external SDK.
+- Mango keeps the first OSS slice deliberately smaller where behavior does not
+  require breadth: Store and file transfers are sequential, the frozen absolute
+  mount path has no workdir fallback, and only the first-party Docker launcher
+  supplies a `/mnt/memory` filesystem. Read-only roots are enforced by the file
+  tools; unrestricted Bash remains inside the Docker security boundary and is
+  not presented as a kernel read-only mount. File/Git inputs, other provider
+  launchers, retention, and a hostile multi-tenant sandbox are non-goals.
+- Acceptance: independently authored HTTP-backed SDK tests cover initial
+  download, tool-factory ordering, read-only roots, local/remote conflict,
+  periodic delete corroboration, final writeback, and distrust-marker cleanup.
+  Middleware and PostgreSQL tests cover attachment scope and stale-lease
+  fencing. The opt-in Docker lifecycle test reads and edits an attached Store,
+  persists it during teardown, and downloads the updated value in a later Work
+  activation without importing a cookbook application into the test suite.
+
 ## Docker-default OSS execution
 
 - User problem: the ordinary local deployment must run tools in a separate

@@ -66,7 +66,7 @@ Get, List, metadata Update, and Ack responses redact the Work secret as `null`;
 only Poll returns the raw payload. The Go WorkPoller preserves the polled value
 in memory when it returns the acknowledged item.
 
-## Skills and Session state
+## Session inputs and state
 
 The Work and Session event APIs provide the worker protocol. The Go SDK ships a
 provider-neutral `WorkPoller` for poll, Ack, drain, and reclaim, plus a
@@ -80,8 +80,8 @@ and `MANGO_SESSION_ID`. Its Work secret must be supplied through a protected
 launcher transport whenever untrusted subprocesses share the sandbox.
 
 These SDK lifecycle helpers do not choose or create a sandbox. The composed Go
-worker prepares immutable custom Skills; File, Git, and Memory inputs remain
-outside this slice. Mango's first-party Docker launcher
+worker prepares immutable custom Skills and attached Memory Stores; File and Git
+inputs remain outside this slice. Mango's first-party Docker launcher
 composes them with container and workspace-volume lifecycle; other launchers
 still own that boundary. See the staged
 [self-hosted worker design](../architecture/self-hosted-workers.md).
@@ -122,14 +122,17 @@ Containers are removed after each activation. A Docker named volume derived
 from the Session ID is retained, so later Work for the same Session resumes the
 same workspace; shell process state deliberately does not survive that
 container boundary. Before dispatch, the worker prepares the frozen custom
-Skill pins described below. It does not yet prepare Memory, File/Git resources,
-or Session outputs, and it is not a hardened hostile multi-tenant boundary. See the
+Skill pins and attached Memory Stores described below. It does not yet prepare
+File/Git resources or Session outputs, and it is not a hardened hostile
+multi-tenant boundary. See the
 [Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker).
 
-The file tools are confined to `/workspace`. Bash itself is intentionally not
-path-confined within the container, so the Docker boundary and its mounts,
-credentials, user, capabilities, resources, and network policy remain the
-security boundary.
+The file tools are confined to `/workspace` plus the exact Memory Store roots
+attached to the Session. `write` and `edit` reject read-only roots. Bash itself
+is intentionally not path-confined within the container, so read-only access is
+a file-tool policy rather than a filesystem guarantee; the Docker boundary and
+its mounts, credentials, user, capabilities, resources, and network policy
+remain the security boundary.
 
 Workers must honor `evaluated_permission` independently of execution location.
 An `ask` call waits for a persisted allow confirmation; a deny must never run.
@@ -160,13 +163,26 @@ Model-visible self-hosted paths start with `skills/` and are relative to the
 worker's configured `workdir`; the control plane never assumes that a future
 provider mounts it at `/workspace`. See [Skills](skills.md).
 
+The same frozen Session snapshot contains its Memory Store attachments. Before
+constructing the toolset, the worker downloads each Store to its absolute
+`/mnt/memory/...` path and passes those exact writable/read-only roots to the
+tool factory. Writable Stores reconcile by path after tool calls at a default
+15-second cadence: remote changes win conflicts, local changes use the existing
+Memory create/update API and SHA-256 preconditions, and deletions require a
+second observation before they may reach the server. A clean end performs one
+final full sync; every end also receives a separately bounded, push-only flush
+that cannot pull or delete. A Store marker prevents an altered directory from
+being uploaded or removed. See [Memory](memory.md).
+
 ## Security boundary
 
 The supervisor uses a Workspace API key to Poll and Ack. Poll additionally
 issues an unpredictable per-claim credential payload; only the SHA-256 digest
 of its `sessions_token` is stored. That token is limited to the claimed Work's
 Heartbeat, Fail, and Stop, the claimed Session's read/event execution routes, and the
-immutable File and Skill inputs pinned to that Session. On the event write
+immutable File and Skill inputs plus the Memory Stores attached to that Session.
+Memory mutations are limited to `read_write` attachments and are fenced against
+the live Work lease in the same database transaction as the change. On the event write
 route it may submit only `user.tool_result` and `user.custom_tool_result`, not
 ordinary user messages, interrupts, approvals, or `system.message`. It becomes
 invalid when the Work stops, its lease expires, or it is reclaimed. An existing

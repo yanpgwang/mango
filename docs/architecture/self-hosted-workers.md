@@ -41,17 +41,16 @@ result submission, and Stop.
 
 ## Reference scope
 
-The public Claude cookbook at current `main` commit
-`a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5` and `anthropic-sdk-go` v1.69.0
-at commit `6298207eac7ff589e7fcc8a78f6c034ab09de47f` were reviewed on
-2026-09-04. Current SDK `main` at
-`e9c104e7e5fb80a26ff26e398c0e4e3fe1fe7f33` was also checked; its only
-self-hosted-adjacent delta adds Workspace ID parameters and does not change the
-worker lifecycle. The cookbook reference set is Docker, Cloudflare Containers, a pure
-Cloudflare Worker variant, Modal, Daytona, and Vercel. Those implementations
-confirm the separation above: the compute platforms expose generic container,
-process, filesystem, or volume primitives; Anthropic's SDK/CLI worker implements
-the managed-agent protocol.
+The public Claude cookbook at `main` commit
+`a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5` and the current public Go, Python,
+and TypeScript SDK sources at commits `de6914c544629b14a67c0695ce147edae6a291e0`,
+`62de60b27d04f0927a0ccf0f2610597fafcfab6a`, and
+`ba14b1f4fdf2e840a7b32297965342a099f6201d` were reviewed on 2026-09-05.
+The cookbook reference set is Docker, Cloudflare Containers, a pure Cloudflare
+Worker variant, Modal, Daytona, and Vercel. Those implementations confirm the
+separation above: compute platforms expose generic container, process,
+filesystem, or volume primitives; the provider-neutral SDK/CLI worker owns the
+managed-agent protocol and Session Memory synchronization.
 
 Mango will use the same separation without treating that list as a provider
 compatibility promise:
@@ -81,7 +80,7 @@ opt-in.
 | Workspace continuity | Docker examples retain a per-Session workspace across activations | A named `/workspace` volume is keyed by Session ID and retained after each Work container exits | Aligned |
 | Agent tools | Core shell/file tools execute inside customer infrastructure; Web tools remain server-side | The Docker image executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`; portable server-side Web-tool ownership is not complete | Partial |
 | Shell lifecycle | The current SDK keeps a persistent Bash process and supports restart/per-call timeout | The self-hosted Go toolset keeps one PTY-backed Bash per Work container, exposes `restart` and `timeout_ms`, and replaces the shell after timeout, cancellation, or framing failure | Aligned lifecycle; Mango additionally bounds shutdown reaping |
-| Session inputs | The public worker prepares supported Skill and Memory state before execution | The Go worker prepares immutable primary/roster Skill bundles before tool dispatch while its lease heartbeat runs; Memory and File/Git preparation remain open | Partial |
+| Session inputs | The public worker prepares supported Skill and Memory state before execution | The Go worker prepares immutable primary/roster Skill bundles and attached Memory Stores before constructing per-Session tools; File/Git preparation remains open | Aligned for Skills and Memory |
 
 This table is a behavioral audit, not a compatibility claim. CMA's current
 security guide recommends passing a Work item's per-Session secret only to that
@@ -115,6 +114,10 @@ Session container merely to copy the cookbook script.
   response redacts the payload.
 - The Session credential may submit tool results only. It cannot manufacture
   user input, approval decisions, or persistent system context.
+- The same credential may read only Memory Stores attached to its frozen
+  Session, and may mutate only `read_write` attachments. Every Memory mutation
+  rechecks the live Work lease in the same PostgreSQL transaction as the write,
+  so reclaim cannot race a previously authorized request.
 - No model-provider key or broad server credential belongs in a sandbox.
 - Mango currently authorizes supervisor Poll/Ack with a Workspace API key and
   item execution with the per-Session token. Until scoped Environment polling
@@ -149,13 +152,19 @@ Session container merely to copy the cookbook script.
    cwd, environment variables, and background jobs within an activation;
    explicit restart, per-call timeout, cancellation recovery, bounded output,
    and bounded shutdown are SDK-owned rather than Docker-specific.
-7. Complete the remaining shared self-hosted behavior before multiplying
-   providers: Memory preparation, supported File/Git inputs and outputs,
-   server-side Web-tool ownership, and restart/health evidence.
-8. Add thin provider examples one at a time. Each must use the same runner and
+7. Added provider-neutral Memory preparation. The worker downloads attached
+   Stores before constructing tools, exposes writable and read-only roots,
+   reconciles with SHA-256 preconditions after tool calls, performs a final
+   sync or cancellation-safe push-only flush, and removes only trusted folders
+   it created. Docker supplies a bounded `/mnt/memory` tmpfs; no provider logic
+   enters the SDK lifecycle.
+8. Complete the remaining shared self-hosted behavior before multiplying
+   providers: supported File/Git inputs and outputs, server-side Web-tool
+   ownership, and restart/health evidence.
+9. Add thin provider examples one at a time. Each must use the same runner and
    document persistence, cancellation, resource limits, network policy, and
    restart behavior.
-9. Remove the old Mango-managed `cloud` Environment path and compiled provider
+10. Remove the old Mango-managed `cloud` Environment path and compiled provider
    registry only after the Docker worker replaces their observable OSS
    workflow. Mango is pre-release, so the final API change happens directly on
    `/v1` without a compatibility layer.

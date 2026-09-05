@@ -45,11 +45,30 @@ type EnvironmentWorkerOptions struct {
 	// NewEnvironmentWorker.
 	Workdir string
 
-	Tools       []SessionTool
-	MaxIdle     *time.Duration
-	ToolTimeout time.Duration
-	SendTimeout time.Duration
-	Logger      *slog.Logger
+	// Tools are reused as-is for every Work item. ToolsFunc takes precedence
+	// and is called once per Session after its Memory Store directories have
+	// been downloaded, allowing file tools to bind the exact allowed roots.
+	Tools     []SessionTool
+	ToolsFunc func(EnvironmentWorkerToolContext) ([]SessionTool, error)
+
+	// MemorySyncInterval is checked after each dispatched tool. Zero uses 15
+	// seconds, a positive duration below five seconds is rejected, and a
+	// negative duration explicitly disables Memory Store materialization.
+	MemorySyncInterval  time.Duration
+	MemorySyncDeletions MemoryDeleteMode
+	MaxIdle             *time.Duration
+	ToolTimeout         time.Duration
+	SendTimeout         time.Duration
+	Logger              *slog.Logger
+}
+
+// EnvironmentWorkerToolContext is the filesystem policy for one Session's
+// toolset. Workdir is always writable; AllowedRoots are attached Memory Store
+// paths and ReadOnlyRoots is the subset mounted read_only.
+type EnvironmentWorkerToolContext struct {
+	Workdir       string
+	AllowedRoots  []string
+	ReadOnlyRoots []string
 }
 
 // EnvironmentWorkerHandleItemOptions identifies one already-acknowledged Work
@@ -174,6 +193,10 @@ func (w *EnvironmentWorker) validate(requireEnvironment bool) error {
 		return errors.New("ToolTimeout must be non-negative")
 	case w.opts.SendTimeout < 0:
 		return errors.New("SendTimeout must be non-negative")
+	case w.opts.MemorySyncInterval > 0 && w.opts.MemorySyncInterval < MinMemorySyncInterval:
+		return fmt.Errorf("%w: got %s", ErrMemorySyncIntervalTooShort, w.opts.MemorySyncInterval)
+	case w.opts.MemorySyncDeletions > MemorySyncDeletionsDisabled:
+		return errors.New("MemorySyncDeletions is invalid")
 	}
 	return nil
 }
@@ -218,7 +241,7 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 	abandonWork := false
 	failureCommitted := false
 	if startup.ready {
-		skills, preparationErr, permanent := w.prepareSessionInputs(
+		inputs, preparationErr, permanent := w.prepareSessionInputs(
 			sessionCtx, itemClient, work.Data.ID, log,
 		)
 		if preparationErr != nil {
@@ -245,13 +268,8 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 				abandonWork = true
 			}
 		} else {
-			defer func() {
-				if err := skills.Cleanup(); err != nil {
-					log.Warn("Session Skill cleanup failed", "error", err)
-				}
-			}()
 			runner := NewSessionToolRunner(sessionCtx, itemClient, work.Data.ID, SessionToolRunnerOptions{
-				Tools: w.opts.Tools, MaxIdle: w.opts.MaxIdle,
+				Tools: inputs.tools, MaxIdle: w.opts.MaxIdle,
 				ToolTimeout: w.opts.ToolTimeout, SendTimeout: w.opts.SendTimeout,
 				SendRetryWindow: startup.ttl, Logger: log,
 			})
@@ -259,14 +277,17 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 				call := runner.Current()
 				log.Info("dispatched tool", "tool", call.Name, "tool_use_id", call.ToolUseID,
 					"is_error", call.IsError, "posted", call.Posted)
+				if inputs.memories != nil {
+					inputs.memories.SyncIfDue(sessionCtx)
+				}
 			}
 			runnerErr = runner.Err()
 			if err := runner.Close(); err != nil && runnerErr == nil {
 				runnerErr = err
 			}
-			if err := skills.Cleanup(); err != nil {
-				log.Warn("Session Skill cleanup failed", "error", err)
-			}
+			cleanEnd := sessionCtx.Err() == nil && (runnerErr == nil ||
+				errors.Is(runnerErr, ErrSessionTerminated) || errors.Is(runnerErr, ErrIdleTimeout))
+			inputs.cleanup(cleanEnd, log)
 		}
 	} else {
 		runnerErr = startup.end.err
@@ -325,15 +346,15 @@ func (w *EnvironmentWorker) prepareSessionInputs(
 	client *Client,
 	sessionID string,
 	log *slog.Logger,
-) (*SessionSkillSetup, error, bool) {
+) (*environmentSessionInputs, error, bool) {
 	var lastErr error
 	for attempt := 1; attempt <= maxSessionInputPreparationAttempts; attempt++ {
 		session, err := client.GetSession(ctx, sessionID)
 		if err != nil {
 			lastErr = fmt.Errorf("mango: retrieve Session inputs: %w", err)
 		} else {
-			var setup *SessionSkillSetup
-			setup, err = PrepareSessionSkills(ctx, client, session, w.opts.Workdir)
+			var setup *environmentSessionInputs
+			setup, err = w.prepareFetchedSessionInputs(ctx, client, session, log)
 			if err == nil {
 				return setup, nil, false
 			}
@@ -358,6 +379,127 @@ func (w *EnvironmentWorker) prepareSessionInputs(
 	), false
 }
 
+type environmentSessionInputs struct {
+	skills    *SessionSkillSetup
+	memories  *SessionMemoryStores
+	tools     []SessionTool
+	ownsTools bool
+	cleaned   bool
+}
+
+func (w *EnvironmentWorker) prepareFetchedSessionInputs(
+	ctx context.Context,
+	client *Client,
+	session Session,
+	log *slog.Logger,
+) (_ *environmentSessionInputs, retErr error) {
+	inputs := &environmentSessionInputs{}
+	defer func() {
+		if retErr != nil {
+			inputs.disposePrepared(log)
+		}
+	}()
+	var err error
+	inputs.skills, err = PrepareSessionSkills(ctx, client, session, w.opts.Workdir)
+	if err != nil {
+		return nil, err
+	}
+	if w.opts.MemorySyncInterval >= 0 {
+		inputs.memories, err = NewSessionMemoryStores(client, SessionMemoryStoresOptions{
+			Workdir: w.opts.Workdir, SyncInterval: w.opts.MemorySyncInterval,
+			SyncDeletions: w.opts.MemorySyncDeletions, Logger: log,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := inputs.memories.Download(ctx, session); err != nil {
+			return nil, err
+		}
+	}
+	toolContext := EnvironmentWorkerToolContext{Workdir: w.opts.Workdir}
+	if inputs.memories != nil {
+		toolContext.AllowedRoots = inputs.memories.Roots()
+		toolContext.ReadOnlyRoots = inputs.memories.ReadOnlyRoots()
+	}
+	if w.opts.ToolsFunc != nil {
+		inputs.ownsTools = true
+		inputs.tools, err = w.opts.ToolsFunc(toolContext)
+		if err != nil {
+			return nil, &sessionToolSetupError{err: err}
+		}
+	} else {
+		inputs.tools = w.opts.Tools
+	}
+	return inputs, nil
+}
+
+type sessionToolSetupError struct{ err error }
+
+func (e *sessionToolSetupError) Error() string { return "mango: build Session tools: " + e.err.Error() }
+func (e *sessionToolSetupError) Unwrap() error { return e.err }
+
+func (inputs *environmentSessionInputs) cleanup(cleanEnd bool, log *slog.Logger) {
+	if inputs == nil || inputs.cleaned {
+		return
+	}
+	inputs.cleaned = true
+	if inputs.ownsTools {
+		if err := closeEnvironmentSessionTools(inputs.tools); err != nil {
+			log.Warn("Session tool cleanup failed", "error", err)
+		}
+	}
+	if inputs.skills != nil {
+		if err := inputs.skills.Cleanup(); err != nil {
+			log.Warn("Session Skill cleanup failed", "error", err)
+		}
+	}
+	if inputs.memories != nil {
+		inputs.memories.Cleanup(cleanEnd)
+	}
+}
+
+func (inputs *environmentSessionInputs) disposePrepared(log *slog.Logger) {
+	if inputs == nil || inputs.cleaned {
+		return
+	}
+	inputs.cleaned = true
+	if inputs.ownsTools {
+		if err := closeEnvironmentSessionTools(inputs.tools); err != nil {
+			log.Warn("Session tool cleanup failed", "error", err)
+		}
+	}
+	if inputs.skills != nil {
+		if err := inputs.skills.Cleanup(); err != nil {
+			log.Warn("Session Skill cleanup failed", "error", err)
+		}
+	}
+	if inputs.memories != nil {
+		if err := inputs.memories.Dispose(); err != nil {
+			log.Warn("Session Memory Store cleanup failed", "error", err)
+		}
+	}
+}
+
+func closeEnvironmentSessionTools(tools []SessionTool) (result error) {
+	for index := len(tools) - 1; index >= 0; index-- {
+		closer, ok := tools[index].(interface{ Close() error })
+		if !ok {
+			continue
+		}
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					result = errors.Join(result, fmt.Errorf("mango: close Session tool %q: panic: %v", tools[index].Name(), recovered))
+				}
+			}()
+			if err := closer.Close(); err != nil {
+				result = errors.Join(result, fmt.Errorf("mango: close Session tool %q: %w", tools[index].Name(), err))
+			}
+		}()
+	}
+	return result
+}
+
 func retryableSessionInputError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false
@@ -367,6 +509,30 @@ func retryableSessionInputError(err error) bool {
 	}
 	if errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
+	}
+	var toolSetup *sessionToolSetupError
+	if errors.As(err, &toolSetup) {
+		// Unlike the fixed Session resource snapshot, tool construction is a
+		// worker-local operation. A different activation may have a healthy
+		// filesystem or process runtime, so never terminate the Session for it.
+		return true
+	}
+	var memorySetup *SessionMemoryError
+	if errors.As(err, &memorySetup) {
+		var apiError *APIError
+		if errors.As(memorySetup.Err, &apiError) {
+			return apiError.StatusCode == http.StatusRequestTimeout ||
+				apiError.StatusCode == http.StatusConflict ||
+				apiError.StatusCode == http.StatusTooEarly ||
+				apiError.StatusCode == http.StatusTooManyRequests ||
+				apiError.StatusCode >= http.StatusInternalServerError
+		}
+		if errors.Is(memorySetup.Err, context.DeadlineExceeded) ||
+			errors.Is(memorySetup.Err, io.ErrUnexpectedEOF) {
+			return true
+		}
+		var pathError *os.PathError
+		return errors.As(memorySetup.Err, &pathError)
 	}
 	var apiError *APIError
 	if errors.As(err, &apiError) {

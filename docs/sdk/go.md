@@ -77,7 +77,13 @@ Use `NewEnvironmentWorker` for the complete provider-neutral Work lifecycle:
 worker := mango.NewEnvironmentWorker(client, mango.EnvironmentWorkerOptions{
     EnvironmentID: environmentID,
     Workdir:       "/workspace",
-    Tools:         tools,
+    ToolsFunc: func(env mango.EnvironmentWorkerToolContext) ([]mango.SessionTool, error) {
+        return agenttoolset.New(agenttoolset.Context{
+            Workdir:       env.Workdir,
+            AllowedRoots:  env.AllowedRoots,
+            ReadOnlyRoots: env.ReadOnlyRoots,
+        })
+    },
 })
 if err := worker.Run(ctx); err != nil {
     return err
@@ -101,15 +107,24 @@ the launcher must also keep secrets out of parent environment/command metadata
 and prevent same-identity children from inspecting the trusted runner. The
 first-party Docker launcher uses one-shot stdin and a non-dumpable item process.
 
-After the first successful heartbeat, the worker fetches the frozen Session and
-prepares its immutable custom Skill pins beneath `Workdir` before dispatching a
-tool. It verifies frozen size/checksum metadata, publishes one symlink-safe
-tree, and applies whole-Session byte/file limits. Permanent invalid input is
-committed through Work Fail and terminates the Session; temporary retrieval
-failure remains reclaimable. The tree is removed when the Work item ends.
-Self-hosted Skill paths exposed to the
-model are relative to the same `Workdir`. The worker does not create compute or
-prepare Files, Git repositories, or Memory; those remain launcher
+After the first successful heartbeat, the worker fetches the frozen Session
+once. It prepares immutable custom Skill pins beneath `Workdir`, downloads
+attached Memory Stores at their frozen absolute mount paths, and only then calls
+`ToolsFunc` with the exact allowed and read-only roots. It verifies Skill and
+Memory integrity, confines filesystem access, and applies whole-Session limits.
+Permanent invalid input is committed through Work Fail and terminates the
+Session; temporary retrieval failure remains reclaimable. Self-hosted Skill
+paths exposed to the model are relative to `Workdir`; Memory paths remain the
+absolute `/mnt/memory/...` paths recorded on the Session.
+
+The worker checks Memory synchronization after each dispatched tool, at a
+15-second default cadence with a five-second minimum configurable interval.
+Remote Store content wins a simultaneous edit, writable local changes use the existing Memory API with SHA-256
+preconditions, and read-only Stores never push. Clean shutdown performs a final
+sync; cancellation and error exits still receive a separately bounded
+push-only flush. Set `MemorySyncInterval` negative only when the operator
+explicitly wants to disable Memory download and synchronization. The worker
+does not create compute or prepare File/Git resources; those remain launcher
 responsibilities. On lease loss it cancels the runner, prevents later result
 submission, returns `ErrEnvironmentWorkLeaseLost`, and does not Stop a possibly
 newer owner's Work.
@@ -127,15 +142,18 @@ defer agenttoolset.CloseAll(tools)
 ```
 
 This package is not a sandbox. The caller must establish the isolation
-boundary first. File operations remain beneath `Workdir`, reads and outputs are
-bounded, and Mango credentials are removed from the Bash environment. Bash uses
-one persistent PTY session per toolset, so cwd, exported variables, and
-background jobs survive calls. Its input accepts `command`, `restart`, and
-`timeout_ms`; the runner-wide tool deadline remains the hard upper bound. A
-timeout or cancellation replaces the shell before the next call. Bash is not
-path-confined inside the host process, so the caller's sandbox is the security
-boundary. The caller owns `CloseAll` because `SessionToolRunner` borrows tools
-and never closes them.
+boundary first. File operations remain beneath `Workdir` and any explicitly
+configured `AllowedRoots`; `write` and `edit` reject `ReadOnlyRoots`. Reads and
+outputs are bounded, and Mango credentials are removed from the Bash
+environment. Bash uses one persistent PTY session per toolset, so cwd, exported
+variables, and background jobs survive calls. Its input accepts `command`,
+`restart`, and `timeout_ms`; the runner-wide tool deadline remains the hard
+upper bound. A timeout or cancellation replaces the shell before the next call.
+Bash is not path-confined inside the host process, so the caller's sandbox is
+the security boundary. A direct caller owns `CloseAll` because
+`SessionToolRunner` borrows tools and never closes them. `EnvironmentWorker` is
+the exception: it closes per-Session tools returned by `ToolsFunc`, while a
+static `Tools` slice remains caller-owned.
 
 ## Self-hosted Session tools
 

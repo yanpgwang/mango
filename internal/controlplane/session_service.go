@@ -68,8 +68,11 @@ type SessionService struct {
 	skillRef      app.SkillReferenceResolver
 	vaultsEnabled bool
 	// cloudSkillBundles gates server-managed sandbox materialization. External
-	// worker Skill activation is unsupported independently of this capability.
+	// self-hosted workers prepare the same frozen pins independently.
 	cloudSkillBundles bool
+	// cloudMemoryStores gates only the transitional server-managed sandbox.
+	// External self-hosted workers synchronize attached Stores through the API.
+	cloudMemoryStores bool
 }
 
 // EnableFileOutcomeRubrics installs the internal Files reader used to resolve
@@ -105,6 +108,7 @@ func NewSessionService(
 		store: store, agents: agents, environments: environments,
 		orchestrator: orchestrator, ids: ids, clock: clock, skillRef: skillRef,
 		cloudSkillBundles: true,
+		cloudMemoryStores: true,
 	}
 	if len(resourceServices) > 0 {
 		service.resources = resourceServices[0]
@@ -113,15 +117,21 @@ func NewSessionService(
 }
 
 // ConfigureCloudSkillBundles declares whether the configured cloud sandbox
-// adapter can materialize custom Skill bundles. Self-hosted Sessions reject
-// custom Skills regardless of the configured cloud adapter.
+// adapter can materialize custom Skill bundles. Self-hosted workers prepare
+// their own frozen Skill snapshots independently of this capability.
 func (s *SessionService) ConfigureCloudSkillBundles(enabled bool) {
 	s.cloudSkillBundles = enabled
 }
 
+// ConfigureCloudMemoryStores declares whether the configured cloud sandbox
+// adapter can mount Memory Stores. It never gates self-hosted Sessions.
+func (s *SessionService) ConfigureCloudMemoryStores(enabled bool) {
+	s.cloudMemoryStores = enabled
+}
+
 // EnableMemoryStoreResources installs the deployment's Memory Store reader.
-// Composition calls this only when the configured sandbox adapter can expose
-// durable /mnt/memory mounts; API admission otherwise fails explicitly.
+// Cloud runtimes or self-hosted workers then materialize the admitted Store
+// snapshots at their Session mount paths; API admission otherwise fails.
 func (s *SessionService) EnableMemoryStoreResources(reader interface {
 	GetStore(context.Context, string) (domain.MemoryStore, error)
 }) {
@@ -245,9 +255,9 @@ func (s *SessionService) Create(
 			"custom Skills are unavailable for the configured cloud sandbox provider",
 		)
 	}
-	if environment.ConfigType == "self_hosted" && len(input.MemoryResources) > 0 {
+	if environment.ConfigType == "cloud" && len(input.MemoryResources) > 0 && !s.cloudMemoryStores {
 		return domain.Session{}, domain.Unsupported(
-			"Memory Store resources are unavailable for self-hosted Sessions",
+			"Memory Store resources are unavailable for the configured cloud sandbox provider",
 		)
 	}
 	if environment.ConfigType == "self_hosted" && len(input.RepositoryResources) > 0 {

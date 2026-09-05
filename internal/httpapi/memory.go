@@ -12,6 +12,7 @@ import (
 
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
+	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 type optionalJSONField[T any] struct {
@@ -711,6 +712,9 @@ func memoryActorToJSON(actor domain.MemoryActor) map[string]any {
 }
 
 func requestMemoryActor(r *http.Request) domain.MemoryActor {
+	if scope, ok := workspace.FromContext(r.Context()); ok && scope.Session != nil {
+		return domain.MemoryActor{Type: "session_actor", ID: scope.Session.SessionID}
+	}
 	credential, present, valid := requestBearerToken(r)
 	if !present || !valid {
 		return domain.MemoryActor{Type: "api_actor", ID: "api_key_local"}

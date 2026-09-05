@@ -119,6 +119,20 @@ func sessionScopeAllows(r *http.Request, scope workspace.SessionScope) bool {
 			return true
 		}
 	}
+	if len(parts) >= 4 && parts[1] == "memory_stores" && parts[3] == "memories" {
+		access, allowed := scope.Memories[parts[2]]
+		if !allowed {
+			return false
+		}
+		if len(parts) == 4 {
+			return r.Method == http.MethodGet ||
+				(r.Method == http.MethodPost && access == "read_write")
+		}
+		if len(parts) == 5 {
+			return r.Method == http.MethodGet ||
+				((r.Method == http.MethodPost || r.Method == http.MethodDelete) && access == "read_write")
+		}
+	}
 	if r.Method != http.MethodGet {
 		return false
 	}
