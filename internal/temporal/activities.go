@@ -853,10 +853,8 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 		}, nil
 	}
 	selfHosted := session.EnvironmentType == "self_hosted"
-	if !selfHosted {
-		if err := agentruntime.ValidateToolCapabilities(toolSet); err != nil {
-			return PrepareTurnResult{FatalError: "unsupported tool capability: " + err.Error()}, nil
-		}
+	if err := agentruntime.ValidateToolCapabilities(toolSet); err != nil {
+		return PrepareTurnResult{FatalError: "unsupported tool capability: " + err.Error()}, nil
 	}
 	runtimeSkills := domain.SkillRuntime{Root: domain.SessionSkillsRoot}
 	if len(executionAgent.Skills) > 0 {
@@ -1077,6 +1075,12 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 		})
 	}
 	for _, name := range domain.BuiltinToolNames {
+		if name == "web_search" || name == "web_fetch" {
+			// Web tools execute inside the model request in either Environment.
+			// Never authorize an ordinary client tool_use for them: it must not
+			// create a sandbox Activity or an external tool-result barrier.
+			continue
+		}
 		enabled, policy := toolSet.BuiltinEnabled(name)
 		if enabled {
 			kind := TurnToolBuiltin

@@ -3670,6 +3670,11 @@ components:
           $ref: '#/components/schemas/PermissionPolicy'
     BuiltinToolset:
       type: object
+      description: >-
+        Shell and file tools execute in the Environment's sandbox. Web Search
+        and Web Fetch execute through the configured model endpoint in both
+        cloud and self_hosted Environments, require native Web-tool support and
+        always_allow permission, and never request a worker user.tool_result.
       additionalProperties: false
       required: [type]
       properties:

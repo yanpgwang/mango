@@ -78,7 +78,7 @@ opt-in.
 | Item credential | Work can carry a per-Session secret, which the SDK prefers; the SDK can fall back to the Environment key and the Docker cookbook currently passes that broader key into the container | The scoped Work secret crosses one-shot stdin into a non-dumpable item runner; it is absent from Docker environment and command metadata, while the Workspace key stays on the supervisor | Same scoped normal path; intentionally stricter fallback and child-process boundary |
 | Lease ownership | The item runner performs first heartbeat, continuous renewal, Session handling, and Stop | `EnvironmentWorker.HandleItem` owns the same sequence | Aligned |
 | Workspace continuity | Docker examples retain a per-Session workspace across activations | A named `/workspace` volume is keyed by Session ID and retained after each Work container exits | Aligned |
-| Agent tools | Core shell/file tools execute inside customer infrastructure; Web tools remain server-side | The Docker image executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`; portable server-side Web-tool ownership is not complete | Partial |
+| Agent tools | Core shell/file tools execute inside customer infrastructure; Web tools remain server-side | The Docker image executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`; Web Search/Fetch use the configured model endpoint and never become external result waits | Same execution boundary; native Web endpoint support and `always_allow` are current Mango requirements |
 | Shell lifecycle | The current SDK keeps a persistent Bash process and supports restart/per-call timeout | The self-hosted Go toolset keeps one PTY-backed Bash per Work container, exposes `restart` and `timeout_ms`, and replaces the shell after timeout, cancellation, or framing failure | Aligned lifecycle; Mango additionally bounds shutdown reaping |
 | Session inputs | The public worker prepares supported Skill and Memory state before execution | The Go worker prepares immutable primary/roster Skill bundles and attached Memory Stores before constructing per-Session tools; File/Git preparation remains open | Aligned for Skills and Memory |
 
@@ -89,6 +89,34 @@ the narrower path mandatory: it will not pass a Workspace credential into a
 Session container merely to copy the cookbook script.
 
 ## Lifecycle and security invariants
+
+### Web execution ownership
+
+A self-hosted Session must be able to use the configured model endpoint's Web
+Search/Fetch alongside the six sandbox tools. The Environment selects where
+shell and file operations run; it does not move provider-native Web tools into
+the external worker. The current Messages adapter already supports those Web
+tools and preserves their opaque responses in the durable model transcript.
+
+Acceptance criteria for this slice:
+
+- Both Environment paths declare enabled Web tools as provider-native tools.
+  Self-hosted Bash retains its persistent-shell contract.
+- Only shell/file and custom calls may request an external result. Provider Web
+  calls never create an external pending-action barrier; a malformed ordinary
+  client call to a provider-owned Web tool is rejected before tool execution.
+- Web tools retain the existing `always_allow` restriction. The current model
+  adapter cannot suspend a provider-native call for a Mango approval.
+- Tests verify mixed Web/sandbox requests, correlated external results,
+  lossless Web transcript recovery, and failures without a sandbox acquisition.
+
+This slice does not add a Web provider, new model credentials, domain filters,
+an external worker Web executor, or automatic File/Git transfer. Endpoints that
+do not support the current native Web declarations must use agents with those
+tools disabled. Full Docker/control-plane recovery and the default deployment
+cutover follow separately.
+
+### Work lifecycle
 
 - Poll is a tentative claim; Ack must complete before execution is handed off.
 - A worker that loses the heartbeat lease stops executing and must not submit a
@@ -158,16 +186,34 @@ Session container merely to copy the cookbook script.
    sync or cancellation-safe push-only flush, and removes only trusted folders
    it created. Docker supplies a bounded `/mnt/memory` tmpfs; no provider logic
    enters the SDK lifecycle.
-8. Complete the remaining shared self-hosted behavior before multiplying
-   providers: supported File/Git inputs and outputs, server-side Web-tool
-   ownership, and restart/health evidence.
-9. Add thin provider examples one at a time. Each must use the same runner and
+8. Keep Web Search/Fetch on the model endpoint in both Environment paths. Only
+   the six shell/file tools belong to the self-hosted built-in result protocol.
+   Provider responses and error blocks survive external-result waits and
+   orchestration-worker restart in the durable transcript.
+9. Verify the complete Docker worker against the real control plane and backing
+   services, including recovery, lease loss, approvals, Skills, and Memory.
+   The existing real-Docker launcher test uses an HTTP control-plane fixture;
+   separate PostgreSQL/Temporal tests cover server invariants.
+10. Switch the default deployment, quickstart, and SDK examples to self-hosted
+   execution, then remove the old `cloud` path and compiled provider registry.
+   Record the resulting File/Git and output boundary explicitly. Mango is
+   pre-release, so this changes `/v1` directly without a compatibility layer.
+11. Add thin provider examples one at a time. Each must use the same runner and
    document persistence, cancellation, resource limits, network policy, and
    restart behavior.
-10. Remove the old Mango-managed `cloud` Environment path and compiled provider
-   registry only after the Docker worker replaces their observable OSS
-   workflow. Mango is pre-release, so the final API change happens directly on
-   `/v1` without a compatibility layer.
+
+CMA's self-hosted guide rejects File/Git resource mounts and leaves input
+staging and deliverable retrieval to the operator. Its SDK worker prepares
+Skills and Memory, not automatic File/Git inputs or output publication. Mango
+may add those conveniences for an independently selected user workflow, but
+they are not CMA self-hosted parity requirements or mandatory prerequisites to
+the default deployment cutover. Until supported, the API continues to reject
+self-hosted File/Git attachments explicitly.
+
+A future operator-managed sandbox service may use the same Work and runner
+boundary, with a Mango-managed launcher owning provisioning and reclamation.
+That possibility does not require retaining the current provider registry or
+adding an unused cloud abstraction now.
 
 The self-hosted worker path still coexists with the legacy Mango-managed
 `cloud` path. The remaining steps above are the explicit convergence plan; the

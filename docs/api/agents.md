@@ -48,6 +48,14 @@ The object model form also preserves supported `effort` and `speed` values.
 Optional collection and metadata fields may be omitted or supplied with their
 documented array/object shape; explicit `null` is not a create-time default.
 
+The `agent_toolset_20260401` toolset includes six sandbox tools (`bash`, `read`,
+`write`, `edit`, `glob`, `grep`) plus provider-native `web_search` and
+`web_fetch`. Web execution stays on the configured model endpoint even for a
+`self_hosted` Environment. An enabled Web tool requires `always_allow`; an
+`always_ask` configuration returns `400 invalid_request_error` because Mango
+cannot pause a provider-native call for approval. Disable Web tools when the
+endpoint does not support them. The external worker needs no model credentials.
+
 Coordinators declare a roster with the documented `multiagent` topology:
 
 ```json
