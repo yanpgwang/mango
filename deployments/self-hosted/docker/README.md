@@ -52,16 +52,22 @@ descriptors. Launcher errors report an exit code and container identity without
 automatically embedding untrusted container logs.
 
 The reference image runs as uid/gid `65532`, drops all Linux capabilities, sets
-`no-new-privileges`, uses a read-only root filesystem, gives `/tmp` a bounded
-tmpfs, and defaults to 1 CPU, 1 GiB memory, and 256 processes. Docker bridge
-egress is still unrestricted. Configure firewall or Docker network policy for
-the destinations your tools require; container isolation alone is not a
-hostile multi-tenant guarantee.
+`no-new-privileges`, uses a read-only root filesystem, gives `/tmp` and
+`/mnt/memory` bounded tmpfs mounts, and defaults to 1 CPU, 1 GiB memory, and 256
+processes. Docker bridge egress is still unrestricted. Configure firewall or
+Docker network policy for the destinations your tools require; container
+isolation alone is not a hostile multi-tenant guarantee.
 
 The reference executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`
 inside `/workspace`. Before tool dispatch it downloads the Session's immutable
 primary and roster custom Skill pins into one integrity-checked, atomically
-published tree and removes it when the Work item exits. Permanent bad input
-terminates the Session; temporary retrieval failures remain eligible for lease
-reclaim. Memory preparation and automatic Session
-output publication remain explicit follow-up work.
+published tree. It also downloads attached Memory Stores beneath `/mnt/memory`,
+adds their exact roots to the file tools, blocks `write` and `edit` for
+`read_only` attachments, and reconciles `read_write` files through the existing
+Memory API. Clean termination performs a final sync; every exit gets a bounded
+push-only flush. The Session token can reach only attached Stores, and server
+mutations are fenced against the live Work lease. Prepared directories are
+removed when the item exits unless their trust marker was changed while they
+held files. Permanent bad input terminates the Session; temporary retrieval
+failures remain eligible for lease reclaim. Automatic Session output
+publication remains explicit follow-up work.

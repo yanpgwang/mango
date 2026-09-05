@@ -36,7 +36,11 @@ of aggregate File/repository snapshot bytes.
 Up to eight Stores may be attached when a Session is created. Each attachment
 is `read_only` or `read_write` and is mounted beneath
 `/mnt/memory/<store-slug>/`. Memory attachments cannot currently be added or
-removed after Session creation.
+removed after Session creation. The self-hosted Go worker downloads them before
+constructing tools, exposes their exact roots to file operations, and
+reconciles writable changes through the Memory API while its Work lease remains
+valid. Read-only access blocks `write` and `edit`; Bash is constrained by the
+sandbox rather than by that file-tool policy.
 
 ## Git repository attachments
 
@@ -93,7 +97,10 @@ File and Git repository mounts currently require a cloud Environment backed by
 Docker, E2B, CubeSandbox, OpenSandbox, or Daytona. The pinned E2B/Cube-compatible Go client
 uses whole-value file methods, so those two adapters buffer each File Resource
 in worker memory during materialization and retain provider-default file modes;
-their provider-side copy is also writable. Memory mounts require Docker.
+their provider-side copy is also writable. Memory mounts work on the legacy
+Mango-managed Docker path and the standalone self-hosted Docker worker; the
+latter uses the per-Work credential and existing Memory HTTP API rather than a
+control-plane provider adapter.
 GitHub repository resources and update-time token rotation are not Mango API
 variants. Remote repository restoration requires a POSIX `tar` executable in
 the sandbox image; the Docker default image and supported provider images

@@ -152,7 +152,8 @@ only be attached at creation. A `git_repository` input uses an anonymous HTTPS
 `url`, optional branch-or-commit `checkout`, and optional `/workspace` child
 `mount_path`; Mango freezes and returns its exact `resolved_commit`. Git
 repositories are create-time-only on Docker, E2B, CubeSandbox, OpenSandbox,
-and Daytona. Self-hosted Environments reject these resource attachments with `422`.
+and Daytona. Self-hosted Environments accept Memory Store inputs; the current
+self-hosted worker still rejects File and Git repository inputs with `422`.
 E2B and Cube currently buffer File and repository archive transfers in worker
 memory during materialization.
 `vault_ids` is an ordered list of active Vault references. The order is frozen

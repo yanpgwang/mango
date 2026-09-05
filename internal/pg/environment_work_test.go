@@ -206,6 +206,97 @@ func TestEnvironmentWorkActivatesSelfHostedSessionAndFollowsLeaseLifecycle(t *te
 	}
 }
 
+func TestEnvironmentWorkSessionTokenScopesMemoryWritesToLiveLease(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	store.clock = &environmentWorkTestClock{now: now}
+	if err := NewEnvironmentRepository(store).Put(ctx, domain.Environment{
+		ID: "env_memory_worker", Name: "Memory worker", ConfigType: "self_hosted",
+		Config: map[string]any{"type": "self_hosted"}, Metadata: map[string]any{},
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	memory := app.NewMemoryService(NewMemoryRepository(store), domain.NewSeqIDGen(), fixedClock{})
+	memoryStore, err := memory.CreateStore(ctx, app.MemoryStoreCreateInput{Name: "Worker memory"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := memory.CreateMemory(ctx, memoryStore.ID, app.MemoryCreateInput{
+		Path: "/notes.md", Content: "initial",
+		Actor: domain.MemoryActor{Type: "api_actor", ID: "api"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := newSession("sesn_memory_worker")
+	session.EnvironmentID = "env_memory_worker"
+	session.EnvironmentType = "self_hosted"
+	resource := domain.SessionResource{
+		ID: "sesrsc_memory_worker", SessionID: session.ID,
+		ResourceType: domain.SessionResourceTypeMemoryStore, MemoryStoreID: memoryStore.ID,
+		MemoryAccess: domain.MemoryAccessReadWrite, MemoryStoreName: memoryStore.Name,
+		MountPath: "/mnt/memory/worker-memory", CreatedAt: now, UpdatedAt: now,
+		State: domain.SessionResourceActive,
+	}
+	if _, err := store.createSession(ctx, session, []domain.EventDraft{{
+		Type: domain.EvUserMessage, Payload: map[string]any{"content": "use memory"},
+	}}, false, []app.PreparedSessionResource{{Resource: resource}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	workRepository := NewEnvironmentWorkRepository(store)
+	work, err := workRepository.PollWork(ctx, session.EnvironmentID, app.EnvironmentWorkPollInput{
+		WorkerID: "memory-worker", ReclaimAge: time.Hour,
+	})
+	if err != nil || work == nil {
+		t.Fatalf("Poll = %+v, %v", work, err)
+	}
+	token := decodeSessionsToken(t, work.Secret)
+	if _, err := workRepository.AckWork(ctx, session.EnvironmentID, work.ID); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID, scope, err := store.AuthenticateSessionToken(ctx, token)
+	if err != nil || scope.Memories[memoryStore.ID] != domain.MemoryAccessReadWrite {
+		t.Fatalf("Memory scope = %+v, %v", scope.Memories, err)
+	}
+	workCtx := workspace.WithSessionScope(ctx, workspaceID, scope)
+	if _, err := workRepository.HeartbeatWork(
+		workCtx, session.EnvironmentID, work.ID, nil, nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	workerContent := "from worker"
+	updated, err := memory.UpdateMemory(workCtx, memoryStore.ID, initial.ID, app.MemoryUpdateInput{
+		Content: &workerContent, ExpectedContentSHA: &initial.ContentSHA256,
+		Actor: domain.MemoryActor{Type: "session_actor", ID: session.ID},
+	})
+	if err != nil || updated.Content != workerContent {
+		t.Fatalf("live worker update = %+v, %v", updated, err)
+	}
+
+	if err := workRepository.StopWork(workCtx, session.EnvironmentID, work.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	staleContent := "stale worker"
+	if _, err := memory.UpdateMemory(workCtx, memoryStore.ID, initial.ID, app.MemoryUpdateInput{
+		Content: &staleContent, ExpectedContentSHA: &updated.ContentSHA256,
+		Actor: domain.MemoryActor{Type: "session_actor", ID: session.ID},
+	}); err == nil {
+		t.Fatal("stale Work token mutated Memory after its lease ended")
+	} else {
+		var domainErr *domain.DomainError
+		if !errors.As(err, &domainErr) || domainErr.Kind != domain.KindPrecondition {
+			t.Fatalf("stale worker update error = %T %v", err, err)
+		}
+	}
+	stored, err := memory.GetMemory(ctx, memoryStore.ID, initial.ID)
+	if err != nil || stored.Content != workerContent {
+		t.Fatalf("Memory after stale update = %+v, %v", stored, err)
+	}
+}
+
 func TestEnvironmentWorkForceStopDoesNotRequeueOriginalActivation(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()

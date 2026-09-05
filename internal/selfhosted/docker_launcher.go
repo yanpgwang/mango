@@ -204,7 +204,10 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 			CapDrop:        []string{"ALL"},
 			SecurityOpt:    []string{"no-new-privileges=true"},
 			ExtraHosts:     []string{"host.docker.internal:host-gateway"},
-			Tmpfs:          map[string]string{"/tmp": "rw,nosuid,nodev,size=64m"},
+			Tmpfs: map[string]string{
+				"/tmp":        "rw,nosuid,nodev,size=64m",
+				"/mnt/memory": "rw,nosuid,nodev,noexec,size=512m,mode=1777",
+			},
 			Mounts: []mount.Mount{{
 				Type: mount.TypeVolume, Source: dockerSessionVolume(work.Data.ID),
 				Target: defaultSandboxWorkdir,

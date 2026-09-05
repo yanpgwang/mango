@@ -371,10 +371,10 @@ paths:
       summary: Create a Session
       description: >-
         Custom Skills on the effective primary Agent or any resolved roster
-        member require a capable Mango-managed sandbox. Overrides apply before
-        this check. Configurations with custom Skills return 422 for self-hosted
-        Environments or cloud adapters without Skill support, before any
-        Session, Work item, or execution wakeup is created.
+        member require a capable execution path. Overrides apply before this
+        check. Cloud adapters configured without Skill support return 422
+        before any Session, Work item, or execution wakeup is created;
+        self-hosted Sessions expose their immutable pins to the external worker.
       requestBody:
         required: true
         content:
@@ -1651,7 +1651,9 @@ components:
       scheme: bearer
       description: >-
         Workspace API key, or the per-Work sessions_token on the limited
-        self-hosted execution routes authorized for that claim.
+        self-hosted execution routes authorized for that claim. The latter can
+        read attached Memory Stores and mutate only read_write attachments while
+        its Work lease remains live.
 
   parameters:
     WebhookID:
@@ -4755,7 +4757,10 @@ components:
         resources:
           type: array
           maxItems: 500
-          description: At most eight entries may be Memory Stores; Memory Stores attach only at creation.
+          description: >-
+            At most eight entries may be Memory Stores; Memory Stores attach
+            only at creation and are available to self-hosted workers. File and
+            Git repository inputs currently require a capable cloud adapter.
           items:
             $ref: '#/components/schemas/SessionResourceInput'
         vault_ids:

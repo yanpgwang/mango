@@ -27,14 +27,25 @@ server's `/openapi.yaml` is the exact path and schema reference.
 
 ## Agent access
 
-Docker-backed cloud Sessions mount attached Stores beneath
-`/mnt/memory/<store-slug>/`. Store metadata and instructions enter system
-context; file contents do not. Agents use the ordinary `read`, `write`, `edit`,
-`glob`, `grep`, and `bash` tools rather than a Memory-specific recall tool.
+Docker-backed cloud Sessions and the standalone self-hosted Docker worker mount
+attached Stores beneath `/mnt/memory/<store-slug>/`. Store metadata and
+instructions enter system context; file contents do not. Agents use the
+ordinary `read`, `write`, `edit`, `glob`, `grep`, and `bash` tools rather than a
+Memory-specific recall tool.
 
-Read/write mounts synchronize changes back to PostgreSQL after sandbox tools
-and perform a final writeback before sandbox deletion. Read-only mounts are
-enforced by Docker.
+On the self-hosted path, the worker downloads all attachments from the frozen
+Session before it constructs the toolset. `read_write` roots synchronize
+through the existing Memory HTTP operations with SHA-256 preconditions;
+`read_only` roots pull but never push. Concurrent remote changes win, local
+deletes require a corroborating pass, a clean end performs a final sync, and
+all exits receive a bounded push-only flush before trusted mount directories
+are removed. The per-Work credential can access only attached Stores and every
+mutation is transactionally fenced by its live lease.
 
-Automatic 30-day Version retention and non-Docker Session mounts are not
-implemented.
+The file tools reject writes into a read-only root. Bash has ordinary access
+inside the Session container, so this is an agent-tool policy rather than a
+kernel-enforced read-only mount. The Docker sandbox and its credential boundary
+remain authoritative.
+
+Automatic 30-day Version retention and non-Docker self-hosted launcher examples
+are not implemented.

@@ -139,6 +139,52 @@ func TestDeploymentServiceNormalizesAndValidatesGitRepositoryTemplates(t *testin
 	}
 }
 
+func TestDeploymentServiceGatesMemoryByEnvironmentType(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	service := newTestDeploymentService(
+		t, newMemoryDeploymentRepository(), &deploymentSessionCreatorFake{}, now,
+	)
+	service.memory = staticDeploymentMemoryReader{store: domain.MemoryStore{
+		ID: "memstore_test", Name: "Knowledge", CreatedAt: now, UpdatedAt: now,
+	}}
+	resource := domain.DeploymentResource{
+		Type: domain.SessionResourceTypeMemoryStore, MemoryStoreID: "memstore_test",
+		Access: domain.MemoryAccessReadWrite,
+	}
+	_, err := service.Create(context.Background(), DeploymentCreateInput{
+		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Cloud memory",
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+		Resources:     []domain.DeploymentResource{resource},
+	})
+	if err == nil || !strings.Contains(err.Error(), "configured cloud sandbox provider") {
+		t.Fatalf("cloud deployment Memory error = %v", err)
+	}
+	environments := service.environments.(*memoryEnvironmentRepository)
+	if err := environments.Put(context.Background(), domain.Environment{
+		ID: "env_self_hosted", Name: "Self-hosted", ConfigType: "self_hosted",
+		Config: map[string]any{"type": "self_hosted"}, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Create(context.Background(), DeploymentCreateInput{
+		AgentID: "agent_test", EnvironmentID: "env_self_hosted", Name: "Self-hosted memory",
+		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
+		Resources:     []domain.DeploymentResource{resource},
+	}); err != nil {
+		t.Fatalf("self-hosted deployment Memory: %v", err)
+	}
+}
+
+type staticDeploymentMemoryReader struct{ store domain.MemoryStore }
+
+func (r staticDeploymentMemoryReader) GetStore(_ context.Context, id string) (domain.MemoryStore, error) {
+	if id != r.store.ID {
+		return domain.MemoryStore{}, domain.NotFound("memory store not found")
+	}
+	return r.store, nil
+}
+
 func TestClassifyDeploymentRunGitRepositoryFailure(t *testing.T) {
 	t.Parallel()
 	errorType, _ := classifyDeploymentRunError(

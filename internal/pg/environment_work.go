@@ -76,6 +76,7 @@ func (s *Store) AuthenticateSessionToken(
 		CredentialDigest: append([]byte(nil), digest...),
 		Skills:           map[workspace.SkillVersion]struct{}{},
 		Files:            map[string]struct{}{},
+		Memories:         map[string]string{},
 	}
 	var workspaceID string
 	err := s.pool.QueryRow(ctx, `
@@ -122,7 +123,7 @@ WHERE session_id = $1`, scope.SessionID)
 	fileRows, err := s.pool.Query(ctx, `
 SELECT file_id
 FROM session_resources
-WHERE session_id = $1 AND state = 'active'`, scope.SessionID)
+WHERE session_id = $1 AND resource_type = 'file' AND state = 'active'`, scope.SessionID)
 	if err != nil {
 		return "", workspace.SessionScope{}, fmt.Errorf("pg: load session token files: %w", err)
 	}
@@ -136,6 +137,25 @@ WHERE session_id = $1 AND state = 'active'`, scope.SessionID)
 	}
 	if err := fileRows.Err(); err != nil {
 		return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token files: %w", err)
+	}
+	fileRows.Close()
+	memoryRows, err := s.pool.Query(ctx, `
+SELECT memory_store_id, memory_access
+FROM session_resources
+WHERE session_id = $1 AND resource_type = 'memory_store' AND state = 'active'`, scope.SessionID)
+	if err != nil {
+		return "", workspace.SessionScope{}, fmt.Errorf("pg: load session token memory stores: %w", err)
+	}
+	defer memoryRows.Close()
+	for memoryRows.Next() {
+		var storeID, access string
+		if err := memoryRows.Scan(&storeID, &access); err != nil {
+			return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token memory store: %w", err)
+		}
+		scope.Memories[storeID] = access
+	}
+	if err := memoryRows.Err(); err != nil {
+		return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token memory stores: %w", err)
 	}
 	return workspaceID, scope, nil
 }

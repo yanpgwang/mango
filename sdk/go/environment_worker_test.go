@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -94,6 +96,97 @@ func TestEnvironmentWorkerHandleItemUsesScopedCredentialForLifecycle(t *testing.
 	}
 	if executions.Load() != 1 || heartbeats.Load() != 1 || stops.Load() != 1 {
 		t.Fatalf("executions=%d heartbeats=%d stops=%d", executions.Load(), heartbeats.Load(), stops.Load())
+	}
+}
+
+func TestEnvironmentWorkerPreparesMemoryBeforeBuildingSessionTools(t *testing.T) {
+	t.Parallel()
+	const token = "session-token"
+	workdir := t.TempDir()
+	memoryParent := t.TempDir()
+	mount := filepath.Join(memoryParent, "project")
+	fixture := &memorySyncServer{t: t, byID: map[string]Memory{}}
+	fixture.create("/notes.md", "downloaded")
+	posted := make(chan struct{})
+	var postedOnce sync.Once
+	var toolsBuilt atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if got := request.Header.Get("Authorization"); got != "Bearer "+token {
+			t.Errorf("%s %s Authorization = %q", request.Method, request.URL.Path, got)
+		}
+		switch {
+		case strings.HasPrefix(request.URL.Path, "/v1/memory_stores/"):
+			fixture.serveHTTP(w, request)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/heartbeat"):
+			writeEnvironmentWorkerJSON(t, w, environmentHeartbeatFixture("2026-09-05T00:00:01Z", "active", true, 30))
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions/session_memory":
+			writeEnvironmentWorkerJSON(t, w, map[string]any{
+				"id": "session_memory", "agent": map[string]any{"skills": []any{}},
+				"resources": []any{map[string]any{
+					"type": "memory_store", "memory_store_id": "store_test", "name": "Project",
+					"description": "", "instructions": nil, "mount_path": mount, "access": "read_write",
+				}},
+			})
+		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/events/stream"):
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			flusher := w.(http.Flusher)
+			flusher.Flush()
+			select {
+			case <-posted:
+				fmt.Fprint(w, "event: session.status_terminated\ndata: {\"id\":\"terminated_memory\",\"type\":\"session.status_terminated\",\"processed_at\":null}\n\n")
+				flusher.Flush()
+			case <-request.Context().Done():
+			}
+		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/events"):
+			writeEnvironmentWorkerJSON(t, w, map[string]any{
+				"data":      []json.RawMessage{sessionToolUseJSON("tool_memory", "edit_memory", "allow", "thread_memory")},
+				"next_page": nil,
+			})
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/events"):
+			postedOnce.Do(func() { close(posted) })
+			writeEnvironmentWorkerJSON(t, w, map[string]any{"data": []any{}})
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/stop"):
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	worker := NewEnvironmentWorker(newEnvironmentWorkerClient(t, server.URL, "workspace-key"), EnvironmentWorkerOptions{
+		Workdir: workdir, MaxIdle: durationPointer(0),
+		ToolsFunc: func(toolContext EnvironmentWorkerToolContext) ([]SessionTool, error) {
+			toolsBuilt.Add(1)
+			if toolContext.Workdir != workdir || len(toolContext.AllowedRoots) != 1 ||
+				toolContext.AllowedRoots[0] != mount || len(toolContext.ReadOnlyRoots) != 0 {
+				t.Fatalf("tool context = %+v", toolContext)
+			}
+			if data, err := os.ReadFile(filepath.Join(mount, "notes.md")); err != nil || string(data) != "downloaded" {
+				t.Fatalf("Memory before tool construction = %q, %v", data, err)
+			}
+			return []SessionTool{sessionToolFunc{name: "edit_memory", run: func(context.Context, SessionToolCall) ([]ResultContentInput, error) {
+				if err := os.WriteFile(filepath.Join(mount, "notes.md"), []byte("edited"), 0o600); err != nil {
+					return nil, err
+				}
+				return textSessionToolResult("done"), nil
+			}}}, nil
+		},
+	})
+	if err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{
+		WorkID: "work_memory", EnvironmentID: "env_memory", SessionID: "session_memory",
+		WorkSecret: encodeEnvironmentWorkSecret(t, token),
+	}); err != nil {
+		t.Fatalf("HandleItem: %v", err)
+	}
+	if toolsBuilt.Load() != 1 {
+		t.Fatalf("ToolsFunc calls = %d, want 1", toolsBuilt.Load())
+	}
+	if content, ok := fixture.content("/notes.md"); !ok || content != "edited" {
+		t.Fatalf("persisted Memory = %q, %v", content, ok)
+	}
+	if _, err := os.Lstat(mount); !os.IsNotExist(err) {
+		t.Fatalf("Memory mount survived cleanup: %v", err)
 	}
 }
 
@@ -248,6 +341,72 @@ func TestEnvironmentWorkerLeavesExhaustedTransientInputForLeaseReclaim(t *testin
 		stops.Load() != 0 || failures.Load() != 0 {
 		t.Fatalf("session gets=%d stops=%d failures=%d", sessionGets.Load(), stops.Load(), failures.Load())
 	}
+}
+
+func TestEnvironmentWorkerLeavesExhaustedToolSetupForLeaseReclaim(t *testing.T) {
+	t.Parallel()
+	var sessionGets atomic.Int32
+	var toolSetups atomic.Int32
+	var toolCloses atomic.Int32
+	var stops atomic.Int32
+	var failures atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/heartbeat"):
+			writeEnvironmentWorkerJSON(t, w, environmentHeartbeatFixture("2026-09-05T00:00:01Z", "active", true, 30))
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions/session_tool_setup":
+			sessionGets.Add(1)
+			writeEnvironmentWorkerJSON(t, w, emptySessionFixture("session_tool_setup"))
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fail"):
+			failures.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/stop"):
+			stops.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	worker := NewEnvironmentWorker(
+		newEnvironmentWorkerClient(t, server.URL, "workspace-key"),
+		EnvironmentWorkerOptions{
+			Workdir: t.TempDir(),
+			ToolsFunc: func(EnvironmentWorkerToolContext) ([]SessionTool, error) {
+				toolSetups.Add(1)
+				return []SessionTool{&closeCountingSessionTool{
+				sessionToolFunc: sessionToolFunc{name: "partial"}, closes: &toolCloses,
+			}}, errors.New("local tool runtime unavailable")
+			},
+		},
+	)
+	worker.retryDelay = func(int) time.Duration { return 0 }
+	worker.sleep = func(context.Context, time.Duration) {}
+	err := worker.HandleItem(context.Background(), EnvironmentWorkerHandleItemOptions{
+		WorkID: "work_tool_setup", EnvironmentID: "env_tool_setup", SessionID: "session_tool_setup",
+		WorkSecret: encodeEnvironmentWorkSecret(t, "sess_mango_tool_setup"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "failed after 5 attempts") {
+		t.Fatalf("HandleItem error = %v", err)
+	}
+	if sessionGets.Load() != maxSessionInputPreparationAttempts ||
+		toolSetups.Load() != maxSessionInputPreparationAttempts ||
+		toolCloses.Load() != maxSessionInputPreparationAttempts ||
+		stops.Load() != 0 || failures.Load() != 0 {
+		t.Fatalf("session gets=%d tool setups=%d tool closes=%d stops=%d failures=%d",
+			sessionGets.Load(), toolSetups.Load(), toolCloses.Load(), stops.Load(), failures.Load())
+	}
+}
+
+type closeCountingSessionTool struct {
+	sessionToolFunc
+	closes *atomic.Int32
+}
+
+func (t *closeCountingSessionTool) Close() error {
+	t.closes.Add(1)
+	return nil
 }
 
 func TestEnvironmentWorkerRunKeepsSupervisorCredentialOutOfItemRequests(t *testing.T) {

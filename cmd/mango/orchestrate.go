@@ -516,25 +516,21 @@ func runOrchestrate() {
 		deploymentSessions.EnableFileMessageContent(fileRuntime.service)
 	}
 	deploymentSessions.ConfigureCloudSkillBundles(providerCapabilities.SkillBundles)
+	deploymentSessions.EnableMemoryStoreResources(memory)
+	deploymentSessions.ConfigureCloudMemoryStores(providerCapabilities.MemoryStores)
 	if vaults != nil {
 		deploymentSessions.EnableVaults()
-	}
-	if providerCapabilities.MemoryStores {
-		deploymentSessions.EnableMemoryStoreResources(memory)
 	}
 	var deploymentFiles app.DeploymentFileReader
 	if fileRuntime != nil && providerCapabilities.FileResources {
 		deploymentFiles = fileRuntime.service
 	}
-	var deploymentMemory app.DeploymentMemoryReader
-	if providerCapabilities.MemoryStores {
-		deploymentMemory = memory
-	}
 	deployments := app.NewDeploymentService(app.DeploymentServiceConfig{
 		Repository: pg.NewDeploymentRepository(store),
 		Agents:     agentsRepo, Environments: environmentsRepo, Sessions: deploymentSessions,
-		Files: deploymentFiles, Memory: deploymentMemory, Vaults: vaults,
-		IDGenerator: ids, Clock: realClock{},
+		Files: deploymentFiles, Memory: memory, Vaults: vaults,
+		CloudMemoryStores: providerCapabilities.MemoryStores,
+		IDGenerator:       ids, Clock: realClock{},
 	})
 	deploymentReconciler := app.NewDeploymentReconciler(deployments)
 	var webhookDispatcher *app.WebhookDispatcher

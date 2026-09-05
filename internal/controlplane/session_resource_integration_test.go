@@ -490,6 +490,9 @@ func TestPostgresSessionMemoryStoreResourceSnapshotsAndOwnsNoStore(t *testing.T)
 		nil,
 	)
 	sessions.EnableMemoryStoreResources(memory)
+	// A legacy cloud provider without Memory mounts must not gate the external
+	// self-hosted worker, which synchronizes through the public Memory API.
+	sessions.ConfigureCloudMemoryStores(false)
 	handler := httpapi.NewServer(httpapi.Deps{
 		Agents: app.NewAgentService(fixture.agentRepo, fixture.ids, fixture.clock),
 		Envs: app.NewEnvironmentService(
@@ -510,7 +513,7 @@ func TestPostgresSessionMemoryStoreResourceSnapshotsAndOwnsNoStore(t *testing.T)
 	agentID := createResource(t, handler, "/v1/agents",
 		`{"name":"coder","model":"claude-test"}`)
 	environmentID := createResource(t, handler, "/v1/environments",
-		`{"name":"cloud","config":{"type":"cloud"}}`)
+		`{"name":"self hosted","config":{"type":"self_hosted"}}`)
 	response := request(t, handler, http.MethodPost, "/v1/sessions",
 		`{"agent":"`+agentID+`","environment_id":"`+environmentID+`",`+
 			`"resources":[{"type":"memory_store","memory_store_id":"`+memoryStore.ID+`",`+

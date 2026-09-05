@@ -29,8 +29,9 @@ The self-hosted Docker worker is a separate target execution path. Its trusted
 supervisor controls Docker and Polls/Acks Environment Work; each activation
 runs in a fresh container with only the short-lived Work secret and a retained
 per-Session workspace volume. It currently supports the six core shell/file
-tools but not Skill, Memory, File/Git resource preparation, or output
-publication. Follow the
+tools, immutable custom Skill preparation, and attached Memory Store
+synchronization. File/Git resource preparation and output publication remain
+open. Follow the
 [worker-specific guide](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
 instead of treating it as a replacement for the complete local stack.
 
@@ -108,12 +109,14 @@ on the task queue must agree on the sandbox provider and object-store
 configuration. Host-process execution is not a selectable runtime backend.
 
 Memory API contents and immutable Versions live entirely in PostgreSQL and do
-not require S3-compatible storage. Memory-backed Session Resources do require
-`MANGO_SANDBOX=docker`: the API snapshots each attachment, and the
-worker bind-mounts it beneath `/mnt/memory`, then synchronizes tool changes back
-to PostgreSQL. API and worker processes must select the same provider.
-Self-hosted and current remote adapters reject Memory Store attachment while
-the standalone Memory API remains available.
+not require S3-compatible storage. On the transitional Mango-managed `cloud`
+path, Memory-backed Session Resources require `MANGO_SANDBOX=docker`: the API
+snapshots each attachment, and the worker bind-mounts it beneath `/mnt/memory`,
+then synchronizes tool changes back to PostgreSQL. API and worker processes must
+select the same provider. The standalone self-hosted Docker worker instead
+downloads and reconciles the same Stores through Mango's public Memory API with
+its per-Work Session credential; its `/mnt/memory` tree is a bounded tmpfs.
+Provider-specific self-hosted launcher examples remain future work.
 
 ### Docker worker configuration
 

@@ -1,8 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 func TestMemoryInputsDistinguishOmittedEmptyAndNull(t *testing.T) {
@@ -57,5 +61,16 @@ func TestSessionMemoryResourceRejectsExplicitNullOptions(t *testing.T) {
 		if _, err := parseSessionMemoryResourceInput(json.RawMessage(raw)); err == nil {
 			t.Fatalf("explicit null option was accepted: %s", raw)
 		}
+	}
+}
+
+func TestRequestMemoryActorUsesClaimedSessionIdentity(t *testing.T) {
+	request := httptest.NewRequest("POST", "/v1/memory_stores/store/memories", nil)
+	request = request.WithContext(workspace.WithSessionScope(
+		context.Background(), "wrkspc_test", workspace.SessionScope{SessionID: "sesn_claimed"},
+	))
+	actor := requestMemoryActor(request)
+	if actor.Type != "session_actor" || actor.ID != "sesn_claimed" {
+		t.Fatalf("actor = %+v", actor)
 	}
 }

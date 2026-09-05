@@ -690,14 +690,14 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 		sessions.EnableFileMessageContent(files)
 	}
 	sessions.ConfigureCloudSkillBundles(providerCapabilities.SkillBundles)
+	sessions.EnableMemoryStoreResources(memory)
+	sessions.ConfigureCloudMemoryStores(providerCapabilities.MemoryStores)
 	if vaults != nil {
 		sessions.EnableVaults()
 	}
-	if providerCapabilities.MemoryStores {
-		sessions.EnableMemoryStoreResources(memory)
-	} else {
+	if !providerCapabilities.MemoryStores {
 		log.Printf(
-			"serve: Session Memory Store admission disabled; sandbox provider %q has no durable Memory Store mount capability",
+			"serve: cloud Session Memory Store admission disabled; sandbox provider %q has no durable Memory Store mount capability; self-hosted admission remains enabled",
 			configuredSandboxProviderName(),
 		)
 	}
@@ -705,15 +705,12 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 	if files != nil && providerCapabilities.FileResources {
 		deploymentFiles = files
 	}
-	var deploymentMemory app.DeploymentMemoryReader
-	if providerCapabilities.MemoryStores {
-		deploymentMemory = memory
-	}
 	deployments := app.NewDeploymentService(app.DeploymentServiceConfig{
 		Repository: pg.NewDeploymentRepository(pgStore),
 		Agents:     agentsRepo, Environments: environmentsRepo, Sessions: sessions,
-		Files: deploymentFiles, Memory: deploymentMemory, Vaults: vaults,
-		IDGenerator: ids, Clock: clock,
+		Files: deploymentFiles, Memory: memory, Vaults: vaults,
+		CloudMemoryStores: providerCapabilities.MemoryStores,
+		IDGenerator:       ids, Clock: clock,
 	})
 	environmentWork := app.NewEnvironmentWorkService(
 		pg.NewEnvironmentWorkRepository(pgStore), environmentsRepo,

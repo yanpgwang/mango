@@ -68,28 +68,33 @@ type DeploymentServiceConfig struct {
 	Sessions     DeploymentSessionCreator
 	Files        DeploymentFileReader
 	Memory       DeploymentMemoryReader
-	Vaults       DeploymentVaultReader
-	IDGenerator  domain.IDGenerator
-	Clock        domain.Clock
+	// CloudMemoryStores gates only resources executed by the transitional
+	// server-managed cloud sandbox. Self-hosted Sessions use the Memory API.
+	CloudMemoryStores bool
+	Vaults            DeploymentVaultReader
+	IDGenerator       domain.IDGenerator
+	Clock             domain.Clock
 }
 
 type DeploymentService struct {
-	repo         DeploymentRepository
-	agents       AgentRepository
-	environments EnvironmentRepository
-	sessions     DeploymentSessionCreator
-	files        DeploymentFileReader
-	memory       DeploymentMemoryReader
-	vaults       DeploymentVaultReader
-	ids          domain.IDGenerator
-	clock        domain.Clock
+	repo              DeploymentRepository
+	agents            AgentRepository
+	environments      EnvironmentRepository
+	sessions          DeploymentSessionCreator
+	files             DeploymentFileReader
+	memory            DeploymentMemoryReader
+	cloudMemoryStores bool
+	vaults            DeploymentVaultReader
+	ids               domain.IDGenerator
+	clock             domain.Clock
 }
 
 func NewDeploymentService(config DeploymentServiceConfig) *DeploymentService {
 	return &DeploymentService{
 		repo: config.Repository, agents: config.Agents,
 		environments: config.Environments, sessions: config.Sessions,
-		files: config.Files, memory: config.Memory, vaults: config.Vaults,
+		files: config.Files, memory: config.Memory,
+		cloudMemoryStores: config.CloudMemoryStores, vaults: config.Vaults,
 		ids: config.IDGenerator, clock: config.Clock,
 	}
 }
@@ -672,6 +677,11 @@ func (s *DeploymentService) validate(ctx context.Context, item domain.Deployment
 				return domain.Validation("file resource not found")
 			}
 		case domain.SessionResourceTypeMemoryStore:
+			if environment.ConfigType == "cloud" && !s.cloudMemoryStores {
+				return domain.Unsupported(
+					"Memory Store resources are unavailable for the configured cloud sandbox provider",
+				)
+			}
 			if resource.MemoryStoreID == "" {
 				return domain.Validation("memory_store resource requires memory_store_id")
 			}
