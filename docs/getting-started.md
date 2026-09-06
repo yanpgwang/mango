@@ -247,8 +247,11 @@ explicit live checks and examples exercise that endpoint:
 # billable request.
 scripts/with-dev-env make test-model-live
 
-# With the local PostgreSQL and Temporal services running, checks one complete
-# durable platform turn against the same model endpoint.
+# With PostgreSQL, Temporal, NATS, and Docker running, checks one complete
+# real-model Bash turn through a self-hosted Environment Work container.
+scripts/with-dev-env make test-self-hosted-live
+
+# Convenience alias for the same self-hosted smoke.
 scripts/with-dev-env make test-platform-live
 
 # Runs the longer File Resource -> coding loop -> Session Output scenario.

@@ -198,7 +198,9 @@ cutover follow separately.
    Memory, shell, cancellation, and lease-renewal coverage; PostgreSQL and
    provider-neutral worker tests retain lease-loss fencing coverage. Keeping
    those fault cases focused avoids one timing-heavy combinatorial test while
-   the system test verifies that the real boundaries compose.
+   the system test verifies that the real boundaries compose. An opt-in live
+   smoke uses the same fixture for one real-model-selected Bash call without
+   making external credentials a CI dependency.
 10. Switch the default deployment, quickstart, and SDK examples to self-hosted
    execution, then remove the old `cloud` path and compiled provider registry.
    Record the resulting File/Git and output boundary explicitly. Mango is

@@ -52,7 +52,7 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help build lint test test-race test-service test-service-core \
-	worker-test-image test-sandbox-docker test-model-live test-platform-live \
+	worker-test-image test-sandbox-docker test-model-live test-self-hosted-live test-platform-live \
 	test-coding-agent test-coding-agent-live test-hitl-gate demo-hitl-gate \
 	demo-multi-agent-team \
 	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
@@ -72,7 +72,8 @@ help:
 	@echo "  make test-service-core  run stateful service integration tests"
 	@echo "  make test-sandbox-docker  run Docker sandbox conformance tests"
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"
-	@echo "  make test-platform-live  run durable text and Docker tool turns against that live model"
+	@echo "  make test-self-hosted-live  run one real-model turn through a self-hosted Docker worker"
+	@echo "  make test-platform-live  alias for the self-hosted live smoke"
 	@echo "  make test-coding-agent   run the offline iterate coding scenario in Docker"
 	@echo "  make test-coding-agent-live  run the iterate scenario against the live model"
 	@echo "  make demo-coding-agent  run the Python SDK coding example against a running Mango server"
@@ -147,12 +148,18 @@ test-model-live:
 	MANGO_TEST_LIVE_MODEL=1 \
 	$(GO) test ./internal/model -run '^TestAnthropic_LiveMessagesConformance$$' -count=1
 
-test-platform-live:
+test-self-hosted-live: worker-test-image
 	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_LIVE_MODEL=1 \
+	MANGO_TEST_WORKER_IMAGE='$(WORKER_TEST_IMAGE)' \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
-	$(GO) test ./internal/temporal -run '^TestVerticalSlice_LiveModel(EndToEnd|ToolStepEndToEnd)$$' -count=1
+	MANGO_TEST_NATS_URL='$(MANGO_TEST_NATS_URL)' \
+	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') \
+		-timeout 5m ./internal/temporal \
+		-run '^TestVerticalSlice_LiveModelSelfHostedDockerEndToEnd$$' -count=1 -v
+
+test-platform-live: test-self-hosted-live
 
 test-coding-agent:
 	MANGO_TEST_DOCKER=1 \

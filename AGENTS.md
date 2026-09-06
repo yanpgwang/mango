@@ -156,5 +156,10 @@ pull-request requirements.
 - Stop when the acceptance criteria and required tests pass. Keep adjacent work
   out of the current slice; record it in a follow-up PR, design note, or Issue
   when coordination or longer-term tracking is useful.
+- Before pushing a substantial model-adapter, orchestration, Environment Work,
+  or self-hosted-runner change, use configured local credentials to run
+  `scripts/with-dev-env make test-self-hosted-live` when available and record
+  the result in the pull request. Never make hosted credentials a development
+  or CI requirement; if the smoke cannot run, report that honestly.
 - A completed user-visible change must update the affected API documentation,
   `internal/httpapi/openapi.yaml`, and the capability summary when applicable.

@@ -121,9 +121,20 @@ because it uses a credentialed network call and may incur cost:
 
 ```bash
 make test-model-live
+make test-self-hosted-live
 make test-platform-live
 scripts/with-dev-env make test-coding-agent-live
 ```
+
+`test-self-hosted-live` is the preferred smallest product smoke: one real
+model-selected Bash call travels through authenticated HTTP, PostgreSQL,
+Temporal, NATS, Environment Work, and a self-hosted Docker worker.
+`test-platform-live` is an alias for it. Maintainers with a configured local
+model endpoint should run this smoke before pushing substantial changes to the
+model adapter, orchestration, Environment Work, or the self-hosted runner, and
+record the result in the pull request. This is a best-effort maintainer check,
+not a credential requirement for contributors or CI; when it cannot be run,
+say so instead of presenting deterministic coverage as a live-model result.
 
 The live targets require the `MANGO_MODEL_*` variables documented in
 the getting-started guide. They are intentionally not run in public CI and must
