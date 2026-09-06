@@ -52,7 +52,7 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help build lint test test-race test-service test-service-core \
-	test-sandbox-docker test-model-live test-platform-live \
+	worker-test-image test-sandbox-docker test-model-live test-platform-live \
 	test-coding-agent test-coding-agent-live test-hitl-gate demo-hitl-gate \
 	demo-multi-agent-team \
 	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
@@ -117,10 +117,15 @@ test-race:
 
 test-service: test-service-core test-sandbox-docker
 
-test-service-core:
+worker-test-image:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
+	$(DOCKER) build -f deployments/self-hosted/docker/Dockerfile \
+		--tag '$(WORKER_TEST_IMAGE)' .
+
+test-service-core: worker-test-image
 	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_LIVE_MODEL=0 \
+	MANGO_TEST_WORKER_IMAGE='$(WORKER_TEST_IMAGE)' \
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
 	MANGO_TEST_NATS_URL='$(MANGO_TEST_NATS_URL)' \
@@ -131,10 +136,7 @@ test-service-core:
 	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') \
 		-timeout '$(SERVICE_CORE_TEST_TIMEOUT)' $(SERVICE_CORE_PACKAGES) -count=1
 
-test-sandbox-docker:
-	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
-	$(DOCKER) build -f deployments/self-hosted/docker/Dockerfile \
-		--tag '$(WORKER_TEST_IMAGE)' .
+test-sandbox-docker: worker-test-image
 	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_LIVE_MODEL=0 \
 	MANGO_TEST_WORKER_IMAGE='$(WORKER_TEST_IMAGE)' \
