@@ -41,6 +41,7 @@ export async function checkExport(directory = resolve('out')) {
     const path = `/${file.replace(/index\.html$/, '')}`;
     assert.equal(html('h1').length, 1, `${path}: exactly one document title`);
     assert.ok(html('title').text().includes('Mango'), `${path}: Mango page metadata`);
+    assert.ok(html('meta[name="description"]').attr('content')?.trim(), `${path}: page description`);
     assert.ok(!html('main').text().includes('::include['), `${path}: unresolved snippet include`);
     assert.equal(html('meta[property="og:title"]').attr('content'), html('h1').text(), `${path}: social title matches document`);
     assert.equal(html('link[rel="canonical"]').attr('href')?.replace(/\/$/, ''), absoluteUrl(path).replace(/\/$/, ''), `${path}: canonical URL`);
@@ -61,8 +62,8 @@ export async function checkExport(directory = resolve('out')) {
     }
   }
   assert.deepEqual(errors, [], errors.join('\n'));
-  // Existing routes and generated category landing pages must remain reachable.
-  for (const path of ['index.html', 'getting-started/index.html', 'sdk/index.html', 'start/index.html', 'api/index.html', 'api/sessions/index.html', 'api/events/index.html', 'guides/index.html', 'examples/index.html', 'operations/index.html', 'project/index.html', 'sdk/go/index.html', 'sdk/python/index.html', 'sdk/typescript/index.html']) {
+  // Verify the reader journey, including the model and worker guides.
+  for (const path of ['index.html', 'getting-started/index.html', 'concepts/index.html', 'sdk/index.html', 'api/index.html', 'api/sessions/index.html', 'api/events/index.html', 'guides/index.html', 'guides/model-configuration/index.html', 'guides/self-hosted-worker/index.html', 'examples/index.html', 'sdk/go/index.html', 'sdk/python/index.html', 'sdk/typescript/index.html']) {
     assert.ok(files.has(path), `missing documentation route ${path}`);
   }
   for (const path of ['getting-started/index.html', 'api/agents/index.html', 'api/environments/index.html', 'api/sessions/index.html', 'api/events/index.html']) {
@@ -75,6 +76,14 @@ export async function checkExport(directory = resolve('out')) {
   const homeLinks = pages.get('index.html').html('a[href]').toArray().map(node => node.attribs.href.replace(/\/$/, ''));
   for (const path of ['/sdk', '/api', '/architecture']) {
     assert.ok(homeLinks.includes(`${basePath}${path}`), `missing overview navigation ${path}`);
+  }
+  assert.equal(pages.get('index.html').html('title').text(), 'Overview · Mango');
+  for (const folder of ['guides', 'examples']) {
+    const { html } = pages.get(`${folder}/index.html`);
+    const links = html('#nd-sidebar a[href]').toArray()
+      .filter(node => node.attribs.href.replace(/\/$/, '') === `${basePath}/${folder}`);
+    assert.equal(links.length, 1, `${folder}: one clickable folder index, no duplicate child`);
+    assert.ok(html('a[data-card]').length > 0, `${folder}: actionable overview cards`);
   }
 
   // Exercise the same static search client used in the browser, through a
@@ -92,12 +101,16 @@ export async function checkExport(directory = resolve('out')) {
         assert.ok(target, `invalid search result ${result.url}`);
       }
     }
-    for (const path of ['/markdown/index.md', '/markdown/getting-started/index.md', '/markdown/api/sessions/index.md', '/llms.txt']) {
+    for (const path of ['/markdown/index.md', '/markdown/getting-started/index.md', '/markdown/api/sessions/index.md', '/markdown/guides/index.md', '/markdown/examples/index.md', '/llms.txt']) {
       const response = await fetch(`${origin}${basePath}${path}`);
       assert.equal(response.status, 200, `${path}: exported Markdown available`);
       const markdown = await response.text();
       assert.ok(markdown.startsWith('#'), `${path}: Markdown content`);
       assert.ok(!markdown.includes('::include['), `${path}: unresolved Markdown snippet`);
+      if (path === '/markdown/index.md') {
+        assert.ok(markdown.includes(absoluteUrl('/getting-started')), 'home card links work outside the site');
+        assert.ok(!markdown.includes('href="./'), 'home cards do not export source-relative links');
+      }
       if (path === '/markdown/getting-started/index.md') {
         assert.ok(markdown.includes(absoluteUrl('/sdk#install-from-source')), 'Markdown links must work outside the source tree');
         for (const method of ['client.sessions.create', 'client.Sessions.New', 'curl']) {

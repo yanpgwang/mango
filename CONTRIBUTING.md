@@ -160,7 +160,7 @@ not a credential requirement for contributors or CI; when it cannot be run,
 say so instead of presenting deterministic coverage as a live-model result.
 
 The live targets require the `MANGO_MODEL_*` variables documented in
-the getting-started guide. They are intentionally not run in public CI and must
+[model configuration guide](docs/guides/model-configuration.md). They are intentionally not run in public CI and must
 never print or persist API keys.
 
 The deterministic form of the coding-agent scenario runs in the ordinary

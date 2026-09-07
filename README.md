@@ -11,15 +11,10 @@
 </p>
 
 <p align="center">
-  Run stateful, long-running AI agents on infrastructure you control.
-</p>
-
-<p align="center">
   <a href="https://yanpgwang.github.io/mango/">Documentation</a> ·
-  <a href="https://yanpgwang.github.io/mango/getting-started">Quick start</a> ·
+  <a href="https://yanpgwang.github.io/mango/getting-started">Quickstart</a> ·
   <a href="https://yanpgwang.github.io/mango/api">API reference</a> ·
-  <a href="https://yanpgwang.github.io/mango/capabilities">Capabilities</a> ·
-  <a href="https://yanpgwang.github.io/mango/architecture">Architecture</a>
+  <a href="https://yanpgwang.github.io/mango/examples">Examples</a>
 </p>
 
 <p align="center">
@@ -29,162 +24,96 @@
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/github/license/yanpgwang/mango"></a>
 </p>
 
-Mango provides the control plane and execution runtime for autonomous agent
-work. Define reusable Agents, run persistent Sessions, stream and steer them
-through an event API, and equip them with sandboxed tools, Files, Git
-repositories, Skills, Memory, credentials, schedules, and multi-agent
-delegation.
+Define an Agent, start a Session, and send it work through an API.
+Mango runs the model-and-tool loop,
+persists the conversation, and coordinates execution and recovery. Build your
+application with Go, Python, TypeScript/JavaScript, or the HTTP API.
 
-## Why Mango
+## Why Mango?
 
-- **Own the whole runtime.** Keep the API, state, orchestration, credentials,
-  model traffic, and execution within infrastructure and providers you choose.
-- **Keep accepted work durable.** Sessions, events, interrupts, tool calls, and
-  client-action waits survive API and worker restarts.
-- **Bring your infrastructure.** Choose the model endpoint, object store,
-  workers, and sandbox backend without handing the runtime to a hosted agent
-  service.
+- **Delegate execution.** Configure instructions and tools, then let Mango
+  drive the agent loop, manage context, and coordinate tool calls.
+- **Own the infrastructure.** Self-host the API, orchestration, state, and
+  tool workers. The first-party Docker launcher runs shell and file operations
+  on your infrastructure; model calls use your configured endpoint.
+- **Keep work running.** Persist accepted input, conversation history, and
+  action waits across API and orchestration-worker restarts.
+- **Stay in control.** Stream responses, send follow-ups, interrupt a turn, or
+  wait for a person or your application to return a tool result.
+- **Build beyond one agent.** Coordinate persistent specialists,
+  reuse Skills and Memory, schedule Sessions, and subscribe to lifecycle Webhooks.
 
-## Quick start
+> [!IMPORTANT]
+> Mango is alpha. APIs may change, and production deployment is not yet supported.
+> See [capabilities and limits](https://yanpgwang.github.io/mango/capabilities)
+> for the supported scope of each workflow.
 
-You need Docker with Compose and `make`. No external model credential is
-required for the local walkthrough.
+## Quickstart
+
+You need Git, Docker with Compose, and `make`. Start the local stack with its
+built-in offline model; no model credentials are needed:
 
 ```bash
 git clone https://github.com/yanpgwang/mango.git
 cd mango
-export MANGO_API_KEY="${MANGO_API_KEY:-sk-mango-local-development}"
+export MANGO_API_KEY=sk-mango-local-development
 MANGO_MODEL_BASE_URL= MANGO_MODEL_API_KEY= MANGO_MODEL_ID= \
   docker compose -f deployments/local/compose.yaml up -d --build
 make local-health
 ```
 
-Follow the [five-minute walkthrough](https://yanpgwang.github.io/mango/getting-started)
-to create an Environment, Agent, and Session, then send and stream your first
-message. The command above explicitly selects the deterministic offline model
-and supplies a development-only Mango API key unless you override it.
+With `curl` and `jq` installed, run a complete first Session:
 
-`make local-up` is a convenience command that automatically loads an existing
-`~/.config/mango/dev.env`; it may enable a real model. Environments default to
-`self_hosted`. The walkthrough Agent has no tools, so it needs only the Compose
-API and Temporal orchestration worker. Tool-capable Sessions require an
-operator worker such as the first-party Docker launcher; see the
-[self-hosted worker guide](deployments/self-hosted/docker/README.md).
+```bash
+bash examples/sdk-quickstart.sh
+```
 
-The Compose stack temporarily retains the earlier `cloud` Docker path for the
-File-input/output coding example while that workflow is redesigned for the
-self-hosted boundary. For that transitional example, follow
-[Use a real model endpoint](docs/getting-started.md#use-a-real-model-endpoint).
+The example creates an Environment, Agent, and Session, sends a message, reads
+the persisted reply, and cleans up its resources. Look for `Quickstart completed`.
+This is a text-only walkthrough; running shell or file tools requires a separate
+[Environment worker](https://yanpgwang.github.io/mango/guides/self-hosted-worker).
+The local key above is for development only.
 
-Stop the Compose stack without deleting its data:
+Prefer an SDK? The [Quickstart](https://yanpgwang.github.io/mango/getting-started)
+walks through the same flow in TypeScript, Python, Go, and HTTP. **The current
+resource-based SDKs must be installed from source**; published alpha 1 packages
+use an earlier interface. Follow the [SDK installation guide](https://yanpgwang.github.io/mango/sdk).
+
+Stop the stack while keeping its data:
 
 ```bash
 make local-down
 ```
 
-To explore the Session and multi-agent APIs visually, try the
-[terminal UI example](examples/terminal-ui):
+## Explore Mango
 
-```bash
-cd examples/terminal-ui
-go run ./cmd/mango-tui --demo
-```
-
-## What you get
-
-| Area | Included |
+| I want to… | Start here |
 | --- | --- |
-| Agents and Sessions | Versioned Agent definitions, persistent Sessions, budgets, interrupts, and an event-based HTTP/SSE API |
-| Tools and resources | Sandboxed file and shell tools, remote MCP, Files, Git repositories, custom Skills, Memory Stores, and encrypted credentials |
-| Durable execution | Persisted event history, journaled tool calls, retries, park/resume, and restart recovery |
-| Automation and delegation | Scheduled Deployments, Run history, signed durable Webhooks, persistent child Agents, and Advisor consultations |
-| Execution environments | Self-hosted by default, with a first-party Docker worker preview and transitional managed adapters pending removal |
-| Operator stack | PostgreSQL-authoritative state, Temporal workflows, S3-compatible objects, and NATS live previews |
+| Understand Agents, Sessions, and workers | [Core concepts](https://yanpgwang.github.io/mango/concepts) |
+| Connect a model endpoint | [Model configuration](https://yanpgwang.github.io/mango/guides/model-configuration) |
+| Run sandboxed shell and file tools | [Docker worker guide](https://yanpgwang.github.io/mango/guides/self-hosted-worker) |
+| Add human input or coordinate a team | [Runnable examples](https://yanpgwang.github.io/mango/examples) |
+| Inspect Sessions in a terminal | [Terminal UI](https://yanpgwang.github.io/mango/examples/terminal-ui) |
+| Integrate an API operation | [API reference](https://yanpgwang.github.io/mango/api) |
+| Understand deployment and recovery | [Deployment](https://yanpgwang.github.io/mango/deployment) · [Architecture](https://yanpgwang.github.io/mango/architecture) |
 
-> [!IMPORTANT]
-> Mango is alpha: its API is unstable and the project does not yet claim
-> production readiness. Support varies by workflow and backend; review
-> [capabilities and limits](https://yanpgwang.github.io/mango/capabilities)
-> before relying on a workflow. Docker shares the host kernel; the development
-> stack is not a hardened boundary for hostile multi-tenant workloads.
+Mango is an independent project, unaffiliated with Anthropic. Claude Managed
+Agents is a design reference; Mango owns its API and does not require or proxy a
+hosted agent service. See [design provenance](https://yanpgwang.github.io/mango/provenance)
+for adopted concepts and intentional differences.
 
-## Relationship to Claude Managed Agents
+## Contributing
 
-Mango began with resource and workflow ideas documented by
-[Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview).
-It addresses the same class of stateful, long-running agent work as an
-independent open-source runtime designed for a self-hosted trust boundary.
-Mango is not an Anthropic product, does not proxy runtime behavior to a hosted
-agent service, and does not promise drop-in SDK or API compatibility. Mango
-owns its public API and roadmap; see [Product direction](https://yanpgwang.github.io/mango/product)
-for the design policy.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  Client --> API["Mango API"]
-  API --> PG[("PostgreSQL")]
-  API --> Objects[("S3-compatible storage")]
-  API <-- "work lease + Session events" --> SelfHostedWorker["EnvironmentWorker"]
-  SelfHostedWorker --> CustomerSandbox["Customer-hosted sandbox"]
-  PG -- "durable outbox" --> Worker
-  Worker <--> Temporal
-  Worker --> Model["Model provider"]
-  Worker --> Sandbox
-  Worker -. "live previews" .-> NATS
-  NATS -.-> API
-```
-
-PostgreSQL owns public state, event history, Memory contents and Versions, and
-File/Skill lifecycle intents.
-An S3-compatible store owns File bytes and immutable Skill archives. Temporal
-owns in-flight execution. NATS
-carries only ephemeral wakeups and previews; persisted events are always
-reconciled from PostgreSQL. A lost signal, process restart, or NATS outage
-cannot discard accepted work.
-
-Read the [architecture overview](https://yanpgwang.github.io/mango/architecture)
-for the failure model, transactional outbox, tool journal, interrupt ordering,
-and sandbox lifecycle.
-
-## Documentation
-
-The [first-party SDKs](sdk/) provide Go, Python, and TypeScript/JavaScript
-clients for Mango's current HTTP API. Python and TypeScript use the package name
-`mango-sdk`. The SDKs remain alpha; see each package README for installation,
-including local source setup. No hosted agent service is required.
-
-| I want to… | Read |
-| --- | --- |
-| Run my first agent session | [Getting started](https://yanpgwang.github.io/mango/getting-started) |
-| Use Go, Python, or TypeScript | [SDK guides and installation](https://yanpgwang.github.io/mango/sdk) |
-| Explore Mango in a terminal UI | [Terminal UI example](https://yanpgwang.github.io/mango/examples/terminal-ui) |
-| Connect a real model endpoint | [Use a real model endpoint](https://yanpgwang.github.io/mango/getting-started#use-a-real-model-endpoint) |
-| Choose an execution backend | [Sandbox backends](https://yanpgwang.github.io/mango/sandboxes) |
-| Run a coordinator and child Agents | [Multi-agent guide](https://yanpgwang.github.io/mango/guides/multi-agent) |
-| Check an API operation | [API reference](https://yanpgwang.github.io/mango/api) |
-| Understand supported behavior | [Capabilities and limits](https://yanpgwang.github.io/mango/capabilities) |
-| Plan a deployment | [Deployment model](https://yanpgwang.github.io/mango/deployment) |
-
-The complete documentation is also published at
-[yanpgwang.github.io/mango](https://yanpgwang.github.io/mango/).
-
-## Development
+Bug reports, documentation fixes, and focused pull requests are welcome.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the relevant tests.
 
 ```bash
 make verify       # lint, unit tests, race tests, and vet
-make docs-check   # type-check and build the documentation site
-make image-smoke  # build and smoke-test the container image
+make docs-check   # check and build the documentation site
 ```
 
-Default tests are offline. PostgreSQL, Temporal, NATS, MinIO, Docker, model,
-and remote-sandbox integrations have explicit opt-in suites. See the
-[local stack guide](deployments/local/README.md) and
-[contribution guide](CONTRIBUTING.md).
-
-Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+Report vulnerabilities privately through the process in [SECURITY.md](SECURITY.md).
 
 ## License
 
-Mango is licensed under the [Apache License 2.0](LICENSE).
+[Apache License 2.0](LICENSE).

@@ -1,0 +1,76 @@
+---
+title: Overview
+description: The open-source, self-hosted alternative to Claude Managed Agents.
+slug: /
+---
+
+# Overview
+
+Mango runs managed agents as an API service in your own deployment. Define an
+Agent, start a Session, and send it a task. Mango drives the model-and-tool
+loop, keeps the conversation, and coordinates execution and recovery.
+
+Your application owns the user experience and business tools. Mango manages
+the running Session; you operate its API, state, and workers. Connect through
+the HTTP API or the Go, Python, and TypeScript/JavaScript SDKs.
+
+<Cards>
+  <Card title="Quickstart" href="./getting-started.md">
+    Start Mango locally and complete your first Session without model credentials.
+  </Card>
+  <Card title="Core concepts" href="./concepts.md">
+    Understand Agents, Sessions, Events, and where tools run.
+  </Card>
+</Cards>
+
+:::warning[Alpha]
+
+Mango's API is still evolving. Production deployment is not yet supported;
+review [capabilities and limits](./capabilities.md) before choosing a workflow.
+
+:::
+
+## What Mango manages
+
+- **Agent execution:** model calls, context management, tool coordination,
+  and the loop that continues until a turn finishes or needs input.
+- **Persistent Sessions:** accepted input, conversation history, and action
+  waits survive API and orchestration-worker restarts. Stream progress, send
+  follow-ups, interrupt work, and respond to approval requests through the API.
+- **Tools and context:** run shell and file tools in your Docker worker,
+  connect application tools or MCP servers, and reuse versioned Skills and Memory.
+- **Teams and scheduled work:** delegate to persistent specialist Threads,
+  share a Session's budget and workspace, schedule new Sessions, and receive
+  lifecycle Webhooks.
+
+## Choose your next step
+
+<Cards>
+  <Card title="SDKs" href="./sdk.md">
+    Install the current source client and use typed resource services.
+  </Card>
+  <Card title="Guides" href="./guides/index.mdx">
+    Configure a model, run a Docker worker, or coordinate multiple agents.
+  </Card>
+  <Card title="Examples" href="./examples/index.mdx">
+    Explore a terminal client, approval gate, specialist team, and coding workflow.
+  </Card>
+  <Card title="API reference" href="./api/overview.md">
+    Find request shapes, responses, pagination, and event-stream behavior.
+  </Card>
+</Cards>
+
+## Run it yourself
+
+Mango's API, orchestration, and state run in your deployment. The default
+`self_hosted` Environment sends shell and file work to an operator-run worker.
+Model calls use your configured endpoint; Web Search/Fetch and MCP have their
+own execution paths. See [core concepts](./concepts.md#where-tools-run) for the split.
+
+The local stack includes PostgreSQL, Temporal, NATS, and S3-compatible object
+storage. Read [Deployment](./deployment.md) for configuration and
+[Architecture](./architecture.md) for how accepted work survives failures.
+
+Mango is an independent project with its own API and SDKs.
+[Design provenance](./provenance.md) explains the concepts adopted from Claude
+Managed Agents and the choices made for Mango's self-hosted runtime.

@@ -7,7 +7,7 @@ import './global.css';
 export const metadata: Metadata = {
   metadataBase: new URL(absoluteUrl('/')),
   title: { default: 'Mango documentation', template: '%s · Mango' },
-  description: 'An independent, self-hosted runtime for durable AI agents.',
+  description: 'The open-source, self-hosted alternative to Claude Managed Agents.',
   icons: { icon: withBasePath('/img/mango-mark.svg') },
 };
 

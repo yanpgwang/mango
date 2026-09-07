@@ -1,5 +1,6 @@
 ---
 title: Memory
+description: Store and version UTF-8 files shared across Sessions.
 slug: /api/memory
 ---
 

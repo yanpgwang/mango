@@ -94,3 +94,19 @@ test('static preview serves only the mounted export, with no SPA fallback', asyn
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('native card links remain usable in exported Markdown', () => {
+  const card = {
+    type: 'mdxJsxFlowElement', name: 'Card',
+    attributes: [
+      { type: 'mdxJsxAttribute', name: 'title', value: 'Quickstart' },
+      { type: 'mdxJsxAttribute', name: 'href', value: './getting-started.md' },
+    ],
+    children: [{ type: 'paragraph', children: [{ type: 'text', value: 'Complete a Session.' }] }],
+  };
+  const markdown = exportMarkdown({ type: 'root', children: [card] },
+    () => 'https://docs.example.com/mango/getting-started');
+  assert.ok(markdown.includes('href="https://docs.example.com/mango/getting-started"'));
+  assert.ok(markdown.includes('Complete a Session.'));
+  assert.equal(card.attributes[1].value, './getting-started.md');
+});

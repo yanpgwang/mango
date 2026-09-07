@@ -1,9 +1,9 @@
 ---
-title: TypeScript and JavaScript SDK
+title: TypeScript SDK
 description: Typed clients, promises, pagination, and live event streams.
 ---
 
-# TypeScript and JavaScript SDK
+# TypeScript SDK
 
 Use `mango-sdk` from Node.js 22+ with ESM imports. JavaScript uses the
 same package; TypeScript adds generated request/response types. The client uses

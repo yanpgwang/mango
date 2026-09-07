@@ -1,8 +1,9 @@
 ---
-title: Storage, context, and connected tools
+title: Storage and context
+description: Design details for durable transcripts, context preparation, and connected tools.
 ---
 
-# Storage, context, and connected tools
+# Storage and context
 
 Status: initial implementation plus follow-up boundaries, 2026-07-31.
 

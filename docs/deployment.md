@@ -1,10 +1,10 @@
 ---
-title: Deployment model
+title: Deployment
+description: Configure Mango’s processes, storage, credentials, and local development stack.
 slug: /deployment
-sidebar_position: 4
 ---
 
-# Deployment model
+# Deployment
 
 Mango currently publishes a reproducible local stack and builds a multi-role
 application image. It does not yet publish a supported production Docker
@@ -32,17 +32,23 @@ per-Session workspace volume. It currently supports the six core shell/file
 tools, immutable custom Skill preparation, and attached Memory Store
 synchronization. File/Git resource preparation and output publication remain
 open. Follow the
-[worker-specific guide](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
-instead of treating it as a replacement for the complete local stack.
+[Docker worker guide](guides/self-hosted-worker.md) to add it to a running control plane.
 
 ## Process topology
 
-One immutable image serves two independently scalable roles:
+The Mango application image serves two roles. The local Compose stack runs
+them in separate containers:
 
 ```text
 mango serve -addr :8080
 mango orchestrate
 ```
+
+The default self-hosted tool path also needs a separate Environment worker.
+Its supervisor runs `mango-worker docker`; its per-Work container executes
+tools. See [Core concepts](concepts.md#environments-and-workers).
+
+## Workspace authentication
 
 The API refuses to start without an active Workspace key. Set
 `MANGO_API_KEY` to bootstrap or rotate the default Workspace key, or
@@ -57,11 +63,11 @@ The plaintext generated key is printed only by `api-key create`; PostgreSQL
 stores its SHA-256 digest. API and worker processes share Workspace ownership
 through PostgreSQL, but only the API needs request credentials.
 
-The API owns HTTP resources, SSE, event admission, and client Files
-metadata/object coordination. The worker owns Temporal Workflow/Activity
-execution, model calls, sandbox tools, File Resource materialization, Session
-output publication, and the outbox relay. They share a release artifact but
-not a scaling or rollout policy.
+Model credentials belong to the orchestration worker. Configure an endpoint
+with the [model guide](guides/model-configuration.md); application clients and
+Environment workers use Mango credentials instead.
+
+## Object storage
 
 Files add an S3-compatible dependency beside PostgreSQL, Temporal, and NATS.
 Set `MANGO_FILE_S3_BUCKET` to enable the five Files routes; leaving it
@@ -90,7 +96,8 @@ concurrent upload, Session Resource copy, or Session output publication. These
 are explicit limits until distributed intent leasing and direct multipart
 object-store operations are implemented.
 
-File-backed Session Resources require `MANGO_SANDBOX=docker`, `e2b`, `cube`,
+On the transitional `cloud` path, File-backed Session Resources require
+`MANGO_SANDBOX=docker`, `e2b`, `cube`,
 `opensandbox`, or `daytona`; the remote providers currently expose writable
 sandbox-local copies. Automatic Session output publication supports the same
 providers. Every remote image must provide `/bin/sh` and `tar`; output archives
@@ -108,6 +115,8 @@ user's home directory. The API and every worker
 on the task queue must agree on the sandbox provider and object-store
 configuration. Host-process execution is not a selectable runtime backend.
 
+## Memory storage
+
 Memory API contents and immutable Versions live entirely in PostgreSQL and do
 not require S3-compatible storage. On the transitional Mango-managed `cloud`
 path, Memory-backed Session Resources require `MANGO_SANDBOX=docker`: the API
@@ -118,7 +127,7 @@ downloads and reconciles the same Stores through Mango's public Memory API with
 its per-Work Session credential; its `/mnt/memory` tree is a bounded tmpfs.
 Provider-specific self-hosted launcher examples remain future work.
 
-### Docker worker configuration
+## Docker worker configuration
 
 This subsection describes the transitional Mango-managed `cloud` adapter still
 present in native `orchestrate` processes and the local Compose stack. It is not
@@ -160,10 +169,7 @@ Session containers and their host directory; it is not Session deletion.
 Delete Sessions through Mango before discarding deployment data. Even
 `VOLUMES=1` does not remove sibling Session containers or host bind directories.
 
-An older local-backed Session cannot resume on this Docker worker. Finish and
-delete those Sessions with the old worker before upgrading; the new binary
-neither migrates their workspaces nor supports a local compatibility executor.
-No development database or existing workspace is automatically erased.
+## Vault and Webhook encryption
 
 The Vault and Webhook APIs are disabled unless `MANGO_VAULT_KEYRING_FILE` points to
 an operator-mounted JSON keyring. A configured but invalid keyring fails API
@@ -196,24 +202,9 @@ role. This avoids every replica racing to manage schema during a rollout.
 
 ## Repository commands
 
-Run core checks:
-
-```sh
-make verify
-```
-
-Build and smoke-test the container entrypoint:
-
-```sh
-make image-smoke
-```
-
-Builders behind a restricted network can pass a standard Go module proxy
-without changing the Dockerfile:
-
-```sh
-make image-smoke GOPROXY=https://proxy.example.com,direct
-```
+Build the application image with `make image`. For a restricted build network,
+set `GOPROXY` to an accessible Go module proxy. Contributor validation commands
+are documented in [CONTRIBUTING.md](https://github.com/yanpgwang/mango/blob/main/CONTRIBUTING.md).
 
 Validate and start the local stack:
 

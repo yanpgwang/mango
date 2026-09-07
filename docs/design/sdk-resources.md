@@ -1,5 +1,6 @@
 ---
 title: SDK resource design
+description: The resource hierarchy, language mappings, and validation of Mango’s SDKs.
 ---
 
 # SDK resource design

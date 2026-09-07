@@ -1,5 +1,6 @@
 ---
 title: Domain model
+description: The resources and relationships behind Mango’s public API and runtime.
 ---
 
 # Domain model

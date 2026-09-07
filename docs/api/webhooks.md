@@ -1,5 +1,6 @@
 ---
 title: Webhooks
+description: Receive signed notifications when Sessions and Deployment Runs change.
 slug: /api/webhooks
 ---
 

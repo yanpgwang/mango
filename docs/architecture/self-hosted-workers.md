@@ -1,5 +1,6 @@
 ---
 title: Self-hosted workers
+description: How Work leases, SDK helpers, and operator launchers compose.
 ---
 
 # Self-hosted workers

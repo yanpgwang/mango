@@ -1,5 +1,6 @@
 ---
 title: Agents
+description: Create and version agent definitions, tools, and specialist rosters.
 ---
 
 # Agents
@@ -9,7 +10,7 @@ store an immutable snapshot.
 
 ## SDK and HTTP example
 
-This excerpt uses the client and resources from [Getting started](../getting-started.md).
+This excerpt uses the client and resources from [Quickstart](../getting-started.md).
 Select your language; the wire contract and lifecycle rules follow below.
 
 ::include[../../sdk/typescript/examples/quickstart.ts#agent]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}

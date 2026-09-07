@@ -1,16 +1,27 @@
 ---
-title: Sandbox backends
+title: Sandbox support
+description: Choose an execution path and understand its filesystem and isolation limits.
 slug: /sandboxes
 ---
 
-# Sandbox backends
+# Sandbox support
 
-This page currently inventories the transitional Mango-managed sandbox
-registry. New OSS execution uses the provider-neutral Environment Work boundary
-and an operator launcher; the first such launcher is Docker. A backend is not presented as
-production-ready merely because it can execute a command: its isolation model,
-lifecycle guarantees, operational dependencies, and known limits must also be
-clear.
+## Default execution
+
+New Environments use `self_hosted`. Start the [Docker worker](guides/self-hosted-worker.md)
+to execute shell/file tools, prepare pinned Skills, and synchronize attached
+Memory Stores. Its launcher and network policy belong to the operator.
+Automatic File/Git input preparation and output publication are not yet available
+on this path. See [Capabilities and limits](capabilities.md#choose-an-execution-path)
+for the comparison.
+
+## Managed adapters (transitional)
+
+The remainder of this page documents the explicit `cloud` Environment path.
+Its sandbox registry is still present for managed File/Git mounts and output
+publication. These are adapters in your Mango deployment, not a sandbox service
+operated by the Mango project. For the default Work-based path, use the Docker
+worker guide above.
 
 Docker execution does not add another HTTP service. Remote adapters
 call an independently deployed sandbox service through the same in-process Go
@@ -198,8 +209,8 @@ The worker checks provider markers before every relevant tool step, repairs
 detectable damage, and removes abandoned extraction directories. Sandbox
 destruction removes provider-owned Skill state with the sandbox. Docker
 containers created before its mount existed fail closed for pinned Skills and
-must be recreated; Docker cannot add a bind mount to a live container. Local
-execution and Environment Worker execution do not advertise the capability.
+must be recreated; Docker cannot add a bind mount to a live container. These adapter capability flags apply to the managed path. The self-hosted
+worker prepares Skills through the public Skill API as described above.
 
 ## Memory Store mounts
 

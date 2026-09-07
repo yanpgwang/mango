@@ -1,5 +1,6 @@
 ---
 title: Files
+description: Upload immutable files and retrieve supported Session outputs.
 slug: /api/files
 ---
 

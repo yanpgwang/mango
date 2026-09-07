@@ -1,5 +1,6 @@
 ---
 title: Design provenance
+description: Public design references, adopted concepts, and intentional differences.
 slug: /provenance
 ---
 
@@ -394,6 +395,49 @@ support, so they run the same credential-free and opt-in live conformance suites
   and a bundled search index preserve the existing GitHub Pages operating model;
   no hosted documentation, search service, model credential, or Node server is
   required to serve the built artifact.
+
+## Documentation reader journey (2026-09-07)
+
+Reviewed Mango `main` at `8b7872a` before reorganizing the README and docs.
+The acceptance criteria are a complete offline first Session, accurate
+source-only resource SDK instructions, separate model and tool-worker setup,
+and readable navigation without duplicate folder indexes. The change is
+editorial; it does not change HTTP, persistence, scheduling, or recovery semantics.
+
+- Adopted the native title/description/body, folder index, and Card patterns
+  from the current [Fumadocs page conventions](https://www.fumadocs.dev/docs/page-conventions)
+  and [Markdown guide](https://www.fumadocs.dev/docs/markdown), checked against
+  the installed Core/Base UI `16.15.4` and MDX `15.4.0`. Cards use Mango's
+  relative-file resolution and static Markdown exports; no hosted service or
+  custom visual framework is added.
+- Reviewed [Temporal's README](https://github.com/temporalio/temporal) and
+  [Dify's README](https://github.com/langgenius/dify) as examples of short product
+  introductions, actionable setup, and links to deeper documentation. Mango's
+  README removes the architecture diagram and keeps implementation details in
+  Architecture; wording and commands are independently authored for Mango.
+- Reviewed the current [CMA overview](https://platform.claude.com/docs/en/managed-agents/overview)
+  to clarify the managed-agent category: applications submit work while the
+  runtime manages the agent loop, tools, and Session state. Mango's README and
+  docs home both name the open-source, self-hosted alternative positioning;
+  durability is supporting evidence for that execution model. Mango operates
+  the full control plane as well as tool workers, retains its own API and SDKs,
+  and does not claim an official implementation or drop-in compatibility.
+- Reviewed the current public [CMA quickstart](https://platform.claude.com/docs/en/managed-agents/quickstart)
+  and [self-hosted sandbox guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes),
+  paired with the official Python SDK's
+  [Environment resource source](https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/resources/beta/environments/environments.py)
+  on the review date. Retained the useful Agent/Environment/Session explanation
+  and distinction between orchestration and external tool execution. Mango
+  defaults to self-hosted execution, runs its own control plane, and documents
+  its actual Workspace/Work credentials and Docker launcher. Hosted Console
+  steps, Environment keys, vendor beta headers, and hosted SDK commands are not
+  adopted. No external SDK implementation is copied or executed.
+- Runtime claims come from Mango's Environment admission and HTTP tests,
+  OpenAPI, current runnable SDK examples, Compose configuration, Docker
+  launcher, and its composed integration tests. The docs distinguish the
+  default self-hosted path from the transitional managed File/Git/output path.
+  Static-site checks establish rendering and link correctness, not evidence
+  that a model or production workflow was run.
 
 ## Custom Skills
 

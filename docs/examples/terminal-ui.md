@@ -1,9 +1,10 @@
 ---
-title: Try the terminal UI demo
+title: Terminal UI
+description: Browse Sessions and interact with agents from a terminal.
 slug: /examples/terminal-ui
 ---
 
-# Try the terminal UI demo
+# Terminal UI
 
 Mango includes a reference terminal UI that exercises the HTTP and
 event-stream APIs as an interactive client. It shows durable Sessions,
@@ -34,7 +35,7 @@ events, and a child-owned permission gate.
 
 ## Connect to the local stack
 
-First complete [Getting started](../getting-started.md) and leave the local
+First complete [Quickstart](../getting-started.md) and leave the local
 stack running. Then launch the terminal UI from `examples/terminal-ui`:
 
 ```bash

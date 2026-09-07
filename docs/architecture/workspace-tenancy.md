@@ -1,5 +1,6 @@
 ---
 title: Workspace tenancy
+description: How Workspace and Work credentials scope access to resources and execution.
 ---
 
 # Workspace tenancy
