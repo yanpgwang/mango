@@ -71,6 +71,9 @@ Bubble Tea input control.
 - A pure event-ledger projection shared by wide and compact terminal layouts.
 - Session creation, rename, archive, delete, interrupt, and action-response
   flows against one backend interface.
+- New Environments use `self_hosted`. A Session with shell/file tools waits for
+  an operator worker configured for that Environment; creating it in the UI
+  does not start infrastructure automatically.
 - An in-memory backend for product review and UI regression without running a
   Mango deployment.
 

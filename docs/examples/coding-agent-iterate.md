@@ -16,6 +16,14 @@ run inside async functions, rather than being separate copy-and-paste scripts.
 
 ## Run the example
 
+This is the one remaining public example that intentionally creates a
+transitional `cloud` Environment. It exercises Mango-managed File Resource
+mounting and Session output publication, neither of which belongs to the
+current self-hosted contract. Self-hosted workers instead leave File/Git staging
+and workspace deliverable retrieval to the operator. The example remains
+available while that workflow is replaced; it is not the recommended
+Environment default.
+
 From a repository checkout, install the Python SDK and prepare the local
 verification image. Python 3.11+, `uv`, and a running Docker daemon are required:
 

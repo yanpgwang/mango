@@ -4326,6 +4326,7 @@ components:
           type: string
           enum: [organization, account]
         config:
+          description: Omit to create a self-hosted Environment.
           $ref: '#/components/schemas/EnvironmentConfigInput'
     EnvironmentUpdateRequest:
       type: object

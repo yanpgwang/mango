@@ -3477,7 +3477,8 @@
         "additionalProperties": false,
         "properties": {
           "config": {
-            "$ref": "#/components/schemas/EnvironmentConfigInput"
+            "$ref": "#/components/schemas/EnvironmentConfigInput",
+            "description": "Omit to create a self-hosted Environment."
           },
           "description": {
             "type": "string"

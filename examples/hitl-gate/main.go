@@ -98,8 +98,7 @@ func run() error {
 
 	fmt.Println("Creating Environment, Agent, and Session through the Mango HTTP API...")
 	environment, err := client.create(ctx, "/v1/environments", map[string]any{
-		"name":   "HITL expense example",
-		"config": map[string]any{"type": "cloud"},
+		"name": "HITL expense example",
 	})
 	if err != nil {
 		return fmt.Errorf("create Environment: %w", err)

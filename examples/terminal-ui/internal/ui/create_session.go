@@ -245,10 +245,10 @@ func (m Model) updateNewSession(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "down":
 			m.creation.environmentCursor = wrap(m.creation.environmentCursor+1, choiceCount)
 		case "ctrl+e":
-			m.beginCreationField(createEnvironmentName, "Environment name", first(m.creation.environmentName, "Mango cloud"))
+			m.beginCreationField(createEnvironmentName, "Environment name", first(m.creation.environmentName, "Mango self-hosted"))
 		case "enter":
 			if m.creation.environmentCursor == 0 {
-				m.beginCreationField(createEnvironmentName, "Environment name", first(m.creation.environmentName, "Mango cloud"))
+				m.beginCreationField(createEnvironmentName, "Environment name", first(m.creation.environmentName, "Mango self-hosted"))
 				break
 			}
 			if len(environments) == 0 {
@@ -788,13 +788,13 @@ func (m Model) environmentRows() []string {
 			marker, style = "› ", m.theme.active
 		}
 		if index == 0 {
-			rows = append(rows, marker+style.Render("Create a cloud Environment")+"\n    "+m.theme.dim.Render("Add a new managed execution target"))
+			rows = append(rows, marker+style.Render("Create a self-hosted Environment")+"\n    "+m.theme.dim.Render("Connect an operator-managed execution target"))
 			continue
 		}
 		environment := environments[index-1]
 		innerWidth := dialogInnerWidth(m.dialogWidth())
 		name := truncate(first(environment.Name, environment.ID), innerWidth-2)
-		detail := trimOneLine(first(environment.Config.Type, "cloud")+" · "+shortID(environment.ID), innerWidth-4)
+		detail := trimOneLine(first(environment.Config.Type, "self_hosted")+" · "+shortID(environment.ID), innerWidth-4)
 		rows = append(rows, marker+style.Render(name)+"\n    "+m.theme.dim.Render(detail))
 	}
 	return rows
@@ -808,7 +808,7 @@ func (m Model) selectionSummary() string {
 		parts = append(parts, m.theme.success.Render("✓ ")+line)
 	}
 	if m.creation.environment.ID != "" {
-		line := trimOneLine(first(m.creation.environment.Name, m.creation.environment.ID)+" · cloud", innerWidth-2)
+		line := trimOneLine(first(m.creation.environment.Name, m.creation.environment.ID)+" · "+first(m.creation.environment.Config.Type, "self_hosted"), innerWidth-2)
 		parts = append(parts, m.theme.success.Render("✓ ")+line)
 	}
 	return strings.Join(parts, "\n")
@@ -827,7 +827,7 @@ func (m Model) creationFieldCopy() (string, string) {
 	case createAgentMCPURL:
 		return "MCP server · Streamable HTTP URL", "enter add server  esc back"
 	case createEnvironmentName:
-		return "Create cloud Environment · Name", "enter create Environment  esc back"
+		return "Create self-hosted Environment · Name", "enter create Environment  esc back"
 	case createSessionTitle:
 		return "Session title", "enter continue  esc back"
 	case createInitialPrompt:

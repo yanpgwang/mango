@@ -253,7 +253,7 @@ func TestInboxPreviewSummarizesSelectedSession(t *testing.T) {
 		Title:         "Ship the managed Agent launch",
 		Status:        "idle",
 		UpdatedAt:     time.Now().Add(-4 * time.Minute),
-		EnvironmentID: "env_demo_cloud",
+		EnvironmentID: "env_demo_self_hosted",
 		Usage:         mango.Usage{InputTokens: 18420, OutputTokens: 3286},
 		Stats:         mango.Stats{ActiveSeconds: 147.8},
 	}
@@ -274,7 +274,7 @@ func TestInboxPreviewSummarizesSelectedSession(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Ship the managed Agent launch", "idle · 4m ago", "AGENT", "coordinator", "claude-sonnet-4-5",
-		"env_demo_cloud", "SUBAGENTS · 2", "researcher  ·  reviewer", "USAGE", "18.4K in", "3.3K out",
+		"env_demo_self_hosted", "SUBAGENTS · 2", "researcher  ·  reviewer", "USAGE", "18.4K in", "3.3K out",
 		"147.8s active", "SESSION", "sesn_product_launch", "enter attach", "m manage",
 	} {
 		if !strings.Contains(preview, want) {
@@ -1188,7 +1188,7 @@ func TestNewSessionWizardIsFocusedCenterCard(t *testing.T) {
 	model.creation.step = createSessionTitle
 	model.creation.agent.Name = "researcher"
 	model.creation.agent.Model.ID = "deepseek-v4-flash"
-	model.creation.environment.Name = "Mango cloud"
+	model.creation.environment.Name = "Mango self-hosted"
 	model.editor.SetValue("研究历")
 	model.editor.Focus()
 	model.resize()
@@ -1475,8 +1475,8 @@ func TestQuitUsesSafeCentralConfirmation(t *testing.T) {
 		t.Fatalf("quit prompt command=%v dialog=%v cursor=%d", command, model.dialog, model.dialogCursor)
 	}
 	dialog := ansi.Strip(model.renderDialog())
-	if !strings.Contains(dialog, "Quit Mango?") || !strings.Contains(dialog, "keep running in the") ||
-		!strings.Contains(dialog, "cloud.") ||
+	if !strings.Contains(dialog, "Quit Mango?") || !strings.Contains(dialog, "keep running after") ||
+		!strings.Contains(dialog, "disconnect.") ||
 		!strings.Contains(dialog, "Keep working") {
 		t.Fatalf("quit dialog = %q", dialog)
 	}
@@ -1641,7 +1641,7 @@ func TestTextDialogsStayInsideMinimumTerminal(t *testing.T) {
 				model.dialog = dialogNewSession
 				model.creation.step = createInitialPrompt
 				model.creation.agent = mango.Agent{ID: "agent_1", Name: "coordinator"}
-				model.creation.environment = mango.Environment{ID: "env_1", Name: "Mango cloud"}
+				model.creation.environment = mango.Environment{ID: "env_1", Name: "Mango self-hosted"}
 			},
 		},
 	}
@@ -1798,7 +1798,7 @@ func TestNewSessionWizardCanCreateMissingResources(t *testing.T) {
 		t.Fatalf("create Environment choice step = %v", model.creation.step)
 	}
 
-	model.editor.SetValue("fresh cloud")
+	model.editor.SetValue("fresh self-hosted")
 	updated, command = model.updateNewSession(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = updated.(Model)
 	updated, _ = model.Update(command())

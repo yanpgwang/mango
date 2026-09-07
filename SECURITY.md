@@ -24,15 +24,21 @@ maintainer contact without disclosing vulnerability details.
 
 ## Current security boundaries
 
-- Docker is the default runtime sandbox; host-process execution is not
-  selectable. Containers share the host kernel and the provider has not been
-  audited for hostile multi-tenant workloads. Direct provider calls default to
-  no network, while cloud Environments request bridge networking unless a
-  supported network policy says otherwise.
+- `self_hosted` is the default Environment boundary, and Mango's first-party
+  launcher uses Docker; host-process execution is not selectable. Containers
+  share the host kernel and the launcher has not been audited for hostile
+  multi-tenant workloads. The transitional managed registry also defaults to
+  Docker. Its direct provider calls default to no network, while explicit
+  cloud Environments request bridge networking unless a supported network
+  policy says otherwise.
 - The local Compose worker is trusted with root access and the host Docker
   socket. The API and Session containers do not receive that socket; Session
   containers do not inherit worker credentials. Docker access still grants
   substantial host authority and is not a hostile multi-tenant guarantee.
+- A standalone self-hosted Docker supervisor has the same daemon-level host
+  authority. It keeps the Workspace key outside Session containers and sends a
+  narrower Work credential to each item process, but it remains trusted
+  operator infrastructure.
 - Every protected API request is authenticated by an opaque API key and scoped
   to one Workspace. Top-level resources, child resources, scheduled work, and
   object-store keys are isolated by that Workspace. Health, readiness, and the

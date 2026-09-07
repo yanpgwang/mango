@@ -1,8 +1,9 @@
 // Package sandbox provides isolated execution for agent tools.
 //
-// Docker is the default. Remote providers are optional infrastructure adapters.
-// There is no host-process executor. Each provider's documented trust boundary
-// still applies; container execution is not a hostile multi-tenant guarantee.
+// In the transitional Mango-managed path, Docker is the registry default and
+// remote providers are optional infrastructure adapters. There is no
+// host-process executor. Each provider's documented trust boundary still
+// applies; container execution is not a hostile multi-tenant guarantee.
 package sandbox
 
 import (

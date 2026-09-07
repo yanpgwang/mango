@@ -38,6 +38,7 @@ with Mango(
     base_url=os.environ.get("MANGO_URL", "http://localhost:8080"),
     api_key=os.environ["MANGO_API_KEY"],
 ) as client:
+    # Omitted config defaults to self-hosted execution.
     environment = client.create_environment(body={"name": "python-example"})
     agent = client.create_agent(body={
         "name": "assistant",

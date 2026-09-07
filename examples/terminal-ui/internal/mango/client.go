@@ -143,7 +143,7 @@ func (c *Client) CreateEnvironment(ctx context.Context, input CreateEnvironmentI
 	var environment Environment
 	err := c.do(ctx, http.MethodPost, "/v1/environments", map[string]any{
 		"name": input.Name, "description": input.Description,
-		"config": map[string]any{"type": "cloud"},
+		"config": map[string]any{"type": "self_hosted"},
 	}, &environment)
 	return environment, err
 }

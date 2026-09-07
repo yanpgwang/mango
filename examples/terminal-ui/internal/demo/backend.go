@@ -35,7 +35,7 @@ func New() *Backend {
 	now := time.Now().Add(-9 * time.Minute).UTC()
 	session := mango.Session{
 		ID: "sesn_demo_product_launch", Title: "Ship the managed Agent launch", Status: "idle",
-		CreatedAt: now, UpdatedAt: time.Now().UTC().Add(-4 * time.Minute), EnvironmentID: "env_demo_cloud",
+		CreatedAt: now, UpdatedAt: time.Now().UTC().Add(-4 * time.Minute), EnvironmentID: "env_demo_self_hosted",
 	}
 	session.Agent.ID = "agent_demo_coordinator"
 	session.Agent.Name = "coordinator"
@@ -83,8 +83,8 @@ func New() *Backend {
 			{"id": "sevt_v3", "type": "session.thread_status_idle", "stop_reason": map[string]any{"type": "requires_action", "event_ids": []any{"sevt_v2"}}, "processed_at": timeText(6*time.Minute + time.Second)},
 		},
 	}
-	environment := mango.Environment{ID: "env_demo_cloud", Name: "Mango cloud"}
-	environment.Config.Type = "cloud"
+	environment := mango.Environment{ID: "env_demo_self_hosted", Name: "Mango self-hosted"}
+	environment.Config.Type = "self_hosted"
 	return &Backend{
 		session: session, threads: []mango.Thread{primary, researcher, reviewer}, events: events,
 		agents: []mango.Agent{session.Agent}, environments: []mango.Environment{environment},
@@ -163,7 +163,7 @@ func (b *Backend) CreateEnvironment(_ context.Context, input mango.CreateEnviron
 	environment := mango.Environment{
 		ID: fmt.Sprintf("env_demo_%d", b.nextID), Name: input.Name, Description: input.Description,
 	}
-	environment.Config.Type = "cloud"
+	environment.Config.Type = "self_hosted"
 	b.environments = append(b.environments, environment)
 	return environment, nil
 }

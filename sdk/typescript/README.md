@@ -55,7 +55,8 @@ const client = new Mango({
 });
 
 const environment = await client.createEnvironment({
-  body: { name: 'Example', config: { type: 'cloud' } },
+  // Omitted config defaults to self-hosted execution.
+  body: { name: 'Example' },
 });
 const agent = await client.createAgent({
   body: { name: 'Assistant', model: process.env.MANGO_MODEL_ID! },

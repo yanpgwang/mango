@@ -45,7 +45,7 @@ The public Claude cookbook at `main` commit
 `a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5` and the current public Go, Python,
 and TypeScript SDK sources at commits `de6914c544629b14a67c0695ce147edae6a291e0`,
 `62de60b27d04f0927a0ccf0f2610597fafcfab6a`, and
-`ba14b1f4fdf2e840a7b32297965342a099f6201d` were reviewed on 2026-09-05.
+`ba14b1f4fdf2e840a7b32297965342a099f6201d` were reviewed again on 2026-09-07.
 The cookbook reference set is Docker, Cloudflare Containers, a pure Cloudflare
 Worker variant, Modal, Daytona, and Vercel. Those implementations confirm the
 separation above: compute platforms expose generic container, process,
@@ -201,10 +201,13 @@ cutover follow separately.
    the system test verifies that the real boundaries compose. An opt-in live
    smoke uses the same fixture for one real-model-selected Bash call without
    making external credentials a CI dependency.
-10. Switch the default deployment, quickstart, and SDK examples to self-hosted
-   execution, then remove the old `cloud` path and compiled provider registry.
-   Record the resulting File/Git and output boundary explicitly. Mango is
-   pre-release, so this changes `/v1` directly without a compatibility layer.
+10. Converge the public product path in two reviewable slices. The first makes
+   omitted Environment config, the multi-language quickstart, the terminal UI,
+   and examples that do not need managed File/Git mounts default to self-hosted
+   execution. The File/output coding example remains an explicit transitional
+   exception. The second removes the old `cloud` path and compiled provider
+   registry, then replaces or retires that exception. Mango is pre-release, so
+   both slices change `/v1` directly without a compatibility layer.
 11. Add thin provider examples one at a time. Each must use the same runner and
    document persistence, cancellation, resource limits, network policy, and
    restart behavior.

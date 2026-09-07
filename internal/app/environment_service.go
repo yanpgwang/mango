@@ -42,7 +42,7 @@ func (s *EnvironmentService) Create(ctx context.Context, e domain.Environment) (
 		if configType, ok := e.Config["type"].(string); ok {
 			e.ConfigType = configType
 		} else {
-			e.ConfigType = "cloud"
+			e.ConfigType = "self_hosted"
 		}
 	}
 	if err := validateEnvironment(e); err != nil {

@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -46,6 +49,20 @@ func TestDocumentationSDKQuickstart(t *testing.T) {
 				}
 				if r.Header.Get("anthropic-beta") != "" || r.Header.Get("anthropic-version") != "" {
 					t.Error("documentation example sent vendor headers")
+				}
+				if r.Method == http.MethodPost && r.URL.Path == "/v1/environments" {
+					body, err := io.ReadAll(r.Body)
+					if err != nil {
+						t.Errorf("read Environment request: %v", err)
+					} else {
+						r.Body = io.NopCloser(bytes.NewReader(body))
+						var input map[string]any
+						if err := json.Unmarshal(body, &input); err != nil {
+							t.Errorf("decode Environment request: %v", err)
+						} else if _, present := input["config"]; present {
+							t.Errorf("documentation quickstart must demonstrate the default self-hosted Environment: %s", body)
+						}
+					}
 				}
 				mu.Lock()
 				seen[r.Method+" "+r.URL.Path]++

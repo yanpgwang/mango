@@ -28,13 +28,19 @@ Select your language; the wire contract and lifecycle rules follow below.
   "name": "local",
   "description": "Default analysis environment",
   "metadata": {"team": "data"},
-  "config": {"type": "cloud"}
+  "config": {"type": "self_hosted"}
 }
 ```
 
-`name` is required. If `config.type` is omitted, the stored type defaults to
-`cloud`. `description` and `metadata` are optional. `scope` accepts `account` or
+`name` is required. If `config` is omitted, the stored type defaults to
+`self_hosted`. `description` and `metadata` are optional. `scope` accepts `account` or
 `organization` for `self_hosted` environments and is rejected for `cloud`.
+
+The default reflects Mango's OSS trust boundary: an operator-run worker owns
+tool execution. A text-only turn or a workflow using only application-owned
+custom tools does not need that worker. Before enabling `bash`, `read`, `write`,
+`edit`, `glob`, or `grep`, start a worker for this Environment as described in
+[Self-hosted workers](../architecture/self-hosted-workers.md).
 
 Cloud environments accept package lists for `apt`, `cargo`, `gem`, `go`, `npm`,
 and `pip`. The first sandbox-using turn installs those packages before the
@@ -61,10 +67,11 @@ schemes, ports, paths, and embedded wildcards are rejected. The two allow flags
 default to `false`. Deployments using Docker, E2B, CubeSandbox, or
 Daytona return `422` for a limited policy instead of storing unenforced intent.
 
-The runtime accepts `cloud` and `self_hosted` sessions. In `cloud`, enabled
-built-in sandbox tools execute on the configured worker sandbox. In
-`self_hosted`, the same `agent.tool_use` parks the Session with
-`requires_action`; the client executes it and sends a correlated
+The runtime temporarily accepts both `cloud` and `self_hosted` Sessions. In the
+transitional `cloud` path, enabled built-in sandbox tools execute through the
+orchestration worker's configured sandbox adapter. In `self_hosted`, the same
+`agent.tool_use` parks the Session with `requires_action`; an operator worker
+claims the Environment Work item, executes the call, and sends a correlated
 `user.tool_result`. The server then resumes the same model loop without
 executing the tool a second time.
 
@@ -161,24 +168,18 @@ Deleting an environment referenced by a session returns `409`.
   "name": "local",
   "description": "Default analysis environment",
   "metadata": {"team": "data"},
-  "config": {
-    "type": "cloud",
-    "networking": {"type": "unrestricted"},
-    "packages": {
-      "type": "packages",
-      "apt": [], "cargo": [], "gem": [], "go": [], "npm": [], "pip": []
-    }
-  },
+  "config": {"type": "self_hosted"},
   "created_at": "2026-07-27T00:00:00Z",
   "updated_at": "2026-07-27T00:00:00Z",
   "archived_at": null
 }
 ```
 
-The default cloud response includes Mango's resolved unrestricted-network and
-empty-package defaults. Configured package lists,
-description, metadata, and self-hosted scope persist across create, get, list,
-update, and archive. A package-manager error prevents sandbox binding and tool
-execution; a later retry resumes provisioning from the durable intent. The
-selected isolated sandbox image must provide every requested package-manager
-binary.
+The default response contains only `{"type":"self_hosted"}`. An explicitly
+selected cloud response also includes Mango's resolved unrestricted-network and
+empty-package defaults. Configured package lists, description, metadata, and
+self-hosted scope persist across create, get, list, update, and archive. A
+package-manager error on the transitional cloud path prevents sandbox binding
+and tool execution; a later retry resumes provisioning from the durable intent.
+The selected isolated sandbox image must provide every requested
+package-manager binary.

@@ -19,7 +19,7 @@ session_id: str | None = None
 try:
     # region environment
     environment = client.create_environment(body={
-        "name": "Quickstart", "config": {"type": "cloud"},
+        "name": "Quickstart",
     })
     # endregion environment
     environment_id = environment["id"]

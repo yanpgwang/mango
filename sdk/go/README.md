@@ -39,7 +39,7 @@ agent, err := client.CreateAgent(ctx, mango.AgentCreateRequest{
 if err != nil { panic(err) }
 
 environment, err := client.CreateEnvironment(ctx, mango.EnvironmentCreateRequest{
-    Name: "default", // defaults to a cloud Environment
+    Name: "default", // omitted config defaults to self-hosted execution
 })
 if err != nil { panic(err) }
 
