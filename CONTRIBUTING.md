@@ -40,6 +40,29 @@ Run the core checks:
 make verify
 ```
 
+### Test layers and ownership
+
+Put a test at the lowest layer that can prove the requirement. Do not repeat a
+pure package invariant in a system test, and do not use a cookbook application
+as a runtime test harness.
+
+| Layer | Repository location | Local command | Required CI job |
+| --- | --- | --- | --- |
+| Package behavior | Adjacent Go `_test.go` files; no network, Docker, or service dependencies | `make test` | Go |
+| Concurrency safety | The same deterministic Go package tests under the race detector | `make test-race` | Go |
+| HTTP and SDK contract | `internal/httpapi`, `scripts/sdk-contract`, and each `sdk/<language>` package | `make sdk-test && make sdk-conformance` | First-party SDKs |
+| Stateful runtime integration | The package that owns the invariant, normally `internal/pg` or `internal/temporal`; use a descriptive `_integration_test.go` filename | `make test-service-core` | Core services |
+| Sandbox and worker conformance | `internal/sandbox`, `internal/selfhosted`, and the owning orchestration package for one composed vertical slice | `make test-sandbox-docker` and, when orchestration is involved, `make test-service-core` | Docker sandboxes and Core services |
+| Distribution, docs, and security | Container, website, SDK packaging, and dependency entry points | `make image-smoke`, `make docs-check`, `make security` | Container, Documentation, Security checks |
+| Real model and interactive journeys | An opt-in integration smoke or a standalone application in `examples/` | `scripts/with-dev-env make test-self-hosted-live` or the documented demo command | Never required in public CI |
+
+For a cross-component feature, prefer one deterministic vertical test for the
+successful user journey plus focused tests for retry, restart, cancellation,
+idempotency, authorization, and cleanup invariants. Add a Python or TypeScript
+test when that language's SDK behavior is the subject; keep Mango runtime and
+durability assertions in Go so they run with the implementation and Go's race
+detector.
+
 `make lint` checks changes relative to `origin/main`, matching the incremental
 CI rollout. Set `LINT_BASE` when your comparison branch differs.
 
@@ -121,9 +144,20 @@ because it uses a credentialed network call and may incur cost:
 
 ```bash
 make test-model-live
+make test-self-hosted-live
 make test-platform-live
 scripts/with-dev-env make test-coding-agent-live
 ```
+
+`test-self-hosted-live` is the preferred smallest product smoke: one real
+model-selected Bash call travels through authenticated HTTP, PostgreSQL,
+Temporal, NATS, Environment Work, and a self-hosted Docker worker.
+`test-platform-live` is an alias for it. Maintainers with a configured local
+model endpoint should run this smoke before pushing substantial changes to the
+model adapter, orchestration, Environment Work, or the self-hosted runner, and
+record the result in the pull request. This is a best-effort maintainer check,
+not a credential requirement for contributors or CI; when it cannot be run,
+say so instead of presenting deterministic coverage as a live-model result.
 
 The live targets require the `MANGO_MODEL_*` variables documented in
 the getting-started guide. They are intentionally not run in public CI and must

@@ -190,10 +190,17 @@ cutover follow separately.
    the six shell/file tools belong to the self-hosted built-in result protocol.
    Provider responses and error blocks survive external-result waits and
    orchestration-worker restart in the durable transcript.
-9. Verify the complete Docker worker against the real control plane and backing
-   services, including recovery, lease loss, approvals, Skills, and Memory.
-   The existing real-Docker launcher test uses an HTTP control-plane fixture;
-   separate PostgreSQL/Temporal tests cover server invariants.
+9. Verified the Docker worker against real authenticated HTTP, PostgreSQL,
+   Temporal, NATS, and Docker. The system test restarts the Temporal execution
+   worker while an acknowledged container waits on an `always_ask` approval,
+   then completes that activation and proves a second Work container can read
+   the same Session workspace. Focused real-Docker tests retain deeper Skill,
+   Memory, shell, cancellation, and lease-renewal coverage; PostgreSQL and
+   provider-neutral worker tests retain lease-loss fencing coverage. Keeping
+   those fault cases focused avoids one timing-heavy combinatorial test while
+   the system test verifies that the real boundaries compose. An opt-in live
+   smoke uses the same fixture for one real-model-selected Bash call without
+   making external credentials a CI dependency.
 10. Switch the default deployment, quickstart, and SDK examples to self-hosted
    execution, then remove the old `cloud` path and compiled provider registry.
    Record the resulting File/Git and output boundary explicitly. Mango is
