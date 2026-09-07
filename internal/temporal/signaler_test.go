@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/yanpgwang/mango/internal/pg"
-	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 )
 
@@ -79,30 +78,18 @@ func (completedWorkflowRun) GetWithOptions(
 	return nil
 }
 
-func TestTerminateSession_CleanupJoinsRunningWorkflowAndAllowsRetry(t *testing.T) {
+func TestTerminateSession_StopsPrimaryWorkflow(t *testing.T) {
 	c := &capturingWorkflowClient{}
-	signaler := NewSignalerOnTaskQueue(c, "sandbox-cleanup-test")
+	signaler := NewSignalerOnTaskQueue(c, "test-queue")
 
 	require.NoError(t, signaler.TerminateSession(context.Background(), "sesn_delete"))
-	require.Equal(t, "sandbox-cleanup:sesn_delete", c.options.ID)
-	require.Equal(t, "sandbox-cleanup-test", c.options.TaskQueue)
-	require.Equal(
-		t,
-		enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
-		c.options.WorkflowIDConflictPolicy,
-	)
-	require.Equal(
-		t,
-		enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
-		c.options.WorkflowIDReusePolicy,
-	)
-	require.Equal(t, SandboxCleanupWorkflowType, c.workflow)
+	require.Equal(t, []string{"sesn_delete"}, c.terminations)
 }
 
 func TestNewSignaler_CleanupUsesDefaultTaskQueue(t *testing.T) {
 	c := &capturingWorkflowClient{}
 	require.NoError(t, NewSignaler(c).TerminateSession(context.Background(), "sesn_default"))
-	require.Equal(t, TaskQueue, c.options.TaskQueue)
+	require.Equal(t, []string{"sesn_default"}, c.terminations)
 }
 
 func TestTerminateThread_UsesStableChildWorkflowID(t *testing.T) {
@@ -128,7 +115,6 @@ func TestTerminateSessionWorkflows_StopsEveryChildBeforePrimaryCleanup(t *testin
 		"session-thread:sthr_second",
 		"sesn_multi",
 	}, c.terminations)
-	require.Equal(t, "sandbox-cleanup:sesn_multi", c.options.ID)
 }
 
 func TestOrchestratorFastPath_TargetedInterruptWakesOnlyOwningThread(t *testing.T) {

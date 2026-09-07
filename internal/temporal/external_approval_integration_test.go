@@ -18,7 +18,6 @@ import (
 	"github.com/yanpgwang/mango/internal/httpapi"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 	"go.temporal.io/sdk/client"
 )
@@ -41,8 +40,7 @@ func TestVerticalSlice_ExternalApprovalHTTPRecovery(t *testing.T) {
 			defer tc.Close()
 			ids := domain.NewRandomIDGen()
 			probe := &externalApprovalProbe{denied: verdict == "deny"}
-			cfg := temporalpkg.RuntimeConfig{TemporalClient: tc, Store: store, ModelClient: probe,
-				SandboxProvider: sandboxtest.NoProvision(t), IDGenerator: ids,
+			cfg := temporalpkg.RuntimeConfig{TemporalClient: tc, Store: store, ModelClient: probe, IDGenerator: ids,
 				TaskQueue:   "external-approval-" + ids.NewID(""),
 				RelayConfig: temporalpkg.RelayConfig{PollInterval: 20 * time.Millisecond}}
 			runtime := temporalpkg.NewRuntime(cfg)

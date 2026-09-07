@@ -19,14 +19,14 @@ func mustEnv(t *testing.T, serverURL string) string {
 	t.Helper()
 	req, _ := http.NewRequestWithContext(context.Background(), "POST",
 		serverURL+"/v1/environments",
-		bytes.NewBufferString(`{"name":"e","config":{"type":"cloud"}}`))
+		bytes.NewBufferString(`{"name":"e","config":{"type":"self_hosted"}}`))
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", "Bearer sk-test")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("create environment: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeTestResource(t, resp.Body)
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("create environment status %d: %s", resp.StatusCode, body)

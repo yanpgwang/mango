@@ -32,7 +32,7 @@ Requirements:
 - [golangci-lint](https://golangci-lint.run/docs/welcome/install/local/)
   2.12.x for local lint checks;
 - Node.js 22 or newer for the documentation site and TypeScript SDK;
-- Docker with Compose for service-conformance and Docker sandbox tests.
+- Docker with Compose for service conformance and self-hosted worker tests.
 
 Run the core checks:
 
@@ -52,7 +52,7 @@ as a runtime test harness.
 | Concurrency safety | The same deterministic Go package tests under the race detector | `make test-race` | Go |
 | HTTP and SDK contract | `internal/httpapi`, `scripts/sdk-contract`, and each `sdk/<language>` package | `make sdk-test && make sdk-conformance` | First-party SDKs |
 | Stateful runtime integration | The package that owns the invariant, normally `internal/pg` or `internal/temporal`; use a descriptive `_integration_test.go` filename | `make test-service-core` | Core services |
-| Sandbox and worker conformance | `internal/sandbox`, `internal/selfhosted`, and the owning orchestration package for one composed vertical slice | `make test-sandbox-docker` and, when orchestration is involved, `make test-service-core` | Docker sandboxes and Core services |
+| Self-hosted worker conformance | `internal/selfhosted` and the owning orchestration package for one composed vertical slice | `make test-self-hosted-docker` and, when orchestration is involved, `make test-service-core` | Self-hosted Docker worker and Core services |
 | Distribution, docs, and security | Container, website, SDK packaging, and dependency entry points | `make image-smoke`, `make docs-check`, `make security` | Container, Documentation, Security checks |
 | Real model and interactive journeys | An opt-in integration smoke or a standalone application in `examples/` | `scripts/with-dev-env make test-self-hosted-live` or the documented demo command | Never required in public CI |
 
@@ -105,15 +105,15 @@ runs its two layers in parallel:
 
 ```bash
 make test-service-core
-make test-sandbox-docker
+make test-self-hosted-docker
 ```
 
 `test-service-core` owns tests that require PostgreSQL, Temporal, NATS, MinIO,
-or a Docker-backed runtime. `test-sandbox-docker` owns the Docker provider,
-filesystem, simulated remote-service, and fixture contracts. Keep new
-service-only packages in `SERVICE_CORE_PACKAGES`; keep sandbox infrastructure
-under the sandbox target. Each layer has an explicit Go timeout below its CI job
-timeout so test cleanup and failure diagnostics still have time to run.
+or a Docker-backed runtime. `test-self-hosted-docker` owns the reference
+launcher, worker filesystem, and container-boundary contracts. Keep new
+service-only packages in `SERVICE_CORE_PACKAGES`; keep launcher infrastructure
+under the self-hosted target. Each layer has an explicit Go timeout below its CI
+job timeout so test cleanup and failure diagnostics still have time to run.
 
 On native Linux, use `make test-service SERVICE_TEST_EXEC='sudo -n -E --'`
 with a trusted local checkout and passwordless sudo. This runs only the test
@@ -125,8 +125,8 @@ Docker Desktop normally maps bind-mount ownership to the desktop user, so the
 plain command above works there. Cleanup errors remain test failures.
 
 Default tests must stay offline and deterministic. Service tests must use
-isolated database schemas and clean up their workflows, File objects, and
-sandboxes. `make test-service` requires a reachable Docker daemon and sets
+isolated database schemas and clean up their workflows, File objects, worker
+containers, and temporary workspaces. `make test-service` requires a reachable Docker daemon and sets
 `MANGO_TEST_DOCKER=1`; required Docker checks must fail rather than skip when
 the daemon becomes unavailable. The default-runtime test provisions the
 binary's actual default image, verifies Python execution, reattaches its
@@ -134,10 +134,9 @@ workspace, and checks teardown independently of any cookbook application.
 There is no host-process sandbox implementation or fallback. `make test` and
 `make test-race` disable Docker checks; direct `go test` requires the explicit
 flag above to enable them. Pure lifecycle/protocol tests use non-executing
-doubles. Built-in tool tests and simulated remote-service shell scripts run in
-real Docker containers; the latter still simulate the remote provider API and
-are not evidence of a live third-party integration. Test helper containers and
-their temporary mounts are cleaned up even after assertion failures.
+doubles. Built-in tool tests run in real Docker containers. Test helper
+containers and their temporary mounts are cleaned up even after assertion
+failures.
 
 A real model endpoint is a separate, explicitly enabled test tier
 because it uses a credentialed network call and may incur cost:
@@ -146,7 +145,6 @@ because it uses a credentialed network call and may incur cost:
 make test-model-live
 make test-self-hosted-live
 make test-platform-live
-scripts/with-dev-env make test-coding-agent-live
 ```
 
 `test-self-hosted-live` is the preferred smallest product smoke: one real
@@ -162,11 +160,6 @@ say so instead of presenting deterministic coverage as a live-model result.
 The live targets require the `MANGO_MODEL_*` variables documented in
 [model configuration guide](docs/guides/model-configuration.md). They are intentionally not run in public CI and must
 never print or persist API keys.
-
-The deterministic form of the coding-agent scenario runs in the ordinary
-service suite and can also be selected directly with `make test-coding-agent`.
-Its fixtures and deterministic/live outcome assertions belong to the system
-test suite, independently of the coding-agent tutorial.
 
 The durable custom-tool gate scenario can be selected with
 `make test-hitl-gate`; its credentialed user journey runs with
@@ -238,19 +231,19 @@ rollout-only details, and adapt semantics to self-hosting. Prefer standard HTTP,
 simple general data shapes, and existing Mango primitives before introducing a
 new header, wrapper, state, field, or abstraction.
 
-## Sandbox backend changes
+## Self-hosted worker changes
 
-Before adding a substantial sandbox backend, describe the target use case,
-trust boundary, host dependencies, network defaults, resource controls, session
-persistence, and restart behavior in the pull request, a design document, or an
-Issue.
+Before adding a substantial self-hosted launcher or worker capability, describe
+the target use case, trust boundary, host dependencies, network defaults,
+resource controls, session persistence, and restart behavior in the pull
+request, a design document, or an Issue.
 
-Backend changes should preserve the provider contract and session-scoped
-ownership described in the [sandbox backend guide](docs/sandboxes.md). Keep
-external runtimes optional, keep default tests offline, add shared lifecycle
-and tool-contract coverage, and label experimental integrations honestly.
-Command execution alone is not evidence that a backend is production-ready or
-safe for hostile multi-tenant workloads.
+Launcher changes should preserve the provider-neutral Environment Work protocol
+and operator-owned lifecycle described in the [self-hosted sandbox guide](docs/sandboxes.md).
+Keep external runtimes outside the control plane, keep default tests offline,
+add shared lifecycle and tool-contract coverage, and label experimental launcher
+examples honestly. Command execution alone is not evidence that a launcher is
+production-ready or safe for hostile multi-tenant workloads.
 
 ## Architecture expectations
 

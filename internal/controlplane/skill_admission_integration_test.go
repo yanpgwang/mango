@@ -56,8 +56,6 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 	}, httpapi.Config{}).Handler()
 	selfHostedID := createResource(t, handler, "/v1/environments",
 		`{"name":"external","config":{"type":"self_hosted"}}`)
-	cloudID := createResource(t, handler, "/v1/environments",
-		`{"name":"managed","config":{"type":"cloud"}}`)
 	const skillJSON = `[{"type":"custom","skill_id":"skill_admission","version":"1"}]`
 	const toolJSON = `[{"type":"agent_toolset_20260401"}]`
 	plainID := createResource(t, handler, "/v1/agents",
@@ -73,12 +71,9 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 	quote := func(id string) string { return `"` + id + `"` }
 	const initial = `[{"type":"user.message","content":[{"type":"text","text":"start"}]}]`
 	for _, tc := range []struct {
-		name         string
-		agent        string
-		cloud        bool
-		cloudBundles bool
-		omitInitial  bool
-		wantError    string
+		name        string
+		agent       string
+		omitInitial bool
 	}{
 		{name: "primary", agent: quote(skilledID)},
 		{name: "idle Session accepts Skills", agent: quote(skilledID), omitInitial: true},
@@ -89,49 +84,20 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 		{name: "self roster", agent: quote(selfID)},
 		{name: "override clears primary and self", agent: `{"type":"agent_with_overrides","id":"` + selfID + `","skills":[]}`},
 		{name: "plain external", agent: quote(plainID)},
-		{name: "external ignores cloud capability flag", agent: quote(skilledID), cloudBundles: true},
-		{name: "cloud rejects without capability", agent: quote(skilledID), cloud: true, wantError: "custom Skills are unavailable for the configured cloud sandbox provider"},
-		{name: "cloud accepts with capability", agent: quote(peerID), cloud: true, cloudBundles: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			sessions.ConfigureCloudSkillBundles(tc.cloudBundles)
-			environmentID := selfHostedID
-			if tc.cloud {
-				environmentID = cloudID
-			}
 			before := skillAdmissionCounts(t, fixture, selfHostedID)
-			payload := `{"agent":` + tc.agent + `,"environment_id":"` + environmentID + `"`
+			payload := `{"agent":` + tc.agent + `,"environment_id":"` + selfHostedID + `"`
 			if !tc.omitInitial {
 				payload += `,"initial_events":` + initial
 			}
 			response := request(t, handler, http.MethodPost, "/v1/sessions", payload+`}`)
-			if tc.wantError != "" {
-				if response.Code != http.StatusUnprocessableEntity {
-					t.Fatalf("create -> %d: %s", response.Code, response.Body.String())
-				}
-				var body struct {
-					Error struct{ Type, Message string }
-				}
-				if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-					t.Fatal(err)
-				}
-				if body.Error.Type != "invalid_request_error" || body.Error.Message != tc.wantError {
-					t.Fatalf("capability error = %+v", body.Error)
-				}
-				if after := skillAdmissionCounts(t, fixture, selfHostedID); after != before {
-					t.Fatalf("rejected input left durable work: before=%v after=%v", before, after)
-				}
-				return
-			}
 			if response.Code != http.StatusOK {
 				t.Fatalf("create -> %d: %s", response.Code, response.Body.String())
 			}
 			var created struct{ ID string }
 			if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
 				t.Fatal(err)
-			}
-			if tc.cloud {
-				return // Bundle execution is covered by the Docker Skill service test.
 			}
 			after := skillAdmissionCounts(t, fixture, selfHostedID)
 			expected := [3]int{before[0] + 1, before[1] + 1, before[2] + 1}
@@ -151,7 +117,7 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 				t.Fatalf("initial message = %+v, %v", events, err)
 			}
 			prepared, err := temporalpkg.NewActivities(
-				nil, temporalpkg.NewStoreSource(fixture.store), nil, nil, fixture.ids,
+				nil, temporalpkg.NewStoreSource(fixture.store), nil, fixture.ids,
 			).WithSkillInstructionLoader(controlplaneSkillInstructionLoader{}).
 				PrepareTurn(ctx, temporalpkg.PrepareTurnInput{SessionID: created.ID, TriggerEventID: events[0].ID})
 			if err != nil || prepared.FatalError != "" {

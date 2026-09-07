@@ -73,7 +73,12 @@ class Generator:
     def expression(self, schema: dict[str, Any], context: str, inline: bool = False, prefix: str = "") -> str:
         if "$ref" in schema:
             name = schema["$ref"].rsplit("/", 1)[1]
-            return prefix + name if prefix else repr(name)
+            # A top-level alias must bind to the referenced runtime type, not
+            # to a string value. Nested annotations remain forward references
+            # so declarations can appear in OpenAPI order without NameError.
+            if prefix:
+                return prefix + name
+            return name if inline else repr(name)
         schema = self.flatten(schema)
         if "const" in schema:
             return f"Literal[{schema['const']!r}]" if schema["const"] is not None else "None"
@@ -119,6 +124,7 @@ class Generator:
                  "from typing import Any, Dict, List, Literal, Required, TypeAlias, TypedDict, Union\n",
                  "from ._types import Upload\n\n"]
         done: set[str] = set()
+        aliases: dict[str, str] = {}
         while len(done) < len(self.schemas):
             for name in list(self.schemas):
                 if name in done:
@@ -126,7 +132,9 @@ class Generator:
                 done.add(name)
                 original = self.schemas[name]
                 schema = self.flatten(original)
-                if (schema.get("properties") and schema.get("additionalProperties") is not True
+                if "$ref" in schema:
+                    aliases[name] = schema["$ref"].rsplit("/", 1)[1]
+                elif (schema.get("properties") and schema.get("additionalProperties") is not True
                         and not any(key in schema for key in ("oneOf", "anyOf"))):
                     lines.append(f"class {name}(TypedDict, total=False):\n")
                     required = set(schema.get("required", []))
@@ -140,6 +148,12 @@ class Generator:
                     lines.append("\n\n")
                 else:
                     lines.append(f"{name}: TypeAlias = {self.expression(schema, name, inline=True)}\n\n\n")
+        while aliases:
+            ready = [name for name, target in aliases.items() if target not in aliases]
+            if not ready:
+                raise ValueError(f"Cyclic schema aliases: {', '.join(sorted(aliases))}")
+            for name in ready:
+                lines.append(f"{name}: TypeAlias = {aliases.pop(name)}\n\n\n")
         lines.append("__all__ = " + pprint.pformat(sorted(done), width=100) + "\n")
         return "".join(lines)
 

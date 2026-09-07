@@ -9,7 +9,7 @@ import (
 )
 
 func TestPrepareTurnWebToolsCannotBecomeSandboxOrExternalCalls(t *testing.T) {
-	for _, environment := range []string{"cloud", "self_hosted"} {
+	for _, environment := range []string{"self_hosted"} {
 		t.Run(environment, func(t *testing.T) {
 			source := &mcpPrepareSource{
 				fakeSource: newFakeSource([]domain.Event{{
@@ -28,7 +28,7 @@ func TestPrepareTurnWebToolsCannotBecomeSandboxOrExternalCalls(t *testing.T) {
 					},
 				},
 			}
-			prepared, err := NewActivities(nil, source, nil, nil, &testIDGen{}).PrepareTurn(
+			prepared, err := NewActivities(nil, source, nil, &testIDGen{}).PrepareTurn(
 				context.Background(), PrepareTurnInput{SessionID: "sesn_web", TriggerEventID: "sevt_user"},
 			)
 			require.NoError(t, err)
@@ -43,12 +43,8 @@ func TestPrepareTurnWebToolsCannotBecomeSandboxOrExternalCalls(t *testing.T) {
 			require.Len(t, tools, 6)
 			require.NotContains(t, tools, "web_search")
 			require.NotContains(t, tools, "web_fetch")
-			kind := TurnToolBuiltin
-			if environment == "self_hosted" {
-				kind = TurnToolSelfHosted
-			}
 			for _, name := range []string{"bash", "read", "write", "edit", "glob", "grep"} {
-				require.Equal(t, kind, tools[name].Kind, name)
+				require.Equal(t, TurnToolSelfHosted, tools[name].Kind, name)
 			}
 			require.Equal(t, "always_ask", tools["read"].Permission.Type)
 

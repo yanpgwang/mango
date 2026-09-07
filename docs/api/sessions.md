@@ -84,12 +84,9 @@ still-ready custom references from existing Session snapshots; former opaque
 values remain readable but are not treated as executable references. Up to 500
 unique scope-pinned Skills are accepted across the primary and complete roster,
 subject to one 500 MiB aggregate expanded-size limit and unique runtime names
-per execution scope. Docker, E2B, CubeSandbox, OpenSandbox, and Daytona verify
-pinned archives and expose them at `/workspace/skills/<name>/`; external roster
-Agents use isolated subdirectories below `/workspace/skills/.agents/`. Docker
-enforces a read-only bind mount, while remote providers expose a
-permission-hardened sandbox-local copy and reject ordinary file-tool writes to
-the Skill root. The model first receives every Skill name plus
+per execution scope. The self-hosted worker verifies pinned archives and exposes
+them below its `skills/` workdir; roster Agents use isolated subdirectories
+below `skills/.agents/`. The model first receives every Skill name plus
 descriptions bounded to one percent of the configured context window.
 When it invokes the private `Skill` dispatcher, the runtime returns
 `Launching skill: <name>` and injects the complete selected `SKILL.md`, prefixed
@@ -101,10 +98,7 @@ add a 500 MiB compressed-byte plus 10,000-file Session guard; the
 server-side Agent loop reads the main instruction entry directly from Mango's
 canonical archive rather than reaching into the worker filesystem. Their
 model-visible `skills/...` paths are relative to the worker's configured
-workdir. Cloud Sessions using an incapable legacy sandbox adapter reject custom Skills at
-creation with `422`. See
-[Sandbox backends](../sandboxes.md#custom-skill-mounts) for the remote-copy
-limitation.
+workdir. See [Sandboxes](../sandboxes.md) for the execution boundary.
 
 Optional `initial_events` may contain up to 50 `user.message` or
 `user.define_outcome` objects. A non-empty list starts execution immediately.
@@ -132,31 +126,20 @@ which currently contains canonical Anthropic model IDs and published list
 prices, for the coordinator and every resolved roster member. A router may
 still forward those requests, but an opaque router-defined model alias is not
 assigned a guessed price.
-`resources` accepts File inputs, public Git repository snapshots, and up to
-eight Memory Store inputs when the corresponding sandbox capability is
-configured:
+`resources` accepts up to eight Memory Store inputs:
 
 ```json
 {
-  "type": "file",
-  "file_id": "file_...",
-  "mount_path": "/reports/input.csv"
+  "type": "memory_store",
+  "memory_store_id": "memstore_...",
+  "access": "read_write"
 }
 ```
 
-Each attachment creates an independent, downloadable Session-scoped File copy
-beneath `/mnt/session/uploads`. Docker presents it read-only; E2B, CubeSandbox,
-OpenSandbox, and Daytona currently expose a writable sandbox-local copy. A Memory Store input
-uses `type: "memory_store"`, `memory_store_id`, optional `instructions`, and
-`read_write` or `read_only` access; it is mounted beneath `/mnt/memory` and can
-only be attached at creation. A `git_repository` input uses an anonymous HTTPS
-`url`, optional branch-or-commit `checkout`, and optional `/workspace` child
-`mount_path`; Mango freezes and returns its exact `resolved_commit`. Git
-repositories are create-time-only on Docker, E2B, CubeSandbox, OpenSandbox,
-and Daytona. Self-hosted Environments accept Memory Store inputs; the current
-self-hosted worker still rejects File and Git repository inputs with `422`.
-E2B and Cube currently buffer File and repository archive transfers in worker
-memory during materialization.
+A Memory Store input uses `memory_store_id`, optional `instructions`, and
+`read_write` or `read_only` access. It can only be attached at creation. The
+self-hosted worker prepares it below `/mnt/memory`. File and Git inputs are not
+part of Mango's self-hosted contract; stage them in the operator-owned workspace.
 `vault_ids` is an ordered list of active Vault references. The order is frozen
 with the Session: for an MCP endpoint, the first Vault containing a matching
 credential wins. Admission requires the Vault keyring to be configured and
@@ -294,11 +277,7 @@ resumes a turn that was paused at that check.
 `deployment_id` is null for direct Session creation and contains the parent
 Deployment ID for Deployment-created Sessions.
 
-For Mango-managed Docker, E2B, CubeSandbox, OpenSandbox, and Daytona Sessions
-with Files storage configured, regular files written beneath `/mnt/session/outputs` are published
-before the Session becomes idle. List them with
-`GET /v1/files?scope_id={session_id}` and download them through the Files
-content endpoint. See [Files](files.md#session-outputs) for limits and provider
-constraints.
+Worker workspace files remain operator-owned and are not automatically
+published through the Files API.
 
 See [capabilities and limits](../capabilities.md).

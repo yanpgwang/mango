@@ -31,7 +31,11 @@ func rawRequest(t *testing.T, method, url, body string) (int, []byte) {
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, url, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("close response body: %v", err)
+		}
+	}()
 	out, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, out
 }
@@ -219,7 +223,7 @@ func TestGolden_ErrorEnvelopeShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer closeTestResource(t, resp.Body)
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("missing bearer token: status %d: %s", resp.StatusCode, body)
@@ -240,7 +244,7 @@ func TestGolden_BodyLimitRejects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer closeTestResource(t, resp.Body)
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 413 {
 		t.Fatalf("expected 413 for oversized body, got %d: %s", resp.StatusCode, body)
@@ -267,7 +271,7 @@ func TestGolden_ChunkedBodyLimitRejects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer closeTestResource(t, resp.Body)
 	out, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 413 {
 		t.Fatalf("expected 413 for chunked oversized body, got %d: %s", resp.StatusCode, out)

@@ -27,22 +27,15 @@ updates do not silently change the Deployment.
 {
   "agent": "agent_...",
   "environment_id": "env_...",
-  "name": "Nightly repository audit",
+  "name": "Nightly knowledge review",
   "initial_events": [
     {
       "type": "user.message",
-      "content": [{"type": "text", "text": "Audit the attached inputs."}]
+      "content": [{"type": "text", "text": "Review the project decisions."}]
     }
   ],
   "resources": [
-    {"type": "file", "file_id": "file_...", "mount_path": "/inputs/source.zip"},
-    {"type": "memory_store", "memory_store_id": "memstore_...", "access": "read_write"},
-    {
-      "type": "git_repository",
-      "url": "https://github.com/acme/widgets.git",
-      "checkout": {"type": "branch", "name": "main"},
-      "mount_path": "/workspace/widgets"
-    }
+    {"type": "memory_store", "memory_store_id": "memstore_...", "access": "read_write"}
   ],
   "vault_ids": ["vlt_..."],
   "schedule": {
@@ -59,21 +52,9 @@ must immediately follow the user event it annotates. Schedules use five-field
 POSIX cron syntax and an IANA timezone. The response includes the next five
 occurrences in `schedule.upcoming_runs_at`.
 
-A File-backed outcome rubric remains a File reference in the Deployment
-template. Each Run resolves and snapshots the current ready top-level File while
-creating its Session. Deleting the source cannot affect an already admitted Run,
-but a later Run records `file_not_found_error` instead of creating a Session.
-
-A Git repository resource also remains a template. A branch checkout—or the
-remote default when `checkout` is omitted—is resolved independently for every
-Run. That Run's Session records `resolved_commit` and owns a bounded immutable
-snapshot, so later upstream changes cannot alter an admitted Run. An explicit
-commit remains fixed across Runs. Updating the Deployment affects only future
-Runs; the Deployment response retains the requested checkout and deliberately
-does not expose a `resolved_commit` of its own. A missing remote, branch, or
-commit records `session_resource_not_found_error`. Temporary clone transport
-failures record `unknown_error`, do not pause the schedule, and leave the next
-scheduled occurrence eligible to run.
+Self-hosted Deployments accept only Memory Store resources. Repository checkout,
+input staging, and output retrieval are responsibilities of the Environment
+worker that claims each Run. Updating a Deployment affects only future Runs.
 
 `budget: null` explicitly stores no Session spend ceiling. A non-null limit uses
 the same integer-USD-cent shape and model-price validation as direct Session
@@ -144,14 +125,10 @@ lost claim cancels its in-flight admission, while a unique
 Deployment/occurrence key remains the final commit fence. Running only the API
 `serve` role exposes the HTTP surface but does not execute scheduled work.
 
-File and Memory Store resources require their existing Session sandbox
-capabilities. File-backed outcome rubrics require configured Files storage but
-do not require a sandbox mount capability. Vault references require the
-configured Vault keyring. Git repository resources require the same public
-HTTPS egress, object storage, 500 MB aggregate limit, and capable cloud sandbox
-as direct Session repository resources. Private credentials, recursive
-submodules, Git LFS downloads, runtime repository attachment, and repository
-Skill discovery are not supported. Scheduler jitter and automatic Deployment
-archival when an Agent is archived are not implemented.
+Deployment resources support Memory Store templates. File-backed outcome
+rubrics require configured Files storage but do not require a workspace mount.
+Vault references require the configured Vault keyring. File and Git workspace
+staging belongs to the operator's launcher. Scheduler jitter and automatic
+Deployment archival when an Agent is archived are not implemented.
 
 See [capabilities and limits](../capabilities.md) for the current support boundary.

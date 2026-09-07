@@ -28,7 +28,7 @@ server's `/openapi.yaml` is the exact path and schema reference.
 
 ## Agent access
 
-Docker-backed cloud Sessions and the standalone self-hosted Docker worker mount
+The self-hosted Docker worker mounts
 attached Stores beneath `/mnt/memory/<store-slug>/`. Store metadata and
 instructions enter system context; file contents do not. Agents use the
 ordinary `read`, `write`, `edit`, `glob`, `grep`, and `bash` tools rather than a

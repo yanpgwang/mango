@@ -394,33 +394,17 @@ func parseDeploymentResources(
 		return nil, nil
 	}
 	raw := field.Value
-	files, memories, repositories, err := parseSessionResourceInputs(&raw)
+	memories, err := parseSessionResourceInputs(&raw)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]domain.DeploymentResource, 0, len(raw))
-	for _, file := range files {
-		out = append(out, domain.DeploymentResource{
-			Type: domain.SessionResourceTypeFile, FileID: file.FileID, MountPath: file.MountPath,
-		})
-	}
 	for _, memory := range memories {
 		out = append(out, domain.DeploymentResource{
 			Type:          domain.SessionResourceTypeMemoryStore,
 			MemoryStoreID: memory.MemoryStoreID, Access: memory.Access,
 			Instructions: memory.Instructions,
 		})
-	}
-	for _, repository := range repositories {
-		resource := domain.DeploymentResource{
-			Type:          domain.SessionResourceTypeGitRepository,
-			RepositoryURL: repository.URL, MountPath: repository.MountPath,
-		}
-		if repository.Checkout != nil {
-			resource.RepositoryCheckoutType = repository.Checkout.Type
-			resource.RepositoryCheckoutValue = repository.Checkout.Value
-		}
-		out = append(out, resource)
 	}
 	return out, nil
 }
@@ -456,16 +440,7 @@ func deploymentToJSON(item domain.Deployment) map[string]any {
 	}
 	resources := make([]any, 0, len(item.Resources))
 	for _, resource := range item.Resources {
-		switch resource.Type {
-		case domain.SessionResourceTypeFile:
-			value := map[string]any{
-				"type": "file", "file_id": resource.FileID, "mount_path": nil,
-			}
-			if resource.MountPath != nil {
-				value["mount_path"] = *resource.MountPath
-			}
-			resources = append(resources, value)
-		case domain.SessionResourceTypeMemoryStore:
+		if resource.Type == domain.SessionResourceTypeMemoryStore {
 			value := map[string]any{
 				"type": "memory_store", "memory_store_id": resource.MemoryStoreID,
 				"access": nil, "instructions": nil,
@@ -475,28 +450,6 @@ func deploymentToJSON(item domain.Deployment) map[string]any {
 			}
 			if resource.Instructions != "" {
 				value["instructions"] = resource.Instructions
-			}
-			resources = append(resources, value)
-		case domain.SessionResourceTypeGitRepository:
-			var checkout any
-			switch resource.RepositoryCheckoutType {
-			case domain.GitRepositoryCheckoutBranch:
-				checkout = map[string]any{
-					"type": domain.GitRepositoryCheckoutBranch,
-					"name": resource.RepositoryCheckoutValue,
-				}
-			case domain.GitRepositoryCheckoutCommit:
-				checkout = map[string]any{
-					"type": domain.GitRepositoryCheckoutCommit,
-					"sha":  resource.RepositoryCheckoutValue,
-				}
-			}
-			value := map[string]any{
-				"type": domain.SessionResourceTypeGitRepository,
-				"url":  resource.RepositoryURL, "checkout": checkout, "mount_path": nil,
-			}
-			if resource.MountPath != nil {
-				value["mount_path"] = *resource.MountPath
 			}
 			resources = append(resources, value)
 		}

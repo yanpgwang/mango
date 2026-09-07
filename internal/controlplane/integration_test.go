@@ -105,7 +105,6 @@ func postgresHandlerWithFixture(t *testing.T) (http.Handler, postgresFixture) {
 		Agents: app.NewAgentService(agentRepo, ids, clock),
 		Envs: app.NewEnvironmentService(
 			environmentRepo, ids, clock,
-			app.EnvironmentCapabilities{PackageSetup: true, LimitedNetwork: true},
 		),
 		Sessions: sessions,
 		Threads:  NewSessionThreadService(store),
@@ -120,7 +119,7 @@ func TestPostgresHTTPResourceSessionAndEventPath(t *testing.T) {
 	agentID := createResource(t, handler, "/v1/agents",
 		`{"name":"coder","model":"claude-test"}`)
 	environmentID := createResource(t, handler, "/v1/environments",
-		`{"name":"cloud","config":{"type":"cloud"}}`)
+		`{"name":"self-hosted","config":{"type":"self_hosted"}}`)
 	sessionID := createResource(t, handler, "/v1/sessions",
 		`{"agent":"`+agentID+`","environment_id":"`+environmentID+`"}`)
 
@@ -210,7 +209,7 @@ func TestPostgresSessionPersistsResolvedMultiagentRoster(t *testing.T) {
 			`"multiagent":{"type":"coordinator","agents":[{"type":"agent","id":"`+
 			peerID+`","version":1},{"type":"self"}]}}`)
 	environmentID := createResource(t, handler, "/v1/environments",
-		`{"name":"cloud","config":{"type":"cloud"}}`)
+		`{"name":"self-hosted","config":{"type":"self_hosted"}}`)
 
 	response := request(t, handler, http.MethodPost, "/v1/sessions",
 		`{"agent":{"type":"agent_with_overrides","id":"`+coordinatorID+`",`+
@@ -267,7 +266,7 @@ func TestPostgresHTTPSessionPrimaryThreadLifecycle(t *testing.T) {
 	agentID := createResource(t, handler, "/v1/agents",
 		`{"name":"coordinator","model":"claude-test"}`)
 	environmentID := createResource(t, handler, "/v1/environments",
-		`{"name":"cloud","config":{"type":"cloud"}}`)
+		`{"name":"self-hosted","config":{"type":"self_hosted"}}`)
 	sessionID := createResource(t, handler, "/v1/sessions",
 		`{"agent":"`+agentID+`","environment_id":"`+environmentID+`"}`)
 

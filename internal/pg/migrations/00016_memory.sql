@@ -54,40 +54,32 @@ CREATE INDEX memory_versions_store_list_idx
 CREATE INDEX memory_versions_memory_list_idx
     ON memory_versions (memory_store_id, memory_id, created_at DESC, id DESC);
 
-ALTER TABLE session_resources
-    DROP CONSTRAINT session_resources_resource_type_check,
-    ALTER COLUMN source_file_id DROP NOT NULL,
-    ALTER COLUMN file_id DROP NOT NULL,
-    ADD COLUMN memory_store_id text REFERENCES memory_stores (id) ON DELETE RESTRICT,
-    ADD COLUMN memory_access text,
-    ADD COLUMN memory_instructions text,
-    ADD COLUMN memory_store_name text,
-    ADD COLUMN memory_store_description text;
+CREATE TABLE session_resources (
+    id                       text        PRIMARY KEY,
+    session_id               text        NOT NULL REFERENCES sessions (id),
+    resource_type            text        NOT NULL CHECK (resource_type = 'memory_store'),
+    memory_store_id          text        NOT NULL REFERENCES memory_stores (id) ON DELETE RESTRICT,
+    memory_access            text        NOT NULL CHECK (memory_access IN ('read_write', 'read_only')),
+    memory_instructions      text        NOT NULL,
+    memory_store_name        text        NOT NULL,
+    memory_store_description text        NOT NULL,
+    mount_path               text        NOT NULL,
+    state                    text        NOT NULL CHECK (state IN ('active', 'deleting')),
+    created_at               timestamptz NOT NULL,
+    updated_at               timestamptz NOT NULL
+);
 
-ALTER TABLE session_resources
-    ADD CONSTRAINT session_resources_resource_type_check
-        CHECK (resource_type IN ('file', 'memory_store')),
-    ADD CONSTRAINT session_resources_memory_access_check
-        CHECK (memory_access IS NULL OR memory_access IN ('read_write', 'read_only')),
-    ADD CONSTRAINT session_resources_shape_check CHECK (
-        (resource_type = 'file'
-            AND source_file_id IS NOT NULL
-            AND file_id IS NOT NULL
-            AND memory_store_id IS NULL
-            AND memory_access IS NULL
-            AND memory_instructions IS NULL
-            AND memory_store_name IS NULL
-            AND memory_store_description IS NULL)
-        OR
-        (resource_type = 'memory_store'
-            AND source_file_id IS NULL
-            AND file_id IS NULL
-            AND memory_store_id IS NOT NULL
-            AND memory_access IS NOT NULL
-            AND memory_instructions IS NOT NULL
-            AND memory_store_name IS NOT NULL
-            AND memory_store_description IS NOT NULL)
-    );
+CREATE INDEX session_resources_active_list_idx
+    ON session_resources (session_id, created_at, id)
+    WHERE state = 'active';
+CREATE INDEX session_resources_deleting_idx
+    ON session_resources (session_id, updated_at, id)
+    WHERE state = 'deleting';
+CREATE INDEX session_resources_session_idx
+    ON session_resources (session_id);
+CREATE UNIQUE INDEX session_resources_active_mount_idx
+    ON session_resources (session_id, mount_path)
+    WHERE state = 'active';
 
 CREATE UNIQUE INDEX session_resources_memory_store_idx
     ON session_resources (session_id, memory_store_id)
@@ -97,21 +89,7 @@ CREATE UNIQUE INDEX session_resources_memory_store_idx
 
 -- +goose Down
 -- +goose StatementBegin
-DROP INDEX IF EXISTS session_resources_memory_store_idx;
-DELETE FROM session_resources WHERE resource_type = 'memory_store';
-ALTER TABLE session_resources
-    DROP CONSTRAINT IF EXISTS session_resources_shape_check,
-    DROP CONSTRAINT IF EXISTS session_resources_memory_access_check,
-    DROP CONSTRAINT IF EXISTS session_resources_resource_type_check,
-    DROP COLUMN IF EXISTS memory_store_description,
-    DROP COLUMN IF EXISTS memory_store_name,
-    DROP COLUMN IF EXISTS memory_instructions,
-    DROP COLUMN IF EXISTS memory_access,
-    DROP COLUMN IF EXISTS memory_store_id,
-    ALTER COLUMN file_id SET NOT NULL,
-    ALTER COLUMN source_file_id SET NOT NULL;
-ALTER TABLE session_resources
-    ADD CONSTRAINT session_resources_resource_type_check CHECK (resource_type = 'file');
+DROP TABLE IF EXISTS session_resources;
 DROP TABLE IF EXISTS memory_versions;
 DROP TABLE IF EXISTS memories;
 DROP TABLE IF EXISTS memory_stores;

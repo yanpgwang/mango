@@ -68,10 +68,8 @@ short-lived credential scoped to that Work. A later activation reuses the
 Session's workspace volume. The shell process itself persists only within one
 activation.
 
-For setup, read [Docker worker](guides/self-hosted-worker.md). The older `cloud`
-Environment path is still available for workflows such as File/Git mounting and
-automatic output publication; it is transitional. Consult
-[capabilities](capabilities.md) before choosing it.
+For setup, read [Docker worker](guides/self-hosted-worker.md) and consult
+[capabilities](capabilities.md) for current limits.
 
 ## Where tools run
 
@@ -98,9 +96,8 @@ Use the [multi-agent guide](guides/multi-agent.md) to configure a team, and the
 
 ## Files, Skills, and Memory
 
-- **Files** store immutable bytes. Session Resources can attach supported File
-  copies or repository snapshots to a workspace. Input preparation and output
-  publication depend on the execution path.
+- **Files** store immutable bytes for application and model-message workflows.
+  A self-hosted launcher stages workspace files independently.
 - **Skills** are versioned bundles of instructions and supporting files.
   Sessions pin immutable Skill Versions.
 - **Memory Stores** keep versioned UTF-8 files across Sessions. The Docker worker

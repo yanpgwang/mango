@@ -13,8 +13,6 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/mcpclient"
 	"github.com/yanpgwang/mango/internal/model"
-	"github.com/yanpgwang/mango/internal/sandbox"
-	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 type fakeMCPClient struct {
@@ -96,7 +94,7 @@ func TestPrepareTurn_DiscoversAndPinsMCPTools(t *testing.T) {
 		nil,
 		source,
 		nil,
-		nil,
+
 		&testIDGen{},
 	).WithMCPClient(client)
 	prepared, err := activities.PrepareTurn(
@@ -153,7 +151,7 @@ func TestPrepareTurn_MCPDiscoveryFailureIsRecoverable(t *testing.T) {
 		nil,
 		source,
 		nil,
-		nil,
+
 		&testIDGen{},
 	).WithMCPClient(&fakeMCPClient{err: errors.New("dial failed")})
 
@@ -197,7 +195,7 @@ func TestPrepareTurn_MCPAuthenticationFailureUsesDedicatedEvent(t *testing.T) {
 			},
 		},
 	}
-	activities := NewActivities(nil, source, nil, nil, &testIDGen{}).
+	activities := NewActivities(nil, source, nil, &testIDGen{}).
 		WithMCPClient(&fakeMCPClient{err: &mcpclient.AuthError{
 			ServerName: "secure", Reason: "401 Unauthorized",
 		}})
@@ -242,7 +240,7 @@ func TestPrepareTurn_MCPAliasCollisionIsFatalNotRetryable(t *testing.T) {
 		nil,
 		source,
 		nil,
-		nil,
+
 		&testIDGen{},
 	).WithMCPClient(client).PrepareTurn(
 		context.Background(),
@@ -334,22 +332,6 @@ func (j *memoryMCPJournal) MarkToolStepAmbiguous(
 	return nil
 }
 
-type fixedSandboxLease struct {
-	box  sandbox.Sandbox
-	spec sandbox.Spec
-}
-
-func (l *fixedSandboxLease) Acquire(
-	_ context.Context,
-	_ string,
-	spec sandbox.Spec,
-) (sandbox.Sandbox, error) {
-	l.spec = spec
-	return l.box, nil
-}
-
-func (*fixedSandboxLease) Release(context.Context, string) error { return nil }
-
 type skillExecutionSource struct {
 	*mcpPrepareSource
 	skills []domain.SkillVersion
@@ -408,7 +390,7 @@ func TestExecuteTool_RuntimeSkillLoadsFullInstructionsWithoutReadTool(t *testing
 		}},
 	}
 	activities := NewActivities(
-		nil, source, journal, nil, &testIDGen{},
+		nil, source, journal, &testIDGen{},
 	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte(body)})
 
 	result, err := activities.ExecuteTool(ctx, ExecuteToolInput{
@@ -457,7 +439,7 @@ func TestExecuteTool_SelfHostedRuntimeSkillDoesNotAcquireServerSandbox(t *testin
 	}
 	journal := &memoryMCPJournal{}
 	activities := NewActivities(
-		nil, source, journal, nil, &testIDGen{},
+		nil, source, journal, &testIDGen{},
 	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte(body)})
 
 	result, err := activities.ExecuteTool(context.Background(), ExecuteToolInput{
@@ -498,7 +480,7 @@ func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 	}
 	journal := &memoryMCPJournal{}
 	activities := NewActivities(
-		nil, source, journal, nil, &testIDGen{},
+		nil, source, journal, &testIDGen{},
 	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte(body)})
 	result, err := activities.ExecuteTool(ctx, ExecuteToolInput{
 		SessionID: "sess_child_skill", ThreadID: "sthr_child",
@@ -508,7 +490,7 @@ func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 		ToolName:         agentruntime.RuntimeSkillToolName,
 		ToolKind:         TurnToolRuntimeSkill,
 		Input:            map[string]any{"skill": "report-tools"},
-		SkillRuntimeRoot: root,
+		SkillRuntimeRoot: domain.SessionSkillsRelativeRoot + "/.agents/0123456789abcdef01234567",
 	})
 	require.NoError(t, err)
 	require.False(t, result.Result.IsError)
@@ -516,7 +498,8 @@ func TestExecuteTool_RuntimeSkillUsesThreadAgentScope(t *testing.T) {
 	require.Contains(
 		t,
 		result.Result.InjectedContent[0].Text,
-		"Base directory for this skill: "+root+"/report-tools\n\n"+body,
+		"Base directory for this skill: "+domain.SessionSkillsRelativeRoot+
+			"/.agents/0123456789abcdef01234567/report-tools\n\n"+body,
 	)
 }
 
@@ -539,7 +522,7 @@ func TestExecuteTool_RuntimeSkillStartedStepIsSafelyReloaded(t *testing.T) {
 		skills: []domain.SkillVersion{{Name: "report-tools"}},
 	}
 	result, err := NewActivities(
-		nil, source, journal, nil, &testIDGen{},
+		nil, source, journal, &testIDGen{},
 	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: body}).
 		ExecuteTool(ctx, ExecuteToolInput{
 			SessionID: "sess_started_skill", TriggerEventID: "sevt_trigger",
@@ -556,9 +539,7 @@ func TestExecuteTool_RuntimeSkillStartedStepIsSafelyReloaded(t *testing.T) {
 }
 
 func TestExecuteTool_MCPJournalsRawAndProjectsModelContent(t *testing.T) {
-	box := sandboxtest.Inert(t)
 	journal := &memoryMCPJournal{}
-	lease := &fixedSandboxLease{box: box}
 	client := &fakeMCPClient{result: mcpclient.Result{
 		Raw: json.RawMessage(`{
 			"_meta":{"trace":"private"},
@@ -569,7 +550,7 @@ func TestExecuteTool_MCPJournalsRawAndProjectsModelContent(t *testing.T) {
 		nil,
 		&mcpPrepareSource{session: domain.Session{ID: "sess_mcp"}},
 		journal,
-		lease,
+
 		&testIDGen{},
 	).WithMCPClient(client)
 	result, err := activities.ExecuteTool(
@@ -601,7 +582,6 @@ func TestExecuteTool_MCPJournalsRawAndProjectsModelContent(t *testing.T) {
 	require.Contains(t, string(journal.result.Raw), `"trace":"private"`)
 	require.Empty(t, result.Result.Raw)
 	require.Empty(t, result.Result.RawPath)
-	require.Equal(t, defaultCloudSandboxNetwork, lease.spec.Network)
 	require.NotContains(
 		t,
 		result.Result.Content[0].(map[string]any)["text"],
@@ -610,13 +590,12 @@ func TestExecuteTool_MCPJournalsRawAndProjectsModelContent(t *testing.T) {
 }
 
 func TestExecuteTool_MCPAuthenticationFailureIsDurableAndNonAmbiguous(t *testing.T) {
-	box := sandboxtest.Inert(t)
 	journal := &memoryMCPJournal{}
 	activities := NewActivities(
 		nil,
 		&mcpPrepareSource{session: domain.Session{ID: "sess_auth"}},
 		journal,
-		&fixedSandboxLease{box: box},
+
 		&testIDGen{},
 	).WithMCPClient(&fakeMCPClient{err: &mcpclient.AuthError{
 		ServerName: "secure", Reason: "401 Unauthorized",

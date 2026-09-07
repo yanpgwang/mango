@@ -30,10 +30,6 @@ const (
 	// SessionThreadWorkflowType is the independent durable loop for one child
 	// Thread. Its Workflow ID is derived solely from the public Thread id.
 	SessionThreadWorkflowType = "SessionThreadWorkflow"
-
-	// SandboxCleanupWorkflowType is a short durable teardown workflow started
-	// after the long-lived SessionWorkflow has been stopped for public deletion.
-	SandboxCleanupWorkflowType = "SandboxCleanupWorkflow"
 )
 
 // WakeupSignal is the wakeup metadata delivered to a SessionWorkflow. It carries
@@ -58,18 +54,6 @@ type SessionThreadWorkflowInput struct {
 	SessionID   string `json:"session_id"`
 	ThreadID    string `json:"thread_id"`
 	StartCursor int64  `json:"start_cursor"`
-}
-
-type ReleaseSandboxInput struct {
-	SessionID string `json:"session_id"`
-}
-
-type PublishSessionOutputsInput struct {
-	SessionID string `json:"session_id"`
-}
-
-type PublishSessionOutputsResult struct {
-	FatalError string `json:"fatal_error,omitempty"`
 }
 
 // RunTurnResult reports whether the workflow-owned turn completed, parked on a
@@ -124,17 +108,16 @@ type PrepareTurnInput struct {
 // The projected messages and tool definitions are Activity output, so Temporal
 // records them in history and deterministic replay never rereads PostgreSQL.
 type PrepareTurnResult struct {
-	AlreadyCompleted      bool           `json:"already_completed"`
-	Terminated            bool           `json:"terminated"`
-	FatalError            string         `json:"fatal_error,omitempty"`
-	SessionOutputsEnabled bool           `json:"session_outputs_enabled,omitempty"`
-	AttemptID             string         `json:"attempt_id,omitempty"`
-	ThreadID              string         `json:"thread_id,omitempty"`
-	IsChild               bool           `json:"is_child,omitempty"`
-	SkillRuntimeRoot      string         `json:"skill_runtime_root,omitempty"`
-	Request               model.Request  `json:"request"`
-	Tools                 []TurnTool     `json:"tools,omitempty"`
-	ResumeActions         []ResumeAction `json:"resume_actions,omitempty"`
+	AlreadyCompleted bool           `json:"already_completed"`
+	Terminated       bool           `json:"terminated"`
+	FatalError       string         `json:"fatal_error,omitempty"`
+	AttemptID        string         `json:"attempt_id,omitempty"`
+	ThreadID         string         `json:"thread_id,omitempty"`
+	IsChild          bool           `json:"is_child,omitempty"`
+	SkillRuntimeRoot string         `json:"skill_runtime_root,omitempty"`
+	Request          model.Request  `json:"request"`
+	Tools            []TurnTool     `json:"tools,omitempty"`
+	ResumeActions    []ResumeAction `json:"resume_actions,omitempty"`
 	// PreludeEvents are recoverable setup diagnostics, such as one unavailable
 	// MCP server. The Workflow commits them with the turn while continuing with
 	// the remaining tool surface.

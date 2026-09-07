@@ -160,7 +160,7 @@ func TestSession_FullLifecycleWithSSE(t *testing.T) {
 	h := NewTestHandler(t)
 	// setup agent + env
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	// create idle session
 	sess := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":"`+ag+`","environment_id":"`+env+`"}`)
@@ -176,7 +176,7 @@ func TestSession_FullLifecycleWithSSE(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer closeTestResource(t, resp.Body)
 
 	// send a user.message (drives fake runtime -> agent.message + status_idle)
 	go func() {
@@ -205,7 +205,7 @@ func TestSession_FullLifecycleWithSSE(t *testing.T) {
 	// history + stream reconciliation: history is non-empty and ends idle
 	rec := do(h, "GET", "/v1/sessions/"+sess+"/events", "")
 	var hist map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &hist)
+	decodeTestJSON(t, rec.Body.Bytes(), &hist)
 	data := hist["data"].([]any)
 	if len(data) < 2 {
 		t.Fatalf("expected multiple history events, got %d", len(data))
@@ -219,7 +219,7 @@ func createID(t *testing.T, h http.Handler, method, path, body string) string {
 		t.Fatalf("%s %s -> %d: %s", method, path, rec.Code, rec.Body)
 	}
 	var m map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &m)
+	decodeTestJSON(t, rec.Body.Bytes(), &m)
 	return m["id"].(string)
 }
 
@@ -235,7 +235,7 @@ func TestCreateSession_MissingEnvironment(t *testing.T) {
 func TestCreateSession_RejectsNonStringMetadata(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	rec := do(h, "POST", "/v1/sessions",
 		`{"agent":"`+ag+`","environment_id":"`+env+`","metadata":{"bad":1}}`)
 	if rec.Code != http.StatusBadRequest {
@@ -246,7 +246,7 @@ func TestCreateSession_RejectsNonStringMetadata(t *testing.T) {
 func TestUpdateSession_OmittedTitlePreservesValue(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	id := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":"`+ag+`","environment_id":"`+env+`","title":"keep me"}`)
 
@@ -266,14 +266,14 @@ func TestUpdateSession_OmittedTitlePreservesValue(t *testing.T) {
 func TestCreateSession_AgentObjectForm(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	rec := do(h, "POST", "/v1/sessions",
 		`{"agent":{"type":"agent","id":"`+ag+`"},"environment_id":"`+env+`"}`)
 	if rec.Code != 200 {
 		t.Fatalf("create with agent-object form -> %d: %s", rec.Code, rec.Body)
 	}
 	var sess map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &sess)
+	decodeTestJSON(t, rec.Body.Bytes(), &sess)
 	id := sess["id"].(string)
 
 	rec = do(h, "GET", "/v1/sessions/"+id, "")
@@ -281,7 +281,7 @@ func TestCreateSession_AgentObjectForm(t *testing.T) {
 		t.Fatalf("GET session -> %d: %s", rec.Code, rec.Body)
 	}
 	var got map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &got)
+	decodeTestJSON(t, rec.Body.Bytes(), &got)
 	if got["status"] != "idle" {
 		t.Fatalf("expected status idle, got %v", got["status"])
 	}
@@ -290,7 +290,7 @@ func TestCreateSession_AgentObjectForm(t *testing.T) {
 func TestCreateSession_RejectsInvalidAgentReferences(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	for _, agent := range []string{
 		`{"type":"bogus","id":"` + ag + `"}`,
 		`{"type":"agent","id":"` + ag + `","version":0}`,
@@ -325,7 +325,7 @@ func TestListEvents_NotFound(t *testing.T) {
 func TestListEvents_HasPaginationEnvelope(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	id := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 
@@ -353,7 +353,7 @@ func TestListEvents_HasPaginationEnvelope(t *testing.T) {
 func TestSendEvents_ValidatesVariantShape(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	id := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 
@@ -539,7 +539,7 @@ func TestValidateClientEventRejectsMalformedNestedObjects(t *testing.T) {
 func TestCreateSessionRejectsMoreThanFiftyInitialEvents(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	events := make([]map[string]any, 51)
 	for index := range events {
 		events[index] = map[string]any{
@@ -562,7 +562,7 @@ func TestCreateSessionRejectsMoreThanFiftyInitialEvents(t *testing.T) {
 func TestListEvents_RejectsInvalidQueryValues(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	id := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 
@@ -579,7 +579,7 @@ func TestListEvents_RejectsInvalidQueryValues(t *testing.T) {
 func TestListEvents_LimitBoundary(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	id := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 
@@ -594,7 +594,7 @@ func TestListEvents_LimitBoundary(t *testing.T) {
 func TestListEvents_CursorIsBoundToSessionAndFilters(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	firstSession := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 	secondSession := createID(t, h, "POST", "/v1/sessions",
@@ -634,7 +634,7 @@ func TestListEvents_CursorIsBoundToSessionAndFilters(t *testing.T) {
 func TestListEvents_OrdersAndPagesByProcessedAt(t *testing.T) {
 	h, sessions := newTestHandlerWithSessions(t, Config{}, false)
 	agentID := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	environmentID := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	environmentID := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	sessionID := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":"`+agentID+`","environment_id":"`+environmentID+`"}`)
 

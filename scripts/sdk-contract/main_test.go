@@ -33,8 +33,15 @@ func TestRepositoryOperationsAreComplete(t *testing.T) {
 			t.Fatalf("protected operation %s became public", op.ID)
 		}
 	}
-	if len(ops) != 99 {
-		t.Fatalf("operations = %d, expected 99; review SDK coverage when adding routes", len(ops))
+	if len(ops) != 95 {
+		t.Fatalf("operations = %d, expected 95; review SDK coverage when adding routes", len(ops))
+	}
+	for _, id := range []string{
+		"createSessionResource", "getSessionResource", "listSessionResources", "deleteSessionResource",
+	} {
+		if _, present := seen[id]; present {
+			t.Errorf("hosted-only operation %s remains in the self-hosted contract", id)
+		}
 	}
 	for _, id := range []string{"health", "readiness", "openAPI"} {
 		if !seen[id].Public {

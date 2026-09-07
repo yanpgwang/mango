@@ -19,8 +19,8 @@ call the HTTP endpoints directly.
 | [Sessions](sessions.md) | Create, steer, inspect, archive, or delete ongoing work. | `/v1/sessions` |
 | [Events](events.md) | Send input, return tool results, read history, and stream output. | `/v1/sessions/{id}/events` |
 | [Threads](session-threads.md) | Inspect and manage a Session's child conversations. | `/v1/sessions/{id}/threads` |
-| [Session Resources](session-resources.md) | Attach supported Files, Memory Stores, and Git snapshots. | `/v1/sessions/{id}/resources` |
-| [Files](files.md) | Upload immutable bytes and retrieve supported outputs. | `/v1/files` |
+| [Session Resources](session-resources.md) | Attach Memory Stores when creating Sessions. | `POST /v1/sessions` |
+| [Files](files.md) | Upload immutable bytes for supported application and message workflows. | `/v1/files` |
 | [Skills](skills.md) | Manage instruction bundles and immutable Versions. | `/v1/skills` |
 | [Memory](memory.md) | Store versioned UTF-8 files across Sessions. | `/v1/memory_stores` |
 | [Vaults](vaults.md) | Store credentials used by MCP connections. | `/v1/vaults` |

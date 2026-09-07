@@ -3,11 +3,9 @@ package pg
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"sync"
@@ -20,8 +18,6 @@ import (
 	"github.com/yanpgwang/mango/internal/blob"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
-	"github.com/yanpgwang/mango/internal/sandbox"
-	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 func TestFileService_PostgresS3RestartReconciliation(t *testing.T) {
@@ -173,85 +169,12 @@ func TestFileHTTP_PostgresS3SDKLifecycle(t *testing.T) {
 			t.Fatalf("Download error = %T %v", err, err)
 		}
 	}
-	session := newSession("sesn_http")
-	if _, err := store.CreateSession(ctx, session, nil); err != nil {
-		t.Fatal(err)
-	}
-	publisher := app.NewSessionOutputPublisher(repo, blobs, ids, fixedClock{})
-	provider := sandboxtest.DockerProvider(t)
-	_, outputBox, err := provider.Create(ctx, t.Name(), sandbox.Spec{
-		Timeout: 30 * time.Second,
-	})
-	if err != nil {
-		t.Fatalf("create Docker output sandbox: %v", err)
-	}
-	defer func() {
-		if err := outputBox.Destroy(context.Background()); err != nil {
-			t.Errorf("destroy Docker output sandbox: %v", err)
-		}
-	}()
-	if err := outputBox.WriteFile(
-		ctx, sandbox.SessionOutputsRoot+"/output.txt", []byte("sdk-output"),
-	); err != nil {
-		t.Fatalf("write Session output through sandbox tool boundary: %v", err)
-	}
-	if err := publisher.Publish(ctx, session.ID, outputBox); err != nil {
-		t.Fatalf("Publish Session output: %v", err)
-	}
-	rawRequest, err := http.NewRequestWithContext(
-		ctx, http.MethodGet, server.URL+"/v1/files?scope_id="+session.ID, nil,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rawRequest.Header.Set("authorization", "Bearer sk-test")
-	rawResponse, err := server.Client().Do(rawRequest)
-	if err != nil {
-		t.Fatalf("raw list Session outputs: %v", err)
-	}
-	defer func() { _ = rawResponse.Body.Close() }()
-	if rawResponse.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(rawResponse.Body)
-		t.Fatalf("raw list Session outputs = %d: %s", rawResponse.StatusCode, body)
-	}
-	var listed struct {
-		Data []struct {
-			ID           string `json:"id"`
-			Filename     string `json:"filename"`
-			Downloadable bool   `json:"downloadable"`
-			Scope        struct {
-				ID string `json:"id"`
-			} `json:"scope"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(rawResponse.Body).Decode(&listed); err != nil {
-		t.Fatalf("decode raw output list: %v", err)
-	}
-	if len(listed.Data) != 1 || listed.Data[0].Filename != "output.txt" ||
-		!listed.Data[0].Downloadable || listed.Data[0].Scope.ID != session.ID {
-		t.Fatalf("raw output list = %+v", listed.Data)
-	}
-	outputID := listed.Data[0].ID
-	response, err := client.Beta.Files.Download(ctx, outputID, anthropic.BetaFileDownloadParams{})
-	if err != nil {
-		t.Fatalf("Download output: %v", err)
-	}
-	content, readErr := io.ReadAll(response.Body)
-	if closeErr := response.Body.Close(); readErr == nil {
-		readErr = closeErr
-	}
-	if readErr != nil || string(content) != "sdk-output" {
-		t.Fatalf("Download output body = %q, %v", content, readErr)
-	}
 	deleted, err := client.Beta.Files.Delete(ctx, uploaded.ID, anthropic.BetaFileDeleteParams{})
 	if err != nil || deleted.ID != uploaded.ID {
 		t.Fatalf("Delete = %+v, %v", deleted, err)
 	}
 	if _, err := client.Beta.Files.GetMetadata(ctx, uploaded.ID, anthropic.BetaFileGetMetadataParams{}); err == nil {
 		t.Fatal("deleted File remains visible")
-	}
-	if _, err := service.Delete(ctx, outputID); err != nil {
-		t.Fatalf("Delete output: %v", err)
 	}
 }
 

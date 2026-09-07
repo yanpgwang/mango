@@ -89,10 +89,9 @@ Web Search and Web Fetch execute at a supporting model endpoint and require
 `always_allow`. Remote MCP tools execute through Mango's orchestration runtime.
 Neither is redirected to the Docker worker. See [where tools run](../concepts.md#where-tools-run).
 
-The coding example currently requires an explicit `cloud` Environment for
-File/Git inputs and output publication. Its [prerequisites](../examples/coding-agent-iterate.md#run-the-example)
-describe that transitional path. `MANGO_SANDBOX` configures that path; it does
-not select the worker for a self-hosted Environment.
+For self-hosted Sessions, stage ordinary files and repositories in the
+operator-owned worker workspace. Memory Stores and pinned Skills are prepared
+through the worker protocol.
 
 ## Troubleshooting
 

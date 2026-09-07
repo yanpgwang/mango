@@ -17,7 +17,7 @@ import (
 func TestStreamEvents_EventDeltasValidation(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	sess := createID(t, h, "POST", "/v1/sessions", `{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 
 	// Unknown value -> 400.
@@ -52,7 +52,7 @@ func TestStreamEvents_EventDeltasValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer closeTestResource(t, resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("valid event_deltas[] stream -> %d", resp.StatusCode)
 	}
@@ -68,7 +68,7 @@ func TestStreamEvents_EventDeltasValidation(t *testing.T) {
 func TestStreamEvents_PreviewRenderedAsSSE(t *testing.T) {
 	h := NewTestHandlerWithPreviews(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	sess := createID(t, h, "POST", "/v1/sessions", `{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 
 	ts := httptest.NewServer(h)
@@ -85,7 +85,11 @@ func TestStreamEvents_PreviewRenderedAsSSE(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer optedResp.Body.Close()
+	defer func() {
+		if err := optedResp.Body.Close(); err != nil {
+			t.Errorf("close opted-in stream: %v", err)
+		}
+	}()
 
 	// Plain (non-opted) stream.
 	plainReq, _ := http.NewRequestWithContext(ctx, "GET", ts.URL+"/v1/sessions/"+sess+"/events/stream", nil)
@@ -93,7 +97,11 @@ func TestStreamEvents_PreviewRenderedAsSSE(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer plainResp.Body.Close()
+	defer func() {
+		if err := plainResp.Body.Close(); err != nil {
+			t.Errorf("close plain stream: %v", err)
+		}
+	}()
 
 	// Drive a turn.
 	do(h, "POST", "/v1/sessions/"+sess+"/events",

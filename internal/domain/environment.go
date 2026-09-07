@@ -11,17 +11,15 @@ type Environment struct {
 	Description string
 	Metadata    map[string]any
 	Scope       string
-	ConfigType  string // "cloud" | "self_hosted"
+	ConfigType  string // "self_hosted"
 	Config      map[string]any
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	ArchivedAt  *time.Time
 }
 
-// SessionConfig returns an isolated JSON-shaped copy of the sandbox
-// configuration. A Session keeps this snapshot for its lifetime so a later
-// Environment update cannot change the package or network policy of an
-// already-running workspace.
+// SessionConfig returns an isolated JSON-shaped copy of the worker
+// configuration captured for a Session.
 func (e Environment) SessionConfig() map[string]any {
 	return cloneEnvironmentObject(e.Config)
 }

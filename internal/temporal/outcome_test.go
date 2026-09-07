@@ -47,7 +47,7 @@ func TestPrepareTurnRunsReceiptProcessedActiveOutcome(t *testing.T) {
 		},
 	}
 	prepared, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID: "sess_outcome", TriggerEventID: trigger.ID,
 	})
@@ -58,7 +58,7 @@ func TestPrepareTurnRunsReceiptProcessedActiveOutcome(t *testing.T) {
 
 	source.session.Outcomes[0].Result = "satisfied"
 	prepared, err = NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID: "sess_outcome", TriggerEventID: trigger.ID,
 	})
@@ -105,7 +105,7 @@ func TestPrepareTurnFileOutcomeRubricMatchesInlineWorkingAndGraderInputs(t *test
 			},
 		}
 		prepared, err := NewActivities(
-			nil, source, nil, nil, &testIDGen{},
+			nil, source, nil, &testIDGen{},
 		).PrepareTurn(context.Background(), PrepareTurnInput{
 			SessionID: "sess_outcome", TriggerEventID: trigger.ID,
 		})
@@ -186,7 +186,7 @@ func TestEvaluateOutcomeUsesIsolatedGraderContext(t *testing.T) {
 		Usage: domain.TokenUsage{InputTokens: 17, OutputTokens: 8},
 	}}
 	activities := NewActivities(
-		client, nil, nil, nil, domain.NewSeqIDGen(),
+		client, nil, nil, domain.NewSeqIDGen(),
 	)
 
 	got, err := activities.EvaluateOutcome(context.Background(), EvaluateOutcomeInput{
@@ -226,7 +226,7 @@ func TestEvaluateOutcomeRejectsOversizedIsolatedContextBeforeInference(t *testin
 			Type: "text", Text: `{"result":"satisfied","explanation":"unused"}`,
 		}},
 	}}
-	activities := NewActivities(client, nil, nil, nil, domain.NewSeqIDGen())
+	activities := NewActivities(client, nil, nil, domain.NewSeqIDGen())
 
 	got, err := activities.EvaluateOutcome(context.Background(), EvaluateOutcomeInput{
 		Model: "unknown-model",

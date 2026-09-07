@@ -207,18 +207,6 @@ ClientPersistedSessionEvent: TypeAlias = Union['PersistedUserMessageEvent', 'Per
 ClientSessionEventInput: TypeAlias = Union['UserMessageEventInput', 'UserInterruptEventInput', 'UserToolConfirmationEventInput', 'UserCustomToolResultEventInput', 'UserDefineOutcomeEventInput', 'UserToolResultEventInput', 'SystemMessageEventInput']
 
 
-class CloudEnvironmentConfig(TypedDict, total=False):
-    networking: Required['NetworkPolicy']
-    packages: Required['Packages']
-    type: Required[Literal['cloud']]
-
-
-class CloudEnvironmentConfigInput(TypedDict, total=False):
-    networking: 'NetworkPolicyInput'
-    packages: 'PackagesInput'
-    type: Required[Literal['cloud']]
-
-
 CoreSessionEventType: TypeAlias = Literal['user.message', 'user.interrupt', 'user.tool_confirmation', 'user.custom_tool_result', 'user.tool_result', 'user.define_outcome', 'system.message', 'agent.message', 'agent.thinking', 'agent.custom_tool_use', 'agent.tool_use', 'agent.tool_result', 'agent.mcp_tool_use', 'agent.mcp_tool_result', 'session.status_idle', 'session.status_running', 'session.status_terminated', 'session.status_rescheduled', 'session.usage', 'session.error', 'session.updated', 'session.deleted', 'session.thread_created', 'session.thread_status_idle', 'session.thread_status_running', 'session.thread_status_rescheduled', 'session.thread_status_terminated', 'agent.thread_message_received', 'agent.thread_message_sent', 'agent.thread_context_compacted', 'span.outcome_evaluation_start', 'span.outcome_evaluation_ongoing', 'span.outcome_evaluation_end', 'span.model_request_start', 'span.model_request_end']
 
 
@@ -297,10 +285,11 @@ class DeploymentPausedReason(TypedDict, total=False):
     type: Required[Literal['manual', 'error']]
 
 
-DeploymentResource: TypeAlias = Union['DeploymentResourceVariant1', 'DeploymentResourceVariant2', 'GitRepositoryDeploymentResource']
-
-
-DeploymentResourceInput: TypeAlias = Union['FileSessionResourceInput', 'MemoryStoreSessionResourceInput', 'GitRepositorySessionResourceInput']
+class DeploymentResource(TypedDict, total=False):
+    access: Required[Literal['read_write', 'read_only', None]]
+    instructions: Required[Union[str, None]]
+    memory_store_id: Required[str]
+    type: Required[Literal['memory_store']]
 
 
 class DeploymentRun(TypedDict, total=False):
@@ -375,12 +364,6 @@ class Environment(TypedDict, total=False):
     scope: Literal['organization', 'account']
     type: Required[Literal['environment']]
     updated_at: Required[str]
-
-
-EnvironmentConfig: TypeAlias = Union['CloudEnvironmentConfig', 'SelfHostedEnvironmentConfig']
-
-
-EnvironmentConfigInput: TypeAlias = Union['CloudEnvironmentConfigInput', 'SelfHostedEnvironmentConfig']
 
 
 class EnvironmentCreateRequest(TypedDict, total=False):
@@ -561,61 +544,8 @@ class FileScope(TypedDict, total=False):
     type: Required[Literal['session']]
 
 
-class FileSessionResource(TypedDict, total=False):
-    created_at: Required[str]
-    file_id: Required[str]
-    id: Required[str]
-    mount_path: Required[str]
-    type: Required[Literal['file']]
-    updated_at: Required[str]
-
-
-class FileSessionResourceInput(TypedDict, total=False):
-    file_id: Required[str]
-    mount_path: str
-    type: Required[Literal['file']]
-
-
 class FileUploadRequest(TypedDict, total=False):
     file: Required[Upload]
-
-
-class GitRepositoryBranchCheckout(TypedDict, total=False):
-    name: Required[str]
-    type: Required[Literal['branch']]
-
-
-GitRepositoryCheckout: TypeAlias = Union['GitRepositoryBranchCheckout', 'GitRepositoryCommitCheckout']
-
-
-class GitRepositoryCommitCheckout(TypedDict, total=False):
-    sha: Required[str]
-    type: Required[Literal['commit']]
-
-
-class GitRepositoryDeploymentResource(TypedDict, total=False):
-    checkout: Required[Union['GitRepositoryCheckout', None]]
-    mount_path: Required[Union[str, None]]
-    type: Required[Literal['git_repository']]
-    url: Required[str]
-
-
-class GitRepositorySessionResource(TypedDict, total=False):
-    checkout: Required[Union['GitRepositoryCheckout', None]]
-    created_at: Required[str]
-    id: Required[str]
-    mount_path: Required[str]
-    resolved_commit: Required[str]
-    type: Required[Literal['git_repository']]
-    updated_at: Required[str]
-    url: Required[str]
-
-
-class GitRepositorySessionResourceInput(TypedDict, total=False):
-    checkout: 'GitRepositoryCheckout'
-    mount_path: str
-    type: Required[Literal['git_repository']]
-    url: Required[str]
 
 
 class ImageBlockInput(TypedDict, total=False):
@@ -633,20 +563,6 @@ LegacyMultiagent: TypeAlias = Dict[str, Any]
 
 
 LegacySkillReference: TypeAlias = Any
-
-
-class LimitedNetwork(TypedDict, total=False):
-    allow_mcp_servers: Required[bool]
-    allow_package_managers: Required[bool]
-    allowed_hosts: Required[List[str]]
-    type: Required[Literal['limited']]
-
-
-class LimitedNetworkInput(TypedDict, total=False):
-    allow_mcp_servers: bool
-    allow_package_managers: bool
-    allowed_hosts: List[str]
-    type: Required[Literal['limited']]
 
 
 class MCPOAuthCredentialAuth(TypedDict, total=False):
@@ -904,12 +820,6 @@ class MultiagentSelfReferenceInput(TypedDict, total=False):
     type: Required[Literal['self']]
 
 
-NetworkPolicy: TypeAlias = Union['UnrestrictedNetwork', 'LimitedNetwork']
-
-
-NetworkPolicyInput: TypeAlias = Union['UnrestrictedNetwork', 'LimitedNetworkInput']
-
-
 NullableSessionBudget: TypeAlias = Union['SessionBudgetLimit', None]
 
 
@@ -971,26 +881,6 @@ class OutcomeEvaluation(TypedDict, total=False):
 
 
 OutcomeRubric: TypeAlias = Union['TextRubric', 'FileRubric']
-
-
-class Packages(TypedDict, total=False):
-    apt: Required[List[str]]
-    cargo: Required[List[str]]
-    gem: Required[List[str]]
-    go: Required[List[str]]
-    npm: Required[List[str]]
-    pip: Required[List[str]]
-    type: Required[Literal['packages']]
-
-
-class PackagesInput(TypedDict, total=False):
-    apt: List[str]
-    cargo: List[str]
-    gem: List[str]
-    go: List[str]
-    npm: List[str]
-    pip: List[str]
-    type: Literal['packages']
 
 
 class PermissionPolicy(TypedDict, total=False):
@@ -1208,23 +1098,6 @@ class SessionRequiresAction(TypedDict, total=False):
 class SessionResolvedMultiagent(TypedDict, total=False):
     agents: Required[List['SessionThreadAgent']]
     type: Required[Literal['coordinator']]
-
-
-SessionResource: TypeAlias = Union['FileSessionResource', 'MemoryStoreSessionResource', 'GitRepositorySessionResource']
-
-
-class SessionResourceDeleted(TypedDict, total=False):
-    id: Required[str]
-    type: Required[Literal['session_resource_deleted']]
-
-
-SessionResourceInput: TypeAlias = Union['FileSessionResourceInput', 'MemoryStoreSessionResourceInput', 'GitRepositorySessionResourceInput']
-
-
-class SessionResourceList(TypedDict, total=False):
-    data: Required[List['SessionResource']]
-    has_more: Required[bool]
-    next_page: Required['Cursor']
 
 
 class SessionRetriesExhausted(TypedDict, total=False):
@@ -1551,10 +1424,6 @@ class URLImageSourceInput(TypedDict, total=False):
     url: Required[str]
 
 
-class UnrestrictedNetwork(TypedDict, total=False):
-    type: Required[Literal['unrestricted']]
-
-
 class UserCustomToolResultEventInput(TypedDict, total=False):
     content: List['ResultContentInput']
     custom_tool_use_id: Required[str]
@@ -1768,19 +1637,6 @@ class DeploymentPausedReasonError(TypedDict, total=False):
     type: Required[str]
 
 
-class DeploymentResourceVariant1(TypedDict, total=False):
-    file_id: Required[str]
-    mount_path: Required[Union[str, None]]
-    type: Required[Literal['file']]
-
-
-class DeploymentResourceVariant2(TypedDict, total=False):
-    access: Required[Literal['read_write', 'read_only', None]]
-    instructions: Required[Union[str, None]]
-    memory_store_id: Required[str]
-    type: Required[Literal['memory_store']]
-
-
 class DeploymentRunTriggerContextVariant1(TypedDict, total=False):
     type: Required[Literal['manual']]
 
@@ -1848,6 +1704,21 @@ class SessionUsageSnapshotServerToolUse(TypedDict, total=False):
     web_search_requests: Required[int]
 
 
+DeploymentResourceInput: TypeAlias = MemoryStoreSessionResourceInput
+
+
+EnvironmentConfig: TypeAlias = SelfHostedEnvironmentConfig
+
+
+EnvironmentConfigInput: TypeAlias = SelfHostedEnvironmentConfig
+
+
+SessionResource: TypeAlias = MemoryStoreSessionResource
+
+
+SessionResourceInput: TypeAlias = MemoryStoreSessionResourceInput
+
+
 __all__ = ['Agent',
  'AgentCreateRequest',
  'AgentCustomToolUseEvent',
@@ -1873,8 +1744,6 @@ __all__ = ['Agent',
  'BuiltinToolsetConfigsItem',
  'ClientPersistedSessionEvent',
  'ClientSessionEventInput',
- 'CloudEnvironmentConfig',
- 'CloudEnvironmentConfigInput',
  'CoreSessionEventType',
  'Cursor',
  'CustomSkillReferenceInput',
@@ -1890,8 +1759,6 @@ __all__ = ['Agent',
  'DeploymentPausedReasonError',
  'DeploymentResource',
  'DeploymentResourceInput',
- 'DeploymentResourceVariant1',
- 'DeploymentResourceVariant2',
  'DeploymentRun',
  'DeploymentRunError',
  'DeploymentRunList',
@@ -1941,22 +1808,12 @@ __all__ = ['Agent',
  'FileList',
  'FileRubric',
  'FileScope',
- 'FileSessionResource',
- 'FileSessionResourceInput',
  'FileUploadRequest',
- 'GitRepositoryBranchCheckout',
- 'GitRepositoryCheckout',
- 'GitRepositoryCommitCheckout',
- 'GitRepositoryDeploymentResource',
- 'GitRepositorySessionResource',
- 'GitRepositorySessionResourceInput',
  'ImageBlockInput',
  'ImageSourceInput',
  'InitialEvent',
  'LegacyMultiagent',
  'LegacySkillReference',
- 'LimitedNetwork',
- 'LimitedNetworkInput',
  'MCPOAuthCredentialAuth',
  'MCPOAuthCredentialCreate',
  'MCPOAuthCredentialUpdate',
@@ -2003,8 +1860,6 @@ __all__ = ['Agent',
  'MultiagentInput',
  'MultiagentRosterEntryInput',
  'MultiagentSelfReferenceInput',
- 'NetworkPolicy',
- 'NetworkPolicyInput',
  'NullableSessionBudget',
  'NullableTimestamp',
  'OAuthRefreshCreate',
@@ -2017,8 +1872,6 @@ __all__ = ['Agent',
  'OAuthTokenEndpointAuthUpdate',
  'OutcomeEvaluation',
  'OutcomeRubric',
- 'Packages',
- 'PackagesInput',
  'PermissionPolicy',
  'PersistedSessionEventBase',
  'PersistedSystemMessageEvent',
@@ -2057,9 +1910,7 @@ __all__ = ['Agent',
  'SessionRequiresAction',
  'SessionResolvedMultiagent',
  'SessionResource',
- 'SessionResourceDeleted',
  'SessionResourceInput',
- 'SessionResourceList',
  'SessionRetriesExhausted',
  'SessionStats',
  'SessionStatus',
@@ -2113,7 +1964,6 @@ __all__ = ['Agent',
  'ToolDefaultConfig',
  'URLDocumentSourceInput',
  'URLImageSourceInput',
- 'UnrestrictedNetwork',
  'UserCustomToolResultEventInput',
  'UserDefineOutcomeEventInput',
  'UserInterruptEventInput',

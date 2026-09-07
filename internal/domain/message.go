@@ -543,60 +543,42 @@ func ProjectSystemContext(base string, events []Event, trigger Event) string {
 	return projected.String()
 }
 
-// ProjectSessionResourceContext tells the model which immutable files and
-// mounted Memory Stores are available before it chooses a tool. Contents are
-// never injected into the prompt.
+// ProjectSessionResourceContext tells the model which mounted Memory Stores
+// are available before it chooses a tool. Contents are never injected into the
+// prompt.
 func ProjectSessionResourceContext(base string, resources []SessionResource) string {
-	files := make([]SessionResource, 0, len(resources))
 	memories := make([]SessionResource, 0, len(resources))
 	for _, resource := range resources {
-		if resource.State == SessionResourceActive {
-			if resource.Type() == SessionResourceTypeMemoryStore {
-				memories = append(memories, resource)
-			} else {
-				files = append(files, resource)
-			}
+		if resource.State == SessionResourceActive &&
+			resource.Type() == SessionResourceTypeMemoryStore {
+			memories = append(memories, resource)
 		}
 	}
-	if len(files) == 0 && len(memories) == 0 {
+	if len(memories) == 0 {
 		return base
 	}
 	var section strings.Builder
 	section.WriteString("<session_resources>\n")
-	if len(files) > 0 {
-		section.WriteString("Read-only files available in the sandbox:\n")
-		for _, resource := range files {
-			section.WriteString("- ")
-			encoded, _ := json.Marshal(struct {
-				MountPath string `json:"mount_path"`
-				FileID    string `json:"file_id"`
-			}{MountPath: resource.MountPath, FileID: resource.FileID})
-			section.Write(encoded)
-			section.WriteByte('\n')
-		}
-	}
-	if len(memories) > 0 {
-		section.WriteString("Memory Stores available as ordinary sandbox files. Use standard file tools to read and, when access is read_write, modify them:\n")
-		for _, resource := range memories {
-			section.WriteString("- ")
-			encoded, _ := json.Marshal(struct {
-				MemoryStoreID string `json:"memory_store_id"`
-				Name          string `json:"name"`
-				Description   string `json:"description"`
-				MountPath     string `json:"mount_path"`
-				Access        string `json:"access"`
-				Instructions  string `json:"instructions,omitempty"`
-			}{
-				MemoryStoreID: resource.MemoryStoreID,
-				Name:          resource.MemoryStoreName,
-				Description:   resource.MemoryStoreDescription,
-				MountPath:     resource.MountPath,
-				Access:        resource.MemoryAccess,
-				Instructions:  resource.MemoryInstructions,
-			})
-			section.Write(encoded)
-			section.WriteByte('\n')
-		}
+	section.WriteString("Memory Stores available as ordinary worker files. Use standard file tools to read and, when access is read_write, modify them:\n")
+	for _, resource := range memories {
+		section.WriteString("- ")
+		encoded, _ := json.Marshal(struct {
+			MemoryStoreID string `json:"memory_store_id"`
+			Name          string `json:"name"`
+			Description   string `json:"description"`
+			MountPath     string `json:"mount_path"`
+			Access        string `json:"access"`
+			Instructions  string `json:"instructions,omitempty"`
+		}{
+			MemoryStoreID: resource.MemoryStoreID,
+			Name:          resource.MemoryStoreName,
+			Description:   resource.MemoryStoreDescription,
+			MountPath:     resource.MountPath,
+			Access:        resource.MemoryAccess,
+			Instructions:  resource.MemoryInstructions,
+		})
+		section.Write(encoded)
+		section.WriteByte('\n')
 	}
 	section.WriteString("</session_resources>")
 	if strings.TrimSpace(base) == "" {

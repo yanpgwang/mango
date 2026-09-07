@@ -192,7 +192,7 @@ func TestPostgresListEnvironmentsPaginationAndArchiveFilter(t *testing.T) {
 	created := make([]domain.Environment, 0, 5)
 	for range 5 {
 		environment, err := environments.Create(ctx, domain.Environment{
-			Name: "cloud", ConfigType: "cloud", Config: map[string]any{"type": "cloud"},
+			Name: "self-hosted", ConfigType: "self_hosted", Config: map[string]any{"type": "self_hosted"},
 		})
 		if err != nil {
 			t.Fatalf("create environment: %v", err)

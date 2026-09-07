@@ -180,102 +180,32 @@ cost, diagnostics, and exact response recovery. A provider idempotency feature
 may be used when available; it must not be assumed from an arbitrary
 `base_url`.
 
-### Session sandbox and Files
+### Self-hosted workspace, Files, and Skills
 
-The sandbox is the Session's mutable execution workspace. It owns processes,
-intermediate files, tool-created files, oversized tool results, and MCP binary
-content. For the current lifecycle contract it plays the same role as the local
-filesystem in CCB: tools write files there and the agent reads them through
-`read`, `bash`, and related built-ins.
+The operator-owned sandbox is the Session's mutable execution workspace. It
+owns processes, intermediate files, tool-created files, and workspace
+retention. Mango stores durable conversation, Work ownership, approvals, and
+result correlation; it does not treat the worker filesystem as its state
+database.
 
-The sandbox is not the model-context database. Provider-native blocks remain in
-the Provider Transcript even when a tool also creates files.
+Files uploaded through the public Files API remain independent S3-compatible
+objects. A validated UTF-8 File used by `user.message` or an outcome rubric is
+snapshotted before event admission, so later replay does not depend on the
+source object. Mango does not automatically mount File or Git Resources into
+self-hosted workspaces and does not publish a workspace output directory.
+Those transfers belong to the operator launcher.
 
-Files uploaded through the public Files API are independent resources backed by
-S3-compatible object storage. A text-only File referenced by a `user.message`
-is read and integrity-checked before event admission; PostgreSQL stores a
-private immutable UTF-8 snapshot beside the public `file_id`, so model
-projection and replay do not depend on the later existence of the object. This
-path produces an ordinary text content block and does not depend on sandbox or
-provider-native document support.
+Custom Skill metadata and immutable Versions keep the split-source design:
+PostgreSQL owns identity and pins, while object storage owns the canonical
+archive. The Environment worker downloads and verifies the pinned primary and
+roster bundles before tool execution. `PrepareTurn` reads the main `SKILL.md`
+from the same validated canonical archive and projects relative `skills/...`
+paths; supporting files are read from the worker workspace.
 
-A File-backed Session Resource instead creates a second, downloadable,
-Session-scoped File object and records a durable desired mount.
-Before each sandbox tool execution a capable adapter ensures that the requested
-identity exists beneath `/mnt/session/uploads`. Docker streams into
-provider-owned staging, verifies size and SHA-256, atomically publishes it, and
-exposes the staging directory read-only. Remote adapters use their official SDK
-clients and record an identity marker after validation; OpenSandbox and Daytona
-stream the transfer, while E2B and Cube buffer each complete File in worker
-memory. The current remote copies are writable and sandbox-local edits do not
-update the S3-backed Session File. Deletion records a tombstone until the worker
-removes the applied copy.
-
-Docker, E2B, CubeSandbox, OpenSandbox, and Daytona expose a writable
-`/mnt/session/outputs` boundary. Docker uses a provider-owned bind mount and
-the Engine archive API; the remote adapters create a unique temporary archive
-and open it through their official SDK file clients. E2B and Cube buffer the
-archive before returning the reader. Before the primary
-Session's idle event is committed, Temporal runs a retryable Activity that
-attaches only to an existing sandbox, streams the output tree, rejects
-non-regular or escaping entries, and publishes each accepted file through the
-same PostgreSQL-intent/S3-byte split. Relative output path plus Session scope is
-the durable identity: an unchanged retry reuses the visible File without
-another object upload, changed bytes replace it in one metadata transaction,
-and paths absent from the validated snapshot are hidden before their old
-objects are cleaned. A database-side count guard keeps the visible set within
-500 files across turns. Invalid entries become a recoverable `session.error`
-plus idle instead of terminating the Session; an explicit interrupt skips the
-snapshot so it cannot wait behind large output publication. Changed files
-leave the old object as a crash-recoverable deletion intent. Arbitrary
-workspace files and tool-result spill files outside the documented output root
-do not automatically become public Files.
-
-Custom Skill metadata and immutable Version state follow the same split-source
-pattern without becoming Files. PostgreSQL owns the Skill identity, latest
-Version pointer, extracted `SKILL.md` metadata, and upload/delete intent. The
-S3-compatible store owns a canonical zip archive under a Skill-specific key.
-Only a completed `ready` Version is public; restart reconciliation deletes
-orphaned uploading archives and completes interrupted deletions. Agent and
-Session inputs resolve `latest` to an immutable Version, and PostgreSQL commits
-Version pins for every distinct resolved roster Agent scope with the Session
-projection so archive deletion cannot race admission. Before a capable sandbox
-tool runs, the worker selects the current Thread Agent scope, reads only those
-relational pins, verifies the corresponding object bytes and archive entries,
-and publishes an immutable-source tree. Docker uses a provider-owned read-only
-bind mount. E2B, CubeSandbox, OpenSandbox, and Daytona use a shared remote
-materializer over their SDK file data planes, a sibling staging tree, hardened
-modes, and a durable marker plus instruction checksum. Primary/self scopes
-retain
-`/workspace/skills/<name>/`; external roster Agents use stable namespaces below
-`/workspace/skills/.agents/` so equal runtime names cannot collide.
-`PrepareTurn` projects bounded JSON-encoded name, description, and `SKILL.md`
-path metadata plus a private `Skill` schema. A successful dispatch returns the
-normal tool result first, then adds a sibling user-text block containing
-`Base directory for this skill: ...` and the complete `SKILL.md`. That exact
-block is stored in the provider transcript; only supporting files require later
-`read` or `bash` calls. The same provider-owned root, lock, attach inspection,
-stale-root audit, and destruction path serve File and Skill staging without
-merging their resource models. Remote shell users can change hardened modes, so
-the next pre-tool pass repairs detectable instruction damage; this does not
-weaken the immutable archive stored by Mango.
-
-For a large tool result:
-
-1. write the complete serialized output into the Session sandbox;
-2. when serialized output exceeds the documented 100,000-character threshold
-   (about 25,000 tokens), create a bounded model projection containing a
-   truncated preview, size, media type, and sandbox path;
-3. tell the Agent to inspect the exact saved file with bounded `bash` byte
-   slices; the line-oriented `read` tool is capped at 64 KiB inside every
-   sandbox provider and never downloads an arbitrarily large file into worker
-   memory;
-4. create the documented public event projection;
-5. record the sandbox path on the same durable tool step where applicable.
-
-If the sandbox disappears unexpectedly, the Session workspace has been lost and
-the runtime must surface that failure; it must not silently provision an empty
-replacement. Independent File and Memory resources are unaffected.
+Memory Store attachments are the supported Session Resource. The worker
+synchronizes them through scoped Session APIs and enforces read-only versus
+read-write roots locally. Large control-plane MCP results are bounded inline
+rather than written to a server-local path that the worker cannot access.
 
 ## One tool plane, multiple execution owners
 

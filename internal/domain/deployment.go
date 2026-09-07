@@ -34,19 +34,12 @@ type Deployment struct {
 	ScheduleClaimedAt *time.Time
 }
 
-// DeploymentResource is the write-safe subset of a Session resource retained
-// by a deployment. Git repositories retain only their requested source and
-// checkout; each Run resolves and snapshots them into its own Session.
+// DeploymentResource is the Memory Store binding retained by a deployment.
 type DeploymentResource struct {
-	Type                    string
-	FileID                  string
-	MountPath               *string
-	MemoryStoreID           string
-	Access                  string
-	Instructions            string
-	RepositoryURL           string
-	RepositoryCheckoutType  string
-	RepositoryCheckoutValue string
+	Type          string
+	MemoryStoreID string
+	Access        string
+	Instructions  string
 }
 
 type DeploymentSchedule struct {

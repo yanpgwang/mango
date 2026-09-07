@@ -94,9 +94,6 @@ desktop/mobile reading path before delivery.
 Keep snippets in the runnable examples under `sdk/*/examples/quickstart*` and
 `examples/sdk-quickstart.sh`. Name regions with `# region` / `# endregion`
 (Python/shell) or `// #region` / `// #endregion` (Go/TypeScript).
-The coding-agent guide also includes regions from
-`examples/coding-agent/main.py` and `verify.py`.
-
 Include regions in Markdown rather than copying code:
 
 ```md
@@ -113,7 +110,7 @@ After modifying SDK examples, run `make sdk-test` and `make sdk-conformance`
 from the repository root. The latter runs the exact rendered example files
 against real HTTP handlers with test-only repositories and model behavior;
 it is not production, recovery-service, or live-model evidence.
-Cookbook-style examples such as the coding-agent guide are separate applications,
+Cookbook-style examples are separate applications,
 not system-test entrypoints. Run them against a configured Mango deployment as
 described in their guides. Documentation builds resolve their source snippets
 without executing the applications.

@@ -458,7 +458,7 @@ func prepareLegacyMCPParkResume(t *testing.T) PrepareTurnResult {
 	}}}
 
 	prepared, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).WithMCPClient(client).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID:          "sess_legacy_park",
 		TriggerEventID:     resolutionID,
@@ -581,7 +581,7 @@ func TestPrepareTurn_ResumedMCPConfirmationRebuildsAliasedToolName(t *testing.T)
 	}}}
 
 	prepared, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).WithMCPClient(client).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID:          "sess_mcp_resume",
 		TriggerEventID:     resolutionID,

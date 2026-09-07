@@ -176,10 +176,10 @@ func (s *memorySyncServer) remove(path string) {
 }
 
 func memorySession(mount string, access string) Session {
-	return Session{Resources: []SessionResource{{MemoryStoreSessionResource: &MemoryStoreSessionResource{
+	return Session{Resources: []SessionResource{{
 		Type: "memory_store", MemoryStoreID: "store_test", Name: "Test",
 		Description: "", MountPath: mount, Access: access,
-	}}}}
+	}}}
 }
 
 func TestSessionMemoryStoresDownloadsSyncsAndDisposes(t *testing.T) {

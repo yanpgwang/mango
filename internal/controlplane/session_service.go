@@ -59,7 +59,6 @@ type SessionService struct {
 	orchestrator SessionOrchestrator
 	ids          domain.IDGenerator
 	clock        domain.Clock
-	resources    *SessionResourceService
 	outcomeFiles OutcomeRubricReader
 	messageFiles MessageFileReader
 	memoryStores interface {
@@ -67,12 +66,6 @@ type SessionService struct {
 	}
 	skillRef      app.SkillReferenceResolver
 	vaultsEnabled bool
-	// cloudSkillBundles gates server-managed sandbox materialization. External
-	// self-hosted workers prepare the same frozen pins independently.
-	cloudSkillBundles bool
-	// cloudMemoryStores gates only the transitional server-managed sandbox.
-	// External self-hosted workers synchronize attached Stores through the API.
-	cloudMemoryStores bool
 }
 
 // EnableFileOutcomeRubrics installs the internal Files reader used to resolve
@@ -102,36 +95,15 @@ func NewSessionService(
 	ids domain.IDGenerator,
 	clock domain.Clock,
 	skillRef app.SkillReferenceResolver,
-	resourceServices ...*SessionResourceService,
 ) *SessionService {
-	service := &SessionService{
+	return &SessionService{
 		store: store, agents: agents, environments: environments,
 		orchestrator: orchestrator, ids: ids, clock: clock, skillRef: skillRef,
-		cloudSkillBundles: true,
-		cloudMemoryStores: true,
 	}
-	if len(resourceServices) > 0 {
-		service.resources = resourceServices[0]
-	}
-	return service
-}
-
-// ConfigureCloudSkillBundles declares whether the configured cloud sandbox
-// adapter can materialize custom Skill bundles. Self-hosted workers prepare
-// their own frozen Skill snapshots independently of this capability.
-func (s *SessionService) ConfigureCloudSkillBundles(enabled bool) {
-	s.cloudSkillBundles = enabled
-}
-
-// ConfigureCloudMemoryStores declares whether the configured cloud sandbox
-// adapter can mount Memory Stores. It never gates self-hosted Sessions.
-func (s *SessionService) ConfigureCloudMemoryStores(enabled bool) {
-	s.cloudMemoryStores = enabled
 }
 
 // EnableMemoryStoreResources installs the deployment's Memory Store reader.
-// Cloud runtimes or self-hosted workers then materialize the admitted Store
-// snapshots at their Session mount paths; API admission otherwise fails.
+// Self-hosted workers synchronize admitted Stores through the public API.
 func (s *SessionService) EnableMemoryStoreResources(reader interface {
 	GetStore(context.Context, string) (domain.MemoryStore, error)
 }) {
@@ -142,9 +114,9 @@ func (s *SessionService) Create(
 	ctx context.Context,
 	input app.CreateSessionInput,
 ) (domain.Session, error) {
-	if len(input.Resources)+len(input.MemoryResources)+len(input.RepositoryResources) > app.MaxSessionResources {
+	if len(input.MemoryResources) > domain.MaxSessionMemoryStores {
 		return domain.Session{}, domain.Validation(
-			"resources must contain at most 500 entries",
+			"resources may contain at most 8 Memory Stores",
 		)
 	}
 	if len(input.VaultIDs) > 0 && !s.vaultsEnabled {
@@ -246,25 +218,6 @@ func (s *SessionService) Create(
 			"budgeted sessions require every agent model to have a known Anthropic public list price",
 		)
 	}
-	hasSkills := len(snapshot.Skills) > 0
-	for _, member := range roster {
-		hasSkills = hasSkills || len(member.Skills) > 0
-	}
-	if environment.ConfigType == "cloud" && hasSkills && !s.cloudSkillBundles {
-		return domain.Session{}, domain.Unsupported(
-			"custom Skills are unavailable for the configured cloud sandbox provider",
-		)
-	}
-	if environment.ConfigType == "cloud" && len(input.MemoryResources) > 0 && !s.cloudMemoryStores {
-		return domain.Session{}, domain.Unsupported(
-			"Memory Store resources are unavailable for the configured cloud sandbox provider",
-		)
-	}
-	if environment.ConfigType == "self_hosted" && len(input.RepositoryResources) > 0 {
-		return domain.Session{}, domain.Unsupported(
-			"Git repository resources are unavailable for self-hosted Sessions",
-		)
-	}
 	if err := domain.ValidateToolConfiguration(
 		snapshot.Tools,
 		snapshot.MCPServers,
@@ -309,44 +262,6 @@ func (s *SessionService) Create(
 	if err != nil {
 		return domain.Session{}, err
 	}
-	if len(input.Resources) > 0 {
-		if s.resources == nil {
-			return domain.Session{}, domain.Unsupported(
-				"File resources are unavailable for the configured deployment",
-			)
-		}
-		fileResources, prepareErr := s.resources.PrepareForSession(ctx, session, input.Resources)
-		err = prepareErr
-		if err != nil {
-			return domain.Session{}, err
-		}
-		prepared = append(prepared, fileResources...)
-	}
-	if len(input.RepositoryResources) > 0 {
-		if s.resources == nil {
-			return domain.Session{}, domain.Unsupported(
-				"Git repository resources are unavailable for the configured deployment",
-			)
-		}
-		var stagedBytes int64
-		for _, item := range prepared {
-			if item.Blob.SizeBytes > app.MaxSessionResourceBytes-stagedBytes {
-				s.resources.DiscardPrepared(ctx, prepared)
-				return domain.Session{}, domain.TooLarge(
-					"Session Resources exceed the 500 MB aggregate limit",
-				)
-			}
-			stagedBytes += item.Blob.SizeBytes
-		}
-		repositoryResources, prepareErr := s.resources.PrepareRepositoriesForSession(
-			ctx, session, input.RepositoryResources, stagedBytes,
-		)
-		if prepareErr != nil {
-			s.resources.DiscardPrepared(ctx, prepared)
-			return domain.Session{}, prepareErr
-		}
-		prepared = append(prepared, repositoryResources...)
-	}
 	if len(prepared) > 0 {
 		session.Resources = make([]domain.SessionResource, len(prepared))
 		for index := range prepared {
@@ -370,12 +285,6 @@ func (s *SessionService) Create(
 		created, _, err = s.orchestrator.CreateAPISession(
 			ctx, session, input.InitialEvents, prepared,
 		)
-	}
-	if err != nil && s.resources != nil {
-		var domainErr *domain.DomainError
-		if errors.As(err, &domainErr) {
-			s.resources.DiscardPrepared(ctx, prepared)
-		}
 	}
 	return created, err
 }
@@ -739,24 +648,15 @@ func (s *SessionService) Delete(ctx context.Context, id string) error {
 	if err := s.store.AssertSessionWorkspace(ctx, id); err != nil {
 		return err
 	}
-	// Fence new admission before stopping orchestration and releasing the
-	// provider sandbox. Without this phase, an admission could make the session
+	// Fence new admission before stopping orchestration. Without this phase, an admission could make the session
 	// running in the gap before physical deletion.
 	if err := s.store.PrepareSessionDeletion(ctx, id); err != nil {
 		return err
 	}
 	if err := s.orchestrator.TerminateSession(ctx, id); err != nil {
 		// Keep the fence on an ambiguous external result. Retrying DELETE safely
-		// repeats Workflow termination and idempotent sandbox cleanup.
+		// repeats Workflow termination and idempotent cleanup.
 		return err
-	}
-	if s.resources != nil {
-		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		err := s.resources.CleanupSession(cleanupCtx, id)
-		cancel()
-		if err != nil {
-			return err
-		}
 	}
 	memoryCleanupCtx, memoryCleanupCancel := context.WithTimeout(
 		context.WithoutCancel(ctx), 5*time.Second,

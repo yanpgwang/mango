@@ -99,44 +99,6 @@ func TestFileService_ValidatesUploadAndMapsStreamingLimit(t *testing.T) {
 	}
 }
 
-func TestFileService_HidesInternalFiles(t *testing.T) {
-	repo := newMemoryFileRepository()
-	blobs := newMemoryBlobStore()
-	service := NewFileService(repo, blobs, domain.NewSeqIDGen(), domain.FixedClock{})
-	file := domain.File{
-		ID: "file_internal", Filename: "repository.tar", MimeType: "application/x-tar",
-		Downloadable: true, Internal: true,
-		BlobKey: "files/file_internal", State: domain.FileStateUploading,
-	}
-	if err := repo.BeginUpload(context.Background(), file); err != nil {
-		t.Fatal(err)
-	}
-	data := []byte("internal")
-	if _, err := repo.CompleteUpload(
-		context.Background(), file.ID, ComputeBlobInfo(data),
-	); err != nil {
-		t.Fatal(err)
-	}
-	blobs.objects[file.BlobKey] = data
-
-	if _, err := service.Get(context.Background(), file.ID); err == nil {
-		t.Fatal("internal File was returned by Get")
-	}
-	if _, err := service.Download(context.Background(), file.ID); err == nil {
-		t.Fatal("internal File was returned by Download")
-	}
-	page, err := service.List(context.Background(), FileListQuery{})
-	if err != nil || len(page.Files) != 0 {
-		t.Fatalf("internal File appeared in List: %+v, %v", page, err)
-	}
-	if _, err := service.Delete(context.Background(), file.ID); err == nil {
-		t.Fatal("internal File was accepted by Delete")
-	}
-	if _, err := repo.Get(context.Background(), file.ID); err != nil {
-		t.Fatalf("rejected delete changed internal File: %v", err)
-	}
-}
-
 func TestFileService_ReadOutcomeRubricValidatesBoundedTextAndIntegrity(t *testing.T) {
 	newFixture := func(t *testing.T, data []byte) (*FileService, *memoryFileRepository, *memoryBlobStore, domain.File) {
 		t.Helper()
@@ -355,36 +317,6 @@ func TestFileService_PreservesBlobWhenCompletionResultIsAmbiguous(t *testing.T) 
 	}
 }
 
-func TestFileService_RejectsDeletingSessionScopedFile(t *testing.T) {
-	repo := newMemoryFileRepository()
-	blobs := newMemoryBlobStore()
-	service := NewFileService(repo, blobs, domain.NewSeqIDGen(), domain.FixedClock{})
-	file := domain.File{
-		ID: "file_scoped", Filename: "resource.txt", MimeType: "text/plain",
-		Downloadable: true,
-		Scope:        &domain.FileScope{ID: "sesn_1", Type: "session"},
-		BlobKey:      "files/file_scoped", State: domain.FileStateUploading,
-	}
-	if err := repo.BeginUpload(context.Background(), file); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.CompleteUpload(context.Background(), file.ID, ComputeBlobInfo([]byte("safe"))); err != nil {
-		t.Fatal(err)
-	}
-	blobs.objects[file.BlobKey] = []byte("safe")
-	repo.protected[file.ID] = true
-
-	if _, err := service.Delete(context.Background(), file.ID); err == nil {
-		t.Fatal("Delete accepted a Session Resource File")
-	}
-	if _, err := repo.Get(context.Background(), file.ID); err != nil {
-		t.Fatalf("rejected delete changed File state: %v", err)
-	}
-	if got := string(blobs.objects[file.BlobKey]); got != "safe" {
-		t.Fatalf("rejected delete changed blob = %q", got)
-	}
-}
-
 func TestFileService_CleanupOutlivesCanceledRequest(t *testing.T) {
 	repo := newMemoryFileRepository()
 	repo.rejectCanceledCleanup = true
@@ -413,13 +345,10 @@ type memoryFileRepository struct {
 	files                  map[string]domain.File
 	completeErrAfterCommit error
 	rejectCanceledCleanup  bool
-	protected              map[string]bool
 }
 
 func newMemoryFileRepository() *memoryFileRepository {
-	return &memoryFileRepository{
-		files: make(map[string]domain.File), protected: make(map[string]bool),
-	}
+	return &memoryFileRepository{files: make(map[string]domain.File)}
 }
 
 func (r *memoryFileRepository) BeginUpload(_ context.Context, file domain.File) error {
@@ -465,7 +394,7 @@ func (r *memoryFileRepository) List(_ context.Context, query FileListQuery) (Fil
 	defer r.mu.Unlock()
 	files := make([]domain.File, 0, len(r.files))
 	for _, file := range r.files {
-		if file.State == domain.FileStateReady && !file.Internal && (query.ScopeID == "" ||
+		if file.State == domain.FileStateReady && (query.ScopeID == "" ||
 			(file.Scope != nil && file.Scope.ID == query.ScopeID)) {
 			files = append(files, file)
 		}
@@ -488,14 +417,6 @@ func (r *memoryFileRepository) BeginDelete(_ context.Context, id string) (domain
 	file, present := r.files[id]
 	if !present || file.State != domain.FileStateReady {
 		return domain.File{}, domain.NotFound("file not found")
-	}
-	if file.Internal {
-		return domain.File{}, domain.NotFound("file not found")
-	}
-	if r.protected[id] {
-		return domain.File{}, domain.Conflict(
-			"file is owned by a Session Resource; detach the resource first",
-		)
 	}
 	file.State = domain.FileStateDeleting
 	r.files[id] = file
@@ -524,119 +445,6 @@ func (r *memoryFileRepository) ListIncomplete(context.Context) ([]domain.File, e
 		}
 	}
 	return files, nil
-}
-
-func (r *memoryFileRepository) CompleteSessionOutput(
-	_ context.Context,
-	id string,
-	info BlobInfo,
-) (SessionOutputCompletion, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	pending, present := r.files[id]
-	if !present || pending.State != domain.FileStateUploading ||
-		pending.Scope == nil || pending.OutputPath == "" {
-		return SessionOutputCompletion{}, domain.Conflict("not a pending Session output")
-	}
-	var current *domain.File
-	garbage := make([]domain.File, 0)
-	for _, file := range r.files {
-		if file.ID == pending.ID || file.Scope == nil ||
-			file.Scope.ID != pending.Scope.ID || file.OutputPath != pending.OutputPath {
-			continue
-		}
-		switch file.State {
-		case domain.FileStateReady:
-			copy := file
-			current = &copy
-		case domain.FileStateDeleting:
-			garbage = append(garbage, file)
-		}
-	}
-	if current != nil && current.SizeBytes == info.SizeBytes &&
-		current.ChecksumSHA256 == info.ChecksumSHA256 {
-		return SessionOutputCompletion{
-			File: *current, Garbage: garbage, Duplicate: true,
-		}, nil
-	}
-	if current == nil {
-		readyCount := 0
-		for _, file := range r.files {
-			if file.Scope != nil && file.Scope.ID == pending.Scope.ID &&
-				file.OutputPath != "" && file.State == domain.FileStateReady {
-				readyCount++
-			}
-		}
-		if readyCount >= MaxSessionOutputFiles {
-			return SessionOutputCompletion{}, domain.TooLarge(
-				"session outputs exceed 500 file limit",
-			)
-		}
-	}
-	if current != nil {
-		current.State = domain.FileStateDeleting
-		r.files[current.ID] = *current
-		garbage = append(garbage, *current)
-	}
-	pending.SizeBytes = info.SizeBytes
-	pending.ChecksumSHA256 = info.ChecksumSHA256
-	pending.State = domain.FileStateReady
-	r.files[id] = pending
-	return SessionOutputCompletion{File: pending, Garbage: garbage}, nil
-}
-
-func (r *memoryFileRepository) PrepareSessionOutputDeletion(
-	_ context.Context,
-	sessionID string,
-) ([]domain.File, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	files := make([]domain.File, 0)
-	for id, file := range r.files {
-		if file.Scope == nil || file.Scope.ID != sessionID || file.OutputPath == "" {
-			continue
-		}
-		if file.State == domain.FileStateReady {
-			file.State = domain.FileStateDeleting
-			r.files[id] = file
-		}
-		files = append(files, file)
-	}
-	return files, nil
-}
-
-func (r *memoryFileRepository) PrepareSessionOutputSnapshot(
-	_ context.Context,
-	sessionID string,
-	outputPaths []string,
-) (SessionOutputSnapshot, error) {
-	wanted := make(map[string]struct{}, len(outputPaths))
-	for _, outputPath := range outputPaths {
-		wanted[outputPath] = struct{}{}
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	current := make(map[string]domain.File)
-	garbage := make([]domain.File, 0)
-	for id, file := range r.files {
-		if file.Scope == nil || file.Scope.ID != sessionID || file.OutputPath == "" {
-			continue
-		}
-		if _, present := wanted[file.OutputPath]; present {
-			if file.State == domain.FileStateReady {
-				current[file.OutputPath] = file
-			}
-			continue
-		}
-		if file.State == domain.FileStateReady {
-			file.State = domain.FileStateDeleting
-			r.files[id] = file
-		}
-		if file.State == domain.FileStateDeleting {
-			garbage = append(garbage, file)
-		}
-	}
-	return SessionOutputSnapshot{Current: current, Garbage: garbage}, nil
 }
 
 type memoryBlobStore struct {

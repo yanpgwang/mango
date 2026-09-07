@@ -186,12 +186,7 @@ func (a *Anthropic) buildWireRequest(req Request, stream bool) (wireRequest, err
 		body.Speed = req.Speed
 	}
 	for _, t := range req.Tools {
-		body.Tools = append(body.Tools, wireTool{
-			Type:        t.Type,
-			Name:        t.Name,
-			Description: t.Description,
-			InputSchema: t.InputSchema,
-		})
+		body.Tools = append(body.Tools, wireTool(t))
 	}
 	for _, m := range req.Messages {
 		wm := wireMessage{Role: string(m.Role)}
@@ -252,7 +247,7 @@ func (a *Anthropic) CreateMessage(ctx context.Context, req Request) (Response, e
 	if err != nil {
 		return Response{}, classifyRequestError(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return Response{}, classifyHTTPError(resp.StatusCode, raw, resp.Header)
@@ -357,7 +352,7 @@ func (a *Anthropic) CreateMessageStreamWithCallbacks(
 	if err != nil {
 		return Response{}, classifyRequestError(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		return Response{}, classifyHTTPError(resp.StatusCode, raw, resp.Header)

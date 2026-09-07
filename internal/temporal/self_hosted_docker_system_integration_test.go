@@ -27,7 +27,6 @@ import (
 	"github.com/yanpgwang/mango/internal/live"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	"github.com/yanpgwang/mango/internal/selfhosted"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 	mango "github.com/yanpgwang/mango/sdk/go"
@@ -182,8 +181,7 @@ func newDockerSystemFixture(
 
 	ids := domain.NewRandomIDGen()
 	fixture.runtimeConfig = temporalpkg.RuntimeConfig{
-		TemporalClient: fixture.temporalClient, Store: fixture.store, ModelClient: modelClient,
-		SandboxProvider: sandboxtest.NoProvision(t), IDGenerator: ids,
+		TemporalClient: fixture.temporalClient, Store: fixture.store, ModelClient: modelClient, IDGenerator: ids,
 		TaskQueue:        "self-hosted-docker-system-" + ids.NewID(""),
 		RelayConfig:      temporalpkg.RelayConfig{PollInterval: 20 * time.Millisecond},
 		PreviewPublisher: broker,

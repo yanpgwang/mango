@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 )
@@ -116,27 +115,5 @@ func (s *Signaler) TerminateSession(ctx context.Context, sessionID string) error
 	if err != nil && !errors.As(err, &notFound) {
 		return err
 	}
-
-	// Sandbox credentials live only on execution workers. A short workflow
-	// schedules teardown there and waits for the persisted binding to be removed
-	// before the API is allowed to delete the session row that owns it.
-	run, err := s.client.ExecuteWorkflow(
-		ctx,
-		client.StartWorkflowOptions{
-			ID:                       sandboxCleanupWorkflowID(sessionID),
-			TaskQueue:                s.taskQueue,
-			WorkflowIDConflictPolicy: enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
-			WorkflowIDReusePolicy:    enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
-		},
-		SandboxCleanupWorkflowType,
-		ReleaseSandboxInput{SessionID: sessionID},
-	)
-	if err != nil {
-		return err
-	}
-	return run.Get(ctx, nil)
-}
-
-func sandboxCleanupWorkflowID(sessionID string) string {
-	return "sandbox-cleanup:" + sessionID
+	return nil
 }

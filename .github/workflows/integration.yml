@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  service-core:
+  service_core:
     name: Core services
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -39,8 +39,8 @@ jobs:
         if: always()
         run: docker compose -f deployments/local/compose.yaml down --volumes
 
-  docker-sandboxes:
-    name: Docker sandboxes
+  self_hosted_docker:
+    name: Self-hosted Docker worker
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -51,8 +51,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Run Docker sandbox conformance tests
-        run: make test-sandbox-docker SERVICE_TEST_EXEC='sudo -n -E --'
+      - name: Run self-hosted Docker worker tests
+        run: make test-self-hosted-docker SERVICE_TEST_EXEC='sudo -n -E --'
       - name: Show Docker state after failure
         if: failure()
         run: docker ps --all --no-trunc
@@ -60,17 +60,17 @@ jobs:
   required:
     name: Required
     if: always()
-    needs: [service-core, docker-sandboxes]
+    needs: [service_core, self_hosted_docker]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Require every integration layer
         env:
-          CORE_RESULT: ${{ needs.service-core.result }}
-          SANDBOX_RESULT: ${{ needs.docker-sandboxes.result }}
+          CORE_RESULT: ${{ needs.service_core.result }}
+          WORKER_RESULT: ${{ needs.self_hosted_docker.result }}
         run: |
-          if [ "$CORE_RESULT" != "success" ] || [ "$SANDBOX_RESULT" != "success" ]; then
+          if [ "$CORE_RESULT" != "success" ] || [ "$WORKER_RESULT" != "success" ]; then
             echo "Core services: $CORE_RESULT"
-            echo "Docker sandboxes: $SANDBOX_RESULT"
+            echo "Self-hosted Docker worker: $WORKER_RESULT"
             exit 1
           fi

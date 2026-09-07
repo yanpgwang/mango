@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -9,8 +8,7 @@ import (
 	"github.com/yanpgwang/mango/internal/mcpclient"
 )
 
-func TestProjectMCPResult_SeparatesRawModelAndBinaryContent(t *testing.T) {
-	sb := newSB(t)
+func TestProjectMCPResult_SeparatesRawAndRejectsBinaryContent(t *testing.T) {
 	input := mcpclient.Result{
 		Raw: json.RawMessage(`{
 			"_meta":{"trace":"private-meta"},
@@ -22,21 +20,16 @@ func TestProjectMCPResult_SeparatesRawModelAndBinaryContent(t *testing.T) {
 			"structuredContent":{"count":2}
 		}`),
 	}
-	result, raw, rawPath, err := ProjectMCPResult(
-		context.Background(),
-		sb,
-		"sevt_mcp",
-		input,
-	)
+	result, raw, err := ProjectMCPResult(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rawPath != "" || !strings.Contains(string(raw), "private-meta") {
-		t.Fatalf("raw=%s rawPath=%q", raw, rawPath)
+	if !strings.Contains(string(raw), "private-meta") {
+		t.Fatalf("raw=%s", raw)
 	}
 	text := result.Content[0].(map[string]any)["text"].(string)
 	if !strings.Contains(text, "hello") ||
-		!strings.Contains(text, "tool-results/sevt_mcp-1.png") ||
+		!strings.Contains(text, "not available to this self-hosted worker") ||
 		!strings.Contains(text, `"count": 2`) {
 		t.Fatalf("model projection = %q", text)
 	}
@@ -47,39 +40,16 @@ func TestProjectMCPResult_SeparatesRawModelAndBinaryContent(t *testing.T) {
 		!strings.Contains(text, "unsupported future_control content") {
 		t.Fatalf("unknown MCP control content was projected unsafely: %q", text)
 	}
-	binary, err := sb.ReadFile(
-		context.Background(),
-		"tool-results/sevt_mcp-1.png",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(binary) != "image-bytes" {
-		t.Fatalf("binary = %q", binary)
-	}
 }
 
-func TestProjectMCPResult_LargeRawIsSandboxReference(t *testing.T) {
-	sb := newSB(t)
+func TestProjectMCPResult_LargeRawIsOmitted(t *testing.T) {
 	raw := json.RawMessage(`{"content":[{"type":"text","text":"ok"}],"_meta":{"large":"` +
 		strings.Repeat("x", MaxInlineResultChars) + `"}}`)
-	_, inline, rawPath, err := ProjectMCPResult(
-		context.Background(),
-		sb,
-		"sevt_raw",
-		mcpclient.Result{Raw: raw},
-	)
+	_, inline, err := ProjectMCPResult(mcpclient.Result{Raw: raw})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inline != nil || rawPath != "tool-results/sevt_raw.mcp.json" {
-		t.Fatalf("inline=%s rawPath=%q", inline, rawPath)
-	}
-	stored, err := sb.ReadFile(context.Background(), rawPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(stored) != string(raw) {
-		t.Fatal("raw MCP result was not preserved")
+	if inline != nil {
+		t.Fatalf("inline=%s", inline)
 	}
 }

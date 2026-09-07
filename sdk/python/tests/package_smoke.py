@@ -11,7 +11,7 @@ from mango_sdk._generated import OPERATIONS
 package = distribution("mango-sdk")
 assert package.version == __version__
 assert package.locate_file("mango_sdk/py.typed").is_file()
-assert len(OPERATIONS) == 99
+assert len(OPERATIONS) == 95
 assert models.Agent
 
 
@@ -40,4 +40,4 @@ async def main() -> None:
 
 
 asyncio.run(main())
-print(f"Installed mango-sdk {__version__}: sync/async requests, 99 operations, and typing marker verified")
+print(f"Installed mango-sdk {__version__}: sync/async requests, 95 operations, and typing marker verified")

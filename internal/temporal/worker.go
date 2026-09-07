@@ -31,10 +31,6 @@ func NewWorkerOnTaskQueue(
 		SessionThreadWorkflow,
 		workflow.RegisterOptions{Name: SessionThreadWorkflowType},
 	)
-	w.RegisterWorkflowWithOptions(
-		SandboxCleanupWorkflow,
-		workflow.RegisterOptions{Name: SandboxCleanupWorkflowType},
-	)
 	w.RegisterActivityWithOptions(acts.LoadEvents, activity.RegisterOptions{Name: ActivityLoadEvents})
 	w.RegisterActivityWithOptions(acts.LoadInterrupt, activity.RegisterOptions{Name: ActivityLoadInterrupt})
 	w.RegisterActivityWithOptions(acts.LoadPendingActions, activity.RegisterOptions{Name: ActivityLoadPendingActions})
@@ -48,8 +44,6 @@ func NewWorkerOnTaskQueue(
 	w.RegisterActivityWithOptions(acts.AccountModelRequest, activity.RegisterOptions{Name: ActivityAccountModelRequest})
 	w.RegisterActivityWithOptions(acts.EvaluateOutcome, activity.RegisterOptions{Name: ActivityEvaluateOutcome})
 	w.RegisterActivityWithOptions(acts.ExecuteTool, activity.RegisterOptions{Name: ActivityExecuteTool})
-	w.RegisterActivityWithOptions(acts.PublishSessionOutputs, activity.RegisterOptions{Name: ActivityPublishSessionOutputs})
 	w.RegisterActivityWithOptions(acts.CompleteWorkflowTurn, activity.RegisterOptions{Name: ActivityCompleteWorkflowTurn})
-	w.RegisterActivityWithOptions(acts.ReleaseSandbox, activity.RegisterOptions{Name: ActivityReleaseSandbox})
 	return w
 }

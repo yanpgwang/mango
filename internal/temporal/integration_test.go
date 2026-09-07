@@ -1,11 +1,9 @@
 package temporal_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"sync"
@@ -20,9 +18,6 @@ import (
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/model"
-	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox"
-	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 )
 
@@ -59,8 +54,7 @@ func TestVerticalSlice_MultiagentDelegationEndToEnd(t *testing.T) {
 	ids := domain.NewRandomIDGen()
 	probe := &multiagentProbeModel{}
 	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
-		TemporalClient: c, Store: store, ModelClient: probe,
-		SandboxProvider: sandboxtest.NoProvision(t), IDGenerator: ids,
+		TemporalClient: c, Store: store, ModelClient: probe, IDGenerator: ids,
 		RelayConfig: temporalpkg.RelayConfig{PollInterval: 50 * time.Millisecond},
 		TaskQueue:   "mango-multiagent-test-" + ids.NewID(""),
 	})
@@ -385,13 +379,12 @@ func runVerticalSliceEndToEnd(
 	ids := domain.NewRandomIDGen()
 
 	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
-		TemporalClient:  c,
-		Store:           store,
-		ModelClient:     modelClient,
-		SandboxProvider: sandboxtest.NoProvision(t),
-		IDGenerator:     ids,
-		RelayConfig:     temporalpkg.RelayConfig{PollInterval: 200 * time.Millisecond},
-		TaskQueue:       "mango-test-" + ids.NewID(""),
+		TemporalClient: c,
+		Store:          store,
+		ModelClient:    modelClient,
+		IDGenerator:    ids,
+		RelayConfig:    temporalpkg.RelayConfig{PollInterval: 200 * time.Millisecond},
+		TaskQueue:      "mango-test-" + ids.NewID(""),
 	})
 
 	// Start the worker.
@@ -480,130 +473,6 @@ func runVerticalSliceEndToEnd(
 	}
 }
 
-// TestLifecycleReconciler_RecoversPreparedDeletionEndToEnd models an API
-// process exiting after PostgreSQL commits the deletion fence but before it
-// starts Temporal cleanup. A worker-side scan must discover the row, release
-// the persisted sandbox through the deterministic cleanup Workflow, and
-// physically finalize the Session without another DELETE request.
-func TestLifecycleReconciler_RecoversPreparedDeletionEndToEnd(t *testing.T) {
-	dbURL := os.Getenv("MANGO_TEST_DATABASE_URL")
-	hostPort := os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT")
-	if dbURL == "" || hostPort == "" {
-		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run lifecycle recovery")
-	}
-	ctx := context.Background()
-	store, cleanup := integrationStore(t, dbURL)
-	defer cleanup()
-	c, err := client.Dial(client.Options{HostPort: hostPort})
-	if err != nil {
-		t.Skipf("temporal unreachable at %s: %v", hostPort, err)
-	}
-	defer c.Close()
-
-	ids := domain.NewRandomIDGen()
-	provider := sandboxtest.DockerProvider(t)
-	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
-		TemporalClient:  c,
-		Store:           store,
-		ModelClient:     model.NewFake(),
-		SandboxProvider: provider,
-		IDGenerator:     ids,
-		RelayConfig:     temporalpkg.RelayConfig{},
-		TaskQueue:       "mango-lifecycle-test-" + ids.NewID(""),
-	})
-	if err := runtime.Worker.Start(); err != nil {
-		t.Fatalf("worker start: %v", err)
-	}
-	defer runtime.Worker.Stop()
-
-	session := domain.Session{
-		ID:            "sess_lifecycle_" + ids.NewID(""),
-		AgentID:       "agent_1",
-		AgentVersion:  1,
-		EnvironmentID: "env_1",
-		Status:        domain.StatusIdle,
-		Metadata:      map[string]any{},
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
-		AgentSnapshot: domain.Agent{
-			ID: "agent_1", Version: 1, Name: "coordinator",
-			Model: domain.NormalizeModel(domain.Model{ID: "coordinator-model"}),
-			Multiagent: &domain.Multiagent{
-				Type: "coordinator",
-				Agents: []domain.AgentReference{{
-					Type: "agent", ID: "agent_child", Version: 1,
-				}},
-			},
-		},
-		MultiagentRoster: []domain.Agent{{
-			ID: "agent_child", Version: 1, Name: "child",
-			Model: domain.NormalizeModel(domain.Model{ID: "child-model"}),
-		}},
-	}
-	if _, err := store.CreateSession(ctx, session, nil); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	box, err := runtime.Sandbox.Acquire(ctx, session.ID, sandbox.Spec{})
-	if err != nil {
-		t.Fatalf("acquire sandbox: %v", err)
-	}
-	binding, found, err := store.GetSandboxBinding(ctx, session.ID)
-	if err != nil || !found {
-		t.Fatalf("load sandbox binding: found=%v err=%v", found, err)
-	}
-	if err := box.WriteFile(ctx, "before-crash", []byte("durable")); err != nil {
-		t.Fatalf("write sandbox marker: %v", err)
-	}
-	threads, err := store.ListSessionThreads(
-		ctx, session.ID, app.SessionThreadListQuery{Limit: 1},
-	)
-	if err != nil || len(threads) != 1 {
-		t.Fatalf("primary Threads = %+v, err=%v", threads, err)
-	}
-	child, _, err := store.CreateChildSessionThread(
-		ctx, session.ID, threads[0].ID, "child",
-	)
-	if err != nil {
-		t.Fatalf("create child Thread: %v", err)
-	}
-	if err := runtime.Signal.WakeThread(ctx, session.ID, child.ID, 0); err != nil {
-		t.Fatalf("start child Workflow: %v", err)
-	}
-	childWorkflowID := "session-thread:" + child.ID
-	described, err := c.DescribeWorkflowExecution(ctx, childWorkflowID, "")
-	if err != nil || described.WorkflowExecutionInfo.Status !=
-		enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING {
-		t.Fatalf("child Workflow before deletion = %+v, err=%v", described, err)
-	}
-	if err := store.PrepareSessionDeletion(ctx, session.ID); err != nil {
-		t.Fatalf("prepare deletion: %v", err)
-	}
-
-	reconcileCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	result, err := runtime.Lifecycle.RunOnce(reconcileCtx)
-	if err != nil {
-		t.Fatalf("reconcile deletion: %v", err)
-	}
-	if result.Deletions != 1 {
-		t.Fatalf("reconciled deletions = %d, want 1", result.Deletions)
-	}
-	if _, err := store.GetSession(ctx, session.ID); err == nil {
-		t.Fatal("session survived reconciled deletion")
-	}
-	if _, found, err := store.GetSandboxBinding(ctx, session.ID); err != nil || found {
-		t.Fatalf("sandbox binding survived: found=%v err=%v", found, err)
-	}
-	if _, err := provider.Attach(ctx, session.ID, binding.Ref, sandbox.Spec{}); !errors.Is(err, sandbox.ErrNotFound) {
-		t.Fatalf("Docker sandbox survived cleanup or attachment failed: %v", err)
-	}
-	described, err = c.DescribeWorkflowExecution(ctx, childWorkflowID, "")
-	if err != nil || described.WorkflowExecutionInfo.Status !=
-		enumspb.WORKFLOW_EXECUTION_STATUS_TERMINATED {
-		t.Fatalf("child Workflow after deletion = %+v, err=%v", described, err)
-	}
-}
-
 // TestVerticalSlice_InterruptCancelsModelActivity proves the cross-process
 // cancellation path against real Temporal and PostgreSQL. The public interrupt
 // is first committed to PostgreSQL, its metadata-only wakeup reaches the
@@ -629,13 +498,12 @@ func TestVerticalSlice_InterruptCancelsModelActivity(t *testing.T) {
 	ids := domain.NewRandomIDGen()
 	blockingModel := newInterruptBlockingModel()
 	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
-		TemporalClient:  c,
-		Store:           store,
-		ModelClient:     blockingModel,
-		SandboxProvider: sandboxtest.NoProvision(t),
-		IDGenerator:     ids,
-		RelayConfig:     temporalpkg.RelayConfig{PollInterval: 200 * time.Millisecond},
-		TaskQueue:       "mango-test-" + ids.NewID(""),
+		TemporalClient: c,
+		Store:          store,
+		ModelClient:    blockingModel,
+		IDGenerator:    ids,
+		RelayConfig:    temporalpkg.RelayConfig{PollInterval: 200 * time.Millisecond},
+		TaskQueue:      "mango-test-" + ids.NewID(""),
 	})
 	if err := runtime.Worker.Start(); err != nil {
 		t.Fatalf("worker start: %v", err)
@@ -753,582 +621,13 @@ func TestVerticalSlice_InterruptCancelsModelActivity(t *testing.T) {
 	}
 }
 
-// TestVerticalSlice_LiveModelToolStepEndToEnd verifies the external model
-// contract beyond plain text streaming: a real model selects the offered bash
-// tool, Mango executes it in Docker as a durable sandbox Activity, feeds the
-// result back into the provider transcript, and commits the final assistant
-// response. It is opt-in because it reaches a billable model endpoint.
-func TestVerticalSlice_LiveModelToolStepEndToEnd(t *testing.T) {
-	modelClient, modelID := liveModelForTest(t, "tool conformance test")
-	provider := sandboxtest.DockerProvider(t)
-	const marker = "mango-live-tool-ok"
-	runToolStepEndToEnd(t, toolStepCase{
-		provider:      provider,
-		modelClient:   modelClient,
-		modelID:       modelID,
-		sessionPrefix: "sess_live_tool_e2e_",
-		prompt: fmt.Sprintf(
-			"Use the bash tool exactly once. Pass the text between <command> tags as the command without changes; do not include the tags. <command>printf '%s' > live-tool.txt && cat live-tool.txt</command> After you receive the tool result, reply with a short confirmation and do not call another tool.",
-			marker,
-		),
-		tools:                bashOnlyToolset(t),
-		expectedTool:         bashToolName,
-		expectedToolOutput:   marker,
-		expectSandboxBinding: true,
-		timeout:              2 * time.Minute,
-	})
-}
-
-// TestVerticalSlice_DockerToolStepEndToEnd runs the PostgreSQL + Temporal tool
-// path through Docker. It commits the journal, tool events, final message and
-// terminal idle status. Its command checks
-// /.dockerenv and /workspace before writing and reading the marker. The committed
-// non-error tool_result therefore proves the Activity actually executed inside
-// the provisioned container, not merely that Docker provisioning succeeded.
-func TestVerticalSlice_DockerToolStepEndToEnd(t *testing.T) {
-	if os.Getenv("MANGO_TEST_DATABASE_URL") == "" ||
-		os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT") == "" {
-		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the Docker tool end-to-end slice")
-	}
-	provider := sandboxtest.DockerProvider(t)
-	const marker = "mango-temporal-docker-ok"
-	runToolStepEndToEnd(t, toolStepCase{
-		provider: provider,
-		modelClient: toolProbeModel{
-			command:   "test -f /.dockerenv && test \"$(pwd)\" = /workspace && printf '" + marker + "' > probe.txt && cat probe.txt",
-			finalText: "Docker probe completed",
-		},
-		modelID:              "fake",
-		sessionPrefix:        "sess_docker_tool_e2e_",
-		prompt:               "run a tool",
-		tools:                []any{map[string]any{"type": domain.BuiltinToolsetType}},
-		expectedTool:         bashToolName,
-		expectedToolOutput:   marker,
-		expectSandboxBinding: true,
-		timeout:              30 * time.Second,
-	})
-}
-
-// TestVerticalSlice_DockerSkillRuntimeEndToEnd proves the complete custom Skill
-// execution path: PostgreSQL pins one immutable Version, PrepareTurn exposes its
-// discovery metadata and private Skill dispatcher, the control plane loads the
-// canonical immutable instructions, and the runtime injects the complete
-// SKILL.md without provisioning a sandbox or asking the model to call read or
-// bash.
-func TestVerticalSlice_DockerSkillRuntimeEndToEnd(t *testing.T) {
-	if os.Getenv("MANGO_TEST_DATABASE_URL") == "" ||
-		os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT") == "" {
-		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the Docker Skill end-to-end slice")
-	}
-	provider := sandboxtest.DockerProvider(t)
-	runToolStepEndToEnd(t, toolStepCase{
-		provider: provider,
-		modelClient: skillProbeModel{
-			skillName:      "runtime-probe",
-			marker:         "runtime-e2e-marker",
-			finalText:      "Skill probe completed",
-			requiredSystem: "/workspace/skills/runtime-probe/SKILL.md",
-		},
-		modelID:            "fake",
-		sessionPrefix:      "sess_docker_skill_e2e_",
-		prompt:             "use the runtime probe Skill",
-		tools:              []any{map[string]any{"type": domain.BuiltinToolsetType}},
-		expectedTool:       agentruntime.RuntimeSkillToolName,
-		expectedToolOutput: "Launching skill: runtime-probe",
-		timeout:            30 * time.Second,
-		setup: func(
-			t *testing.T,
-			ctx context.Context,
-			store *pg.Store,
-			ids domain.IDGenerator,
-		) ([]domain.SkillReference, temporalpkg.SandboxResourceReconciler) {
-			t.Helper()
-			blobs := newIntegrationBlobStore()
-			skills := app.NewSkillService(
-				pg.NewSkillRepository(store), blobs, ids,
-				domain.FixedClock{T: time.Now().UTC()},
-			)
-			created, err := skills.Create(ctx, app.SkillCreateInput{
-				Files: []app.SkillUploadFile{{
-					Filename: "Runtime_Probe/SKILL.md",
-					Body:     []byte("---\nname: runtime-probe\ndescription: Verify mounted runtime Skills\n---\nruntime-e2e-marker\n"),
-				}},
-			})
-			if err != nil {
-				t.Fatalf("create integration Skill: %v", err)
-			}
-			return []domain.SkillReference{{
-					Type: "custom", SkillID: created.ID, Version: created.LatestVersion,
-				}}, app.NewSessionRuntimeMaterializer(
-					nil, app.NewSessionSkillMaterializer(store, blobs),
-				)
-		},
-	})
-}
-
-type toolStepCase struct {
-	provider             sandbox.Provider
-	modelClient          model.Client
-	modelID              string
-	sessionPrefix        string
-	prompt               string
-	tools                []any
-	expectedTool         string
-	expectedToolOutput   string
-	expectSandboxBinding bool
-	timeout              time.Duration
-	setup                func(
-		*testing.T,
-		context.Context,
-		*pg.Store,
-		domain.IDGenerator,
-	) ([]domain.SkillReference, temporalpkg.SandboxResourceReconciler)
-}
-
-const bashToolName = "bash"
-
-func bashOnlyToolset(t *testing.T) []any {
-	t.Helper()
-	raw := []any{map[string]any{
-		"type": domain.BuiltinToolsetType,
-		"default_config": map[string]any{
-			"enabled": false,
-			"permission_policy": map[string]any{
-				"type": "always_allow",
-			},
-		},
-		"configs": []any{map[string]any{
-			"name": bashToolName, "enabled": true,
-			"permission_policy": map[string]any{
-				"type": "always_allow",
-			},
-		}},
-	}}
-	parsed, err := domain.ParseTools(raw)
-	if err != nil {
-		t.Fatalf("parse live tool configuration: %v", err)
-	}
-	bashEnabled, bashPolicy := parsed.BuiltinEnabled(bashToolName)
-	if !bashEnabled || bashPolicy.Type != "always_allow" {
-		t.Fatalf("live tool configuration enables bash = %v with policy %q, want true with always_allow", bashEnabled, bashPolicy.Type)
-	}
-	for _, name := range domain.BuiltinToolNames {
-		enabled, policy := parsed.BuiltinEnabled(name)
-		wantEnabled := name == bashToolName
-		if enabled != wantEnabled {
-			t.Fatalf("live tool configuration enables %q = %v, want %v", name, enabled, wantEnabled)
-		}
-		if enabled && policy.Type != "always_allow" {
-			t.Fatalf("live tool configuration policy for %q = %q, want always_allow", name, policy.Type)
+func hasType(events []domain.Event, eventType string) bool {
+	for _, event := range events {
+		if event.Type == eventType {
+			return true
 		}
 	}
-	return raw
-}
-
-func runToolStepEndToEnd(t *testing.T, tc toolStepCase) {
-	t.Helper()
-	if tc.provider == nil || tc.modelClient == nil {
-		t.Fatal("tool step test provider and model client are required")
-	}
-	if tc.modelID == "" || tc.sessionPrefix == "" || tc.prompt == "" || tc.expectedTool == "" {
-		t.Fatal("tool step test model ID, session prefix, prompt, and expected tool are required")
-	}
-	if tc.timeout <= 0 {
-		t.Fatal("tool step test timeout must be positive")
-	}
-	if tc.expectedToolOutput == "" {
-		t.Fatal("tool step test expected output must be non-empty")
-	}
-	dbURL := os.Getenv("MANGO_TEST_DATABASE_URL")
-	hostPort := os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT")
-	if dbURL == "" || hostPort == "" {
-		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the tool end-to-end slice")
-	}
-	ctx := context.Background()
-
-	store, cleanup := integrationStore(t, dbURL)
-	defer cleanup()
-
-	c, err := client.Dial(client.Options{HostPort: hostPort})
-	if err != nil {
-		t.Skipf("temporal unreachable at %s: %v", hostPort, err)
-	}
-	defer c.Close()
-
-	ids := domain.NewRandomIDGen()
-	var skills []domain.SkillReference
-	var resources temporalpkg.SandboxResourceReconciler
-	if tc.setup != nil {
-		skills, resources = tc.setup(t, ctx, store, ids)
-	}
-	taskQueue := "mango-test-" + ids.NewID("")
-	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
-		TemporalClient:  c,
-		Store:           store,
-		ModelClient:     tc.modelClient,
-		SandboxProvider: tc.provider,
-		IDGenerator:     ids,
-		RelayConfig:     temporalpkg.RelayConfig{PollInterval: 200 * time.Millisecond},
-		TaskQueue:       taskQueue,
-		Resources:       resources,
-	})
-
-	if err := runtime.Worker.Start(); err != nil {
-		t.Fatalf("worker start: %v", err)
-	}
-	defer runtime.Worker.Stop()
-	relayCtx, stopRelay := context.WithCancel(ctx)
-	defer stopRelay()
-	go func() { _ = runtime.Relay.Run(relayCtx) }()
-
-	orch := runtime.Orchestrator()
-	sessID := tc.sessionPrefix + ids.NewID("")
-	// SessionManager keeps a sandbox alive across turns by design. Explicitly
-	// release it after this integration test so the Docker variant cannot leak a
-	// container (the second call is a harmless no-op after normal-path release).
-	defer func() {
-		releaseCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		_ = runtime.Sandbox.Release(releaseCtx, sessID)
-	}()
-	sess := domain.Session{
-		ID:            sessID,
-		AgentID:       "agent_1",
-		AgentVersion:  1,
-		EnvironmentID: "env_1",
-		Status:        domain.StatusIdle,
-		Metadata:      map[string]any{},
-		AgentSnapshot: domain.Agent{
-			ID: "agent_1", Version: 1, Model: domain.Model{ID: tc.modelID},
-			Tools: tc.tools, Skills: skills,
-		},
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
-	}
-	if _, _, err := orch.CreateSession(ctx, sess, nil); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	if _, err := orch.Admit(ctx, sessID, []domain.EventDraft{{
-		Type:    domain.EvUserMessage,
-		Payload: map[string]any{"content": []any{map[string]any{"type": "text", "text": tc.prompt}}},
-	}}); err != nil {
-		t.Fatalf("admit: %v", err)
-	}
-	// The production workflow is intentionally long-lived at idle. Integration
-	// tests use disposable PostgreSQL schemas, so terminate their execution before
-	// cleanup drops the schema; otherwise a later local worker can pick up a stale
-	// retry against data that no longer exists.
-	defer terminateIntegrationWorkflow(t, c, sessID)
-
-	expectedOrder := []string{
-		domain.EvUserMessage,
-		domain.EvSessionStatusRunning,
-		domain.EvSpanModelRequestStart,
-		domain.EvSpanModelRequestEnd,
-		domain.EvAgentToolUse,
-		domain.EvAgentToolResult,
-		domain.EvSpanModelRequestStart,
-		domain.EvAgentMessage,
-		domain.EvSpanModelRequestEnd,
-		domain.EvSessionStatusIdle,
-	}
-	deadline := time.Now().Add(tc.timeout)
-	var events []domain.Event
-	completed := false
-	for time.Now().Before(deadline) {
-		events, err = store.EventsAfter(ctx, sessID, 0, 100)
-		if err != nil {
-			t.Fatalf("events: %v", err)
-		}
-		if failure, ok := firstFailureEvent(events); ok {
-			t.Fatalf("tool workflow failed with %s: %#v; events=%s", failure.Type, failure.Payload, typeList(events))
-		}
-		if eventsHaveOrder(events, expectedOrder...) {
-			completed = true
-			break
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-	if !completed {
-		t.Fatalf("timed out after %s waiting for %v; got %s", tc.timeout, expectedOrder, typeList(events))
-	}
-
-	assertOrder(t, events, expectedOrder...)
-	assertModelRequestSpans(t, events, false, false)
-	toolUses := eventsOfType(events, domain.EvAgentToolUse)
-	if len(toolUses) != 1 {
-		t.Fatalf("agent.tool_use count = %d, want exactly 1; got %s", len(toolUses), typeList(events))
-	}
-	toolUse := toolUses[0]
-	toolName, ok := toolUse.Payload["name"].(string)
-	if !ok || toolName == "" {
-		t.Fatalf("agent.tool_use has invalid name payload: %#v", toolUse.Payload)
-	}
-	if toolName != tc.expectedTool {
-		t.Fatalf("agent.tool_use name = %q, want %q", toolName, tc.expectedTool)
-	}
-	if permission, _ := toolUse.Payload["evaluated_permission"].(string); permission != "allow" {
-		t.Fatalf("agent.tool_use evaluated_permission = %q, want allow", permission)
-	}
-	toolResults := eventsOfType(events, domain.EvAgentToolResult)
-	if len(toolResults) != 1 {
-		t.Fatalf("agent.tool_result count = %d, want exactly 1; got %s", len(toolResults), typeList(events))
-	}
-	toolResult := toolResults[0]
-	toolUseID, ok := toolResult.Payload["tool_use_id"].(string)
-	if !ok || toolUseID != toolUse.ID {
-		t.Fatalf("agent.tool_result tool_use_id = %q, want %q", toolUseID, toolUse.ID)
-	}
-	text, isError, ok := eventText(toolResult)
-	if !ok {
-		t.Fatalf("agent.tool_result has invalid content payload: %#v", toolResult.Payload)
-	}
-	if isError {
-		t.Fatalf("tool_result is_error=true; content=%q", text)
-	}
-	if strings.TrimSpace(text) != tc.expectedToolOutput {
-		t.Fatalf("tool output = %q, want %q", text, tc.expectedToolOutput)
-	}
-	finalMessage, ok := firstEventOfTypeAfter(events, toolResult.ID, domain.EvAgentMessage)
-	if !ok {
-		t.Fatalf("agent.message missing after tool result; got %s", typeList(events))
-	}
-	finalText, _, ok := eventText(finalMessage)
-	if !ok || strings.TrimSpace(finalText) == "" {
-		t.Fatalf("final agent.message has empty or invalid content: %#v", finalMessage.Payload)
-	}
-
-	final, err := store.GetSession(ctx, sessID)
-	if err != nil {
-		t.Fatalf("get session: %v", err)
-	}
-	if final.Status != domain.StatusIdle {
-		t.Fatalf("expected idle, got %s", final.Status)
-	}
-	binding, found, err := store.GetSandboxBinding(ctx, sessID)
-	if err != nil {
-		t.Fatalf("get sandbox binding: %v", err)
-	}
-	if tc.expectSandboxBinding {
-		if !found || binding.Ref.Provider != tc.provider.Name() || binding.Ref.ID == "" {
-			t.Fatalf("sandbox binding = %+v, found=%v", binding, found)
-		}
-	} else if found {
-		t.Fatalf("sandbox binding created without a sandbox tool call: %+v", binding)
-	}
-	if err := store.PrepareSessionDeletion(ctx, sessID); err != nil {
-		t.Fatalf("prepare session deletion: %v", err)
-	}
-	releaseCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := orch.TerminateSession(releaseCtx, sessID); err != nil {
-		t.Fatalf("terminate session and release sandbox: %v", err)
-	}
-	if _, found, err := store.GetSandboxBinding(ctx, sessID); err != nil || found {
-		t.Fatalf("sandbox binding survived cleanup: found=%v err=%v", found, err)
-	}
-	if err := store.FinalizeSessionDeletion(releaseCtx, sessID); err != nil {
-		t.Fatalf("finalize session deletion: %v", err)
-	}
-}
-
-// toolProbeModel is a deterministic, retry-safe model client for integration
-// tests. Before a tool result exists it requests one real bash step; afterwards
-// it ends the turn. Behavior depends only on projected history, not a mutable
-// call counter, so an Activity retry receives the same response.
-type toolProbeModel struct {
-	command        string
-	finalText      string
-	requiredSystem string
-}
-
-// skillProbeModel proves the CCB context lifecycle rather than merely proving
-// that the files exist. It selects the runtime's private Skill dispatcher on
-// the first round and refuses to finish unless the next request contains the
-// complete injected SKILL.md body as a sibling user content block.
-type skillProbeModel struct {
-	skillName      string
-	marker         string
-	finalText      string
-	requiredSystem string
-}
-
-func (m skillProbeModel) CreateMessage(
-	_ context.Context,
-	req model.Request,
-) (model.Response, error) {
-	if m.requiredSystem != "" && !strings.Contains(req.System, m.requiredSystem) {
-		return model.Response{}, fmt.Errorf(
-			"model request did not discover required Skill path %q",
-			m.requiredSystem,
-		)
-	}
-	dispatcherOffered := false
-	for _, tool := range req.Tools {
-		if tool.Name == agentruntime.RuntimeSkillToolName {
-			dispatcherOffered = true
-			break
-		}
-	}
-	if !dispatcherOffered {
-		return model.Response{}, errors.New("runtime Skill dispatcher was not offered")
-	}
-	seenResult := false
-	seenBody := false
-	for _, message := range req.Messages {
-		for _, block := range message.Content {
-			switch block.Type {
-			case "tool_result":
-				seenResult = true
-			case "text":
-				if strings.HasPrefix(
-					block.Text,
-					"Base directory for this skill: /workspace/skills/"+m.skillName,
-				) && strings.Contains(block.Text, m.marker) {
-					seenBody = true
-				}
-			}
-		}
-	}
-	if seenResult {
-		if !seenBody {
-			return model.Response{}, fmt.Errorf(
-				"Skill tool result returned without the complete SKILL.md injection: %s",
-				summarizeSkillProbeMessages(req.Messages),
-			)
-		}
-		return model.Response{
-			Content:    []domain.ContentBlock{{Type: "text", Text: m.finalText}},
-			StopReason: "end_turn",
-		}, nil
-	}
-	return model.Response{
-		Content: []domain.ContentBlock{{
-			Type: "tool_use", ToolUseID: "probe_skill_1",
-			ToolName: agentruntime.RuntimeSkillToolName,
-			Input:    map[string]any{"skill": m.skillName},
-		}},
-		StopReason: "tool_use",
-	}, nil
-}
-
-func summarizeSkillProbeMessages(messages []domain.Message) string {
-	const prefixLimit = 120
-	parts := make([]string, 0, len(messages))
-	for messageIndex, message := range messages {
-		for blockIndex, block := range message.Content {
-			text := block.Text
-			if len(text) > prefixLimit {
-				text = text[:prefixLimit] + "..."
-			}
-			parts = append(parts, fmt.Sprintf(
-				"message[%d](role=%q).content[%d](type=%q,text_len=%d,text_prefix=%q)",
-				messageIndex,
-				message.Role,
-				blockIndex,
-				block.Type,
-				len(block.Text),
-				text,
-			))
-		}
-	}
-	return strings.Join(parts, "; ")
-}
-
-func (m toolProbeModel) CreateMessage(_ context.Context, req model.Request) (model.Response, error) {
-	if m.requiredSystem != "" && !strings.Contains(req.System, m.requiredSystem) {
-		return model.Response{}, fmt.Errorf(
-			"model request did not discover required Skill path %q",
-			m.requiredSystem,
-		)
-	}
-	for _, message := range req.Messages {
-		for _, block := range message.Content {
-			if block.Type == "tool_result" {
-				return model.Response{
-					Content:    []domain.ContentBlock{{Type: "text", Text: m.finalText}},
-					StopReason: "end_turn",
-				}, nil
-			}
-		}
-	}
-	return model.Response{
-		Content: []domain.ContentBlock{{
-			Type: "tool_use", ToolUseID: "probe_tool_1", ToolName: bashToolName,
-			Input: map[string]any{"command": m.command},
-		}},
-		StopReason: "tool_use",
-	}, nil
-}
-
-func (m skillProbeModel) CreateMessageStream(
-	ctx context.Context,
-	req model.Request,
-	onDelta func(index int, text string),
-) (model.Response, error) {
-	response, err := m.CreateMessage(ctx, req)
-	if err == nil && response.StopReason == "end_turn" &&
-		len(response.Content) == 1 && onDelta != nil {
-		onDelta(0, response.Content[0].Text)
-	}
-	return response, err
-}
-
-type integrationBlobStore struct {
-	mu      sync.Mutex
-	objects map[string][]byte
-}
-
-func newIntegrationBlobStore() *integrationBlobStore {
-	return &integrationBlobStore{objects: make(map[string][]byte)}
-}
-
-func (s *integrationBlobStore) Put(
-	_ context.Context,
-	key string,
-	_ string,
-	body io.Reader,
-	maxBytes int64,
-) (app.BlobInfo, error) {
-	data, err := io.ReadAll(io.LimitReader(body, maxBytes+1))
-	if err != nil {
-		return app.BlobInfo{}, err
-	}
-	if int64(len(data)) > maxBytes {
-		return app.BlobInfo{}, app.ErrBlobTooLarge
-	}
-	s.mu.Lock()
-	s.objects[key] = append([]byte(nil), data...)
-	s.mu.Unlock()
-	return app.ComputeBlobInfo(data), nil
-}
-
-func (s *integrationBlobStore) Open(
-	_ context.Context,
-	key string,
-) (io.ReadCloser, error) {
-	s.mu.Lock()
-	data, ok := s.objects[key]
-	s.mu.Unlock()
-	if !ok {
-		return nil, errors.New("integration blob not found")
-	}
-	return io.NopCloser(bytes.NewReader(append([]byte(nil), data...))), nil
-}
-
-func (s *integrationBlobStore) Delete(_ context.Context, key string) error {
-	s.mu.Lock()
-	delete(s.objects, key)
-	s.mu.Unlock()
-	return nil
-}
-
-func (m toolProbeModel) CreateMessageStream(ctx context.Context, req model.Request, onDelta func(index int, text string)) (model.Response, error) {
-	resp, err := m.CreateMessage(ctx, req)
-	if err == nil && resp.StopReason == "end_turn" && len(resp.Content) == 1 && onDelta != nil {
-		onDelta(0, resp.Content[0].Text)
-	}
-	return resp, err
+	return false
 }
 
 type interruptBlockingModel struct {
@@ -1346,10 +645,7 @@ func newInterruptBlockingModel() *interruptBlockingModel {
 	}
 }
 
-func (m *interruptBlockingModel) CreateMessage(
-	ctx context.Context,
-	req model.Request,
-) (model.Response, error) {
+func (m *interruptBlockingModel) CreateMessage(ctx context.Context, req model.Request) (model.Response, error) {
 	return m.CreateMessageStream(ctx, req, nil)
 }
 
@@ -1364,32 +660,14 @@ func (m *interruptBlockingModel) CreateMessageStream(
 	return model.Response{}, ctx.Err()
 }
 
-func hasType(events []domain.Event, t string) bool {
-	for _, e := range events {
-		if e.Type == t {
-			return true
-		}
-	}
-	return false
-}
-
 func eventsHaveOrder(events []domain.Event, types ...string) bool {
-	idx := 0
+	index := 0
 	for _, event := range events {
-		if idx < len(types) && event.Type == types[idx] {
-			idx++
+		if index < len(types) && event.Type == types[index] {
+			index++
 		}
 	}
-	return idx == len(types)
-}
-
-func firstFailureEvent(events []domain.Event) (domain.Event, bool) {
-	for _, event := range events {
-		if event.Type == domain.EvSessionError || event.Type == domain.EvSessionStatusTerminated {
-			return event, true
-		}
-	}
-	return domain.Event{}, false
+	return index == len(types)
 }
 
 func eventsOfType(events []domain.Event, eventType string) []domain.Event {
@@ -1402,44 +680,10 @@ func eventsOfType(events []domain.Event, eventType string) []domain.Event {
 	return matches
 }
 
-func assertModelRequestSpans(t *testing.T, events []domain.Event, errors ...bool) {
-	t.Helper()
-	starts := eventsOfType(events, domain.EvSpanModelRequestStart)
-	ends := eventsOfType(events, domain.EvSpanModelRequestEnd)
-	if len(starts) != len(errors) || len(ends) != len(errors) {
-		t.Fatalf(
-			"model request spans = %d starts/%d ends, want %d each; got %s",
-			len(starts), len(ends), len(errors), typeList(events),
-		)
-	}
-	for i := range errors {
-		startID, _ := ends[i].Payload["model_request_start_id"].(string)
-		if startID != starts[i].ID {
-			t.Fatalf("model request end %d references %q, want %q", i, startID, starts[i].ID)
-		}
-		isError, ok := ends[i].Payload["is_error"].(bool)
-		if !ok || isError != errors[i] {
-			t.Fatalf("model request end %d is_error = %#v, want %v", i, ends[i].Payload["is_error"], errors[i])
-		}
-	}
-}
-
-func typeList(events []domain.Event) string {
-	s := ""
-	for _, e := range events {
-		s += e.Type + " "
-	}
-	return s
-}
-
-func firstEventOfTypeAfter(events []domain.Event, afterID, eventType string) (domain.Event, bool) {
-	after := false
+func firstFailureEvent(events []domain.Event) (domain.Event, bool) {
 	for _, event := range events {
-		if after && event.Type == eventType {
+		if event.Type == domain.EvSessionError || event.Type == domain.EvSessionStatusTerminated {
 			return event, true
-		}
-		if event.ID == afterID {
-			after = true
 		}
 	}
 	return domain.Event{}, false
@@ -1463,11 +707,39 @@ func eventText(event domain.Event) (text string, isError bool, ok bool) {
 	return out.String(), isError, true
 }
 
-func terminateIntegrationWorkflow(t *testing.T, c client.Client, workflowID string) {
+func assertModelRequestSpans(t *testing.T, events []domain.Event, expectedErrors ...bool) {
+	t.Helper()
+	starts := eventsOfType(events, domain.EvSpanModelRequestStart)
+	ends := eventsOfType(events, domain.EvSpanModelRequestEnd)
+	if len(starts) != len(expectedErrors) || len(ends) != len(expectedErrors) {
+		t.Fatalf("model request spans = %d starts/%d ends, want %d each; got %s", len(starts), len(ends), len(expectedErrors), typeList(events))
+	}
+	for i := range expectedErrors {
+		startID, _ := ends[i].Payload["model_request_start_id"].(string)
+		if startID != starts[i].ID {
+			t.Fatalf("model request end %d references %q, want %q", i, startID, starts[i].ID)
+		}
+		isError, ok := ends[i].Payload["is_error"].(bool)
+		if !ok || isError != expectedErrors[i] {
+			t.Fatalf("model request end %d is_error = %#v, want %v", i, ends[i].Payload["is_error"], expectedErrors[i])
+		}
+	}
+}
+
+func typeList(events []domain.Event) string {
+	var out strings.Builder
+	for _, event := range events {
+		out.WriteString(event.Type)
+		out.WriteByte(' ')
+	}
+	return out.String()
+}
+
+func terminateIntegrationWorkflow(t *testing.T, temporalClient client.Client, workflowID string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := c.TerminateWorkflow(ctx, workflowID, "", "mango integration test cleanup"); err != nil {
+	if err := temporalClient.TerminateWorkflow(ctx, workflowID, "", "mango integration test cleanup"); err != nil {
 		var notFound *serviceerror.NotFound
 		if errors.As(err, &notFound) {
 			return
@@ -1476,8 +748,6 @@ func terminateIntegrationWorkflow(t *testing.T, c client.Client, workflowID stri
 	}
 }
 
-// assertOrder checks that the given event types appear in the slice in the given
-// relative order (not necessarily contiguous).
 func assertOrder(t *testing.T, events []domain.Event, types ...string) {
 	t.Helper()
 	if !eventsHaveOrder(events, types...) {

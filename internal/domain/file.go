@@ -13,17 +13,16 @@ const (
 	FileStateDeleting  FileState = "deleting"
 )
 
-// FileScope identifies the resource that produced a file. Client uploads have
-// no scope; Session Resource copies and runtime outputs use Session scope.
+// FileScope identifies server-produced ownership metadata. Client uploads have
+// no scope; the current self-hosted runtime does not publish scoped output files.
 type FileScope struct {
 	ID   string
 	Type string
 }
 
 // File is the authoritative metadata projection for one object-store blob.
-// Internal, BlobKey, and ChecksumSHA256 are persistence/runtime fields and
-// never cross the public wire. Internal Files back other durable resources and
-// must not be exposed through the Files API.
+// BlobKey and ChecksumSHA256 are persistence/runtime fields and never cross
+// the public wire.
 type File struct {
 	ID             string
 	CreatedAt      time.Time
@@ -32,13 +31,8 @@ type File struct {
 	MimeType       string
 	SizeBytes      int64
 	Downloadable   bool
-	Internal       bool
 	Scope          *FileScope
 	BlobKey        string
 	ChecksumSHA256 string
-	// OutputPath is the normalized path relative to /mnt/session/outputs for a
-	// runtime-produced deliverable. It is internal and never crosses the Files
-	// wire contract.
-	OutputPath string
-	State      FileState
+	State          FileState
 }

@@ -7,13 +7,6 @@
 // a session-level error.
 package tools
 
-import (
-	"context"
-	"sort"
-
-	"github.com/yanpgwang/mango/internal/sandbox"
-)
-
 // Result is the outcome of a tool execution. Content is the wire block array
 // (a list of {type:"text", text:string} maps) fed back to the model.
 type Result struct {
@@ -21,52 +14,12 @@ type Result struct {
 	IsError bool
 }
 
-// Executor runs a single tool invocation inside the given sandbox.
-type Executor func(ctx context.Context, sb sandbox.Sandbox, input map[string]any) Result
-
 // textResult builds a Result carrying a single text block.
 func textResult(s string, isErr bool) Result {
 	return Result{
 		Content: []any{map[string]any{"type": "text", "text": s}},
 		IsError: isErr,
 	}
-}
-
-// notImplemented is the defensive local fallback for tools whose execution is
-// owned by another integration boundary. It always reports an error to the
-// model if routing reaches this registry unexpectedly.
-func notImplemented(name string) Executor {
-	return func(_ context.Context, _ sandbox.Sandbox, _ map[string]any) Result {
-		return textResult(name+": not implemented", true)
-	}
-}
-
-// Registry returns the tool name to executor mapping. bash/read/write/edit and
-// glob/grep execute locally. web_fetch/web_search normally route through the
-// provider-native server-tool path; their entries here fail closed if that
-// routing invariant is violated.
-func Registry() map[string]Executor {
-	return map[string]Executor{
-		"bash":       execBash,
-		"read":       execRead,
-		"write":      execWrite,
-		"edit":       execEdit,
-		"glob":       execGlob,
-		"grep":       execGrep,
-		"web_fetch":  notImplemented("web_fetch"),
-		"web_search": notImplemented("web_search"),
-	}
-}
-
-// Names returns the sorted list of registered tool names.
-func Names() []string {
-	reg := Registry()
-	names := make([]string, 0, len(reg))
-	for n := range reg {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
 }
 
 // Schema returns the model-facing JSON input_schema for the named tool, or nil

@@ -11,7 +11,7 @@ let environment;
 let session;
 try {
   await client.system.health();
-  environment = await client.environments.create({ name: 'TypeScript conformance', config: { type: 'cloud' } });
+  environment = await client.environments.create({ name: 'TypeScript conformance', config: { type: 'self_hosted' } });
   for (let index = 0; index < 2; index++) agents.push(await client.agents.create({ name: `TypeScript conformance ${index}`, model: 'sdk-conformance' }));
   assert.equal((await client.agents.retrieve(agents[0].id)).id, agents[0].id);
   const listed = [];

@@ -234,10 +234,6 @@ func bodyLimitMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func isFilePath(path string) bool {
-	return path == "/v1/files" || strings.HasPrefix(path, "/v1/files/")
-}
-
 func isFileUpload(r *http.Request) bool {
 	return r.Method == http.MethodPost && r.URL.Path == "/v1/files"
 }

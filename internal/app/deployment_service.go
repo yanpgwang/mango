@@ -49,10 +49,6 @@ type DeploymentSessionCreator interface {
 	Create(context.Context, CreateSessionInput) (domain.Session, error)
 }
 
-type DeploymentFileReader interface {
-	Get(context.Context, string) (domain.File, error)
-}
-
 type DeploymentMemoryReader interface {
 	GetStore(context.Context, string) (domain.MemoryStore, error)
 }
@@ -66,36 +62,30 @@ type DeploymentServiceConfig struct {
 	Agents       AgentRepository
 	Environments EnvironmentRepository
 	Sessions     DeploymentSessionCreator
-	Files        DeploymentFileReader
 	Memory       DeploymentMemoryReader
-	// CloudMemoryStores gates only resources executed by the transitional
-	// server-managed cloud sandbox. Self-hosted Sessions use the Memory API.
-	CloudMemoryStores bool
-	Vaults            DeploymentVaultReader
-	IDGenerator       domain.IDGenerator
-	Clock             domain.Clock
+	Vaults       DeploymentVaultReader
+	IDGenerator  domain.IDGenerator
+	Clock        domain.Clock
 }
 
 type DeploymentService struct {
-	repo              DeploymentRepository
-	agents            AgentRepository
-	environments      EnvironmentRepository
-	sessions          DeploymentSessionCreator
-	files             DeploymentFileReader
-	memory            DeploymentMemoryReader
-	cloudMemoryStores bool
-	vaults            DeploymentVaultReader
-	ids               domain.IDGenerator
-	clock             domain.Clock
+	repo         DeploymentRepository
+	agents       AgentRepository
+	environments EnvironmentRepository
+	sessions     DeploymentSessionCreator
+	memory       DeploymentMemoryReader
+	vaults       DeploymentVaultReader
+	ids          domain.IDGenerator
+	clock        domain.Clock
 }
 
 func NewDeploymentService(config DeploymentServiceConfig) *DeploymentService {
 	return &DeploymentService{
 		repo: config.Repository, agents: config.Agents,
 		environments: config.Environments, sessions: config.Sessions,
-		files: config.Files, memory: config.Memory,
-		cloudMemoryStores: config.CloudMemoryStores, vaults: config.Vaults,
-		ids: config.IDGenerator, clock: config.Clock,
+		memory: config.Memory,
+		vaults: config.Vaults,
+		ids:    config.IDGenerator, clock: config.Clock,
 	}
 }
 
@@ -412,17 +402,16 @@ func (s *DeploymentService) run(
 		AgentID: item.AgentID, AgentVersion: item.AgentVersion,
 		TriggerType: trigger, ScheduledAt: scheduledAt, CreatedAt: now,
 	}
-	files, memories, repositories := deploymentSessionResources(item.Resources)
+	memories := deploymentSessionResources(item.Resources)
 	session, createErr := s.sessions.Create(ctx, CreateSessionInput{
 		AgentID: item.AgentID, AgentVersion: &item.AgentVersion,
 		EnvironmentID: item.EnvironmentID, Title: item.Name,
-		Metadata:      deploymentSessionMetadata(item.Metadata),
-		InitialEvents: cloneEventDrafts(item.InitialEvents),
-		Resources:     files, MemoryResources: memories,
-		RepositoryResources: repositories,
-		VaultIDs:            append([]string(nil), item.VaultIDs...),
-		Budget:              cloneSessionBudget(item.Budget),
-		DeploymentID:        &item.ID, DeploymentRun: &run,
+		Metadata:        deploymentSessionMetadata(item.Metadata),
+		InitialEvents:   cloneEventDrafts(item.InitialEvents),
+		MemoryResources: memories,
+		VaultIDs:        append([]string(nil), item.VaultIDs...),
+		Budget:          cloneSessionBudget(item.Budget),
+		DeploymentID:    &item.ID, DeploymentRun: &run,
 	})
 	if createErr == nil {
 		run.SessionID = &session.ID
@@ -601,8 +590,8 @@ func (s *DeploymentService) validate(ctx context.Context, item domain.Deployment
 			return domain.Validation("deployment initial_events contains an unsupported event type")
 		}
 	}
-	if len(item.Resources) > MaxSessionResources {
-		return domain.Validation("resources must contain at most 500 entries")
+	if len(item.Resources) > domain.MaxSessionMemoryStores {
+		return domain.Validation("resources may contain at most 8 Memory Stores")
 	}
 	if len(item.VaultIDs) > MaxDeploymentVaults {
 		return domain.Validation("vault_ids must contain at most 50 entries")
@@ -657,68 +646,24 @@ func (s *DeploymentService) validate(ctx context.Context, item domain.Deployment
 			return domain.Validation("vault_ids references a missing or archived Vault")
 		}
 	}
-	seenFiles, seenMemories := map[string]struct{}{}, map[string]struct{}{}
-	var repositoryMountPaths []string
+	seenMemories := map[string]struct{}{}
 	for _, resource := range item.Resources {
-		switch resource.Type {
-		case domain.SessionResourceTypeFile:
-			if resource.FileID == "" {
-				return domain.Validation("file resource requires file_id")
-			}
-			if _, duplicate := seenFiles[resource.FileID]; duplicate {
-				return domain.Validation("a File may be attached only once")
-			}
-			seenFiles[resource.FileID] = struct{}{}
-			if s.files == nil {
-				return domain.Unsupported("File resources are unavailable for the configured deployment")
-			}
-			file, err := s.files.Get(ctx, resource.FileID)
-			if err != nil || file.Internal {
-				return domain.Validation("file resource not found")
-			}
-		case domain.SessionResourceTypeMemoryStore:
-			if environment.ConfigType == "cloud" && !s.cloudMemoryStores {
-				return domain.Unsupported(
-					"Memory Store resources are unavailable for the configured cloud sandbox provider",
-				)
-			}
-			if resource.MemoryStoreID == "" {
-				return domain.Validation("memory_store resource requires memory_store_id")
-			}
-			if _, duplicate := seenMemories[resource.MemoryStoreID]; duplicate {
-				return domain.Validation("a Memory Store may be attached only once")
-			}
-			seenMemories[resource.MemoryStoreID] = struct{}{}
-			if s.memory == nil {
-				return domain.Unsupported("Memory Store resources are unavailable for the configured deployment")
-			}
-			store, err := s.memory.GetStore(ctx, resource.MemoryStoreID)
-			if err != nil || store.ArchivedAt != nil {
-				return domain.Validation("memory store is missing or archived")
-			}
-		case domain.SessionResourceTypeGitRepository:
-			if err := domain.ValidateGitRepositoryURL(resource.RepositoryURL); err != nil {
-				return err
-			}
-			if _, _, err := domain.NormalizeGitRepositoryCheckout(
-				resource.RepositoryCheckoutType, resource.RepositoryCheckoutValue,
-			); err != nil {
-				return err
-			}
-			mountPath, err := domain.NormalizeGitRepositoryMountPath(
-				resource.RepositoryURL, resource.MountPath,
-			)
-			if err != nil {
-				return err
-			}
-			for _, existing := range repositoryMountPaths {
-				if domain.SessionFileMountPathsConflict(existing, mountPath) {
-					return domain.Validation("Git repository mount paths must not overlap")
-				}
-			}
-			repositoryMountPaths = append(repositoryMountPaths, mountPath)
-		default:
+		if resource.Type != domain.SessionResourceTypeMemoryStore {
 			return domain.Unsupported("unsupported Deployment Resource type")
+		}
+		if resource.MemoryStoreID == "" {
+			return domain.Validation("memory_store resource requires memory_store_id")
+		}
+		if _, duplicate := seenMemories[resource.MemoryStoreID]; duplicate {
+			return domain.Validation("a Memory Store may be attached only once")
+		}
+		seenMemories[resource.MemoryStoreID] = struct{}{}
+		if s.memory == nil {
+			return domain.Unsupported("Memory Store resources are unavailable for the configured deployment")
+		}
+		store, err := s.memory.GetStore(ctx, resource.MemoryStoreID)
+		if err != nil || store.ArchivedAt != nil {
+			return domain.Validation("memory store is missing or archived")
 		}
 	}
 	return nil
@@ -757,43 +702,22 @@ func deploymentOccurrences(
 
 func deploymentSessionResources(
 	resources []domain.DeploymentResource,
-) ([]FileSessionResourceInput, []MemorySessionResourceInput, []GitRepositorySessionResourceInput) {
-	var files []FileSessionResourceInput
+) []MemorySessionResourceInput {
 	var memories []MemorySessionResourceInput
-	var repositories []GitRepositorySessionResourceInput
 	for _, resource := range resources {
-		switch resource.Type {
-		case domain.SessionResourceTypeFile:
-			files = append(files, FileSessionResourceInput{
-				FileID: resource.FileID, MountPath: resource.MountPath,
-			})
-		case domain.SessionResourceTypeMemoryStore:
+		if resource.Type == domain.SessionResourceTypeMemoryStore {
 			memories = append(memories, MemorySessionResourceInput{
 				MemoryStoreID: resource.MemoryStoreID, Access: resource.Access,
 				Instructions: resource.Instructions,
 			})
-		case domain.SessionResourceTypeGitRepository:
-			var checkout *GitRepositoryCheckoutInput
-			if resource.RepositoryCheckoutType != "" {
-				checkout = &GitRepositoryCheckoutInput{
-					Type: resource.RepositoryCheckoutType, Value: resource.RepositoryCheckoutValue,
-				}
-			}
-			repositories = append(repositories, GitRepositorySessionResourceInput{
-				URL: resource.RepositoryURL, Checkout: checkout, MountPath: resource.MountPath,
-			})
 		}
 	}
-	return files, memories, repositories
+	return memories
 }
 
 func classifyDeploymentRunError(err error) (string, string) {
 	message := err.Error()
 	lower := strings.ToLower(message)
-	var classified interface{ DeploymentRunErrorType() string }
-	if errors.As(err, &classified) {
-		return classified.DeploymentRunErrorType(), message
-	}
 	var domainErr *domain.DomainError
 	if errors.As(err, &domainErr) && domainErr.Code != "" {
 		return domainErr.Code, message
@@ -912,43 +836,13 @@ func cloneEventDrafts(events []domain.EventDraft) []domain.EventDraft {
 }
 
 func cloneDeploymentResources(resources []domain.DeploymentResource) []domain.DeploymentResource {
-	out := append([]domain.DeploymentResource(nil), resources...)
-	for index := range out {
-		if out[index].MountPath != nil {
-			value := *out[index].MountPath
-			out[index].MountPath = &value
-		}
-	}
-	return out
+	return append([]domain.DeploymentResource(nil), resources...)
 }
 
 func normalizeDeploymentResources(
 	resources []domain.DeploymentResource,
 ) ([]domain.DeploymentResource, error) {
-	out := cloneDeploymentResources(resources)
-	for index := range out {
-		resource := &out[index]
-		if resource.Type != domain.SessionResourceTypeGitRepository {
-			continue
-		}
-		if err := domain.ValidateGitRepositoryURL(resource.RepositoryURL); err != nil {
-			return nil, err
-		}
-		checkoutType, checkoutValue, err := domain.NormalizeGitRepositoryCheckout(
-			resource.RepositoryCheckoutType, resource.RepositoryCheckoutValue,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := domain.NormalizeGitRepositoryMountPath(
-			resource.RepositoryURL, resource.MountPath,
-		); err != nil {
-			return nil, err
-		}
-		resource.RepositoryCheckoutType = checkoutType
-		resource.RepositoryCheckoutValue = checkoutValue
-	}
-	return out, nil
+	return cloneDeploymentResources(resources), nil
 }
 
 func cloneDeploymentStringMap(input map[string]string) map[string]string {

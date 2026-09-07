@@ -20,6 +20,34 @@ and self-hosted. Public surface definitions may be design inputs, but external
 implementation code and non-public types must not be copied, and an external
 release is never an automatic roadmap.
 
+## Self-hosted runtime boundary completion
+
+- Reviewed the current public CMA [self-hosted guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes),
+  [cloud sandbox reference](https://platform.claude.com/docs/en/managed-agents/cloud-sandboxes-reference),
+  [Files](https://platform.claude.com/docs/en/managed-agents/files),
+  [Memory](https://platform.claude.com/docs/en/managed-agents/memory), and
+  [tools](https://platform.claude.com/docs/en/managed-agents/tools) alongside
+  Mango's HTTP, OpenAPI, worker, persistence, and Temporal behavior.
+- Mango adopts the common durable lifecycle: Environment Work, scoped Session
+  credentials, lease fencing, event recovery, approvals, correlated results,
+  immutable Skill pins, and Memory synchronization. Shell/file execution is an
+  operator-worker responsibility; Web and remote MCP retain their distinct
+  execution owners.
+- Mango intentionally rejects CMA hosted-only behavior. It has no `cloud`
+  Environment, control-plane provider registry, sandbox provider credentials,
+  packages/network policy fields, automatic File/Git mounts, or automatic
+  workspace-output publication. The public Session Resource union contains
+  Memory Stores only, and the post-create File Resource routes were removed.
+- Docker is the OSS reference launcher. CMA cookbook providers are evidence for
+  a provider-neutral worker boundary, not a reason to compile their SDKs into
+  Mango. Future provider examples must preserve the same Work protocol and keep
+  provider configuration operator-owned.
+- The removed pre-release adapter path included Docker, E2B, CubeSandbox,
+  OpenSandbox, and Daytona. Their dependencies, provisioning tables, cleanup
+  workflows, in-process tool runtime, configuration variables, and coding-agent
+  exception were retired together. Mango's existing `/v1` contract changed in
+  place, as permitted before a supported release.
+
 ## Self-hosted default user path
 
 - User/operator problem: an OSS runtime should lead users through the execution
@@ -43,11 +71,10 @@ release is never an automatic roadmap.
   text-only or application-custom-tool turn needs no Environment worker;
   shell/file calls wait for an operator worker. Mango does not auto-register or
   auto-provision a worker when an Environment is created.
-- Non-goals for this slice: no new credential shape, provider launcher,
-  automatic File/Git transfer, workspace-output API, or removal of the legacy
-  runtime. The coding-agent File/output tutorial remains the only user-facing
-  `cloud` example until a separate user workflow replaces or retires it. The
-  next convergence slice removes that path and its compiled provider registry.
+- Non-goals for this slice were a new credential shape, provider launcher,
+  automatic File/Git transfer, or workspace-output API. The subsequent runtime
+  boundary completion above removed the legacy path and retired the coding
+  tutorial that depended on it.
 
 ## Self-hosted Web execution and convergence scope
 
@@ -277,6 +304,10 @@ support, so they run the same credential-free and opt-in live conformance suites
 
 ## Coding-agent scenario fixtures
 
+This section records a retired pre-release experiment. The managed-sandbox
+system test, standalone tutorial, and fixtures were removed when Mango adopted
+the self-hosted-only boundary; they must not be read as current capabilities.
+
 - Anthropic's public
   [`CMA_iterate_fix_failing_tests` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_iterate_fix_failing_tests.ipynb)
   supplied the MIT-licensed `calc.py` and `test_calc.py` fixture and the useful
@@ -301,7 +332,7 @@ support, so they run the same credential-free and opt-in live conformance suites
   scenario reference, while Mango's observable outcome and executable tests
   define success.
 - On 2026-08-31, Mango reviewed the current public notebook again while turning
-  the [coding-agent example](examples/coding-agent-iterate.md) into a runnable
+  the then-current coding-agent example into a runnable
   Python SDK tutorial. The user problem is to run, inspect, and independently
   accept a complete coding task through the same public client used by an
   application, without translating HTTP snippets or depending on Go internals.
@@ -857,7 +888,10 @@ editorial; it does not change HTTP, persistence, scheduling, or recovery semanti
   persists it during teardown, and downloads the updated value in a later Work
   activation without importing a cookbook application into the test suite.
 
-## Docker-default OSS execution
+## Docker-default OSS execution (historical, superseded)
+
+This section records the earlier control-plane-managed Docker decision. The
+current self-hosted boundary is documented above and deliberately replaces it.
 
 - User problem: the ordinary local deployment must run tools in a separate
   Session container and support Files, Skills, and Memory without manually
@@ -887,7 +921,10 @@ editorial; it does not change HTTP, persistence, scheduling, or recovery semanti
   harness. The subsequent test-convergence slice below removes the remaining
   local-based test fixtures.
 
-## Remove host-process sandbox execution
+## Remove host-process sandbox execution (historical, superseded)
+
+This intermediate cleanup preceded the provider-neutral self-hosted worker and
+is retained only as design history; no provider binding remains current.
 
 - User/operator problem: a Docker-default binary is insufficient if its tests
   still validate tool behavior through a host-process executor. Remove the

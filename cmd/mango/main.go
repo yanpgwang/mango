@@ -17,14 +17,12 @@ import (
 	"github.com/yanpgwang/mango/internal/blob"
 	"github.com/yanpgwang/mango/internal/controlplane"
 	"github.com/yanpgwang/mango/internal/domain"
-	"github.com/yanpgwang/mango/internal/gitrepo"
 	"github.com/yanpgwang/mango/internal/httpapi"
 	"github.com/yanpgwang/mango/internal/live"
 	"github.com/yanpgwang/mango/internal/mcpclient"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/oauthclient"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox"
 	"github.com/yanpgwang/mango/internal/secretcrypto"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 )
@@ -35,37 +33,6 @@ import (
 const defaultAddr = "127.0.0.1:8080"
 
 const (
-	sandboxProviderEnv    = "MANGO_SANDBOX"
-	sandboxImageEnv       = "MANGO_SANDBOX_IMAGE"
-	sandboxResourceDirEnv = "MANGO_SANDBOX_RESOURCE_DIR"
-
-	e2bAPIKeyEnv      = "E2B_API_KEY"
-	e2bAPIURLEnv      = "E2B_API_URL"
-	e2bTemplateEnv    = "E2B_TEMPLATE_ID"
-	e2bDomainEnv      = "E2B_DOMAIN"
-	e2bIdleTimeoutEnv = "E2B_IDLE_TIMEOUT"
-
-	cubeAPIKeyEnv      = "CUBE_API_KEY"
-	cubeAPIURLEnv      = "CUBE_API_URL"
-	cubeTemplateEnv    = "CUBE_TEMPLATE_ID"
-	cubeDomainEnv      = "CUBE_SANDBOX_DOMAIN"
-	cubeProxyNodeIPEnv = "CUBE_PROXY_NODE_IP"
-	cubeProxyPortEnv   = "CUBE_PROXY_PORT_HTTP"
-	cubeProxySchemeEnv = "CUBE_PROXY_SCHEME"
-	cubeIdleTimeoutEnv = "CUBE_IDLE_TIMEOUT"
-
-	openSandboxDomainEnv   = "OPEN_SANDBOX_DOMAIN"
-	openSandboxAPIKeyEnv   = "OPEN_SANDBOX_API_KEY"
-	openSandboxImageEnv    = "OPEN_SANDBOX_IMAGE"
-	openSandboxUseProxyEnv = "OPEN_SANDBOX_USE_SERVER_PROXY"
-
-	daytonaAPIKeyEnv    = "DAYTONA_API_KEY"
-	daytonaAPIURLEnv    = "DAYTONA_API_URL"
-	daytonaTargetEnv    = "DAYTONA_TARGET"
-	daytonaSnapshotEnv  = "DAYTONA_SNAPSHOT"
-	daytonaImageEnv     = "DAYTONA_IMAGE"
-	daytonaAutoPauseEnv = "DAYTONA_AUTO_PAUSE_MINUTES"
-
 	fileS3EndpointEnv     = "MANGO_FILE_S3_ENDPOINT"
 	fileS3RegionEnv       = "MANGO_FILE_S3_REGION"
 	fileS3BucketEnv       = "MANGO_FILE_S3_BUCKET"
@@ -91,169 +58,6 @@ func resolveModelClient() (client model.Client, realModel bool, err error) {
 	return model.NewFake(), false, nil
 }
 
-// sandboxProviderRegistry declares the adapters compiled into this worker.
-// Factories are lazy: API admission reads capabilities without contacting a
-// daemon, and optional remote adapters require credentials only when selected.
-func sandboxProviderRegistry() (*sandbox.ProviderRegistry, error) {
-	return sandbox.NewProviderRegistry(
-		sandbox.ProviderRegistration{
-			Name: sandbox.DockerProviderName,
-			Capabilities: sandbox.ProviderCapabilities{
-				PackageSetup:    true,
-				FileResources:   true,
-				SessionOutputs:  true,
-				SkillBundles:    true,
-				MemoryStores:    true,
-				GitRepositories: true,
-			},
-			Factory: func() (sandbox.Provider, error) {
-				return sandbox.NewDockerProvider(sandbox.DockerConfig{
-					DefaultImage:    os.Getenv(sandboxImageEnv),
-					ResourceBaseDir: os.Getenv(sandboxResourceDirEnv),
-				})
-			},
-		},
-		sandbox.ProviderRegistration{
-			Name: sandbox.E2BProviderName,
-			Capabilities: sandbox.ProviderCapabilities{
-				PackageSetup:    true,
-				FileResources:   true,
-				SessionOutputs:  true,
-				SkillBundles:    true,
-				GitRepositories: true,
-			},
-			Factory: func() (sandbox.Provider, error) {
-				idleTimeout, err := envDuration(e2bIdleTimeoutEnv)
-				if err != nil {
-					return nil, err
-				}
-				return sandbox.NewE2BProvider(sandbox.E2BConfig{
-					APIURL:      os.Getenv(e2bAPIURLEnv),
-					APIKey:      os.Getenv(e2bAPIKeyEnv),
-					TemplateID:  os.Getenv(e2bTemplateEnv),
-					Domain:      os.Getenv(e2bDomainEnv),
-					IdleTimeout: idleTimeout,
-				})
-			},
-		},
-		sandbox.ProviderRegistration{
-			Name: sandbox.CubeProviderName,
-			Capabilities: sandbox.ProviderCapabilities{
-				PackageSetup:    true,
-				FileResources:   true,
-				SessionOutputs:  true,
-				SkillBundles:    true,
-				GitRepositories: true,
-			},
-			Factory: func() (sandbox.Provider, error) {
-				proxyPort, err := envPositiveInt(cubeProxyPortEnv)
-				if err != nil {
-					return nil, err
-				}
-				idleTimeout, err := envDuration(cubeIdleTimeoutEnv)
-				if err != nil {
-					return nil, err
-				}
-				return sandbox.NewCubeProvider(sandbox.CubeConfig{
-					APIURL:      os.Getenv(cubeAPIURLEnv),
-					APIKey:      os.Getenv(cubeAPIKeyEnv),
-					TemplateID:  os.Getenv(cubeTemplateEnv),
-					Domain:      os.Getenv(cubeDomainEnv),
-					ProxyNodeIP: os.Getenv(cubeProxyNodeIPEnv),
-					ProxyPort:   proxyPort,
-					ProxyScheme: os.Getenv(cubeProxySchemeEnv),
-					IdleTimeout: idleTimeout,
-				})
-			},
-		},
-		sandbox.ProviderRegistration{
-			Name: sandbox.OpenSandboxProviderName,
-			Capabilities: sandbox.ProviderCapabilities{
-				PackageSetup:    true,
-				LimitedNetwork:  true,
-				FileResources:   true,
-				SessionOutputs:  true,
-				SkillBundles:    true,
-				GitRepositories: true,
-			},
-			Factory: func() (sandbox.Provider, error) {
-				useProxy, err := envBool(openSandboxUseProxyEnv)
-				if err != nil {
-					return nil, err
-				}
-				return sandbox.NewOpenSandboxProvider(sandbox.OpenSandboxConfig{
-					BaseURL: os.Getenv(openSandboxDomainEnv),
-					APIKey:  os.Getenv(openSandboxAPIKeyEnv),
-					Image: firstNonEmpty(
-						os.Getenv(openSandboxImageEnv),
-						os.Getenv(sandboxImageEnv),
-					),
-					UseProxy: useProxy,
-				})
-			},
-		},
-		sandbox.ProviderRegistration{
-			Name: sandbox.DaytonaProviderName,
-			Capabilities: sandbox.ProviderCapabilities{
-				PackageSetup:    true,
-				FileResources:   true,
-				SessionOutputs:  true,
-				SkillBundles:    true,
-				GitRepositories: true,
-			},
-			Factory: func() (sandbox.Provider, error) {
-				autoPauseMinutes, err := envPositiveInt(daytonaAutoPauseEnv)
-				if err != nil {
-					return nil, err
-				}
-				return sandbox.NewDaytonaProvider(sandbox.DaytonaConfig{
-					APIURL:   os.Getenv(daytonaAPIURLEnv),
-					APIKey:   os.Getenv(daytonaAPIKeyEnv),
-					Target:   os.Getenv(daytonaTargetEnv),
-					Snapshot: os.Getenv(daytonaSnapshotEnv),
-					Image: firstNonEmpty(
-						os.Getenv(daytonaImageEnv),
-						os.Getenv(sandboxImageEnv),
-					),
-					AutoPauseMinutes: autoPauseMinutes,
-				})
-			},
-		},
-	)
-}
-
-func envDuration(name string) (time.Duration, error) {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return 0, nil
-	}
-	parsed, err := time.ParseDuration(value)
-	if err != nil || parsed <= 0 {
-		return 0, fmt.Errorf(
-			"configuration: %s must be a positive Go duration, got %q",
-			name,
-			value,
-		)
-	}
-	return parsed, nil
-}
-
-func envPositiveInt(name string) (int, error) {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return 0, nil
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed <= 0 {
-		return 0, fmt.Errorf(
-			"configuration: %s must be a positive integer, got %q",
-			name,
-			value,
-		)
-	}
-	return parsed, nil
-}
-
 func envBool(name string) (bool, error) {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
@@ -271,10 +75,8 @@ func envBool(name string) (bool, error) {
 }
 
 type resolvedFiles struct {
-	service    *app.FileService
-	repository *pg.FileRepository
-	blobs      app.FileBlobStore
-	outputs    *app.SessionOutputPublisher
+	service *app.FileService
+	blobs   app.FileBlobStore
 }
 
 func resolveFiles(
@@ -317,46 +119,8 @@ func resolveFiles(
 		}
 	}
 	return &resolvedFiles{
-		service: files, repository: repository, blobs: blobs,
-		outputs: app.NewSessionOutputPublisher(repository, blobs, ids, clock),
+		service: files, blobs: blobs,
 	}, nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
-// resolveSandboxProvider selects the process-wide sandbox backend from the
-// internal registry. Docker is the default; host-process execution is not a
-// selectable backend.
-// Provider choice is deployment configuration, not part of the Mango
-// public API. Unknown names fail closed instead of silently falling back to
-// host execution.
-func resolveSandboxProvider() (sandbox.Provider, error) {
-	name := configuredSandboxProviderName()
-	registry, err := sandboxProviderRegistry()
-	if err != nil {
-		return nil, err
-	}
-	provider, err := registry.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("sandbox: %s provider", name)
-	return provider, nil
-}
-
-func configuredSandboxProviderName() string {
-	name := strings.TrimSpace(os.Getenv(sandboxProviderEnv))
-	if name == "" {
-		return sandbox.DockerProviderName
-	}
-	return name
 }
 
 type realClock struct{}
@@ -583,23 +347,7 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 	pgStore.SetEventNotifier(broker)
 	agentsRepo := pg.NewAgentRepository(pgStore)
 	environmentsRepo := pg.NewEnvironmentRepository(pgStore)
-	providerRegistry, err := sandboxProviderRegistry()
-	if err != nil {
-		log.Fatalf("serve: sandbox registry: %v", err)
-	}
-	providerCapabilities, err := providerRegistry.Capabilities(configuredSandboxProviderName())
-	if err != nil {
-		log.Fatalf("serve: sandbox: %v", err)
-	}
-	environments := app.NewEnvironmentService(
-		environmentsRepo,
-		ids,
-		clock,
-		app.EnvironmentCapabilities{
-			PackageSetup:   providerCapabilities.PackageSetup,
-			LimitedNetwork: providerCapabilities.LimitedNetwork,
-		},
-	)
+	environments := app.NewEnvironmentService(environmentsRepo, ids, clock)
 	fileRuntime, err := resolveFiles(ctx, pgStore, ids, clock, false)
 	if err != nil {
 		log.Printf("serve: Files API disabled: %v", err)
@@ -619,8 +367,6 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 	}
 	var files *app.FileService
 	var skills *app.SkillService
-	var sessionResources *controlplane.SessionResourceService
-	var sessionResourceLifecycle *controlplane.SessionResourceService
 	if fileRuntime != nil {
 		files = fileRuntime.service
 		skills = app.NewSkillService(
@@ -635,32 +381,10 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 		} else {
 			log.Printf("serve: Skills API object store connected and reconciled")
 		}
-		sessionResourceLifecycle = controlplane.NewSessionResourceService(
-			pgStore, fileRuntime.repository, fileRuntime.blobs, ids, clock,
-			providerCapabilities.FileResources,
-		)
-		if providerCapabilities.GitRepositories {
-			sessionResourceLifecycle.EnableGitRepositoryResources(
-				gitrepo.NewSnapshotter(os.Getenv(fileUploadTempDirEnv)),
-			)
-		}
-		sessionResources = sessionResourceLifecycle
-		if !providerCapabilities.FileResources {
-			log.Printf(
-				"serve: Session File Resource admission disabled; sandbox provider %q has no materialization capability; existing resources remain readable and detachable",
-				configuredSandboxProviderName(),
-			)
-		}
 	}
 	var skillResolver app.SkillReferenceResolver
 	if skills != nil {
 		skillResolver = skills
-	}
-	if skills != nil && !providerCapabilities.SkillBundles {
-		log.Printf(
-			"serve: custom Skill storage remains available; Session Skill admission disabled because sandbox provider %q cannot materialize Skills; external worker Skill activation is not supported",
-			configuredSandboxProviderName(),
-		)
 	}
 	agents := app.NewAgentService(agentsRepo, ids, clock, skillResolver)
 
@@ -683,34 +407,20 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 	sessions := controlplane.NewSessionService(
 		pgStore, agentsRepo, environmentsRepo, orchestrator, ids, clock,
 		skillResolver,
-		sessionResourceLifecycle,
 	)
 	if files != nil {
 		sessions.EnableFileOutcomeRubrics(files)
 		sessions.EnableFileMessageContent(files)
 	}
-	sessions.ConfigureCloudSkillBundles(providerCapabilities.SkillBundles)
 	sessions.EnableMemoryStoreResources(memory)
-	sessions.ConfigureCloudMemoryStores(providerCapabilities.MemoryStores)
 	if vaults != nil {
 		sessions.EnableVaults()
-	}
-	if !providerCapabilities.MemoryStores {
-		log.Printf(
-			"serve: cloud Session Memory Store admission disabled; sandbox provider %q has no durable Memory Store mount capability; self-hosted admission remains enabled",
-			configuredSandboxProviderName(),
-		)
-	}
-	var deploymentFiles app.DeploymentFileReader
-	if files != nil && providerCapabilities.FileResources {
-		deploymentFiles = files
 	}
 	deployments := app.NewDeploymentService(app.DeploymentServiceConfig{
 		Repository: pg.NewDeploymentRepository(pgStore),
 		Agents:     agentsRepo, Environments: environmentsRepo, Sessions: sessions,
-		Files: deploymentFiles, Memory: memory, Vaults: vaults,
-		CloudMemoryStores: providerCapabilities.MemoryStores,
-		IDGenerator:       ids, Clock: clock,
+		Memory: memory, Vaults: vaults,
+		IDGenerator: ids, Clock: clock,
 	})
 	environmentWork := app.NewEnvironmentWorkService(
 		pg.NewEnvironmentWorkRepository(pgStore), environmentsRepo,
@@ -722,7 +432,6 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 		Agents: agents, Envs: environments, Sessions: sessions,
 		Threads: threads, Events: events, Stream: stream, Files: files, Skills: skills, Memory: memory,
 		Vaults: vaults, Webhooks: webhooks, Deployments: deployments, EnvironmentWork: environmentWork,
-		SessionResources: sessionResources,
 	}, cfg).Handler()
 	log.Printf("serve: PostgreSQL control plane, Temporal client, and NATS live channel connected")
 	serveHTTP(addr, handler)

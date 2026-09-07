@@ -83,7 +83,7 @@ func TestEventToJSON_RedactsResolvedFileContent(t *testing.T) {
 func TestSendEvents_RejectsMCPToolEventTypes(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	id := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 

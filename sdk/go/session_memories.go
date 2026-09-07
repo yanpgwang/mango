@@ -174,31 +174,30 @@ func (s *SessionMemoryStores) Download(ctx context.Context, session Session) (re
 		}
 	}()
 	for _, resource := range session.Resources {
-		memory := resource.MemoryStoreSessionResource
-		if memory == nil {
+		if resource.Type != "memory_store" {
 			continue
 		}
 		if len(seenStores) == 8 {
 			return errors.New("mango: Session contains more than 8 Memory Stores")
 		}
-		if memory.MemoryStoreID == "" {
+		if resource.MemoryStoreID == "" {
 			return &SessionMemoryError{Err: errors.New("Session resource has no memory_store_id")}
 		}
-		if _, duplicate := seenStores[memory.MemoryStoreID]; duplicate {
-			return &SessionMemoryError{MemoryStoreID: memory.MemoryStoreID, Err: errors.New("Store is attached more than once")}
+		if _, duplicate := seenStores[resource.MemoryStoreID]; duplicate {
+			return &SessionMemoryError{MemoryStoreID: resource.MemoryStoreID, Err: errors.New("Store is attached more than once")}
 		}
-		seenStores[memory.MemoryStoreID] = struct{}{}
-		mountPath, err := s.validateMount(*memory)
+		seenStores[resource.MemoryStoreID] = struct{}{}
+		mountPath, err := s.validateMount(resource)
 		if err != nil {
-			return &SessionMemoryError{MemoryStoreID: memory.MemoryStoreID, Err: err}
+			return &SessionMemoryError{MemoryStoreID: resource.MemoryStoreID, Err: err}
 		}
 		if _, duplicate := seenMounts[mountPath]; duplicate {
-			return &SessionMemoryError{MemoryStoreID: memory.MemoryStoreID, Err: errors.New("mount_path conflicts with another Store")}
+			return &SessionMemoryError{MemoryStoreID: resource.MemoryStoreID, Err: errors.New("mount_path conflicts with another Store")}
 		}
 		seenMounts[mountPath] = struct{}{}
-		store, err := s.downloadStore(ctx, *memory, mountPath)
+		store, err := s.downloadStore(ctx, resource, mountPath)
 		if err != nil {
-			return &SessionMemoryError{MemoryStoreID: memory.MemoryStoreID, Err: err}
+			return &SessionMemoryError{MemoryStoreID: resource.MemoryStoreID, Err: err}
 		}
 		s.stores = append(s.stores, store)
 	}
@@ -206,7 +205,7 @@ func (s *SessionMemoryStores) Download(ctx context.Context, session Session) (re
 	return nil
 }
 
-func (s *SessionMemoryStores) validateMount(resource MemoryStoreSessionResource) (string, error) {
+func (s *SessionMemoryStores) validateMount(resource SessionResource) (string, error) {
 	if resource.Access != "read_write" && resource.Access != "read_only" {
 		return "", fmt.Errorf("invalid access %q", resource.Access)
 	}
@@ -235,7 +234,7 @@ func (s *SessionMemoryStores) validateMount(resource MemoryStoreSessionResource)
 
 func (s *SessionMemoryStores) downloadStore(
 	ctx context.Context,
-	resource MemoryStoreSessionResource,
+	resource SessionResource,
 	mountPath string,
 ) (_ *mountedMemoryStore, retErr error) {
 	heads, err := s.listMemories(ctx, resource.MemoryStoreID, true)

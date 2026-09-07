@@ -18,21 +18,10 @@ For a first offline API call, start with the [Quickstart](../getting-started.md)
   <Card title="Specialist team" href="./multi-agent-team.md">
     Run a release-readiness review with persistent specialists and an Advisor.
   </Card>
-  <Card title="Coding agent" href="./coding-agent-iterate.md">
-    Upload failing tests, follow a repair, and verify the downloaded result independently.
-  </Card>
 </Cards>
 
 ## Before you run
 
-The terminal UI includes an offline demo. The approval, team, and coding examples
+The terminal UI includes an offline demo. The approval and team examples
 require a running Mango deployment and a [configured model](../guides/model-configuration.md).
 Their commands connect to that deployment; start it before running the client.
-
-:::info[Coding example support]
-
-The coding example currently uses the explicit `cloud` Environment path for
-File inputs and output publication. Those mounts are not yet available through
-the default self-hosted Docker worker. See the example's prerequisites before running it.
-
-:::

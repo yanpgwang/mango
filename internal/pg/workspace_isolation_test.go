@@ -40,8 +40,8 @@ func TestWorkspaceIsolationAcrossTopLevelResources(t *testing.T) {
 	}
 
 	environment := domain.Environment{
-		ID: "env_team_a", Name: "Environment A", ConfigType: "cloud",
-		Config: map[string]any{"type": "cloud"}, CreatedAt: now, UpdatedAt: now,
+		ID: "env_team_a", Name: "Environment A", ConfigType: "self_hosted",
+		Config: map[string]any{"type": "self_hosted"}, CreatedAt: now, UpdatedAt: now,
 	}
 	environments := NewEnvironmentRepository(store)
 	if err := environments.Put(ctxA, environment); err != nil {

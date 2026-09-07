@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,8 +13,6 @@ import (
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
-	"github.com/yanpgwang/mango/internal/sandbox"
-	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 )
 
 func TestMemoryService_PostgresOfficialSDKLifecycle(t *testing.T) {
@@ -182,159 +179,6 @@ func TestMemoryService_PostgresOfficialSDKLifecycle(t *testing.T) {
 	}
 }
 
-func TestMemoryRuntime_DockerPostgresRoundTrip(t *testing.T) {
-	store := testStore(t)
-	ctx := context.Background()
-	ids := domain.NewSeqIDGen()
-	service := app.NewMemoryService(NewMemoryRepository(store), ids, fixedClock{})
-	memoryStore, err := service.CreateStore(ctx, app.MemoryStoreCreateInput{Name: "Agent Memory"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.CreateMemory(ctx, memoryStore.ID, app.MemoryCreateInput{
-		Path: "/notes/a.md", Content: "initial",
-		Actor: domain.MemoryActor{Type: "api_actor", ID: "api"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
-	session := newSession("sess_docker_memory")
-	session.CreatedAt, session.UpdatedAt = now, now
-	resource := domain.SessionResource{
-		ID: "sesrsc_docker_memory", SessionID: session.ID,
-		ResourceType:  domain.SessionResourceTypeMemoryStore,
-		MemoryStoreID: memoryStore.ID, MemoryAccess: domain.MemoryAccessReadWrite,
-		MemoryStoreName: memoryStore.Name, MemoryStoreDescription: memoryStore.Description,
-		MountPath: "/mnt/memory/agent-memory",
-		CreatedAt: now, UpdatedAt: now, State: domain.SessionResourceActive,
-	}
-	if _, err := store.createSession(ctx, session, nil, false,
-		[]app.PreparedSessionResource{{Resource: resource}}, nil); err != nil {
-		t.Fatal(err)
-	}
-	provider := sandboxtest.DockerProvider(t)
-	_, box, err := provider.Create(ctx, t.Name(), sandbox.Spec{MemoryStores: []sandbox.MemoryStoreMount{{
-		Identity: resource.ID, StoreID: memoryStore.ID,
-		RuntimePath: resource.MountPath, Access: resource.MemoryAccess,
-	}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = box.Destroy(context.Background()) })
-	materializer := app.NewSessionMemoryMaterializer(store, service)
-	if err := materializer.Reconcile(ctx, session.ID, box); err != nil {
-		t.Fatalf("initial reconcile: %v", err)
-	}
-	read, err := box.Exec(ctx, sandbox.Command{
-		Path: "sh", Args: []string{"-c", "cat /mnt/memory/agent-memory/notes/a.md"},
-	})
-	if err != nil || read.ExitCode != 0 || strings.TrimSpace(string(read.Stdout)) != "initial" {
-		t.Fatalf("read mounted Memory: result=%+v err=%v", read, err)
-	}
-	locker, ok := box.(sandbox.ResourceSynchronizationSandbox)
-	if !ok {
-		t.Fatal("Docker sandbox does not coordinate tool operations with Memory sync")
-	}
-	unlockOperation, err := locker.LockResourceOperation(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wave, err := box.Exec(ctx, sandbox.Command{
-		Path: "sh", Args: []string{"-c", `printf wave > /mnt/memory/agent-memory/notes/a.md`},
-	})
-	if err != nil || wave.ExitCode != 0 {
-		unlockOperation()
-		t.Fatalf("change active tool wave: result=%+v err=%v", wave, err)
-	}
-	// A concurrent tool joins the current filesystem wave. Its pre-tool
-	// Reconcile must not refresh the mount underneath the active operation.
-	if err := materializer.Reconcile(ctx, session.ID, box); err != nil {
-		unlockOperation()
-		t.Fatalf("concurrent reconcile: %v", err)
-	}
-	waveRead, err := box.Exec(ctx, sandbox.Command{
-		Path: "sh", Args: []string{"-c", "cat /mnt/memory/agent-memory/notes/a.md"},
-	})
-	if err != nil || waveRead.ExitCode != 0 || strings.TrimSpace(string(waveRead.Stdout)) != "wave" {
-		unlockOperation()
-		t.Fatalf("reconcile clobbered active tool data: result=%+v err=%v", waveRead, err)
-	}
-	writebackDone := make(chan error, 1)
-	go func() {
-		writebackDone <- materializer.Writeback(ctx, session.ID, box)
-	}()
-	select {
-	case err := <-writebackDone:
-		unlockOperation()
-		t.Fatalf("writeback completed before the active tool wave ended: %v", err)
-	case <-time.After(100 * time.Millisecond):
-	}
-	unlockOperation()
-	select {
-	case err := <-writebackDone:
-		if err != nil {
-			t.Fatalf("coordinated writeback: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("writeback did not resume after the active tool wave ended")
-	}
-	waveHeads, err := service.RuntimeHeads(ctx, memoryStore.ID)
-	if err != nil || len(waveHeads) != 1 || waveHeads[0].Content != "wave" {
-		t.Fatalf("coordinated heads = %+v, %v", waveHeads, err)
-	}
-	changed, err := box.Exec(ctx, sandbox.Command{
-		Path: "sh", Args: []string{"-c", `printf updated > /mnt/memory/agent-memory/notes/a.md; printf new > /mnt/memory/agent-memory/new.md`},
-	})
-	if err != nil || changed.ExitCode != 0 {
-		t.Fatalf("change mounted Memory: result=%+v err=%v", changed, err)
-	}
-	if err := materializer.Writeback(ctx, session.ID, box); err != nil {
-		t.Fatalf("writeback: %v", err)
-	}
-	heads, err := service.RuntimeHeads(ctx, memoryStore.ID)
-	if err != nil || len(heads) != 2 || heads[0].Content != "new" || heads[1].Content != "updated" {
-		t.Fatalf("persisted heads = %+v, %v", heads, err)
-	}
-	versions, err := service.ListMemoryVersions(ctx, memoryStore.ID, app.MemoryVersionListQuery{
-		SessionID: session.ID, Limit: 100,
-	})
-	if err != nil || len(versions.Versions) != 3 {
-		t.Fatalf("session-authored versions = %+v, %v", versions, err)
-	}
-	// Simulate a worker crash after a final tool changed the mount but before the
-	// ordinary post-tool hook ran. The deletion path flushes the dirty mount
-	// before destroying the sandbox, so the final Memory is not lost.
-	last, err := box.Exec(ctx, sandbox.Command{
-		Path: "sh", Args: []string{"-c", `printf final > /mnt/memory/agent-memory/notes/a.md`},
-	})
-	if err != nil || last.ExitCode != 0 {
-		t.Fatalf("final Memory change: result=%+v err=%v", last, err)
-	}
-	if err := store.PrepareSessionDeletion(ctx, session.ID); err != nil {
-		t.Fatal(err)
-	}
-	mounts, err := materializer.MemoryStoreMountsForRelease(ctx, session.ID)
-	if err != nil || len(mounts) != 1 || mounts[0].RuntimePath != resource.MountPath {
-		t.Fatalf("release mounts = %+v, %v", mounts, err)
-	}
-	if err := materializer.WritebackForRelease(ctx, session.ID, box); err != nil {
-		t.Fatalf("release writeback: %v", err)
-	}
-	finalHeads, err := service.RuntimeHeads(ctx, memoryStore.ID)
-	if err != nil || len(finalHeads) != 2 || finalHeads[1].Content != "final" {
-		t.Fatalf("final persisted heads = %+v, %v", finalHeads, err)
-	}
-	if err := box.Destroy(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := materializer.CleanupSession(ctx, session.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.FinalizeSessionDeletion(ctx, session.ID); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestMemoryStoreSessionResource_PostgresSnapshotLifecycle(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
@@ -374,11 +218,6 @@ func TestMemoryStoreSessionResource_PostgresSnapshotLifecycle(t *testing.T) {
 	if len(admission.Session.Resources) != 1 ||
 		admission.Session.Resources[0].MemoryStoreID != memoryStore.ID {
 		t.Fatalf("Session resources = %+v", admission.Session.Resources)
-	}
-	got, err := store.GetSessionResource(ctx, session.ID, resource.ID)
-	if err != nil || got.Type() != domain.SessionResourceTypeMemoryStore ||
-		got.MemoryStoreName != memoryStore.Name || got.MemoryInstructions != resource.MemoryInstructions {
-		t.Fatalf("stored Memory Resource = %+v, %v", got, err)
 	}
 	filtered, err := store.ListSessions(ctx, app.ListPage{
 		MemoryStoreID: &memoryStore.ID, Limit: 100,

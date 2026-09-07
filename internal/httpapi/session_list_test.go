@@ -37,7 +37,7 @@ func sessionIDs(data []map[string]any) []string {
 func TestListSessions_BidirectionalStablePagination(t *testing.T) {
 	h := NewTestHandler(t)
 	agentID := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	environmentID := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	environmentID := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	created := make([]string, 0, 5)
 	for range 5 {
 		created = append(created, createID(t, h, "POST", "/v1/sessions",
@@ -96,7 +96,7 @@ func TestListSessions_FiltersAndArchivedDefault(t *testing.T) {
 	h := NewTestHandler(t)
 	agentID := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
 	otherAgentID := createID(t, h, "POST", "/v1/agents", `{"name":"b","model":"claude-opus-4-8"}`)
-	environmentID := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	environmentID := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 
 	versionOne := createID(t, h, "POST", "/v1/sessions",
 		`{"agent":{"type":"agent","id":"`+agentID+`","version":1},"environment_id":"`+environmentID+`"}`)

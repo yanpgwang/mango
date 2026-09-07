@@ -1147,7 +1147,7 @@ func TestWorkflowTurn_PermanentModelErrorTerminatesHonestly(t *testing.T) {
 		Message:    "invalid messages",
 	})
 	activities := NewActivities(
-		client, nil, nil, nil, domain.NewSeqIDGen(),
+		client, nil, nil, domain.NewSeqIDGen(),
 	)
 	executions := 0
 	executeTool := func(context.Context, ExecuteToolInput) (ExecuteToolResult, error) {
