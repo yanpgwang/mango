@@ -168,6 +168,7 @@ func TestEnvironments_RejectsMalformedOptionalFields(t *testing.T) {
 		`{"name":"bad","scope":"account","config":{"type":"cloud"}}`,
 		`{"name":"bad","config":null}`,
 		`{"name":"bad","config":[]}`,
+		`{"name":"bad","config":{}}`,
 		`{"name":"bad","config":{"type":"cloud","networking":null}}`,
 		`{"name":"bad","config":{"type":"cloud","networking":{"type":"unrestricted","future":true}}}`,
 		`{"name":"bad","config":{"type":"cloud","networking":{"type":"limited","allowed_hosts":["https://example.com"]}}}`,

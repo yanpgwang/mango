@@ -33,13 +33,21 @@ keep the offline deterministic model.
 
 For an explicitly offline startup that bypasses the development file, use the
 command in [Getting started](../../docs/getting-started.md#run-the-server).
-Both API and worker select Docker. The worker creates sibling Session containers
-on the host daemon; tools do not run in the worker container. Files, Skills,
-Memory mounts, and Session Outputs use this provider. The sandbox image defaults
-to `python:3.12-alpine`; set `MANGO_SANDBOX_IMAGE` to choose another image.
+Compose starts Mango's API and Temporal orchestration worker, but it does not
+start an operator-owned Environment worker. To execute shell or file tools in a
+default `self_hosted` Environment, separately start the
+[Docker self-hosted worker](../self-hosted/docker/README.md) for that Environment.
 
-The trusted worker runs as root and mounts the Docker socket. The API remains
-non-root and has no socket. The resource directory defaults to
+The Compose orchestration worker temporarily retains Mango's legacy Docker
+runtime for an explicitly configured `cloud` Environment. On that path it
+creates sibling Session containers on the host daemon; tools do not run in the
+worker container. Files, Skills, Memory mounts, and Session Outputs use this
+provider. The sandbox image defaults to `python:3.12-alpine`; set
+`MANGO_SANDBOX_IMAGE` to choose another image.
+
+For that transitional `cloud` path, the trusted orchestration worker runs as
+root and mounts the Docker socket. The API remains non-root and has no socket.
+The resource directory defaults to
 `$HOME/mango-resources`, mounted at the same absolute path inside the worker.
 Set `MANGO_SANDBOX_RESOURCE_DIR` to an absolute host path when needed, and
 `MANGO_DOCKER_SOCKET` for a non-default host Unix socket. A remote Docker context
