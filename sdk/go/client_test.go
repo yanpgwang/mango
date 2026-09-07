@@ -45,16 +45,23 @@ func TestAllOpenAPIOperationsHaveNamedMethods(t *testing.T) {
 	if len(Operations) != len(contract.Operations) {
 		t.Fatalf("operations: got %d, want %d", len(Operations), len(contract.Operations))
 	}
-	typ := reflect.TypeOf(&Client{})
+	root := reflect.TypeOf(Client{})
 	metadata := make(map[string]Operation)
 	for _, operation := range Operations {
 		if _, exists := metadata[operation.ID]; exists {
 			t.Fatalf("duplicate %s", operation.ID)
 		}
 		metadata[operation.ID] = operation
-		name := strings.ToUpper(operation.ID[:1]) + operation.ID[1:]
-		if _, ok := typ.MethodByName(name); !ok {
-			t.Errorf("missing typed method %s", name)
+		typ := root
+		for _, segment := range strings.Split(operation.Resource, ".") {
+			field, ok := typ.FieldByName(segment)
+			if !ok {
+				t.Fatalf("missing resource %s", operation.Resource)
+			}
+			typ = field.Type
+		}
+		if _, ok := reflect.PointerTo(typ).MethodByName(operation.Name); !ok {
+			t.Errorf("missing typed method %s.%s", operation.Resource, operation.Name)
 		}
 	}
 	for _, want := range contract.Operations {
@@ -81,7 +88,7 @@ func TestBaseURLPathAuthAndRepeatedQuery(t *testing.T) {
 		}
 		fmt.Fprint(w, `{"data":[],"next_page":null}`)
 	})
-	_, err := client.ListSessionEvents(context.Background(), "a/b?c#d", ListSessionEventsParams{Types: Some([]CoreSessionEventType{CoreSessionEventTypeAgentMessage, CoreSessionEventTypeSessionStatusIdle}), Limit: Some(int64(0))})
+	_, err := client.Sessions.Events.List(context.Background(), "a/b?c#d", ListSessionEventsParams{Types: Some([]CoreSessionEventType{CoreSessionEventTypeAgentMessage, CoreSessionEventTypeSessionStatusIdle}), Limit: Some(int64(0))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,11 +125,11 @@ func TestTypedCreateAndNullableUpdate(t *testing.T) {
 		}
 		fmt.Fprint(w, `{"id":"agent_1","name":"test","multiagent":null}`)
 	})
-	agent, err := client.CreateAgent(context.Background(), AgentCreateRequest{Name: "test", Model: ModelInput{String: Ptr("model-test")}, System: SomePtr("Be helpful")})
+	agent, err := client.Agents.New(context.Background(), AgentCreateRequest{Name: "test", Model: ModelInput{String: Ptr("model-test")}, System: SomePtr("Be helpful")})
 	if err != nil || agent.ID != "agent_1" {
 		t.Fatalf("agent %#v, %v", agent, err)
 	}
-	_, err = client.UpdateAgent(context.Background(), agent.ID, AgentUpdateRequest{Description: Null[*string]()})
+	_, err = client.Agents.Update(context.Background(), agent.ID, AgentUpdateRequest{Description: Null[*string]()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +143,7 @@ func TestTypedAPIErrorAndNoWriteRetry(t *testing.T) {
 		w.WriteHeader(503)
 		fmt.Fprint(w, `{"type":"error","error":{"type":"overloaded_error","message":"try later"},"request_id":"req-body"}`)
 	})
-	_, err := client.CreateAgent(context.Background(), AgentCreateRequest{Name: "test", Model: ModelInput{String: Ptr("m")}})
+	_, err := client.Agents.New(context.Background(), AgentCreateRequest{Name: "test", Model: ModelInput{String: Ptr("m")}})
 	var apiError *APIError
 	if !errors.As(err, &apiError) {
 		t.Fatalf("not API error: %v", err)
@@ -156,7 +163,7 @@ func TestRedirectsDoNotForwardCredentials(t *testing.T) {
 	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
 	})
-	_, err := client.GetAgent(context.Background(), "a")
+	_, err := client.Agents.Get(context.Background(), "a")
 	var apiError *APIError
 	if !errors.As(err, &apiError) || apiError.StatusCode != 307 {
 		t.Fatalf("redirect result %v", err)
@@ -173,13 +180,13 @@ func TestPublicRoutesDoNotSendBearer(t *testing.T) {
 		}
 		fmt.Fprint(w, "ok")
 	})
-	if err := client.Health(context.Background()); err != nil {
+	if err := client.System.Health(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Readiness(context.Background()); err != nil {
+	if err := client.System.Readiness(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	download, err := client.OpenAPI(context.Background())
+	download, err := client.System.OpenAPI(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,13 +200,13 @@ func TestPublicRoutesDoNotSendBearer(t *testing.T) {
 func TestContextAndFiniteTimeout(t *testing.T) {
 	client := testClient(t, func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
 	client.requestTimeout = 20 * time.Millisecond
-	_, err := client.GetAgent(context.Background(), "a")
+	_, err := client.Agents.Get(context.Background(), "a")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("timeout %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = client.GetAgent(ctx, "a")
+	_, err = client.Agents.Get(ctx, "a")
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel %v", err)
 	}
@@ -242,11 +249,11 @@ func TestMultipartFilesAndSkillPaths(t *testing.T) {
 			fmt.Fprint(w, `{"id":"file_1"}`)
 		}
 	})
-	file, err := client.UploadFile(context.Background(), FileUploadRequest{File: Upload{Filename: "file.bin", Reader: strings.NewReader("test\x00bytes")}})
+	file, err := client.Files.Upload(context.Background(), FileUploadRequest{File: Upload{Filename: "file.bin", Reader: strings.NewReader("test\x00bytes")}})
 	if err != nil || file.ID != "file_1" {
 		t.Fatalf("file %#v %v", file, err)
 	}
-	skill, err := client.CreateSkill(context.Background(), SkillUploadRequest{DisplayTitle: Some("Skill title"), Files: []Upload{{Filename: "SKILL.md", Reader: strings.NewReader("# Instructions")}, {Filename: "references/input.txt", Reader: strings.NewReader("data")}}})
+	skill, err := client.Skills.New(context.Background(), SkillUploadRequest{DisplayTitle: Some("Skill title"), Files: []Upload{{Filename: "SKILL.md", Reader: strings.NewReader("# Instructions")}, {Filename: "references/input.txt", Reader: strings.NewReader("data")}}})
 	if err != nil || skill.ID != "skill_1" {
 		t.Fatalf("skill %#v %v", skill, err)
 	}
@@ -258,7 +265,7 @@ func TestStreamingDownloadPreservesHeaders(t *testing.T) {
 		w.Header().Set("Content-Disposition", `attachment; filename="x.bin"`)
 		fmt.Fprint(w, "\x00\xffbinary")
 	})
-	download, err := client.DownloadFile(context.Background(), "file_1")
+	download, err := client.Files.Download(context.Background(), "file_1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,14 +314,14 @@ func TestMultipartEarlyErrorAndCancellation(t *testing.T) {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
 		fmt.Fprint(w, `{"error":{"type":"request_too_large","message":"too large"}}`)
 	})
-	_, err := client.UploadFile(context.Background(), FileUploadRequest{File: Upload{Filename: "large.bin", Reader: strings.NewReader(strings.Repeat("x", 1<<20))}})
+	_, err := client.Files.Upload(context.Background(), FileUploadRequest{File: Upload{Filename: "large.bin", Reader: strings.NewReader(strings.Repeat("x", 1<<20))}})
 	var apiError *APIError
 	if !errors.As(err, &apiError) || apiError.StatusCode != 413 {
 		t.Fatalf("early rejection: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = client.UploadFile(ctx, FileUploadRequest{File: Upload{Filename: "large.bin", Reader: strings.NewReader(strings.Repeat("x", 1<<20))}})
+	_, err = client.Files.Upload(ctx, FileUploadRequest{File: Upload{Filename: "large.bin", Reader: strings.NewReader(strings.Repeat("x", 1<<20))}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("upload cancellation: %v", err)
 	}

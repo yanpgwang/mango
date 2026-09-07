@@ -31,6 +31,43 @@ MANIFEST = json.loads((ROOT.parent / "operations.json").read_text())
 OPERATION_BY_ID = {item["id"]: item for item in MANIFEST["operations"]}
 
 
+def resource_method(client: Any, operation: dict[str, Any]) -> Any:
+    resource = client
+    for segment in operation["sdk_resource"].split("."):
+        resource = getattr(resource, segment)
+    return getattr(resource, operation["sdk_method"])
+
+
+def test_nested_thread_stream_preserves_parent_ids_and_query_filters() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.raw_path == (
+            b"/v1/sessions/sesn_parent/threads/sthr_child/stream?event_deltas%5B%5D=agent.message"
+        )
+        assert not request.content
+        return httpx.Response(200, headers={"content-type": "text/event-stream"},
+                              content=b'data: {"type":"agent.message","content":[]}\n\n')
+
+    with Mango(transport=httpx.MockTransport(handle)) as client:
+        with client.sessions.threads.events.stream(
+            "sesn_parent", "sthr_child", event_deltas=["agent.message"],
+        ) as stream:
+            assert next(iter(stream)).data["type"] == "agent.message"
+
+
+def test_optional_action_body_stays_absent_until_a_field_is_supplied() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={})
+
+    with Mango(transport=httpx.MockTransport(handle)) as client:
+        client.deployments.run("dpl_1")
+    assert requests[0].url.path == "/v1/deployments/dpl_1/run"
+    assert requests[0].content == b""
+
+
 def test_distribution_name_version_and_user_agent() -> None:
     assert version("mango-sdk") == __version__
 
@@ -39,11 +76,11 @@ def test_distribution_name_version_and_user_agent() -> None:
         return httpx.Response(200, json={"id": "agent_test"})
 
     with Mango(transport=httpx.MockTransport(handle)) as client:
-        assert client.get_agent("agent_test")["id"] == "agent_test"
+        assert client.agents.retrieve("agent_test")["id"] == "agent_test"
 
     async def run() -> None:
         async with AsyncMango(transport=httpx.MockTransport(handle)) as client:
-            assert (await client.get_agent("agent_test"))["id"] == "agent_test"
+            assert (await client.agents.retrieve("agent_test"))["id"] == "agent_test"
 
     asyncio.run(run())
 
@@ -104,10 +141,14 @@ def test_every_named_operation_matches_contract(name: str) -> None:
                 kwargs[parameter["name"]] = "identifier"
                 expected_path = expected_path.replace("{" + parameter["name"] + "}", "identifier")
         if manifest["request_schema"] is not None:
-            kwargs["body"] = {"file": Upload("hello.txt", b"hello")} if name == "upload_file" else (
+            kwargs.update({"file": Upload("hello.txt", b"hello")} if name == "upload_file" else (
                 {"files": [Upload("skill/SKILL.md", b"skill")]} if operation["request"] == "multipart" else {}
-            )
-        result = getattr(client, name)(**kwargs)
+            ))
+        method = resource_method(client, manifest)
+        for parameter in inspect.signature(method).parameters.values():
+            if parameter.default is inspect.Parameter.empty and parameter.name not in kwargs:
+                kwargs[parameter.name] = {}
+        result = method(**kwargs)
         if operation["mode"] == "sse":
             with result:
                 assert len(list(result)) == 1
@@ -141,13 +182,13 @@ def test_path_query_and_json_omission_are_lossless() -> None:
         return httpx.Response(200, json={})
 
     with Mango(base_url="https://example.test/prefix/", transport=httpx.MockTransport(handle)) as client:
-        client.get_agent("space/slash?#雪")
-        client.list_session_events("id", types=["agent.message", "session.status_idle"],
+        client.agents.retrieve("space/slash?#雪")
+        client.sessions.events.list("id", types=["agent.message", "session.status_idle"],
                                    created_at_gte="2026-08-31T00:00:00Z", limit=0)
-        client.update_agent("id", body={"description": None, "tools": [], "metadata": {}})
-        client.update_agent("id", body={"name": "", "system": NOT_GIVEN})
-        client.list_agents(include_archived=False)
-        client.get_agent("..")
+        client.agents.update("id", description=None, tools=[], metadata={})
+        client.agents.update("id", name="", system=NOT_GIVEN)
+        client.agents.list(include_archived=False)
+        client.agents.retrieve("..")
     assert requests[0].url.raw_path == b"/prefix/v1/agents/space%2Fslash%3F%23%E9%9B%AA"
     assert requests[1].url.params.get_list("types[]") == ["agent.message", "session.status_idle"]
     assert requests[1].url.params["created_at[gte]"] == "2026-08-31T00:00:00Z"
@@ -171,7 +212,7 @@ def test_request_errors_no_retries_or_redirect_auth_leak() -> None:
 
     with Mango(api_key="secret", transport=httpx.MockTransport(handle)) as client:
         with pytest.raises(APIError) as caught:
-            client.send_session_events("s", body={"events": []})
+            client.sessions.events.send("s", events=[])
     assert caught.value.status_code == 409
     assert caught.value.type == "conflict_error"
     assert caught.value.request_id == "req_body"
@@ -184,7 +225,7 @@ def test_request_errors_no_retries_or_redirect_auth_leak() -> None:
 
     with Mango(api_key="secret", transport=httpx.MockTransport(redirect)) as client:
         with pytest.raises(APIError) as caught:
-            client.create_agent(body={"name": "test", "model": "test"})
+            client.agents.create(name="test", model="test")
     assert caught.value.status_code == 307
     assert len(requests) == 2
 
@@ -202,23 +243,21 @@ def test_custom_tool_schema_keeps_arbitrary_json_schema_keywords() -> None:
         return httpx.Response(200, json={})
 
     with Mango(transport=httpx.MockTransport(handle)) as client:
-        client.create_agent(body={
-            "name": "lookup", "model": "test", "tools": [{
+        client.agents.create(name="lookup", model="test", tools=[{
                 "type": "custom", "name": "lookup", "description": "Look up a record",
                 "input_schema": schema,
-            }],
-        })
+            }])
 
 
 def test_invalid_success_json_and_plain_error() -> None:
     with Mango(transport=httpx.MockTransport(lambda _: httpx.Response(200, text="bad"))) as client:
         with pytest.raises(ResponseDecodeError):
-            client.get_agent("id")
+            client.agents.retrieve("id")
     with Mango(transport=httpx.MockTransport(lambda _: httpx.Response(
         502, text="upstream unavailable", headers={"request-id": "proxy-request"},
     ))) as client:
         with pytest.raises(APIError) as caught:
-            client.get_agent("id")
+            client.agents.retrieve("id")
         assert caught.value.request_id == "proxy-request"
         assert caught.value.type is None
 
@@ -237,10 +276,10 @@ def test_error_body_is_bounded_and_closed() -> None:
         with Mango(transport=httpx.MockTransport(lambda _: httpx.Response(502, stream=body))) as client:
             with pytest.raises(APIError) as caught:
                 if stream_operation:
-                    with client.download_file("id"):
+                    with client.files.download("id"):
                         pass
                 else:
-                    client.get_agent("id")
+                    client.agents.retrieve("id")
             assert caught.value.body_truncated
             assert body.closed
             assert body.count <= 9
@@ -257,11 +296,11 @@ def test_multipart_files_repeated_parts_and_binary_stream() -> None:
         return httpx.Response(200, json={})
 
     with Mango(transport=httpx.MockTransport(handle)) as client:
-        client.upload_file(body={"file": Upload("test.csv", b"a,b\n", "text/csv")})
-        client.create_skill(body={"display_title": "Analysis", "files": [
+        client.files.upload(file=Upload("test.csv", b"a,b\n", "text/csv"))
+        client.skills.create(display_title="Analysis", files=[
             Upload("analysis/SKILL.md", b"# skill"), Upload("analysis/lib.py", b"pass"),
-        ]})
-        with client.download_file("file_id") as download:
+        ])
+        with client.files.download("file_id") as download:
             assert download.response.status_code == 200
             assert list(download.iter_bytes()) == [b"hello", b" world"]
     assert requests[0].headers["content-type"].startswith("multipart/form-data; boundary=")
@@ -282,7 +321,7 @@ def test_stream_error_does_not_read_past_exact_diagnostic_bound() -> None:
     body = ErrorAtLimit([])
     with Mango(transport=httpx.MockTransport(lambda _: httpx.Response(502, stream=body))) as client:
         with pytest.raises(APIError) as caught:
-            with client.download_file("id"):
+            with client.files.download("id"):
                 pass
         assert caught.value.body_truncated
         assert body.closed
@@ -298,7 +337,7 @@ def test_stream_error_does_not_read_past_exact_diagnostic_bound() -> None:
             lambda _: httpx.Response(502, stream=body),
         )) as client:
             with pytest.raises(APIError) as caught:
-                async with client.stream_session_events("id"):
+                async with client.sessions.events.stream("id"):
                     pass
             assert caught.value.body_truncated
             assert body.closed
@@ -319,7 +358,7 @@ def test_sse_incremental_utf8_comments_multiline_and_truncated_eof() -> None:
         return httpx.Response(200, stream=chunks, headers={"content-type": "text/event-stream; charset=utf-8"})
 
     with Mango(transport=httpx.MockTransport(handle), timeout=0.1) as client:
-        with client.stream_session_events("s", event_deltas=["agent.message"]) as stream:
+        with client.sessions.events.stream("s", event_deltas=["agent.message"]) as stream:
             events = list(stream)
     assert len(events) == 2
     assert events[0].event == "agent.message"
@@ -337,14 +376,14 @@ def test_stream_closes_on_early_exit_and_invalid_sse() -> None:
     with Mango(transport=httpx.MockTransport(lambda _: httpx.Response(
         200, stream=chunks, headers={"content-type": "text/event-stream"},
     ))) as client:
-        with client.stream_session_events("s") as stream:
+        with client.sessions.events.stream("s") as stream:
             for _ in stream:
                 break
         assert chunks.closed
     with Mango(transport=httpx.MockTransport(lambda _: httpx.Response(
         200, content=b"data: {broken}\n\n", headers={"content-type": "text/event-stream"},
     ))) as client:
-        with pytest.raises(ResponseDecodeError), client.stream_session_events("s") as stream:
+        with pytest.raises(ResponseDecodeError), client.sessions.events.stream("s") as stream:
             list(stream)
 
 
@@ -358,7 +397,7 @@ def test_sse_small_frame_is_delivered_before_reading_another_chunk() -> None:
     with Mango(transport=httpx.MockTransport(lambda _: httpx.Response(
         200, stream=body, headers={"content-type": "text/event-stream"},
     ))) as client:
-        with client.stream_session_events("s") as stream:
+        with client.sessions.events.stream("s") as stream:
             event = next(iter(stream))
             assert event.data["type"] == "session.deleted"
     assert body.closed
@@ -372,7 +411,7 @@ def test_sse_limits_close_sync_and_async_streams(monkeypatch: pytest.MonkeyPatch
         200, stream=body, headers={"content-type": "text/event-stream"},
     ))) as client:
         with pytest.raises(ResponseDecodeError, match="safety limit"):
-            with client.stream_session_events("s") as stream:
+            with client.sessions.events.stream("s") as stream:
                 list(stream)
     assert body.closed
 
@@ -382,7 +421,7 @@ def test_sse_limits_close_sync_and_async_streams(monkeypatch: pytest.MonkeyPatch
             200, stream=async_body, headers={"content-type": "text/event-stream"},
         ))) as client:
             with pytest.raises(ResponseDecodeError, match="safety limit"):
-                async with client.stream_session_events("s") as stream:
+                async with client.sessions.events.stream("s") as stream:
                     [event async for event in stream]
         assert async_body.closed
 
@@ -406,9 +445,9 @@ def test_cursor_and_files_pagination_keep_filters_and_direction() -> None:
         })
 
     with Mango(transport=httpx.MockTransport(handle)) as client:
-        assert [item["id"] for item in client.iter_agents(limit=1, include_archived=False)] == ["one", "two"]
-        assert [item["id"] for item in client.iter_files(scope_id="s")] == ["first", "boundary"]
-        assert [item["id"] for item in client.iter_files(before_id="start")] == ["start", "boundary"]
+        assert [item["id"] for item in client.agents.iter(limit=1, include_archived=False)] == ["one", "two"]
+        assert [item["id"] for item in client.files.iter(scope_id="s")] == ["first", "boundary"]
+        assert [item["id"] for item in client.files.iter(before_id="start")] == ["start", "boundary"]
     assert requests[1].url.params["limit"] == "1"
     assert requests[1].url.params["include_archived"] == "false"
     assert requests[3].url.params["scope_id"] == "s"
@@ -424,7 +463,7 @@ def test_pagination_rejects_repeated_and_missing_cursors() -> None:
     ):
         with Mango(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=page))) as client:
             with pytest.raises(PaginationError):
-                list(client.iter_files() if "has_more" in page else client.iter_agents())
+                list(client.files.iter() if "has_more" in page else client.agents.iter())
 
 
 def test_pagination_detects_multi_page_cycles() -> None:
@@ -433,7 +472,7 @@ def test_pagination_detects_multi_page_cycles() -> None:
         200, json={"data": [], "next_page": next(cursors)},
     ))) as client:
         with pytest.raises(PaginationError, match="cycled"):
-            list(client.iter_agents())
+            list(client.agents.iter())
 
 
 def test_async_all_named_operations_and_pagination() -> None:
@@ -446,13 +485,13 @@ def test_async_all_named_operations_and_pagination() -> None:
                 return response_for(operation)
 
             async with AsyncMango(transport=httpx.MockTransport(handle)) as client:
-                method = getattr(client, name)
+                method = resource_method(client, OPERATION_BY_ID[operation["id"]])
                 kwargs = {}
                 for parameter in inspect.signature(method).parameters.values():
                     if parameter.default is inspect.Parameter.empty:
                         kwargs[parameter.name] = {} if parameter.name == "body" else "id"
                 if operation["request"] == "multipart":
-                    kwargs["body"] = {"file": Upload("file", b"data")} if name == "upload_file" else {"files": [Upload("file", b"data")]}
+                    kwargs.update({"file": Upload("file", b"data")} if name == "upload_file" else {"files": [Upload("file", b"data")]})
                 result = method(**kwargs)
                 if operation["mode"] in ("sse", "binary"):
                     async with result:
@@ -469,7 +508,7 @@ def test_async_all_named_operations_and_pagination() -> None:
             return httpx.Response(200, json={"data": [{"id": "a"}], "next_page": None})
 
         async with AsyncMango(transport=httpx.MockTransport(pages)) as client:
-            assert [item["id"] async for item in client.iter_agents()] == ["a"]
+            assert [item["id"] async for item in client.agents.iter()] == ["a"]
 
     asyncio.run(run())
 
@@ -496,7 +535,7 @@ def test_async_cancellation_closes_network_stream() -> None:
 
         async with AsyncMango(transport=httpx.MockTransport(handle)) as client:
             async def consume() -> None:
-                async with client.stream_session_events("s") as stream:
+                async with client.sessions.events.stream("s") as stream:
                     async for _ in stream:
                         pass
 

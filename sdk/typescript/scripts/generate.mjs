@@ -106,42 +106,89 @@ for (const name of Object.keys(schemas).sort()) source += comment(schemas[name].
 source += `export const operations = {\n${descriptors.join(',\n')}\n} as const satisfies Record<string, Operation>;\n\n`;
 source += `export type OperationId = keyof typeof operations;\n\n`;
 
+// The wire retains snake_case and bracket filters. SDK query arguments use
+// plain identifiers so callers do not have to quote HTTP parameter names.
+const argumentName = name => name.replaceAll(/[^a-zA-Z0-9]+/g, '_').replaceAll(/^_|_$/g, '');
+const camel = name => name.replaceAll(/_([a-z])/g, (_, char) => char.toUpperCase());
+const methodName = name => name === 'open_api' ? 'openAPI' : camel(name);
+const resourceName = resource => resource.split('.').map(part => pascal(camel(part))).join('') + 'Resource';
+const resources = [...new Set(operations.flatMap(op => op.sdk_resource.split('.').map((_, i, parts) => parts.slice(0, i + 1).join('.'))))].sort();
+function bodySchema(op) {
+  const schema = deref(op.request_schema);
+  if (!schema) return undefined;
+  if (schema.type !== 'object') throw new Error(`Object request required: ${op.id}`);
+  return schema;
+}
+function argumentsSchema(op) {
+  const body = bodySchema(op);
+  const properties = { ...(body?.properties ?? {}) };
+  const required = op.request_required ? [...(body?.required ?? [])] : [];
+  for (const p of op.parameters.filter(p => p.in === 'query')) {
+    const name = argumentName(p.name);
+    if (Object.hasOwn(properties, name)) throw new Error(`Ambiguous argument ${op.id}.${name}`);
+    properties[name] = { ...p.schema, description: p.description };
+    if (p.required) required.push(name);
+  }
+  return { type: 'object', properties, required, additionalProperties: false };
+}
 for (const op of operations) {
   const name = pascal(op.id);
-  const properties = Object.fromEntries(op.parameters.map(p => [p.name, { ...p.schema, description: p.description }]));
-  const required = op.parameters.filter(p => p.required).map(p => p.name);
-  if (op.request_content_type) {
-    properties.body = op.request_schema;
-    if (op.request_required) required.push('body');
-  }
-  source += `export type ${name}Params = ${objectType({ type: 'object', properties, required, additionalProperties: false })};\n`;
+  source += `export type ${name}Params = ${objectType(argumentsSchema(op))};\n`;
   const kind = responseKind(op);
   const response = kind === 'empty' ? 'void' : kind === 'binary' ? 'Response' : type(op.response_schema);
   source += `export type ${name}Response = ${response};\n\n`;
 }
 
-source += `/** All documented Mango operations. No automatic retries or hidden runtime delegation. */\nexport class Mango extends Transport {\n  constructor(options: ClientOptions) { super(options); }\n\n`;
-for (const op of operations) {
-  const name = pascal(op.id);
-  const required = op.request_required || op.parameters.some(p => p.required);
-  const params = `params: ${name}Params${required ? '' : ' = {}'}, options: RequestOptions = {}`;
-  const desc = `operations.${op.id}`;
-  const kind = responseKind(op);
-  source += comment(knownOperations.get(op.id).summary).split('\n').filter(Boolean).map(line => `  ${line}\n`).join('');
-  if (kind === 'sse') {
-    source += `  open${op.id.slice('stream'.length)}(${params}): Promise<EventStream<${name}Response>> {\n    return this.openFrames<${name}Response>(${desc}, params, options);\n  }\n\n`;
-    source += `  ${op.id}(${params}): AsyncGenerator<${name}Response> {\n    return this.frames<${name}Response>(${desc}, params, options);\n  }\n\n`;
-    source += `  /** Same live stream with SSE event/id metadata preserved. No automatic reconnect. */\n  ${op.id}Messages(${params}): AsyncGenerator<SSEMessage<${name}Response>> {\n    return this.stream<${name}Response>(${desc}, params, options);\n  }\n\n`;
-  } else {
-    source += `  ${op.id}(${params}): Promise<${name}Response> {\n    return this.${kind === 'binary' ? 'download' : `request<${name}Response>`}(${desc}, params, options);\n  }\n\n`;
-  }
-  if (pagination(op)) {
-    const itemType = type(deref(op.response_schema).properties.data.items);
-    source += `  /** Lazily fetch pages; stopping iteration prevents further requests. */\n  ${op.id}Pages(${params}): AsyncGenerator<${name}Response> {\n    return this.pages<${name}Response>(${desc}, params, options);\n  }\n\n`;
-    source += `  /** Lazily traverse all items using the API's opaque cursor. */\n  async *${op.id}Items(${params}): AsyncGenerator<${itemType}> {\n    for await (const page of this.${op.id}Pages(params, options)) yield* page.data;\n  }\n\n`;
-  }
+function children(resource) {
+  return resources.filter(r => r.split('.').slice(0, -1).join('.') === resource);
 }
-source += '}\n';
+function fields(resource) {
+  return children(resource).map(r => `  readonly ${camel(r.split('.').at(-1))}: ${resourceName(r)};\n`).join('');
+}
+function assignments(resource) {
+  return children(resource).map(r => `    this.${camel(r.split('.').at(-1))} = new ${resourceName(r)}(transport);\n`).join('');
+}
+source += `/** Mango resource services share one transport. Writes are never retried automatically. */\nexport class Mango {\n`;
+source += fields('') + `  constructor(options: ClientOptions) {\n    const transport = new Transport(options);\n` + assignments('') + `  }\n}\n\n`;
+for (const resource of resources) {
+  source += `export class ${resourceName(resource)} {\n` + fields(resource);
+  source += `  constructor(private readonly transport: Transport) {\n` + assignments(resource) + `  }\n\n`;
+  for (const op of operations.filter(op => op.sdk_resource === resource)) {
+    const name = pascal(op.id);
+    const method = methodName(op.sdk_method);
+    const schema = argumentsSchema(op);
+    const pathArgs = op.parameters.filter(p => p.in === 'path').map(p => argumentName(p.name));
+    const hasParams = Object.keys(schema.properties).length > 0;
+    const params = [...pathArgs.map(p => `${p}: string`), ...(hasParams ? [`params: ${name}Params${schema.required.length ? '' : ' = {}'}`] : []), 'options: RequestOptions = {}'].join(', ');
+    const forwarded = [...pathArgs, ...(hasParams ? ['params'] : []), 'options'].join(', ');
+    const wire = op.parameters.map(p => `${quote(p.name)}: ${p.in === 'path' ? argumentName(p.name) : `params.${argumentName(p.name)}`}`);
+    const body = bodySchema(op);
+    if (body) {
+      const bodyFields = Object.keys(body.properties ?? {});
+      let value = `{ ${bodyFields.map(key => `${quote(key)}: params.${key}`).join(', ')} }`;
+      if (!op.request_required) value = `(${bodyFields.map(key => `params.${key} !== undefined`).join(' || ') || 'false'} ? ${value} : undefined)`;
+      wire.push(`body: ${value}`);
+    }
+    const wireParams = `{ ${wire.join(', ')} }`;
+    const desc = `operations.${op.id}`;
+    const kind = responseKind(op);
+    source += comment(knownOperations.get(op.id).summary).split('\n').filter(Boolean).map(line => `  ${line}\n`).join('');
+    if (kind === 'sse') {
+      source += `  /** Resolves after subscription. Close the stream when finished; no automatic reconnect. */\n  ${method}(${params}): Promise<EventStream<${name}Response>> {\n    return this.transport.openFrames<${name}Response>(${desc}, ${wireParams}, options);\n  }\n\n`;
+      source += `  /** Lazy raw SSE iteration, including event/id metadata. */\n  ${method}Messages(${params}): AsyncGenerator<SSEMessage<${name}Response>> {\n    return this.transport.stream<${name}Response>(${desc}, ${wireParams}, options);\n  }\n\n`;
+    } else {
+      source += `  ${method}(${params}): Promise<${name}Response> {\n    return this.transport.${kind === 'binary' ? 'download' : `request<${name}Response>`}(${desc}, ${wireParams}, options);\n  }\n\n`;
+    }
+    if (pagination(op)) {
+      const itemType = type(deref(op.response_schema).properties.data.items);
+      source += `  /** Lazily fetch pages; stopping iteration prevents further requests. */\n  ${method}Pages(${params}): AsyncGenerator<${name}Response> {\n    return this.transport.pages<${name}Response>(${desc}, ${wireParams}, options);\n  }\n\n`;
+      source += `  /** Lazily traverse all items using the API's opaque cursor. */\n  async *${method}Items(${params}): AsyncGenerator<${itemType}> {\n    for await (const page of this.${method}Pages(${forwarded})) yield* page.data;\n  }\n\n`;
+    }
+  }
+  source += '}\n\n';
+}
+
+source = source.trimEnd() + '\n';
 
 if (process.argv.includes('--check')) {
   const existing = await readFile(outputURL, 'utf8').catch(() => '');

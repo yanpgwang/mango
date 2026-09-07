@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +22,8 @@ type operation struct {
 	Method              string           `json:"method"`
 	Path                string           `json:"path"`
 	Tag                 string           `json:"tag"`
+	SDKResource         string           `json:"sdk_resource"`
+	SDKMethod           string           `json:"sdk_method"`
 	Parameters          []map[string]any `json:"parameters"`
 	RequestContentType  string           `json:"request_content_type"`
 	RequestSchema       any              `json:"request_schema"`
@@ -134,6 +137,8 @@ func content(value any) (string, any, error) {
 func operations(document map[string]any) ([]operation, error) {
 	var result []operation
 	seen := map[string]bool{}
+	seenSDK := map[string]bool{}
+	identifier := regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
 	for path, pathValue := range object(document["paths"]) {
 		item := object(pathValue)
 		for _, method := range []string{"get", "post", "put", "patch", "delete", "head", "options"} {
@@ -147,6 +152,13 @@ func operations(document map[string]any) ([]operation, error) {
 			}
 			seen[id] = true
 			op := operation{ID: id, Method: strings.ToUpper(method), Path: path, Tag: "System", Parameters: []map[string]any{}}
+			op.SDKResource, _ = definition["x-sdk-resource"].(string)
+			op.SDKMethod, _ = definition["x-sdk-method"].(string)
+			mapping := op.SDKResource + "." + op.SDKMethod
+			if !identifier.MatchString(op.SDKResource) || !identifier.MatchString(op.SDKMethod) || strings.Contains(op.SDKMethod, ".") || seenSDK[mapping] {
+				return nil, fmt.Errorf("%s has a missing, invalid or duplicate SDK resource method %q", id, mapping)
+			}
+			seenSDK[mapping] = true
 			if tags, ok := definition["tags"].([]any); ok && len(tags) > 0 {
 				op.Tag, _ = tags[0].(string)
 			}

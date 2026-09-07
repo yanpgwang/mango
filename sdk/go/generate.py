@@ -240,14 +240,23 @@ def operations():
             if len(response_content) > 1:
                 raise ValueError(f"multiple response media types: {operation['operationId']}")
             response_type = next(iter(response_content), "")
-            result.append(dict(id=operation["operationId"], method=method.upper(), path=path, summary=operation.get("summary", ""), parameters=parameters,
+            result.append(dict(resource=operation["x-sdk-resource"], sdk_method=operation["x-sdk-method"], id=operation["operationId"], method=method.upper(), path=path, summary=operation.get("summary", ""), parameters=parameters,
                 request_type=request_type, request_schema=request_content.get(request_type, {}).get("schema"), request_required=request.get("required", False),
                 response_type=response_type, response_schema=response_content.get(response_type, {}).get("schema"), public=operation.get("security", SPEC.get("security")) == []))
     return sorted(result, key=lambda op: op["id"])
 
 
+def service_name(resource):
+    return "".join(ident(part) for part in resource.split(".")) + "Service"
+
+
+def method_name(op):
+    return {"create": "New", "retrieve": "Get"}.get(op["sdk_method"], ident(op["sdk_method"]))
+
+
 def emit_operation(op):
-    name = op["id"][0].upper() + op["id"][1:]
+    operation_name = op["id"][0].upper() + op["id"][1:]
+    name = method_name(op)
     paths = [value for value in op["parameters"] if value["in"] == "path"]
     queries = [value for value in op["parameters"] if value["in"] == "query"]
     if len(paths) + len(queries) != len(op["parameters"]):
@@ -262,8 +271,8 @@ def emit_operation(op):
         invocation.append(variable)
     query_lines = []
     if queries:
-        emit_type(name + "Params", {"type": "object", "properties": {p["name"]: p["schema"] for p in queries}, "required": [p["name"] for p in queries if p.get("required")]})
-        args.append(f"params {name}Params")
+        emit_type(operation_name + "Params", {"type": "object", "properties": {p["name"]: p["schema"] for p in queries}, "required": [p["name"] for p in queries if p.get("required")]})
+        args.append(f"params {operation_name}Params")
         invocation.append("params")
         for parameter in queries:
             if parameter.get("required"):
@@ -271,12 +280,12 @@ def emit_operation(op):
             helper = "addQueryArray" if resolve(parameter["schema"]).get("type") == "array" else "addQuery"
             query_lines.append(f"\t{helper}(query, {json.dumps(parameter['name'])}, params.{ident(parameter['name'])})\n")
     if op["request_schema"] is not None:
-        request_type = expression(op["request_schema"], name + "Request")
+        request_type = expression(op["request_schema"], operation_name + "Request")
         if not op["request_required"]:
             request_type = "*" + request_type
         args.append("body " + request_type)
     if op["response_type"] == "application/json":
-        result_type = expression(op["response_schema"], name + "Response")
+        result_type = expression(op["response_schema"], operation_name + "Response")
     elif op["response_type"] == "text/event-stream":
         result_type = "*EventStream"
     elif op["response_type"]:
@@ -289,14 +298,14 @@ def emit_operation(op):
         expression_path = expression_path.replace("{" + parameter["name"] + "}", '" + escapePath(' + parameter["name"] + ') + "')
     auth = str(not op["public"]).lower()
     prefix = f"// {name} {op['summary'].rstrip('.')} ({op['method']} {op['path']}).\n"
-    code = prefix + f"func (c *Client) {name}({', '.join(args)}) {result} {{\n"
+    code = prefix + f"func (c *{service_name(op['resource'])}) {name}({', '.join(args)}) {result} {{\n"
     code += "\tquery := make(url.Values)\n" + "".join(query_lines)
     code += f"\tpath := {expression_path}\n"
     call_args = f"ctx, {json.dumps(op['method'])}, path, query"
     if result_type == "*EventStream":
-        code += f"\treturn c.stream({call_args}, {auth})\n"
+        code += f"\treturn c.client.stream({call_args}, {auth})\n"
     elif result_type == "*Download":
-        code += f"\treturn c.download({call_args}, {json.dumps(op['response_type'])}, {auth})\n"
+        code += f"\treturn c.client.download({call_args}, {json.dumps(op['response_type'])}, {auth})\n"
     elif op["request_type"] == "multipart/form-data":
         code += f"\tvar result {result_type}\n\tvar parts []multipartPart\n"
         request = flatten(op["request_schema"])
@@ -310,22 +319,22 @@ def emit_operation(op):
                 code += f"\tif value, ok := {value}.Get(); ok {{ parts = append(parts, multipartPart{{name: {json.dumps(field)}, value: value}}) }}\n"
             else:
                 raise ValueError("unsupported multipart property")
-        code += f"\terr := c.doMultipart({call_args}, parts, &result, {auth})\n\treturn result, err\n"
+        code += f"\terr := c.client.doMultipart({call_args}, parts, &result, {auth})\n\treturn result, err\n"
     else:
         body = "body" if op["request_schema"] is not None else "nil"
         if result_type:
-            code += f"\tvar result {result_type}\n\terr := c.doJSON({call_args}, {body}, &result, {auth})\n\treturn result, err\n"
+            code += f"\tvar result {result_type}\n\terr := c.client.doJSON({call_args}, {body}, &result, {auth})\n\treturn result, err\n"
         else:
-            code += f"\treturn c.doJSON({call_args}, {body}, nil, {auth})\n"
+            code += f"\treturn c.client.doJSON({call_args}, {body}, nil, {auth})\n"
     code += "}\n\n"
     if op["response_type"] == "application/json":
         response = flatten(op["response_schema"])
         fields = response.get("properties", {})
         query_names = {q["name"] for q in queries}
         if "data" in fields and "next_page" in fields and "page" in query_names:
-            item = expression(fields["data"]["items"], name + "PageItem")
+            item = expression(fields["data"]["items"], operation_name + "PageItem")
             code += f"// {name}AutoPaging iterates every result, preserving the initial filters.\n"
-            code += f"func (c *Client) {name}AutoPaging({', '.join(args)}) *PageIterator[{item}] {{\n"
+            code += f"func (c *{service_name(op['resource'])}) {name}AutoPaging({', '.join(args)}) *PageIterator[{item}] {{\n"
             code += "\tfirst, _ := params.Page.Get()\n"
             code += f"\treturn NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[{item}], error) {{\n"
             code += '\t\tif cursor != "" { params.Page = Some(cursor) }\n'
@@ -333,9 +342,9 @@ def emit_operation(op):
             code += f"\t\tif err != nil {{ return Page[{item}]{{}}, err }}\n\t\tnext := \"\"\n\t\tif result.NextPage != nil {{ next = *result.NextPage }}\n"
             code += f"\t\treturn Page[{item}]{{Data: result.Data, Next: next}}, nil\n\t}})\n}}\n\n"
         elif "data" in fields and "has_more" in fields and "after_id" in query_names:
-            item = expression(fields["data"]["items"], name + "PageItem")
+            item = expression(fields["data"]["items"], operation_name + "PageItem")
             code += f"// {name}AutoPaging follows Files cursors, preserving before_id direction.\n"
-            code += f"func (c *Client) {name}AutoPaging({', '.join(args)}) *PageIterator[{item}] {{\n"
+            code += f"func (c *{service_name(op['resource'])}) {name}AutoPaging({', '.join(args)}) *PageIterator[{item}] {{\n"
             code += "\tfirst, _ := params.AfterID.Get()\n\tbefore, reverse := params.BeforeID.Get()\n\tif reverse { first = before }\n"
             code += f"\treturn NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[{item}], error) {{\n"
             code += '\t\tif cursor != "" { if reverse { params.BeforeID = Some(cursor) } else { params.AfterID = Some(cursor) } }\n'
@@ -347,6 +356,25 @@ def emit_operation(op):
     return code
 
 
+def emit_resources(ops):
+    resources = sorted({".".join(op["resource"].split(".")[:i])
+                        for op in ops for i in range(1, len(op["resource"].split(".")) + 1)})
+    def children(parent):
+        return [r for r in resources if r.rpartition(".")[0] == parent]
+    def fields(parent):
+        return "".join(f"{ident(r.rpartition('.')[2])} {service_name(r)}\n" for r in children(parent))
+    def value(resource):
+        nested = "".join(f"{ident(r.rpartition('.')[2])}: {value(r)}," for r in children(resource))
+        return service_name(resource) + "{client: c," + nested + "}"
+    code = "type resourceServices struct {\n" + fields("") + "}\n\n"
+    for resource in resources:
+        code += f"// {service_name(resource)} operates on {resource} resources.\n"
+        code += f"type {service_name(resource)} struct {{\nclient *Client\n" + fields(resource) + "}\n\n"
+    code += "func (c *Client) initServices() {\nc.resourceServices = resourceServices{\n"
+    code += "".join(f"{ident(r)}: {value(r)},\n" for r in children(""))
+    return code + "}\n}\n"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="fail if committed source differs")
@@ -355,10 +383,11 @@ def main():
         emit_type(name, schema)
     ops = operations()
     methods = "".join(emit_operation(operation) for operation in ops)
-    metadata = "// Operation describes one supported OpenAPI operation.\ntype Operation struct { ID, Method, Path string }\n\n"
+    metadata = "// Operation describes one supported OpenAPI operation.\ntype Operation struct { ID, Method, Path, Resource, Name string }\n\n"
     metadata += "// Operations contains every public operation in the checked-in OpenAPI document.\nvar Operations = []Operation{\n"
-    metadata += "".join("\t{" + ", ".join(json.dumps(operation[key]) for key in ["id", "method", "path"]) + "},\n" for operation in ops) + "}\n"
+    metadata += "".join("\t{" + ", ".join(json.dumps(operation[key]) for key in ["id", "method", "path"]) + ", " + json.dumps(".".join(ident(p) for p in operation["resource"].split("."))) + ", " + json.dumps(method_name(operation)) + "},\n" for operation in ops) + "}\n"
     files = {
+        "resources_generated.go": HEADER + emit_resources(ops),
         "types_generated.go": HEADER + 'import "encoding/json"\n\n' + "\n".join(DEFINITIONS[name] for name in sorted(DEFINITIONS)),
         "operations_generated.go": HEADER + 'import ("context"; "errors"; "net/url")\n\n' + metadata + "\n" + methods,
     }

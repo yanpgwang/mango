@@ -1,6 +1,6 @@
 # Mango Go SDK
 
-A standalone, standard-library-only client for all **98 operations** in Mango's
+A standalone, standard-library-only client for all **99 operations** in Mango's
 current `/v1` OpenAPI contract, including health/readiness and the OpenAPI route.
 It does not depend on Mango server packages, Temporal, or a hosted agent service.
 Go **1.24+** is required for the JSON omission semantics used by typed inputs.
@@ -31,44 +31,42 @@ client, err := mango.New(mango.Config{
 if err != nil { panic(err) }
 ctx := context.Background()
 
-agent, err := client.CreateAgent(ctx, mango.AgentCreateRequest{
+agent, err := client.Agents.New(ctx, mango.AgentCreateRequest{
     Name: "assistant",
-    Model: mango.ModelInput{String: mango.Ptr("your-configured-model")},
+    Model: mango.ModelID("your-configured-model"),
     System: mango.SomePtr("You are a helpful assistant."),
 })
 if err != nil { panic(err) }
 
-environment, err := client.CreateEnvironment(ctx, mango.EnvironmentCreateRequest{
+environment, err := client.Environments.New(ctx, mango.EnvironmentCreateRequest{
     Name: "default", // omitted config defaults to self-hosted execution
 })
 if err != nil { panic(err) }
 
-session, err := client.CreateSession(ctx, mango.SessionCreateRequest{
-    Agent: mango.SessionAgentInput{String: mango.Ptr(agent.ID)},
+session, err := client.Sessions.New(ctx, mango.SessionCreateRequest{
+    Agent: mango.AgentID(agent.ID),
     EnvironmentID: environment.ID,
     Title: mango.Some("First session"),
 })
 if err != nil { panic(err) }
 
-_, err = client.SendSessionEvents(ctx, session.ID, mango.SendSessionEventsRequest{
-    Events: []mango.ClientSessionEventInput{{
-        UserMessageEventInput: &mango.UserMessageEventInput{
-            Type: "user.message",
-            Content: []mango.MessageContentInput{{
-                TextBlockInput: &mango.TextBlockInput{Type: "text", Text: "Hello!"},
-            }},
-        },
-    }},
+_, err = client.Sessions.Events.Send(ctx, session.ID, mango.SendSessionEventsRequest{
+    Events: []mango.ClientSessionEventInput{mango.UserMessage("Hello!")},
 })
 if err != nil { panic(err) }
 ```
 
-Methods use the OpenAPI operation ID with an uppercase first letter, for example
-`CreateAgent`, `PollEnvironmentWork`, `ListMemoryVersions`, `CreateWebhook`, and
-`OpenAPI`. Path identifiers are positional strings; query filters are typed
-`<Operation>Params`; JSON or multipart bodies use named request types. Check
-[`operations_generated.go`](operations_generated.go) and
-[`types_generated.go`](types_generated.go), or run `go doc . Client`.
+Methods follow resource services: `client.Agents.New`, `client.Sessions.Get`,
+`client.Sessions.Threads.Events.Stream`, and `client.Environments.Work.Poll`.
+Path IDs are positional in HTTP hierarchy order, followed by typed query or
+request structs. Public probes are under `client.System`.
+
+Use `ModelID("model")` or `ModelSettings(config)` for models and `AgentID(id)` or
+`AgentVersion(id, version)` for Session references. Configure a team with
+`Some(Coordinator(RosterAgent(id), Self(), Advisor("review-model")))`.
+`RosterAgentVersion` pins a specific version. `UserMessage("text")` builds a
+message event, and `Text("text")` builds a content block for mixed inputs.
+The generated variants remain available for advanced configuration.
 
 ## Inputs, unions, and errors
 
@@ -92,7 +90,7 @@ a typed HTTP error.
 ## Pagination
 
 ```go
-items := client.ListAgentsAutoPaging(ctx, mango.ListAgentsParams{
+items := client.Agents.ListAutoPaging(ctx, mango.ListAgentsParams{
     Limit: mango.Some(int64(100)),
 })
 for items.Next() {
@@ -283,7 +281,7 @@ while this lower-level helper stays provider-neutral.
 ## Live events and recovery
 
 ```go
-stream, err := client.StreamSessionEvents(ctx, session.ID, mango.StreamSessionEventsParams{})
+stream, err := client.Sessions.Events.Stream(ctx, session.ID, mango.StreamSessionEventsParams{})
 if err != nil { panic(err) }
 defer stream.Close()
 for stream.Next() {
@@ -300,7 +298,7 @@ multiline data, an initial UTF-8 BOM, IDs, and retry metadata. Lines and
 accumulated event data have a 64 MiB safety limit. It is **live-only**, does not
 reconnect, and does not claim lossless delivery. The request context controls
 cancellation. To recover durable events, open a stream, buffer incoming events,
-read paginated `ListSessionEvents` or `ListSessionThreadEvents` history, and
+read paginated `Sessions.Events.List` or `Sessions.Threads.Events.List` history, and
 deduplicate persisted events by their IDs before continuing. Best-effort preview
 deltas are not durable.
 
@@ -316,18 +314,18 @@ are never followed, so bearer credentials cannot be forwarded to redirect target
 source, err := os.Open("report.csv")
 if err != nil { panic(err) }
 defer source.Close()
-file, err := client.UploadFile(ctx, mango.FileUploadRequest{
+file, err := client.Files.Upload(ctx, mango.FileUploadRequest{
     File: mango.Upload{Filename: "report.csv", ContentType: "text/csv", Reader: source},
 })
 if err != nil { panic(err) }
 
-download, err := client.DownloadFile(ctx, file.ID)
+download, err := client.Files.Download(ctx, file.ID)
 if err != nil { panic(err) }
 defer download.Close()
 // io.Copy(destination, download) streams without buffering the entire file.
 ```
 
-`CreateSkill` and `CreateSkillVersion` take `[]Upload`; filenames such as
+`Skills.New` and `Skills.Versions.New` take `[]Upload`; filenames such as
 `references/data.csv` retain their relative Skill path in multipart headers.
 Upload readers remain caller-owned. They should respond to cancellation when
 they perform blocking work; closing the HTTP request cannot interrupt arbitrary

@@ -9,13 +9,9 @@ use an SDK version built for the server revision you deploy.
 
 ## Install
 
-Python 3.11 or newer is required. Install the published
-[PyPI alpha](https://pypi.org/project/mango-sdk/0.1.0a1/) by its exact version
-in a virtual environment:
-
-```sh
-python -m pip install 'mango-sdk==0.1.0a1'
-```
+Python 3.11 or newer is required. This checkout prepares `0.1.0a2`, which is
+**not published**. The resource-based examples below require source installation;
+the previously published alpha 1 has an earlier interface.
 
 To install this checkout instead, from the repository root:
 
@@ -39,30 +35,24 @@ with Mango(
     api_key=os.environ["MANGO_API_KEY"],
 ) as client:
     # Omitted config defaults to self-hosted execution.
-    environment = client.create_environment(body={"name": "python-example"})
-    agent = client.create_agent(body={
-        "name": "assistant",
-        "model": os.environ["MANGO_MODEL"],
-        "system": "Be concise and helpful.",
-    })
-    session = client.create_session(body={
-        "agent": {"type": "agent", "id": agent["id"]},
-        "environment_id": environment["id"],
-    })
-    client.send_session_events(session["id"], body={"events": [{
+    environment = client.environments.create(name="python-example")
+    agent = client.agents.create(name="assistant", model=os.environ["MANGO_MODEL"], system="Be concise and helpful.")
+    session = client.sessions.create(agent={"type": "agent", "id": agent["id"]}, environment_id=environment["id"])
+    client.sessions.events.send(session["id"], events=[{
         "type": "user.message",
         "content": [{"type": "text", "text": "Hello!"}],
-    }]})
-    for event in client.iter_session_events(session["id"], order="asc"):
+    }])
+    for event in client.sessions.events.iter(session["id"], order="asc"):
         print(event)
 ```
 
-All methods use the OpenAPI operationId in snake_case (`createAgent` becomes
-`create_agent`), with positional path identifiers and keyword-only `body` and
-query parameters. Bracketed query names become Python names: `types[]` becomes
-`types`, and `created_at[gte]` becomes `created_at_gte`. The wire retains the
-original spelling and repeats array parameters correctly. `base_url` can include
-a reverse-proxy path prefix; do not append `/v1` yourself.
+Methods are grouped by resource: `client.agents.create`,
+`client.sessions.threads.list`, and `client.sessions.threads.events.stream`.
+Path IDs are positional in HTTP hierarchy order. Request fields and query filters
+are keyword arguments; a prebuilt typed request can be expanded with `**request`.
+Bracketed query names use `types` and `created_at_gte`; the transport preserves
+the wire spelling and repeated values. `base_url` may include a reverse-proxy
+prefix; do not append `/v1`. Public probes are under `client.system`.
 
 Request and response dictionaries have static types in `mango_sdk.models`.
 Tagged unions preserve literal discriminators; all component schemas are emitted.
@@ -86,9 +76,9 @@ from mango_sdk import AsyncMango
 
 async def watch(session_id: str) -> None:
     async with AsyncMango(api_key=os.environ["MANGO_API_KEY"]) as client:
-        session = await client.get_session(session_id)
+        session = await client.sessions.retrieve(session_id)
         print(session["status"])
-        async with client.stream_session_events(
+        async with client.sessions.events.stream(
             session_id, event_deltas=["agent.message"],
         ) as stream:
             async for envelope in stream:
@@ -99,7 +89,7 @@ async def watch(session_id: str) -> None:
 # asyncio.run(watch("sesn_..."))
 ```
 
-Synchronous streaming uses `with client.stream_session_events(id) as stream`
+Synchronous streaming uses `with client.sessions.events.stream(id) as stream`
 and `for envelope in stream`. Always use the context manager, especially when
 breaking early. Downloads use the same lifecycle and `iter_bytes()` (an async
 iterator on the async client); `read()` explicitly buffers the complete payload.
@@ -128,19 +118,17 @@ from mango_sdk import APIError, Mango, Upload
 
 with Mango(api_key="workspace-key") as client:
     with open("analysis.csv", "rb") as source:
-        uploaded = client.upload_file(body={
-            "file": Upload("analysis.csv", source, "text/csv"),
-        })
-    skill = client.create_skill(body={"files": [
+        uploaded = client.files.upload(file=Upload("analysis.csv", source, "text/csv"))
+    skill = client.skills.create(files=[
         Upload("analysis/SKILL.md", b"---\nname: analysis\ndescription: Analyze data\n---\n"),
-    ]})
+    ])
     # Only downloadable Session-scoped Files can be downloaded; client uploads cannot.
-    for output in client.iter_files(scope_id="sesn_..."):
-        with client.download_file(output["id"]) as stream:
+    for output in client.files.iter(scope_id="sesn_..."):
+        with client.files.download(output["id"]) as stream:
             for chunk in stream.iter_bytes():
                 consume(chunk)  # Your application owns the destination.
     try:
-        client.get_session("sesn_missing")
+        client.sessions.retrieve("sesn_missing")
     except APIError as error:
         print(error.status_code, error.type, error.request_id)
 ```

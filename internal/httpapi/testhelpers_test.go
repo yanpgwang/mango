@@ -426,6 +426,11 @@ func (s *testSessionService) Create(
 	if agent.Multiagent != nil {
 		roster = make([]domain.Agent, 0, len(agent.Multiagent.Agents))
 		for _, reference := range agent.Multiagent.Agents {
+			// Advisor is retained in the coordinator snapshot, not resolved as
+			// an ordinary Agent resource. Match the production Session service.
+			if reference.Type == "advisor" {
+				continue
+			}
 			member := snapshot
 			if reference.ID != agent.ID {
 				member, err = s.agents.GetVersion(ctx, reference.ID, reference.Version)

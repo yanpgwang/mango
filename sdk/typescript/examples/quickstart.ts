@@ -14,38 +14,26 @@ let agentID: string | undefined;
 let sessionID: string | undefined;
 try {
   // #region environment
-  const environment = await client.createEnvironment({
-    body: { name: 'Quickstart' },
-  });
+  const environment = await client.environments.create({ name: 'Quickstart' });
   // #endregion environment
   environmentID = environment.id;
 
   // #region agent
-  const agent = await client.createAgent({
-    body: { name: 'Assistant', model: 'offline-fake', system: 'Be concise.' },
-  });
+  const agent = await client.agents.create({ name: 'Assistant', model: 'offline-fake', system: 'Be concise.' });
   // #endregion agent
   agentID = agent.id;
 
   // #region session
-  const session = await client.createSession({
-    body: { agent: agent.id, environment_id: environment.id, title: 'First session' },
-  });
+  const session = await client.sessions.create({ agent: agent.id, environment_id: environment.id, title: 'First session' });
   // #endregion session
   sessionID = session.id;
 
   // #region stream
   // Subscribe before sending: the stream does not replay earlier events.
-  const stream = await client.openSessionEvents(
-    { session_id: session.id },
-    { signal: AbortSignal.timeout(60_000) },
-  );
+  const stream = await client.sessions.events.stream(session.id, {}, { signal: AbortSignal.timeout(60_000) });
   let completed = false;
   try {
-    await client.sendSessionEvents({
-      session_id: session.id,
-      body: { events: [{ type: 'user.message', content: [{ type: 'text', text: 'Hello, Mango!' }] }] },
-    });
+    await client.sessions.events.send(session.id, { events: [{ type: 'user.message', content: [{ type: 'text', text: 'Hello, Mango!' }] }] });
     for await (const event of stream) {
       if (event.type === 'agent.message') console.log(event.content);
       if (event.type === 'session.status_idle') {
@@ -62,9 +50,7 @@ try {
 
   // #region history
   const history = [];
-  for await (const event of client.listSessionEventsItems({
-    session_id: session.id, order: 'asc', limit: 100,
-  })) history.push(event);
+  for await (const event of client.sessions.events.listItems(session.id, { order: 'asc', limit: 100 })) history.push(event);
   console.log(`Persisted events: ${history.length}`);
   // #endregion history
   if (!history.some(event => event.type === 'agent.message')) throw new Error('Missing persisted response');
@@ -73,12 +59,12 @@ try {
   // These are only the resources created by this invocation. Do not delete
   // unrelated sessions or reset the development database to clean up examples.
   try {
-    if (sessionID) await client.deleteSession({ session_id: sessionID });
+    if (sessionID) await client.sessions.delete(sessionID);
   } finally {
     try {
-      if (agentID) await client.archiveAgent({ agent_id: agentID });
+      if (agentID) await client.agents.archive(agentID);
     } finally {
-      if (environmentID) await client.deleteEnvironment({ environment_id: environmentID });
+      if (environmentID) await client.environments.delete(environmentID);
     }
   }
 }

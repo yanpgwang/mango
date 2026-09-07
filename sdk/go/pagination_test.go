@@ -24,7 +24,7 @@ func TestAutoPaginationPreservesFiltersAndEscapesCursor(t *testing.T) {
 			fmt.Fprint(w, `{"data":[{"id":"b"}],"next_page":null}`)
 		}
 	})
-	iterator := client.ListAgentsAutoPaging(context.Background(), ListAgentsParams{Limit: Some(int64(1)), IncludeArchived: Some(false)})
+	iterator := client.Agents.ListAutoPaging(context.Background(), ListAgentsParams{Limit: Some(int64(1)), IncludeArchived: Some(false)})
 	var ids []string
 	for iterator.Next() {
 		ids = append(ids, iterator.Value().ID)
@@ -50,7 +50,7 @@ func TestFilesPaginationUsesAfterID(t *testing.T) {
 			fmt.Fprint(w, `{"data":[{"id":"file_b"}],"has_more":false,"first_id":"file_b","last_id":"file_b"}`)
 		}
 	})
-	iterator := client.ListFilesAutoPaging(context.Background(), ListFilesParams{})
+	iterator := client.Files.ListAutoPaging(context.Background(), ListFilesParams{})
 	var ids []string
 	for iterator.Next() {
 		ids = append(ids, iterator.Value().ID)

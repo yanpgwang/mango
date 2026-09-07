@@ -146,7 +146,7 @@ func prepareSessionSkills(
 				return nil, errors.New("mango: Session custom Skills exceed the 500-bundle limit")
 			}
 
-			version, err := client.GetSkillVersion(ctx, resolved.SkillID, resolved.Version)
+			version, err := client.Skills.Versions.Get(ctx, resolved.SkillID, resolved.Version)
 			if err != nil {
 				return nil, fmt.Errorf("mango: retrieve Skill %s@%s: %w", resolved.SkillID, resolved.Version, err)
 			}
@@ -231,7 +231,7 @@ func downloadAndExtractSessionSkill(
 	if budget.compressed > budget.totalByteLimit-expectedSize {
 		return errors.New("Session custom Skills exceed the 500 MiB compressed-size limit")
 	}
-	download, err := client.DownloadSkillVersion(ctx, skillID, version)
+	download, err := client.Skills.Versions.Download(ctx, skillID, version)
 	if err != nil {
 		return err
 	}

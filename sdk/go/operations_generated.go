@@ -9,258 +9,258 @@ import (
 )
 
 // Operation describes one supported OpenAPI operation.
-type Operation struct{ ID, Method, Path string }
+type Operation struct{ ID, Method, Path, Resource, Name string }
 
 // Operations contains every public operation in the checked-in OpenAPI document.
 var Operations = []Operation{
-	{"acknowledgeEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/ack"},
-	{"addSessionResource", "POST", "/v1/sessions/{session_id}/resources"},
-	{"archiveAgent", "POST", "/v1/agents/{agent_id}/archive"},
-	{"archiveDeployment", "POST", "/v1/deployments/{deployment_id}/archive"},
-	{"archiveEnvironment", "POST", "/v1/environments/{environment_id}/archive"},
-	{"archiveMemoryStore", "POST", "/v1/memory_stores/{store_id}/archive"},
-	{"archiveSession", "POST", "/v1/sessions/{session_id}/archive"},
-	{"archiveSessionThread", "POST", "/v1/sessions/{session_id}/threads/{thread_id}/archive"},
-	{"archiveVault", "POST", "/v1/vaults/{vault_id}/archive"},
-	{"archiveVaultCredential", "POST", "/v1/vaults/{vault_id}/credentials/{credential_id}/archive"},
-	{"createAgent", "POST", "/v1/agents"},
-	{"createDeployment", "POST", "/v1/deployments"},
-	{"createEnvironment", "POST", "/v1/environments"},
-	{"createMemory", "POST", "/v1/memory_stores/{store_id}/memories"},
-	{"createMemoryStore", "POST", "/v1/memory_stores"},
-	{"createSession", "POST", "/v1/sessions"},
-	{"createSkill", "POST", "/v1/skills"},
-	{"createSkillVersion", "POST", "/v1/skills/{skill_id}/versions"},
-	{"createVault", "POST", "/v1/vaults"},
-	{"createVaultCredential", "POST", "/v1/vaults/{vault_id}/credentials"},
-	{"createWebhook", "POST", "/v1/webhooks"},
-	{"deleteEnvironment", "DELETE", "/v1/environments/{environment_id}"},
-	{"deleteFile", "DELETE", "/v1/files/{file_id}"},
-	{"deleteMemory", "DELETE", "/v1/memory_stores/{store_id}/memories/{memory_id}"},
-	{"deleteMemoryStore", "DELETE", "/v1/memory_stores/{store_id}"},
-	{"deleteSession", "DELETE", "/v1/sessions/{session_id}"},
-	{"deleteSessionResource", "DELETE", "/v1/sessions/{session_id}/resources/{resource_id}"},
-	{"deleteSkill", "DELETE", "/v1/skills/{skill_id}"},
-	{"deleteSkillVersion", "DELETE", "/v1/skills/{skill_id}/versions/{version}"},
-	{"deleteVault", "DELETE", "/v1/vaults/{vault_id}"},
-	{"deleteVaultCredential", "DELETE", "/v1/vaults/{vault_id}/credentials/{credential_id}"},
-	{"deleteWebhook", "DELETE", "/v1/webhooks/{webhook_id}"},
-	{"downloadFile", "GET", "/v1/files/{file_id}/content"},
-	{"downloadSkillVersion", "GET", "/v1/skills/{skill_id}/versions/{version}/content"},
-	{"failEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/fail"},
-	{"getAgent", "GET", "/v1/agents/{agent_id}"},
-	{"getDeployment", "GET", "/v1/deployments/{deployment_id}"},
-	{"getDeploymentRun", "GET", "/v1/deployment_runs/{deployment_run_id}"},
-	{"getEnvironment", "GET", "/v1/environments/{environment_id}"},
-	{"getEnvironmentWork", "GET", "/v1/environments/{environment_id}/work/{work_id}"},
-	{"getEnvironmentWorkStats", "GET", "/v1/environments/{environment_id}/work/stats"},
-	{"getFileMetadata", "GET", "/v1/files/{file_id}"},
-	{"getMemory", "GET", "/v1/memory_stores/{store_id}/memories/{memory_id}"},
-	{"getMemoryStore", "GET", "/v1/memory_stores/{store_id}"},
-	{"getMemoryVersion", "GET", "/v1/memory_stores/{store_id}/memory_versions/{version_id}"},
-	{"getSession", "GET", "/v1/sessions/{session_id}"},
-	{"getSessionResource", "GET", "/v1/sessions/{session_id}/resources/{resource_id}"},
-	{"getSessionThread", "GET", "/v1/sessions/{session_id}/threads/{thread_id}"},
-	{"getSkill", "GET", "/v1/skills/{skill_id}"},
-	{"getSkillVersion", "GET", "/v1/skills/{skill_id}/versions/{version}"},
-	{"getVault", "GET", "/v1/vaults/{vault_id}"},
-	{"getVaultCredential", "GET", "/v1/vaults/{vault_id}/credentials/{credential_id}"},
-	{"getWebhook", "GET", "/v1/webhooks/{webhook_id}"},
-	{"health", "GET", "/healthz"},
-	{"heartbeatEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/heartbeat"},
-	{"listAgentVersions", "GET", "/v1/agents/{agent_id}/versions"},
-	{"listAgents", "GET", "/v1/agents"},
-	{"listDeploymentRuns", "GET", "/v1/deployment_runs"},
-	{"listDeployments", "GET", "/v1/deployments"},
-	{"listEnvironmentWork", "GET", "/v1/environments/{environment_id}/work"},
-	{"listEnvironments", "GET", "/v1/environments"},
-	{"listFiles", "GET", "/v1/files"},
-	{"listMemories", "GET", "/v1/memory_stores/{store_id}/memories"},
-	{"listMemoryStores", "GET", "/v1/memory_stores"},
-	{"listMemoryVersions", "GET", "/v1/memory_stores/{store_id}/memory_versions"},
-	{"listSessionEvents", "GET", "/v1/sessions/{session_id}/events"},
-	{"listSessionResources", "GET", "/v1/sessions/{session_id}/resources"},
-	{"listSessionThreadEvents", "GET", "/v1/sessions/{session_id}/threads/{thread_id}/events"},
-	{"listSessionThreads", "GET", "/v1/sessions/{session_id}/threads"},
-	{"listSessions", "GET", "/v1/sessions"},
-	{"listSkillVersions", "GET", "/v1/skills/{skill_id}/versions"},
-	{"listSkills", "GET", "/v1/skills"},
-	{"listVaultCredentials", "GET", "/v1/vaults/{vault_id}/credentials"},
-	{"listVaults", "GET", "/v1/vaults"},
-	{"listWebhooks", "GET", "/v1/webhooks"},
-	{"openAPI", "GET", "/openapi.yaml"},
-	{"pauseDeployment", "POST", "/v1/deployments/{deployment_id}/pause"},
-	{"pollEnvironmentWork", "GET", "/v1/environments/{environment_id}/work/poll"},
-	{"readiness", "GET", "/readyz"},
-	{"redactMemoryVersion", "POST", "/v1/memory_stores/{store_id}/memory_versions/{version_id}/redact"},
-	{"regenerateWebhookSigningSecret", "POST", "/v1/webhooks/{webhook_id}/regenerate_signing_secret"},
-	{"runDeployment", "POST", "/v1/deployments/{deployment_id}/run"},
-	{"sendSessionEvents", "POST", "/v1/sessions/{session_id}/events"},
-	{"stopEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/stop"},
-	{"streamSessionEvents", "GET", "/v1/sessions/{session_id}/events/stream"},
-	{"streamSessionThreadEvents", "GET", "/v1/sessions/{session_id}/threads/{thread_id}/stream"},
-	{"unpauseDeployment", "POST", "/v1/deployments/{deployment_id}/unpause"},
-	{"updateAgent", "POST", "/v1/agents/{agent_id}"},
-	{"updateDeployment", "POST", "/v1/deployments/{deployment_id}"},
-	{"updateEnvironment", "POST", "/v1/environments/{environment_id}"},
-	{"updateEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}"},
-	{"updateMemory", "POST", "/v1/memory_stores/{store_id}/memories/{memory_id}"},
-	{"updateMemoryStore", "POST", "/v1/memory_stores/{store_id}"},
-	{"updateSession", "POST", "/v1/sessions/{session_id}"},
-	{"updateVault", "POST", "/v1/vaults/{vault_id}"},
-	{"updateVaultCredential", "POST", "/v1/vaults/{vault_id}/credentials/{credential_id}"},
-	{"updateWebhook", "POST", "/v1/webhooks/{webhook_id}"},
-	{"uploadFile", "POST", "/v1/files"},
-	{"validateVaultCredentialMCPOAuth", "POST", "/v1/vaults/{vault_id}/credentials/{credential_id}/mcp_oauth_validate"},
+	{"acknowledgeEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/ack", "Environments.Work", "Ack"},
+	{"addSessionResource", "POST", "/v1/sessions/{session_id}/resources", "Sessions.Resources", "New"},
+	{"archiveAgent", "POST", "/v1/agents/{agent_id}/archive", "Agents", "Archive"},
+	{"archiveDeployment", "POST", "/v1/deployments/{deployment_id}/archive", "Deployments", "Archive"},
+	{"archiveEnvironment", "POST", "/v1/environments/{environment_id}/archive", "Environments", "Archive"},
+	{"archiveMemoryStore", "POST", "/v1/memory_stores/{store_id}/archive", "MemoryStores", "Archive"},
+	{"archiveSession", "POST", "/v1/sessions/{session_id}/archive", "Sessions", "Archive"},
+	{"archiveSessionThread", "POST", "/v1/sessions/{session_id}/threads/{thread_id}/archive", "Sessions.Threads", "Archive"},
+	{"archiveVault", "POST", "/v1/vaults/{vault_id}/archive", "Vaults", "Archive"},
+	{"archiveVaultCredential", "POST", "/v1/vaults/{vault_id}/credentials/{credential_id}/archive", "Vaults.Credentials", "Archive"},
+	{"createAgent", "POST", "/v1/agents", "Agents", "New"},
+	{"createDeployment", "POST", "/v1/deployments", "Deployments", "New"},
+	{"createEnvironment", "POST", "/v1/environments", "Environments", "New"},
+	{"createMemory", "POST", "/v1/memory_stores/{store_id}/memories", "MemoryStores.Memories", "New"},
+	{"createMemoryStore", "POST", "/v1/memory_stores", "MemoryStores", "New"},
+	{"createSession", "POST", "/v1/sessions", "Sessions", "New"},
+	{"createSkill", "POST", "/v1/skills", "Skills", "New"},
+	{"createSkillVersion", "POST", "/v1/skills/{skill_id}/versions", "Skills.Versions", "New"},
+	{"createVault", "POST", "/v1/vaults", "Vaults", "New"},
+	{"createVaultCredential", "POST", "/v1/vaults/{vault_id}/credentials", "Vaults.Credentials", "New"},
+	{"createWebhook", "POST", "/v1/webhooks", "Webhooks", "New"},
+	{"deleteEnvironment", "DELETE", "/v1/environments/{environment_id}", "Environments", "Delete"},
+	{"deleteFile", "DELETE", "/v1/files/{file_id}", "Files", "Delete"},
+	{"deleteMemory", "DELETE", "/v1/memory_stores/{store_id}/memories/{memory_id}", "MemoryStores.Memories", "Delete"},
+	{"deleteMemoryStore", "DELETE", "/v1/memory_stores/{store_id}", "MemoryStores", "Delete"},
+	{"deleteSession", "DELETE", "/v1/sessions/{session_id}", "Sessions", "Delete"},
+	{"deleteSessionResource", "DELETE", "/v1/sessions/{session_id}/resources/{resource_id}", "Sessions.Resources", "Delete"},
+	{"deleteSkill", "DELETE", "/v1/skills/{skill_id}", "Skills", "Delete"},
+	{"deleteSkillVersion", "DELETE", "/v1/skills/{skill_id}/versions/{version}", "Skills.Versions", "Delete"},
+	{"deleteVault", "DELETE", "/v1/vaults/{vault_id}", "Vaults", "Delete"},
+	{"deleteVaultCredential", "DELETE", "/v1/vaults/{vault_id}/credentials/{credential_id}", "Vaults.Credentials", "Delete"},
+	{"deleteWebhook", "DELETE", "/v1/webhooks/{webhook_id}", "Webhooks", "Delete"},
+	{"downloadFile", "GET", "/v1/files/{file_id}/content", "Files", "Download"},
+	{"downloadSkillVersion", "GET", "/v1/skills/{skill_id}/versions/{version}/content", "Skills.Versions", "Download"},
+	{"failEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/fail", "Environments.Work", "Fail"},
+	{"getAgent", "GET", "/v1/agents/{agent_id}", "Agents", "Get"},
+	{"getDeployment", "GET", "/v1/deployments/{deployment_id}", "Deployments", "Get"},
+	{"getDeploymentRun", "GET", "/v1/deployment_runs/{deployment_run_id}", "DeploymentRuns", "Get"},
+	{"getEnvironment", "GET", "/v1/environments/{environment_id}", "Environments", "Get"},
+	{"getEnvironmentWork", "GET", "/v1/environments/{environment_id}/work/{work_id}", "Environments.Work", "Get"},
+	{"getEnvironmentWorkStats", "GET", "/v1/environments/{environment_id}/work/stats", "Environments.Work", "Stats"},
+	{"getFileMetadata", "GET", "/v1/files/{file_id}", "Files", "Get"},
+	{"getMemory", "GET", "/v1/memory_stores/{store_id}/memories/{memory_id}", "MemoryStores.Memories", "Get"},
+	{"getMemoryStore", "GET", "/v1/memory_stores/{store_id}", "MemoryStores", "Get"},
+	{"getMemoryVersion", "GET", "/v1/memory_stores/{store_id}/memory_versions/{version_id}", "MemoryStores.Versions", "Get"},
+	{"getSession", "GET", "/v1/sessions/{session_id}", "Sessions", "Get"},
+	{"getSessionResource", "GET", "/v1/sessions/{session_id}/resources/{resource_id}", "Sessions.Resources", "Get"},
+	{"getSessionThread", "GET", "/v1/sessions/{session_id}/threads/{thread_id}", "Sessions.Threads", "Get"},
+	{"getSkill", "GET", "/v1/skills/{skill_id}", "Skills", "Get"},
+	{"getSkillVersion", "GET", "/v1/skills/{skill_id}/versions/{version}", "Skills.Versions", "Get"},
+	{"getVault", "GET", "/v1/vaults/{vault_id}", "Vaults", "Get"},
+	{"getVaultCredential", "GET", "/v1/vaults/{vault_id}/credentials/{credential_id}", "Vaults.Credentials", "Get"},
+	{"getWebhook", "GET", "/v1/webhooks/{webhook_id}", "Webhooks", "Get"},
+	{"health", "GET", "/healthz", "System", "Health"},
+	{"heartbeatEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/heartbeat", "Environments.Work", "Heartbeat"},
+	{"listAgentVersions", "GET", "/v1/agents/{agent_id}/versions", "Agents.Versions", "List"},
+	{"listAgents", "GET", "/v1/agents", "Agents", "List"},
+	{"listDeploymentRuns", "GET", "/v1/deployment_runs", "DeploymentRuns", "List"},
+	{"listDeployments", "GET", "/v1/deployments", "Deployments", "List"},
+	{"listEnvironmentWork", "GET", "/v1/environments/{environment_id}/work", "Environments.Work", "List"},
+	{"listEnvironments", "GET", "/v1/environments", "Environments", "List"},
+	{"listFiles", "GET", "/v1/files", "Files", "List"},
+	{"listMemories", "GET", "/v1/memory_stores/{store_id}/memories", "MemoryStores.Memories", "List"},
+	{"listMemoryStores", "GET", "/v1/memory_stores", "MemoryStores", "List"},
+	{"listMemoryVersions", "GET", "/v1/memory_stores/{store_id}/memory_versions", "MemoryStores.Versions", "List"},
+	{"listSessionEvents", "GET", "/v1/sessions/{session_id}/events", "Sessions.Events", "List"},
+	{"listSessionResources", "GET", "/v1/sessions/{session_id}/resources", "Sessions.Resources", "List"},
+	{"listSessionThreadEvents", "GET", "/v1/sessions/{session_id}/threads/{thread_id}/events", "Sessions.Threads.Events", "List"},
+	{"listSessionThreads", "GET", "/v1/sessions/{session_id}/threads", "Sessions.Threads", "List"},
+	{"listSessions", "GET", "/v1/sessions", "Sessions", "List"},
+	{"listSkillVersions", "GET", "/v1/skills/{skill_id}/versions", "Skills.Versions", "List"},
+	{"listSkills", "GET", "/v1/skills", "Skills", "List"},
+	{"listVaultCredentials", "GET", "/v1/vaults/{vault_id}/credentials", "Vaults.Credentials", "List"},
+	{"listVaults", "GET", "/v1/vaults", "Vaults", "List"},
+	{"listWebhooks", "GET", "/v1/webhooks", "Webhooks", "List"},
+	{"openAPI", "GET", "/openapi.yaml", "System", "OpenAPI"},
+	{"pauseDeployment", "POST", "/v1/deployments/{deployment_id}/pause", "Deployments", "Pause"},
+	{"pollEnvironmentWork", "GET", "/v1/environments/{environment_id}/work/poll", "Environments.Work", "Poll"},
+	{"readiness", "GET", "/readyz", "System", "Readiness"},
+	{"redactMemoryVersion", "POST", "/v1/memory_stores/{store_id}/memory_versions/{version_id}/redact", "MemoryStores.Versions", "Redact"},
+	{"regenerateWebhookSigningSecret", "POST", "/v1/webhooks/{webhook_id}/regenerate_signing_secret", "Webhooks", "RegenerateSigningSecret"},
+	{"runDeployment", "POST", "/v1/deployments/{deployment_id}/run", "Deployments", "Run"},
+	{"sendSessionEvents", "POST", "/v1/sessions/{session_id}/events", "Sessions.Events", "Send"},
+	{"stopEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/stop", "Environments.Work", "Stop"},
+	{"streamSessionEvents", "GET", "/v1/sessions/{session_id}/events/stream", "Sessions.Events", "Stream"},
+	{"streamSessionThreadEvents", "GET", "/v1/sessions/{session_id}/threads/{thread_id}/stream", "Sessions.Threads.Events", "Stream"},
+	{"unpauseDeployment", "POST", "/v1/deployments/{deployment_id}/unpause", "Deployments", "Unpause"},
+	{"updateAgent", "POST", "/v1/agents/{agent_id}", "Agents", "Update"},
+	{"updateDeployment", "POST", "/v1/deployments/{deployment_id}", "Deployments", "Update"},
+	{"updateEnvironment", "POST", "/v1/environments/{environment_id}", "Environments", "Update"},
+	{"updateEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}", "Environments.Work", "Update"},
+	{"updateMemory", "POST", "/v1/memory_stores/{store_id}/memories/{memory_id}", "MemoryStores.Memories", "Update"},
+	{"updateMemoryStore", "POST", "/v1/memory_stores/{store_id}", "MemoryStores", "Update"},
+	{"updateSession", "POST", "/v1/sessions/{session_id}", "Sessions", "Update"},
+	{"updateVault", "POST", "/v1/vaults/{vault_id}", "Vaults", "Update"},
+	{"updateVaultCredential", "POST", "/v1/vaults/{vault_id}/credentials/{credential_id}", "Vaults.Credentials", "Update"},
+	{"updateWebhook", "POST", "/v1/webhooks/{webhook_id}", "Webhooks", "Update"},
+	{"uploadFile", "POST", "/v1/files", "Files", "Upload"},
+	{"validateVaultCredentialMCPOAuth", "POST", "/v1/vaults/{vault_id}/credentials/{credential_id}/mcp_oauth_validate", "Vaults.Credentials", "ValidateMCPOAuth"},
 }
 
-// AcknowledgeEnvironmentWork Acknowledge a polled Work item and transition it to starting (POST /v1/environments/{environment_id}/work/{work_id}/ack).
-func (c *Client) AcknowledgeEnvironmentWork(ctx context.Context, environment_id string, work_id string) (EnvironmentWork, error) {
+// Ack Acknowledge a polled Work item and transition it to starting (POST /v1/environments/{environment_id}/work/{work_id}/ack).
+func (c *EnvironmentsWorkService) Ack(ctx context.Context, environment_id string, work_id string) (EnvironmentWork, error) {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + "/work/" + escapePath(work_id) + "/ack"
 	var result EnvironmentWork
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// AddSessionResource Attach a File copy to a Session (POST /v1/sessions/{session_id}/resources).
-func (c *Client) AddSessionResource(ctx context.Context, session_id string, body FileSessionResourceInput) (SessionResource, error) {
+// New Attach a File copy to a Session (POST /v1/sessions/{session_id}/resources).
+func (c *SessionsResourcesService) New(ctx context.Context, session_id string, body FileSessionResourceInput) (SessionResource, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + "/resources"
 	var result SessionResource
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// ArchiveAgent Archive an Agent (POST /v1/agents/{agent_id}/archive).
-func (c *Client) ArchiveAgent(ctx context.Context, agent_id string) (Agent, error) {
+// Archive Archive an Agent (POST /v1/agents/{agent_id}/archive).
+func (c *AgentsService) Archive(ctx context.Context, agent_id string) (Agent, error) {
 	query := make(url.Values)
 	path := "/v1/agents/" + escapePath(agent_id) + "/archive"
 	var result Agent
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// ArchiveDeployment Archive a Deployment (POST /v1/deployments/{deployment_id}/archive).
-func (c *Client) ArchiveDeployment(ctx context.Context, deployment_id string) (Deployment, error) {
+// Archive Archive a Deployment (POST /v1/deployments/{deployment_id}/archive).
+func (c *DeploymentsService) Archive(ctx context.Context, deployment_id string) (Deployment, error) {
 	query := make(url.Values)
 	path := "/v1/deployments/" + escapePath(deployment_id) + "/archive"
 	var result Deployment
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// ArchiveEnvironment Archive an Environment (POST /v1/environments/{environment_id}/archive).
-func (c *Client) ArchiveEnvironment(ctx context.Context, environment_id string) (Environment, error) {
+// Archive Archive an Environment (POST /v1/environments/{environment_id}/archive).
+func (c *EnvironmentsService) Archive(ctx context.Context, environment_id string) (Environment, error) {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + "/archive"
 	var result Environment
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// ArchiveMemoryStore Archive a Memory Store (POST /v1/memory_stores/{store_id}/archive).
-func (c *Client) ArchiveMemoryStore(ctx context.Context, store_id string) (MemoryStore, error) {
+// Archive Archive a Memory Store (POST /v1/memory_stores/{store_id}/archive).
+func (c *MemoryStoresService) Archive(ctx context.Context, store_id string) (MemoryStore, error) {
 	query := make(url.Values)
 	path := "/v1/memory_stores/" + escapePath(store_id) + "/archive"
 	var result MemoryStore
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// ArchiveSession Archive a non-running Session (POST /v1/sessions/{session_id}/archive).
-func (c *Client) ArchiveSession(ctx context.Context, session_id string) (Session, error) {
+// Archive Archive a non-running Session (POST /v1/sessions/{session_id}/archive).
+func (c *SessionsService) Archive(ctx context.Context, session_id string) (Session, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + "/archive"
 	var result Session
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// ArchiveSessionThread Archive a non-running Session Thread (POST /v1/sessions/{session_id}/threads/{thread_id}/archive).
-func (c *Client) ArchiveSessionThread(ctx context.Context, session_id string, thread_id string) (SessionThread, error) {
+// Archive Archive a non-running Session Thread (POST /v1/sessions/{session_id}/threads/{thread_id}/archive).
+func (c *SessionsThreadsService) Archive(ctx context.Context, session_id string, thread_id string) (SessionThread, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + "/threads/" + escapePath(thread_id) + "/archive"
 	var result SessionThread
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// ArchiveVault Archive a Vault, archive its Credentials, and purge their encrypted payloads (POST /v1/vaults/{vault_id}/archive).
-func (c *Client) ArchiveVault(ctx context.Context, vault_id string) (Vault, error) {
+// Archive Archive a Vault, archive its Credentials, and purge their encrypted payloads (POST /v1/vaults/{vault_id}/archive).
+func (c *VaultsService) Archive(ctx context.Context, vault_id string) (Vault, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + "/archive"
 	var result Vault
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// ArchiveVaultCredential Archive a Credential and purge its encrypted payload (POST /v1/vaults/{vault_id}/credentials/{credential_id}/archive).
-func (c *Client) ArchiveVaultCredential(ctx context.Context, vault_id string, credential_id string) (VaultCredential, error) {
+// Archive Archive a Credential and purge its encrypted payload (POST /v1/vaults/{vault_id}/credentials/{credential_id}/archive).
+func (c *VaultsCredentialsService) Archive(ctx context.Context, vault_id string, credential_id string) (VaultCredential, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + "/credentials/" + escapePath(credential_id) + "/archive"
 	var result VaultCredential
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// CreateAgent Create an Agent (POST /v1/agents).
-func (c *Client) CreateAgent(ctx context.Context, body AgentCreateRequest) (Agent, error) {
+// New Create an Agent (POST /v1/agents).
+func (c *AgentsService) New(ctx context.Context, body AgentCreateRequest) (Agent, error) {
 	query := make(url.Values)
 	path := "/v1/agents"
 	var result Agent
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// CreateDeployment Create a Deployment (POST /v1/deployments).
-func (c *Client) CreateDeployment(ctx context.Context, body DeploymentCreateRequest) (Deployment, error) {
+// New Create a Deployment (POST /v1/deployments).
+func (c *DeploymentsService) New(ctx context.Context, body DeploymentCreateRequest) (Deployment, error) {
 	query := make(url.Values)
 	path := "/v1/deployments"
 	var result Deployment
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// CreateEnvironment Create an Environment (POST /v1/environments).
-func (c *Client) CreateEnvironment(ctx context.Context, body EnvironmentCreateRequest) (Environment, error) {
+// New Create an Environment (POST /v1/environments).
+func (c *EnvironmentsService) New(ctx context.Context, body EnvironmentCreateRequest) (Environment, error) {
 	query := make(url.Values)
 	path := "/v1/environments"
 	var result Environment
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// CreateMemory Create a Memory (POST /v1/memory_stores/{store_id}/memories).
-func (c *Client) CreateMemory(ctx context.Context, store_id string, params CreateMemoryParams, body MemoryCreateRequest) (Memory, error) {
+// New Create a Memory (POST /v1/memory_stores/{store_id}/memories).
+func (c *MemoryStoresMemoriesService) New(ctx context.Context, store_id string, params CreateMemoryParams, body MemoryCreateRequest) (Memory, error) {
 	query := make(url.Values)
 	addQuery(query, "view", params.View)
 	path := "/v1/memory_stores/" + escapePath(store_id) + "/memories"
 	var result Memory
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// CreateMemoryStore Create a Memory Store (POST /v1/memory_stores).
-func (c *Client) CreateMemoryStore(ctx context.Context, body MemoryStoreCreateRequest) (MemoryStore, error) {
+// New Create a Memory Store (POST /v1/memory_stores).
+func (c *MemoryStoresService) New(ctx context.Context, body MemoryStoreCreateRequest) (MemoryStore, error) {
 	query := make(url.Values)
 	path := "/v1/memory_stores"
 	var result MemoryStore
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// CreateSession Create a Session (POST /v1/sessions).
-func (c *Client) CreateSession(ctx context.Context, body SessionCreateRequest) (Session, error) {
+// New Create a Session (POST /v1/sessions).
+func (c *SessionsService) New(ctx context.Context, body SessionCreateRequest) (Session, error) {
 	query := make(url.Values)
 	path := "/v1/sessions"
 	var result Session
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// CreateSkill Create a custom Skill and its first immutable Version (POST /v1/skills).
-func (c *Client) CreateSkill(ctx context.Context, body SkillUploadRequest) (SkillResource, error) {
+// New Create a custom Skill and its first immutable Version (POST /v1/skills).
+func (c *SkillsService) New(ctx context.Context, body SkillUploadRequest) (SkillResource, error) {
 	query := make(url.Values)
 	path := "/v1/skills"
 	var result SkillResource
@@ -271,12 +271,12 @@ func (c *Client) CreateSkill(ctx context.Context, body SkillUploadRequest) (Skil
 	for i := range body.Files {
 		parts = append(parts, multipartPart{name: "files", upload: &body.Files[i]})
 	}
-	err := c.doMultipart(ctx, "POST", path, query, parts, &result, true)
+	err := c.client.doMultipart(ctx, "POST", path, query, parts, &result, true)
 	return result, err
 }
 
-// CreateSkillVersion Create an immutable Skill Version (POST /v1/skills/{skill_id}/versions).
-func (c *Client) CreateSkillVersion(ctx context.Context, skill_id string, body SkillVersionUploadRequest) (SkillVersion, error) {
+// New Create an immutable Skill Version (POST /v1/skills/{skill_id}/versions).
+func (c *SkillsVersionsService) New(ctx context.Context, skill_id string, body SkillVersionUploadRequest) (SkillVersion, error) {
 	query := make(url.Values)
 	path := "/v1/skills/" + escapePath(skill_id) + "/versions"
 	var result SkillVersion
@@ -284,359 +284,359 @@ func (c *Client) CreateSkillVersion(ctx context.Context, skill_id string, body S
 	for i := range body.Files {
 		parts = append(parts, multipartPart{name: "files", upload: &body.Files[i]})
 	}
-	err := c.doMultipart(ctx, "POST", path, query, parts, &result, true)
+	err := c.client.doMultipart(ctx, "POST", path, query, parts, &result, true)
 	return result, err
 }
 
-// CreateVault Create a Vault (POST /v1/vaults).
-func (c *Client) CreateVault(ctx context.Context, body VaultCreateRequest) (Vault, error) {
+// New Create a Vault (POST /v1/vaults).
+func (c *VaultsService) New(ctx context.Context, body VaultCreateRequest) (Vault, error) {
 	query := make(url.Values)
 	path := "/v1/vaults"
 	var result Vault
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// CreateVaultCredential Create an encrypted Credential (POST /v1/vaults/{vault_id}/credentials).
-func (c *Client) CreateVaultCredential(ctx context.Context, vault_id string, body VaultCredentialCreateRequest) (VaultCredential, error) {
+// New Create an encrypted Credential (POST /v1/vaults/{vault_id}/credentials).
+func (c *VaultsCredentialsService) New(ctx context.Context, vault_id string, body VaultCredentialCreateRequest) (VaultCredential, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + "/credentials"
 	var result VaultCredential
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// CreateWebhook Create a Webhook endpoint (POST /v1/webhooks).
-func (c *Client) CreateWebhook(ctx context.Context, body WebhookCreateRequest) (WebhookWithSigningSecret, error) {
+// New Create a Webhook endpoint (POST /v1/webhooks).
+func (c *WebhooksService) New(ctx context.Context, body WebhookCreateRequest) (WebhookWithSigningSecret, error) {
 	query := make(url.Values)
 	path := "/v1/webhooks"
 	var result WebhookWithSigningSecret
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// DeleteEnvironment Delete an unreferenced Environment (DELETE /v1/environments/{environment_id}).
-func (c *Client) DeleteEnvironment(ctx context.Context, environment_id string) (EnvironmentDeleted, error) {
+// Delete Delete an unreferenced Environment (DELETE /v1/environments/{environment_id}).
+func (c *EnvironmentsService) Delete(ctx context.Context, environment_id string) (EnvironmentDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + ""
 	var result EnvironmentDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteFile Delete a File (DELETE /v1/files/{file_id}).
-func (c *Client) DeleteFile(ctx context.Context, file_id string) (FileDeleted, error) {
+// Delete Delete a File (DELETE /v1/files/{file_id}).
+func (c *FilesService) Delete(ctx context.Context, file_id string) (FileDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/files/" + escapePath(file_id) + ""
 	var result FileDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteMemory Delete a Memory with an optional SHA-256 precondition (DELETE /v1/memory_stores/{store_id}/memories/{memory_id}).
-func (c *Client) DeleteMemory(ctx context.Context, store_id string, memory_id string, params DeleteMemoryParams) (MemoryDeleted, error) {
+// Delete Delete a Memory with an optional SHA-256 precondition (DELETE /v1/memory_stores/{store_id}/memories/{memory_id}).
+func (c *MemoryStoresMemoriesService) Delete(ctx context.Context, store_id string, memory_id string, params DeleteMemoryParams) (MemoryDeleted, error) {
 	query := make(url.Values)
 	addQuery(query, "expected_content_sha256", params.ExpectedContentSHA256)
 	path := "/v1/memory_stores/" + escapePath(store_id) + "/memories/" + escapePath(memory_id) + ""
 	var result MemoryDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteMemoryStore Delete a Memory Store (DELETE /v1/memory_stores/{store_id}).
-func (c *Client) DeleteMemoryStore(ctx context.Context, store_id string) (MemoryStoreDeleted, error) {
+// Delete Delete a Memory Store (DELETE /v1/memory_stores/{store_id}).
+func (c *MemoryStoresService) Delete(ctx context.Context, store_id string) (MemoryStoreDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/memory_stores/" + escapePath(store_id) + ""
 	var result MemoryStoreDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteSession Delete a non-running Session and its event history (DELETE /v1/sessions/{session_id}).
-func (c *Client) DeleteSession(ctx context.Context, session_id string) (SessionDeleted, error) {
+// Delete Delete a non-running Session and its event history (DELETE /v1/sessions/{session_id}).
+func (c *SessionsService) Delete(ctx context.Context, session_id string) (SessionDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + ""
 	var result SessionDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteSessionResource Detach a File Resource from a Session (DELETE /v1/sessions/{session_id}/resources/{resource_id}).
-func (c *Client) DeleteSessionResource(ctx context.Context, session_id string, resource_id string) (SessionResourceDeleted, error) {
+// Delete Detach a File Resource from a Session (DELETE /v1/sessions/{session_id}/resources/{resource_id}).
+func (c *SessionsResourcesService) Delete(ctx context.Context, session_id string, resource_id string) (SessionResourceDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + "/resources/" + escapePath(resource_id) + ""
 	var result SessionResourceDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteSkill Delete a Skill after all of its Versions have been deleted (DELETE /v1/skills/{skill_id}).
-func (c *Client) DeleteSkill(ctx context.Context, skill_id string) (SkillDeleted, error) {
+// Delete Delete a Skill after all of its Versions have been deleted (DELETE /v1/skills/{skill_id}).
+func (c *SkillsService) Delete(ctx context.Context, skill_id string) (SkillDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/skills/" + escapePath(skill_id) + ""
 	var result SkillDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteSkillVersion Delete a Skill Version and its archived contents (DELETE /v1/skills/{skill_id}/versions/{version}).
-func (c *Client) DeleteSkillVersion(ctx context.Context, skill_id string, version string) (SkillVersionDeleted, error) {
+// Delete Delete a Skill Version and its archived contents (DELETE /v1/skills/{skill_id}/versions/{version}).
+func (c *SkillsVersionsService) Delete(ctx context.Context, skill_id string, version string) (SkillVersionDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/skills/" + escapePath(skill_id) + "/versions/" + escapePath(version) + ""
 	var result SkillVersionDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteVault Delete a Vault and all of its Credentials (DELETE /v1/vaults/{vault_id}).
-func (c *Client) DeleteVault(ctx context.Context, vault_id string) (VaultDeleted, error) {
+// Delete Delete a Vault and all of its Credentials (DELETE /v1/vaults/{vault_id}).
+func (c *VaultsService) Delete(ctx context.Context, vault_id string) (VaultDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + ""
 	var result VaultDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteVaultCredential Delete a Credential (DELETE /v1/vaults/{vault_id}/credentials/{credential_id}).
-func (c *Client) DeleteVaultCredential(ctx context.Context, vault_id string, credential_id string) (VaultCredentialDeleted, error) {
+// Delete Delete a Credential (DELETE /v1/vaults/{vault_id}/credentials/{credential_id}).
+func (c *VaultsCredentialsService) Delete(ctx context.Context, vault_id string, credential_id string) (VaultCredentialDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + "/credentials/" + escapePath(credential_id) + ""
 	var result VaultCredentialDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DeleteWebhook Delete a Webhook endpoint and its pending deliveries (DELETE /v1/webhooks/{webhook_id}).
-func (c *Client) DeleteWebhook(ctx context.Context, webhook_id string) (WebhookDeleted, error) {
+// Delete Delete a Webhook endpoint and its pending deliveries (DELETE /v1/webhooks/{webhook_id}).
+func (c *WebhooksService) Delete(ctx context.Context, webhook_id string) (WebhookDeleted, error) {
 	query := make(url.Values)
 	path := "/v1/webhooks/" + escapePath(webhook_id) + ""
 	var result WebhookDeleted
-	err := c.doJSON(ctx, "DELETE", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
 	return result, err
 }
 
-// DownloadFile Download a File marked as downloadable (GET /v1/files/{file_id}/content).
-func (c *Client) DownloadFile(ctx context.Context, file_id string) (*Download, error) {
+// Download Download a File marked as downloadable (GET /v1/files/{file_id}/content).
+func (c *FilesService) Download(ctx context.Context, file_id string) (*Download, error) {
 	query := make(url.Values)
 	path := "/v1/files/" + escapePath(file_id) + "/content"
-	return c.download(ctx, "GET", path, query, "application/binary", true)
+	return c.client.download(ctx, "GET", path, query, "application/binary", true)
 }
 
-// DownloadSkillVersion Download a Skill Version as a zip archive (GET /v1/skills/{skill_id}/versions/{version}/content).
-func (c *Client) DownloadSkillVersion(ctx context.Context, skill_id string, version string) (*Download, error) {
+// Download Download a Skill Version as a zip archive (GET /v1/skills/{skill_id}/versions/{version}/content).
+func (c *SkillsVersionsService) Download(ctx context.Context, skill_id string, version string) (*Download, error) {
 	query := make(url.Values)
 	path := "/v1/skills/" + escapePath(skill_id) + "/versions/" + escapePath(version) + "/content"
-	return c.download(ctx, "GET", path, query, "application/zip", true)
+	return c.client.download(ctx, "GET", path, query, "application/zip", true)
 }
 
-// FailEnvironmentWork Terminate a Session whose immutable worker inputs are invalid (POST /v1/environments/{environment_id}/work/{work_id}/fail).
-func (c *Client) FailEnvironmentWork(ctx context.Context, environment_id string, work_id string, body EnvironmentWorkFailureRequest) error {
+// Fail Terminate a Session whose immutable worker inputs are invalid (POST /v1/environments/{environment_id}/work/{work_id}/fail).
+func (c *EnvironmentsWorkService) Fail(ctx context.Context, environment_id string, work_id string, body EnvironmentWorkFailureRequest) error {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + "/work/" + escapePath(work_id) + "/fail"
-	return c.doJSON(ctx, "POST", path, query, body, nil, true)
+	return c.client.doJSON(ctx, "POST", path, query, body, nil, true)
 }
 
-// GetAgent Get an Agent (GET /v1/agents/{agent_id}).
-func (c *Client) GetAgent(ctx context.Context, agent_id string) (Agent, error) {
+// Get Get an Agent (GET /v1/agents/{agent_id}).
+func (c *AgentsService) Get(ctx context.Context, agent_id string) (Agent, error) {
 	query := make(url.Values)
 	path := "/v1/agents/" + escapePath(agent_id) + ""
 	var result Agent
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetDeployment Get a Deployment (GET /v1/deployments/{deployment_id}).
-func (c *Client) GetDeployment(ctx context.Context, deployment_id string) (Deployment, error) {
+// Get Get a Deployment (GET /v1/deployments/{deployment_id}).
+func (c *DeploymentsService) Get(ctx context.Context, deployment_id string) (Deployment, error) {
 	query := make(url.Values)
 	path := "/v1/deployments/" + escapePath(deployment_id) + ""
 	var result Deployment
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetDeploymentRun Get a Deployment Run (GET /v1/deployment_runs/{deployment_run_id}).
-func (c *Client) GetDeploymentRun(ctx context.Context, deployment_run_id string) (DeploymentRun, error) {
+// Get Get a Deployment Run (GET /v1/deployment_runs/{deployment_run_id}).
+func (c *DeploymentRunsService) Get(ctx context.Context, deployment_run_id string) (DeploymentRun, error) {
 	query := make(url.Values)
 	path := "/v1/deployment_runs/" + escapePath(deployment_run_id) + ""
 	var result DeploymentRun
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetEnvironment Get an Environment (GET /v1/environments/{environment_id}).
-func (c *Client) GetEnvironment(ctx context.Context, environment_id string) (Environment, error) {
+// Get Get an Environment (GET /v1/environments/{environment_id}).
+func (c *EnvironmentsService) Get(ctx context.Context, environment_id string) (Environment, error) {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + ""
 	var result Environment
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetEnvironmentWork Get an Environment Work item (GET /v1/environments/{environment_id}/work/{work_id}).
-func (c *Client) GetEnvironmentWork(ctx context.Context, environment_id string, work_id string) (EnvironmentWork, error) {
+// Get Get an Environment Work item (GET /v1/environments/{environment_id}/work/{work_id}).
+func (c *EnvironmentsWorkService) Get(ctx context.Context, environment_id string, work_id string) (EnvironmentWork, error) {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + "/work/" + escapePath(work_id) + ""
 	var result EnvironmentWork
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetEnvironmentWorkStats Get Environment Work queue statistics (GET /v1/environments/{environment_id}/work/stats).
-func (c *Client) GetEnvironmentWorkStats(ctx context.Context, environment_id string) (EnvironmentWorkQueueStats, error) {
+// Stats Get Environment Work queue statistics (GET /v1/environments/{environment_id}/work/stats).
+func (c *EnvironmentsWorkService) Stats(ctx context.Context, environment_id string) (EnvironmentWorkQueueStats, error) {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + "/work/stats"
 	var result EnvironmentWorkQueueStats
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetFileMetadata Get File metadata (GET /v1/files/{file_id}).
-func (c *Client) GetFileMetadata(ctx context.Context, file_id string) (File, error) {
+// Get Get File metadata (GET /v1/files/{file_id}).
+func (c *FilesService) Get(ctx context.Context, file_id string) (File, error) {
 	query := make(url.Values)
 	path := "/v1/files/" + escapePath(file_id) + ""
 	var result File
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetMemory Get a Memory (GET /v1/memory_stores/{store_id}/memories/{memory_id}).
-func (c *Client) GetMemory(ctx context.Context, store_id string, memory_id string, params GetMemoryParams) (Memory, error) {
+// Get Get a Memory (GET /v1/memory_stores/{store_id}/memories/{memory_id}).
+func (c *MemoryStoresMemoriesService) Get(ctx context.Context, store_id string, memory_id string, params GetMemoryParams) (Memory, error) {
 	query := make(url.Values)
 	addQuery(query, "view", params.View)
 	path := "/v1/memory_stores/" + escapePath(store_id) + "/memories/" + escapePath(memory_id) + ""
 	var result Memory
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetMemoryStore Get a Memory Store (GET /v1/memory_stores/{store_id}).
-func (c *Client) GetMemoryStore(ctx context.Context, store_id string) (MemoryStore, error) {
+// Get Get a Memory Store (GET /v1/memory_stores/{store_id}).
+func (c *MemoryStoresService) Get(ctx context.Context, store_id string) (MemoryStore, error) {
 	query := make(url.Values)
 	path := "/v1/memory_stores/" + escapePath(store_id) + ""
 	var result MemoryStore
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetMemoryVersion Get an immutable Memory Version (GET /v1/memory_stores/{store_id}/memory_versions/{version_id}).
-func (c *Client) GetMemoryVersion(ctx context.Context, store_id string, version_id string, params GetMemoryVersionParams) (MemoryVersion, error) {
+// Get Get an immutable Memory Version (GET /v1/memory_stores/{store_id}/memory_versions/{version_id}).
+func (c *MemoryStoresVersionsService) Get(ctx context.Context, store_id string, version_id string, params GetMemoryVersionParams) (MemoryVersion, error) {
 	query := make(url.Values)
 	addQuery(query, "view", params.View)
 	path := "/v1/memory_stores/" + escapePath(store_id) + "/memory_versions/" + escapePath(version_id) + ""
 	var result MemoryVersion
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetSession Get a Session (GET /v1/sessions/{session_id}).
-func (c *Client) GetSession(ctx context.Context, session_id string) (Session, error) {
+// Get Get a Session (GET /v1/sessions/{session_id}).
+func (c *SessionsService) Get(ctx context.Context, session_id string) (Session, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + ""
 	var result Session
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetSessionResource Get a Session Resource (GET /v1/sessions/{session_id}/resources/{resource_id}).
-func (c *Client) GetSessionResource(ctx context.Context, session_id string, resource_id string) (SessionResource, error) {
+// Get Get a Session Resource (GET /v1/sessions/{session_id}/resources/{resource_id}).
+func (c *SessionsResourcesService) Get(ctx context.Context, session_id string, resource_id string) (SessionResource, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + "/resources/" + escapePath(resource_id) + ""
 	var result SessionResource
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetSessionThread Get a Session Thread (GET /v1/sessions/{session_id}/threads/{thread_id}).
-func (c *Client) GetSessionThread(ctx context.Context, session_id string, thread_id string) (SessionThread, error) {
+// Get Get a Session Thread (GET /v1/sessions/{session_id}/threads/{thread_id}).
+func (c *SessionsThreadsService) Get(ctx context.Context, session_id string, thread_id string) (SessionThread, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + "/threads/" + escapePath(thread_id) + ""
 	var result SessionThread
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetSkill Get a Skill (GET /v1/skills/{skill_id}).
-func (c *Client) GetSkill(ctx context.Context, skill_id string) (SkillResource, error) {
+// Get Get a Skill (GET /v1/skills/{skill_id}).
+func (c *SkillsService) Get(ctx context.Context, skill_id string) (SkillResource, error) {
 	query := make(url.Values)
 	path := "/v1/skills/" + escapePath(skill_id) + ""
 	var result SkillResource
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetSkillVersion Get a Skill Version (GET /v1/skills/{skill_id}/versions/{version}).
-func (c *Client) GetSkillVersion(ctx context.Context, skill_id string, version string) (SkillVersion, error) {
+// Get Get a Skill Version (GET /v1/skills/{skill_id}/versions/{version}).
+func (c *SkillsVersionsService) Get(ctx context.Context, skill_id string, version string) (SkillVersion, error) {
 	query := make(url.Values)
 	path := "/v1/skills/" + escapePath(skill_id) + "/versions/" + escapePath(version) + ""
 	var result SkillVersion
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetVault Get a Vault (GET /v1/vaults/{vault_id}).
-func (c *Client) GetVault(ctx context.Context, vault_id string) (Vault, error) {
+// Get Get a Vault (GET /v1/vaults/{vault_id}).
+func (c *VaultsService) Get(ctx context.Context, vault_id string) (Vault, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + ""
 	var result Vault
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetVaultCredential Get a Credential without sensitive fields (GET /v1/vaults/{vault_id}/credentials/{credential_id}).
-func (c *Client) GetVaultCredential(ctx context.Context, vault_id string, credential_id string) (VaultCredential, error) {
+// Get Get a Credential without sensitive fields (GET /v1/vaults/{vault_id}/credentials/{credential_id}).
+func (c *VaultsCredentialsService) Get(ctx context.Context, vault_id string, credential_id string) (VaultCredential, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + "/credentials/" + escapePath(credential_id) + ""
 	var result VaultCredential
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// GetWebhook Get a Webhook endpoint without its signing secret (GET /v1/webhooks/{webhook_id}).
-func (c *Client) GetWebhook(ctx context.Context, webhook_id string) (Webhook, error) {
+// Get Get a Webhook endpoint without its signing secret (GET /v1/webhooks/{webhook_id}).
+func (c *WebhooksService) Get(ctx context.Context, webhook_id string) (Webhook, error) {
 	query := make(url.Values)
 	path := "/v1/webhooks/" + escapePath(webhook_id) + ""
 	var result Webhook
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
 // Health Liveness probe (GET /healthz).
-func (c *Client) Health(ctx context.Context) error {
+func (c *SystemService) Health(ctx context.Context) error {
 	query := make(url.Values)
 	path := "/healthz"
-	return c.doJSON(ctx, "GET", path, query, nil, nil, false)
+	return c.client.doJSON(ctx, "GET", path, query, nil, nil, false)
 }
 
-// HeartbeatEnvironmentWork Record a conditional heartbeat and extend the Work lease (POST /v1/environments/{environment_id}/work/{work_id}/heartbeat).
-func (c *Client) HeartbeatEnvironmentWork(ctx context.Context, environment_id string, work_id string, params HeartbeatEnvironmentWorkParams) (EnvironmentWorkHeartbeat, error) {
+// Heartbeat Record a conditional heartbeat and extend the Work lease (POST /v1/environments/{environment_id}/work/{work_id}/heartbeat).
+func (c *EnvironmentsWorkService) Heartbeat(ctx context.Context, environment_id string, work_id string, params HeartbeatEnvironmentWorkParams) (EnvironmentWorkHeartbeat, error) {
 	query := make(url.Values)
 	addQuery(query, "expected_last_heartbeat", params.ExpectedLastHeartbeat)
 	addQuery(query, "desired_ttl_seconds", params.DesiredTTLSeconds)
 	path := "/v1/environments/" + escapePath(environment_id) + "/work/" + escapePath(work_id) + "/heartbeat"
 	var result EnvironmentWorkHeartbeat
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListAgentVersions List Agent versions (GET /v1/agents/{agent_id}/versions).
-func (c *Client) ListAgentVersions(ctx context.Context, agent_id string, params ListAgentVersionsParams) (AgentList, error) {
+// List List Agent versions (GET /v1/agents/{agent_id}/versions).
+func (c *AgentsVersionsService) List(ctx context.Context, agent_id string, params ListAgentVersionsParams) (AgentList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	path := "/v1/agents/" + escapePath(agent_id) + "/versions"
 	var result AgentList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListAgentVersionsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListAgentVersionsAutoPaging(ctx context.Context, agent_id string, params ListAgentVersionsParams) *PageIterator[Agent] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *AgentsVersionsService) ListAutoPaging(ctx context.Context, agent_id string, params ListAgentVersionsParams) *PageIterator[Agent] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[Agent], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListAgentVersions(ctx, agent_id, params)
+		result, err := c.List(ctx, agent_id, params)
 		if err != nil {
 			return Page[Agent]{}, err
 		}
@@ -648,8 +648,8 @@ func (c *Client) ListAgentVersionsAutoPaging(ctx context.Context, agent_id strin
 	})
 }
 
-// ListAgents List Agents (GET /v1/agents).
-func (c *Client) ListAgents(ctx context.Context, params ListAgentsParams) (AgentList, error) {
+// List List Agents (GET /v1/agents).
+func (c *AgentsService) List(ctx context.Context, params ListAgentsParams) (AgentList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
@@ -658,18 +658,18 @@ func (c *Client) ListAgents(ctx context.Context, params ListAgentsParams) (Agent
 	addQuery(query, "created_at[lte]", params.CreatedAtLte)
 	path := "/v1/agents"
 	var result AgentList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListAgentsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListAgentsAutoPaging(ctx context.Context, params ListAgentsParams) *PageIterator[Agent] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *AgentsService) ListAutoPaging(ctx context.Context, params ListAgentsParams) *PageIterator[Agent] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[Agent], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListAgents(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[Agent]{}, err
 		}
@@ -681,8 +681,8 @@ func (c *Client) ListAgentsAutoPaging(ctx context.Context, params ListAgentsPara
 	})
 }
 
-// ListDeploymentRuns List Deployment Runs (GET /v1/deployment_runs).
-func (c *Client) ListDeploymentRuns(ctx context.Context, params ListDeploymentRunsParams) (DeploymentRunList, error) {
+// List List Deployment Runs (GET /v1/deployment_runs).
+func (c *DeploymentRunsService) List(ctx context.Context, params ListDeploymentRunsParams) (DeploymentRunList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
@@ -695,18 +695,18 @@ func (c *Client) ListDeploymentRuns(ctx context.Context, params ListDeploymentRu
 	addQuery(query, "trigger_type", params.TriggerType)
 	path := "/v1/deployment_runs"
 	var result DeploymentRunList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListDeploymentRunsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListDeploymentRunsAutoPaging(ctx context.Context, params ListDeploymentRunsParams) *PageIterator[DeploymentRun] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *DeploymentRunsService) ListAutoPaging(ctx context.Context, params ListDeploymentRunsParams) *PageIterator[DeploymentRun] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[DeploymentRun], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListDeploymentRuns(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[DeploymentRun]{}, err
 		}
@@ -718,8 +718,8 @@ func (c *Client) ListDeploymentRunsAutoPaging(ctx context.Context, params ListDe
 	})
 }
 
-// ListDeployments List Deployments (GET /v1/deployments).
-func (c *Client) ListDeployments(ctx context.Context, params ListDeploymentsParams) (DeploymentList, error) {
+// List List Deployments (GET /v1/deployments).
+func (c *DeploymentsService) List(ctx context.Context, params ListDeploymentsParams) (DeploymentList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
@@ -730,18 +730,18 @@ func (c *Client) ListDeployments(ctx context.Context, params ListDeploymentsPara
 	addQuery(query, "status", params.Status)
 	path := "/v1/deployments"
 	var result DeploymentList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListDeploymentsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListDeploymentsAutoPaging(ctx context.Context, params ListDeploymentsParams) *PageIterator[Deployment] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *DeploymentsService) ListAutoPaging(ctx context.Context, params ListDeploymentsParams) *PageIterator[Deployment] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[Deployment], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListDeployments(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[Deployment]{}, err
 		}
@@ -753,25 +753,25 @@ func (c *Client) ListDeploymentsAutoPaging(ctx context.Context, params ListDeplo
 	})
 }
 
-// ListEnvironmentWork List self-hosted Environment Work items (GET /v1/environments/{environment_id}/work).
-func (c *Client) ListEnvironmentWork(ctx context.Context, environment_id string, params ListEnvironmentWorkParams) (EnvironmentWorkList, error) {
+// List List self-hosted Environment Work items (GET /v1/environments/{environment_id}/work).
+func (c *EnvironmentsWorkService) List(ctx context.Context, environment_id string, params ListEnvironmentWorkParams) (EnvironmentWorkList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	path := "/v1/environments/" + escapePath(environment_id) + "/work"
 	var result EnvironmentWorkList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListEnvironmentWorkAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListEnvironmentWorkAutoPaging(ctx context.Context, environment_id string, params ListEnvironmentWorkParams) *PageIterator[EnvironmentWork] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *EnvironmentsWorkService) ListAutoPaging(ctx context.Context, environment_id string, params ListEnvironmentWorkParams) *PageIterator[EnvironmentWork] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[EnvironmentWork], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListEnvironmentWork(ctx, environment_id, params)
+		result, err := c.List(ctx, environment_id, params)
 		if err != nil {
 			return Page[EnvironmentWork]{}, err
 		}
@@ -783,26 +783,26 @@ func (c *Client) ListEnvironmentWorkAutoPaging(ctx context.Context, environment_
 	})
 }
 
-// ListEnvironments List Environments (GET /v1/environments).
-func (c *Client) ListEnvironments(ctx context.Context, params ListEnvironmentsParams) (EnvironmentList, error) {
+// List List Environments (GET /v1/environments).
+func (c *EnvironmentsService) List(ctx context.Context, params ListEnvironmentsParams) (EnvironmentList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	addQuery(query, "include_archived", params.IncludeArchived)
 	path := "/v1/environments"
 	var result EnvironmentList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListEnvironmentsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListEnvironmentsAutoPaging(ctx context.Context, params ListEnvironmentsParams) *PageIterator[Environment] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *EnvironmentsService) ListAutoPaging(ctx context.Context, params ListEnvironmentsParams) *PageIterator[Environment] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[Environment], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListEnvironments(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[Environment]{}, err
 		}
@@ -814,8 +814,8 @@ func (c *Client) ListEnvironmentsAutoPaging(ctx context.Context, params ListEnvi
 	})
 }
 
-// ListFiles List Files (GET /v1/files).
-func (c *Client) ListFiles(ctx context.Context, params ListFilesParams) (FileList, error) {
+// List List Files (GET /v1/files).
+func (c *FilesService) List(ctx context.Context, params ListFilesParams) (FileList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "after_id", params.AfterID)
@@ -823,12 +823,12 @@ func (c *Client) ListFiles(ctx context.Context, params ListFilesParams) (FileLis
 	addQuery(query, "scope_id", params.ScopeID)
 	path := "/v1/files"
 	var result FileList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListFilesAutoPaging follows Files cursors, preserving before_id direction.
-func (c *Client) ListFilesAutoPaging(ctx context.Context, params ListFilesParams) *PageIterator[File] {
+// ListAutoPaging follows Files cursors, preserving before_id direction.
+func (c *FilesService) ListAutoPaging(ctx context.Context, params ListFilesParams) *PageIterator[File] {
 	first, _ := params.AfterID.Get()
 	before, reverse := params.BeforeID.Get()
 	if reverse {
@@ -842,7 +842,7 @@ func (c *Client) ListFilesAutoPaging(ctx context.Context, params ListFilesParams
 				params.AfterID = Some(cursor)
 			}
 		}
-		result, err := c.ListFiles(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[File]{}, err
 		}
@@ -861,8 +861,8 @@ func (c *Client) ListFilesAutoPaging(ctx context.Context, params ListFilesParams
 	})
 }
 
-// ListMemories List Memories and optional depth-one path prefixes (GET /v1/memory_stores/{store_id}/memories).
-func (c *Client) ListMemories(ctx context.Context, store_id string, params ListMemoriesParams) (MemoryList, error) {
+// List List Memories and optional depth-one path prefixes (GET /v1/memory_stores/{store_id}/memories).
+func (c *MemoryStoresMemoriesService) List(ctx context.Context, store_id string, params ListMemoriesParams) (MemoryList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
@@ -871,18 +871,18 @@ func (c *Client) ListMemories(ctx context.Context, store_id string, params ListM
 	addQuery(query, "depth", params.Depth)
 	path := "/v1/memory_stores/" + escapePath(store_id) + "/memories"
 	var result MemoryList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListMemoriesAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListMemoriesAutoPaging(ctx context.Context, store_id string, params ListMemoriesParams) *PageIterator[MemoryListItem] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *MemoryStoresMemoriesService) ListAutoPaging(ctx context.Context, store_id string, params ListMemoriesParams) *PageIterator[MemoryListItem] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[MemoryListItem], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListMemories(ctx, store_id, params)
+		result, err := c.List(ctx, store_id, params)
 		if err != nil {
 			return Page[MemoryListItem]{}, err
 		}
@@ -894,8 +894,8 @@ func (c *Client) ListMemoriesAutoPaging(ctx context.Context, store_id string, pa
 	})
 }
 
-// ListMemoryStores List Memory Stores (GET /v1/memory_stores).
-func (c *Client) ListMemoryStores(ctx context.Context, params ListMemoryStoresParams) (MemoryStoreList, error) {
+// List List Memory Stores (GET /v1/memory_stores).
+func (c *MemoryStoresService) List(ctx context.Context, params ListMemoryStoresParams) (MemoryStoreList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
@@ -904,18 +904,18 @@ func (c *Client) ListMemoryStores(ctx context.Context, params ListMemoryStoresPa
 	addQuery(query, "created_at[lte]", params.CreatedAtLte)
 	path := "/v1/memory_stores"
 	var result MemoryStoreList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListMemoryStoresAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListMemoryStoresAutoPaging(ctx context.Context, params ListMemoryStoresParams) *PageIterator[MemoryStore] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *MemoryStoresService) ListAutoPaging(ctx context.Context, params ListMemoryStoresParams) *PageIterator[MemoryStore] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[MemoryStore], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListMemoryStores(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[MemoryStore]{}, err
 		}
@@ -927,8 +927,8 @@ func (c *Client) ListMemoryStoresAutoPaging(ctx context.Context, params ListMemo
 	})
 }
 
-// ListMemoryVersions List immutable Memory Versions (GET /v1/memory_stores/{store_id}/memory_versions).
-func (c *Client) ListMemoryVersions(ctx context.Context, store_id string, params ListMemoryVersionsParams) (MemoryVersionList, error) {
+// List List immutable Memory Versions (GET /v1/memory_stores/{store_id}/memory_versions).
+func (c *MemoryStoresVersionsService) List(ctx context.Context, store_id string, params ListMemoryVersionsParams) (MemoryVersionList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
@@ -941,18 +941,18 @@ func (c *Client) ListMemoryVersions(ctx context.Context, store_id string, params
 	addQuery(query, "created_at[lte]", params.CreatedAtLte)
 	path := "/v1/memory_stores/" + escapePath(store_id) + "/memory_versions"
 	var result MemoryVersionList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListMemoryVersionsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListMemoryVersionsAutoPaging(ctx context.Context, store_id string, params ListMemoryVersionsParams) *PageIterator[MemoryVersion] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *MemoryStoresVersionsService) ListAutoPaging(ctx context.Context, store_id string, params ListMemoryVersionsParams) *PageIterator[MemoryVersion] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[MemoryVersion], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListMemoryVersions(ctx, store_id, params)
+		result, err := c.List(ctx, store_id, params)
 		if err != nil {
 			return Page[MemoryVersion]{}, err
 		}
@@ -964,8 +964,8 @@ func (c *Client) ListMemoryVersionsAutoPaging(ctx context.Context, store_id stri
 	})
 }
 
-// ListSessionEvents List Session event history (GET /v1/sessions/{session_id}/events).
-func (c *Client) ListSessionEvents(ctx context.Context, session_id string, params ListSessionEventsParams) (SessionEventList, error) {
+// List List Session event history (GET /v1/sessions/{session_id}/events).
+func (c *SessionsEventsService) List(ctx context.Context, session_id string, params ListSessionEventsParams) (SessionEventList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "order", params.Order)
@@ -977,18 +977,18 @@ func (c *Client) ListSessionEvents(ctx context.Context, session_id string, param
 	addQuery(query, "created_at[lte]", params.CreatedAtLte)
 	path := "/v1/sessions/" + escapePath(session_id) + "/events"
 	var result SessionEventList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListSessionEventsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListSessionEventsAutoPaging(ctx context.Context, session_id string, params ListSessionEventsParams) *PageIterator[SessionEvent] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *SessionsEventsService) ListAutoPaging(ctx context.Context, session_id string, params ListSessionEventsParams) *PageIterator[SessionEvent] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[SessionEvent], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListSessionEvents(ctx, session_id, params)
+		result, err := c.List(ctx, session_id, params)
 		if err != nil {
 			return Page[SessionEvent]{}, err
 		}
@@ -1000,25 +1000,25 @@ func (c *Client) ListSessionEventsAutoPaging(ctx context.Context, session_id str
 	})
 }
 
-// ListSessionResources List Session Resources (GET /v1/sessions/{session_id}/resources).
-func (c *Client) ListSessionResources(ctx context.Context, session_id string, params ListSessionResourcesParams) (SessionResourceList, error) {
+// List List Session Resources (GET /v1/sessions/{session_id}/resources).
+func (c *SessionsResourcesService) List(ctx context.Context, session_id string, params ListSessionResourcesParams) (SessionResourceList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	path := "/v1/sessions/" + escapePath(session_id) + "/resources"
 	var result SessionResourceList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListSessionResourcesAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListSessionResourcesAutoPaging(ctx context.Context, session_id string, params ListSessionResourcesParams) *PageIterator[SessionResource] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *SessionsResourcesService) ListAutoPaging(ctx context.Context, session_id string, params ListSessionResourcesParams) *PageIterator[SessionResource] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[SessionResource], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListSessionResources(ctx, session_id, params)
+		result, err := c.List(ctx, session_id, params)
 		if err != nil {
 			return Page[SessionResource]{}, err
 		}
@@ -1030,25 +1030,25 @@ func (c *Client) ListSessionResourcesAutoPaging(ctx context.Context, session_id 
 	})
 }
 
-// ListSessionThreadEvents List persisted events for one Session Thread (GET /v1/sessions/{session_id}/threads/{thread_id}/events).
-func (c *Client) ListSessionThreadEvents(ctx context.Context, session_id string, thread_id string, params ListSessionThreadEventsParams) (SessionEventList, error) {
+// List List persisted events for one Session Thread (GET /v1/sessions/{session_id}/threads/{thread_id}/events).
+func (c *SessionsThreadsEventsService) List(ctx context.Context, session_id string, thread_id string, params ListSessionThreadEventsParams) (SessionEventList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	path := "/v1/sessions/" + escapePath(session_id) + "/threads/" + escapePath(thread_id) + "/events"
 	var result SessionEventList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListSessionThreadEventsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListSessionThreadEventsAutoPaging(ctx context.Context, session_id string, thread_id string, params ListSessionThreadEventsParams) *PageIterator[SessionEvent] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *SessionsThreadsEventsService) ListAutoPaging(ctx context.Context, session_id string, thread_id string, params ListSessionThreadEventsParams) *PageIterator[SessionEvent] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[SessionEvent], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListSessionThreadEvents(ctx, session_id, thread_id, params)
+		result, err := c.List(ctx, session_id, thread_id, params)
 		if err != nil {
 			return Page[SessionEvent]{}, err
 		}
@@ -1060,25 +1060,25 @@ func (c *Client) ListSessionThreadEventsAutoPaging(ctx context.Context, session_
 	})
 }
 
-// ListSessionThreads List Session Threads, primary first (GET /v1/sessions/{session_id}/threads).
-func (c *Client) ListSessionThreads(ctx context.Context, session_id string, params ListSessionThreadsParams) (SessionThreadList, error) {
+// List List Session Threads, primary first (GET /v1/sessions/{session_id}/threads).
+func (c *SessionsThreadsService) List(ctx context.Context, session_id string, params ListSessionThreadsParams) (SessionThreadList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	path := "/v1/sessions/" + escapePath(session_id) + "/threads"
 	var result SessionThreadList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListSessionThreadsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListSessionThreadsAutoPaging(ctx context.Context, session_id string, params ListSessionThreadsParams) *PageIterator[SessionThread] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *SessionsThreadsService) ListAutoPaging(ctx context.Context, session_id string, params ListSessionThreadsParams) *PageIterator[SessionThread] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[SessionThread], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListSessionThreads(ctx, session_id, params)
+		result, err := c.List(ctx, session_id, params)
 		if err != nil {
 			return Page[SessionThread]{}, err
 		}
@@ -1090,8 +1090,8 @@ func (c *Client) ListSessionThreadsAutoPaging(ctx context.Context, session_id st
 	})
 }
 
-// ListSessions List Sessions (GET /v1/sessions).
-func (c *Client) ListSessions(ctx context.Context, params ListSessionsParams) (SessionList, error) {
+// List List Sessions (GET /v1/sessions).
+func (c *SessionsService) List(ctx context.Context, params ListSessionsParams) (SessionList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
@@ -1108,18 +1108,18 @@ func (c *Client) ListSessions(ctx context.Context, params ListSessionsParams) (S
 	addQuery(query, "memory_store_id", params.MemoryStoreID)
 	path := "/v1/sessions"
 	var result SessionList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListSessionsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListSessionsAutoPaging(ctx context.Context, params ListSessionsParams) *PageIterator[Session] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *SessionsService) ListAutoPaging(ctx context.Context, params ListSessionsParams) *PageIterator[Session] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[Session], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListSessions(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[Session]{}, err
 		}
@@ -1131,25 +1131,25 @@ func (c *Client) ListSessionsAutoPaging(ctx context.Context, params ListSessions
 	})
 }
 
-// ListSkillVersions List immutable Skill Versions (GET /v1/skills/{skill_id}/versions).
-func (c *Client) ListSkillVersions(ctx context.Context, skill_id string, params ListSkillVersionsParams) (SkillVersionList, error) {
+// List List immutable Skill Versions (GET /v1/skills/{skill_id}/versions).
+func (c *SkillsVersionsService) List(ctx context.Context, skill_id string, params ListSkillVersionsParams) (SkillVersionList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	path := "/v1/skills/" + escapePath(skill_id) + "/versions"
 	var result SkillVersionList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListSkillVersionsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListSkillVersionsAutoPaging(ctx context.Context, skill_id string, params ListSkillVersionsParams) *PageIterator[SkillVersion] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *SkillsVersionsService) ListAutoPaging(ctx context.Context, skill_id string, params ListSkillVersionsParams) *PageIterator[SkillVersion] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[SkillVersion], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListSkillVersions(ctx, skill_id, params)
+		result, err := c.List(ctx, skill_id, params)
 		if err != nil {
 			return Page[SkillVersion]{}, err
 		}
@@ -1161,26 +1161,26 @@ func (c *Client) ListSkillVersionsAutoPaging(ctx context.Context, skill_id strin
 	})
 }
 
-// ListSkills List Skills (GET /v1/skills).
-func (c *Client) ListSkills(ctx context.Context, params ListSkillsParams) (SkillList, error) {
+// List List Skills (GET /v1/skills).
+func (c *SkillsService) List(ctx context.Context, params ListSkillsParams) (SkillList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	addQuery(query, "source", params.Source)
 	path := "/v1/skills"
 	var result SkillList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListSkillsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListSkillsAutoPaging(ctx context.Context, params ListSkillsParams) *PageIterator[SkillResource] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *SkillsService) ListAutoPaging(ctx context.Context, params ListSkillsParams) *PageIterator[SkillResource] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[SkillResource], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListSkills(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[SkillResource]{}, err
 		}
@@ -1192,26 +1192,26 @@ func (c *Client) ListSkillsAutoPaging(ctx context.Context, params ListSkillsPara
 	})
 }
 
-// ListVaultCredentials List Credentials in a Vault (GET /v1/vaults/{vault_id}/credentials).
-func (c *Client) ListVaultCredentials(ctx context.Context, vault_id string, params ListVaultCredentialsParams) (VaultCredentialList, error) {
+// List List Credentials in a Vault (GET /v1/vaults/{vault_id}/credentials).
+func (c *VaultsCredentialsService) List(ctx context.Context, vault_id string, params ListVaultCredentialsParams) (VaultCredentialList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	addQuery(query, "include_archived", params.IncludeArchived)
 	path := "/v1/vaults/" + escapePath(vault_id) + "/credentials"
 	var result VaultCredentialList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListVaultCredentialsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListVaultCredentialsAutoPaging(ctx context.Context, vault_id string, params ListVaultCredentialsParams) *PageIterator[VaultCredential] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *VaultsCredentialsService) ListAutoPaging(ctx context.Context, vault_id string, params ListVaultCredentialsParams) *PageIterator[VaultCredential] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[VaultCredential], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListVaultCredentials(ctx, vault_id, params)
+		result, err := c.List(ctx, vault_id, params)
 		if err != nil {
 			return Page[VaultCredential]{}, err
 		}
@@ -1223,26 +1223,26 @@ func (c *Client) ListVaultCredentialsAutoPaging(ctx context.Context, vault_id st
 	})
 }
 
-// ListVaults List Vaults (GET /v1/vaults).
-func (c *Client) ListVaults(ctx context.Context, params ListVaultsParams) (VaultList, error) {
+// List List Vaults (GET /v1/vaults).
+func (c *VaultsService) List(ctx context.Context, params ListVaultsParams) (VaultList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	addQuery(query, "include_archived", params.IncludeArchived)
 	path := "/v1/vaults"
 	var result VaultList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListVaultsAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListVaultsAutoPaging(ctx context.Context, params ListVaultsParams) *PageIterator[Vault] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *VaultsService) ListAutoPaging(ctx context.Context, params ListVaultsParams) *PageIterator[Vault] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[Vault], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListVaults(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[Vault]{}, err
 		}
@@ -1254,25 +1254,25 @@ func (c *Client) ListVaultsAutoPaging(ctx context.Context, params ListVaultsPara
 	})
 }
 
-// ListWebhooks List Webhook endpoints (GET /v1/webhooks).
-func (c *Client) ListWebhooks(ctx context.Context, params ListWebhooksParams) (WebhookList, error) {
+// List List Webhook endpoints (GET /v1/webhooks).
+func (c *WebhooksService) List(ctx context.Context, params ListWebhooksParams) (WebhookList, error) {
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
 	path := "/v1/webhooks"
 	var result WebhookList
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
-// ListWebhooksAutoPaging iterates every result, preserving the initial filters.
-func (c *Client) ListWebhooksAutoPaging(ctx context.Context, params ListWebhooksParams) *PageIterator[Webhook] {
+// ListAutoPaging iterates every result, preserving the initial filters.
+func (c *WebhooksService) ListAutoPaging(ctx context.Context, params ListWebhooksParams) *PageIterator[Webhook] {
 	first, _ := params.Page.Get()
 	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[Webhook], error) {
 		if cursor != "" {
 			params.Page = Some(cursor)
 		}
-		result, err := c.ListWebhooks(ctx, params)
+		result, err := c.List(ctx, params)
 		if err != nil {
 			return Page[Webhook]{}, err
 		}
@@ -1285,215 +1285,215 @@ func (c *Client) ListWebhooksAutoPaging(ctx context.Context, params ListWebhooks
 }
 
 // OpenAPI Get the Mango OpenAPI document (GET /openapi.yaml).
-func (c *Client) OpenAPI(ctx context.Context) (*Download, error) {
+func (c *SystemService) OpenAPI(ctx context.Context) (*Download, error) {
 	query := make(url.Values)
 	path := "/openapi.yaml"
-	return c.download(ctx, "GET", path, query, "application/yaml", false)
+	return c.client.download(ctx, "GET", path, query, "application/yaml", false)
 }
 
-// PauseDeployment Pause scheduled triggers (POST /v1/deployments/{deployment_id}/pause).
-func (c *Client) PauseDeployment(ctx context.Context, deployment_id string) (Deployment, error) {
+// Pause Pause scheduled triggers (POST /v1/deployments/{deployment_id}/pause).
+func (c *DeploymentsService) Pause(ctx context.Context, deployment_id string) (Deployment, error) {
 	query := make(url.Values)
 	path := "/v1/deployments/" + escapePath(deployment_id) + "/pause"
 	var result Deployment
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// PollEnvironmentWork Poll and tentatively claim the oldest available Work item (GET /v1/environments/{environment_id}/work/poll).
-func (c *Client) PollEnvironmentWork(ctx context.Context, environment_id string, params PollEnvironmentWorkParams) (PollEnvironmentWorkResponse, error) {
+// Poll Poll and tentatively claim the oldest available Work item (GET /v1/environments/{environment_id}/work/poll).
+func (c *EnvironmentsWorkService) Poll(ctx context.Context, environment_id string, params PollEnvironmentWorkParams) (PollEnvironmentWorkResponse, error) {
 	query := make(url.Values)
 	addQuery(query, "block_ms", params.BlockMs)
 	addQuery(query, "reclaim_older_than_ms", params.ReclaimOlderThanMs)
 	addQuery(query, "worker_id", params.WorkerID)
 	path := "/v1/environments/" + escapePath(environment_id) + "/work/poll"
 	var result PollEnvironmentWorkResponse
-	err := c.doJSON(ctx, "GET", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
 
 // Readiness Readiness probe (GET /readyz).
-func (c *Client) Readiness(ctx context.Context) error {
+func (c *SystemService) Readiness(ctx context.Context) error {
 	query := make(url.Values)
 	path := "/readyz"
-	return c.doJSON(ctx, "GET", path, query, nil, nil, false)
+	return c.client.doJSON(ctx, "GET", path, query, nil, nil, false)
 }
 
-// RedactMemoryVersion Permanently redact the content of an historical Memory Version (POST /v1/memory_stores/{store_id}/memory_versions/{version_id}/redact).
-func (c *Client) RedactMemoryVersion(ctx context.Context, store_id string, version_id string) (MemoryVersion, error) {
+// Redact Permanently redact the content of an historical Memory Version (POST /v1/memory_stores/{store_id}/memory_versions/{version_id}/redact).
+func (c *MemoryStoresVersionsService) Redact(ctx context.Context, store_id string, version_id string) (MemoryVersion, error) {
 	query := make(url.Values)
 	path := "/v1/memory_stores/" + escapePath(store_id) + "/memory_versions/" + escapePath(version_id) + "/redact"
 	var result MemoryVersion
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// RegenerateWebhookSigningSecret Replace and reveal a Webhook signing secret (POST /v1/webhooks/{webhook_id}/regenerate_signing_secret).
-func (c *Client) RegenerateWebhookSigningSecret(ctx context.Context, webhook_id string) (WebhookWithSigningSecret, error) {
+// RegenerateSigningSecret Replace and reveal a Webhook signing secret (POST /v1/webhooks/{webhook_id}/regenerate_signing_secret).
+func (c *WebhooksService) RegenerateSigningSecret(ctx context.Context, webhook_id string) (WebhookWithSigningSecret, error) {
 	query := make(url.Values)
 	path := "/v1/webhooks/" + escapePath(webhook_id) + "/regenerate_signing_secret"
 	var result WebhookWithSigningSecret
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// RunDeployment Run a Deployment immediately (POST /v1/deployments/{deployment_id}/run).
-func (c *Client) RunDeployment(ctx context.Context, deployment_id string) (DeploymentRun, error) {
+// Run Run a Deployment immediately (POST /v1/deployments/{deployment_id}/run).
+func (c *DeploymentsService) Run(ctx context.Context, deployment_id string) (DeploymentRun, error) {
 	query := make(url.Values)
 	path := "/v1/deployments/" + escapePath(deployment_id) + "/run"
 	var result DeploymentRun
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// SendSessionEvents Send Session events (POST /v1/sessions/{session_id}/events).
-func (c *Client) SendSessionEvents(ctx context.Context, session_id string, body SendSessionEventsRequest) (SessionEventBatch, error) {
+// Send Send Session events (POST /v1/sessions/{session_id}/events).
+func (c *SessionsEventsService) Send(ctx context.Context, session_id string, body SendSessionEventsRequest) (SessionEventBatch, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + "/events"
 	var result SessionEventBatch
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// StopEnvironmentWork Request graceful or forced Work shutdown (POST /v1/environments/{environment_id}/work/{work_id}/stop).
-func (c *Client) StopEnvironmentWork(ctx context.Context, environment_id string, work_id string, body EnvironmentWorkStopRequest) error {
+// Stop Request graceful or forced Work shutdown (POST /v1/environments/{environment_id}/work/{work_id}/stop).
+func (c *EnvironmentsWorkService) Stop(ctx context.Context, environment_id string, work_id string, body EnvironmentWorkStopRequest) error {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + "/work/" + escapePath(work_id) + "/stop"
-	return c.doJSON(ctx, "POST", path, query, body, nil, true)
+	return c.client.doJSON(ctx, "POST", path, query, body, nil, true)
 }
 
-// StreamSessionEvents Stream live Session events over SSE (GET /v1/sessions/{session_id}/events/stream).
-func (c *Client) StreamSessionEvents(ctx context.Context, session_id string, params StreamSessionEventsParams) (*EventStream, error) {
+// Stream Stream live Session events over SSE (GET /v1/sessions/{session_id}/events/stream).
+func (c *SessionsEventsService) Stream(ctx context.Context, session_id string, params StreamSessionEventsParams) (*EventStream, error) {
 	query := make(url.Values)
 	addQueryArray(query, "event_deltas[]", params.EventDeltas)
 	path := "/v1/sessions/" + escapePath(session_id) + "/events/stream"
-	return c.stream(ctx, "GET", path, query, true)
+	return c.client.stream(ctx, "GET", path, query, true)
 }
 
-// StreamSessionThreadEvents Stream live events for one Session Thread over SSE (GET /v1/sessions/{session_id}/threads/{thread_id}/stream).
-func (c *Client) StreamSessionThreadEvents(ctx context.Context, session_id string, thread_id string, params StreamSessionThreadEventsParams) (*EventStream, error) {
+// Stream Stream live events for one Session Thread over SSE (GET /v1/sessions/{session_id}/threads/{thread_id}/stream).
+func (c *SessionsThreadsEventsService) Stream(ctx context.Context, session_id string, thread_id string, params StreamSessionThreadEventsParams) (*EventStream, error) {
 	query := make(url.Values)
 	addQueryArray(query, "event_deltas[]", params.EventDeltas)
 	path := "/v1/sessions/" + escapePath(session_id) + "/threads/" + escapePath(thread_id) + "/stream"
-	return c.stream(ctx, "GET", path, query, true)
+	return c.client.stream(ctx, "GET", path, query, true)
 }
 
-// UnpauseDeployment Resume scheduled triggers without backfilling missed occurrences (POST /v1/deployments/{deployment_id}/unpause).
-func (c *Client) UnpauseDeployment(ctx context.Context, deployment_id string) (Deployment, error) {
+// Unpause Resume scheduled triggers without backfilling missed occurrences (POST /v1/deployments/{deployment_id}/unpause).
+func (c *DeploymentsService) Unpause(ctx context.Context, deployment_id string) (Deployment, error) {
 	query := make(url.Values)
 	path := "/v1/deployments/" + escapePath(deployment_id) + "/unpause"
 	var result Deployment
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }
 
-// UpdateAgent Update an Agent and create a new version when fields change (POST /v1/agents/{agent_id}).
-func (c *Client) UpdateAgent(ctx context.Context, agent_id string, body AgentUpdateRequest) (Agent, error) {
+// Update Update an Agent and create a new version when fields change (POST /v1/agents/{agent_id}).
+func (c *AgentsService) Update(ctx context.Context, agent_id string, body AgentUpdateRequest) (Agent, error) {
 	query := make(url.Values)
 	path := "/v1/agents/" + escapePath(agent_id) + ""
 	var result Agent
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UpdateDeployment Update a Deployment (POST /v1/deployments/{deployment_id}).
-func (c *Client) UpdateDeployment(ctx context.Context, deployment_id string, body DeploymentUpdateRequest) (Deployment, error) {
+// Update Update a Deployment (POST /v1/deployments/{deployment_id}).
+func (c *DeploymentsService) Update(ctx context.Context, deployment_id string, body DeploymentUpdateRequest) (Deployment, error) {
 	query := make(url.Values)
 	path := "/v1/deployments/" + escapePath(deployment_id) + ""
 	var result Deployment
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UpdateEnvironment Update an Environment (POST /v1/environments/{environment_id}).
-func (c *Client) UpdateEnvironment(ctx context.Context, environment_id string, body EnvironmentUpdateRequest) (Environment, error) {
+// Update Update an Environment (POST /v1/environments/{environment_id}).
+func (c *EnvironmentsService) Update(ctx context.Context, environment_id string, body EnvironmentUpdateRequest) (Environment, error) {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + ""
 	var result Environment
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UpdateEnvironmentWork Merge metadata into an Environment Work item (POST /v1/environments/{environment_id}/work/{work_id}).
-func (c *Client) UpdateEnvironmentWork(ctx context.Context, environment_id string, work_id string, body EnvironmentWorkUpdateRequest) (EnvironmentWork, error) {
+// Update Merge metadata into an Environment Work item (POST /v1/environments/{environment_id}/work/{work_id}).
+func (c *EnvironmentsWorkService) Update(ctx context.Context, environment_id string, work_id string, body EnvironmentWorkUpdateRequest) (EnvironmentWork, error) {
 	query := make(url.Values)
 	path := "/v1/environments/" + escapePath(environment_id) + "/work/" + escapePath(work_id) + ""
 	var result EnvironmentWork
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UpdateMemory Update a Memory with an optional SHA-256 precondition (POST /v1/memory_stores/{store_id}/memories/{memory_id}).
-func (c *Client) UpdateMemory(ctx context.Context, store_id string, memory_id string, params UpdateMemoryParams, body MemoryUpdateRequest) (Memory, error) {
+// Update Update a Memory with an optional SHA-256 precondition (POST /v1/memory_stores/{store_id}/memories/{memory_id}).
+func (c *MemoryStoresMemoriesService) Update(ctx context.Context, store_id string, memory_id string, params UpdateMemoryParams, body MemoryUpdateRequest) (Memory, error) {
 	query := make(url.Values)
 	addQuery(query, "view", params.View)
 	path := "/v1/memory_stores/" + escapePath(store_id) + "/memories/" + escapePath(memory_id) + ""
 	var result Memory
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UpdateMemoryStore Update a Memory Store (POST /v1/memory_stores/{store_id}).
-func (c *Client) UpdateMemoryStore(ctx context.Context, store_id string, body MemoryStoreUpdateRequest) (MemoryStore, error) {
+// Update Update a Memory Store (POST /v1/memory_stores/{store_id}).
+func (c *MemoryStoresService) Update(ctx context.Context, store_id string, body MemoryStoreUpdateRequest) (MemoryStore, error) {
 	query := make(url.Values)
 	path := "/v1/memory_stores/" + escapePath(store_id) + ""
 	var result MemoryStore
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UpdateSession Update Session metadata, title, or the next-turn tool configuration (POST /v1/sessions/{session_id}).
-func (c *Client) UpdateSession(ctx context.Context, session_id string, body SessionUpdateRequest) (Session, error) {
+// Update Update Session metadata, title, or the next-turn tool configuration (POST /v1/sessions/{session_id}).
+func (c *SessionsService) Update(ctx context.Context, session_id string, body SessionUpdateRequest) (Session, error) {
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + ""
 	var result Session
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UpdateVault Update a Vault (POST /v1/vaults/{vault_id}).
-func (c *Client) UpdateVault(ctx context.Context, vault_id string, body VaultUpdateRequest) (Vault, error) {
+// Update Update a Vault (POST /v1/vaults/{vault_id}).
+func (c *VaultsService) Update(ctx context.Context, vault_id string, body VaultUpdateRequest) (Vault, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + ""
 	var result Vault
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UpdateVaultCredential Update a Credential (POST /v1/vaults/{vault_id}/credentials/{credential_id}).
-func (c *Client) UpdateVaultCredential(ctx context.Context, vault_id string, credential_id string, body VaultCredentialUpdateRequest) (VaultCredential, error) {
+// Update Update a Credential (POST /v1/vaults/{vault_id}/credentials/{credential_id}).
+func (c *VaultsCredentialsService) Update(ctx context.Context, vault_id string, credential_id string, body VaultCredentialUpdateRequest) (VaultCredential, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + "/credentials/" + escapePath(credential_id) + ""
 	var result VaultCredential
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UpdateWebhook Update a Webhook endpoint (POST /v1/webhooks/{webhook_id}).
-func (c *Client) UpdateWebhook(ctx context.Context, webhook_id string, body WebhookUpdateRequest) (Webhook, error) {
+// Update Update a Webhook endpoint (POST /v1/webhooks/{webhook_id}).
+func (c *WebhooksService) Update(ctx context.Context, webhook_id string, body WebhookUpdateRequest) (Webhook, error) {
 	query := make(url.Values)
 	path := "/v1/webhooks/" + escapePath(webhook_id) + ""
 	var result Webhook
-	err := c.doJSON(ctx, "POST", path, query, body, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
-// UploadFile Upload a File (POST /v1/files).
-func (c *Client) UploadFile(ctx context.Context, body FileUploadRequest) (File, error) {
+// Upload Upload a File (POST /v1/files).
+func (c *FilesService) Upload(ctx context.Context, body FileUploadRequest) (File, error) {
 	query := make(url.Values)
 	path := "/v1/files"
 	var result File
 	var parts []multipartPart
 	parts = append(parts, multipartPart{name: "file", upload: &body.File})
-	err := c.doMultipart(ctx, "POST", path, query, parts, &result, true)
+	err := c.client.doMultipart(ctx, "POST", path, query, parts, &result, true)
 	return result, err
 }
 
-// ValidateVaultCredentialMCPOAuth Live-probe and, when needed, refresh an MCP OAuth Credential (POST /v1/vaults/{vault_id}/credentials/{credential_id}/mcp_oauth_validate).
-func (c *Client) ValidateVaultCredentialMCPOAuth(ctx context.Context, vault_id string, credential_id string) (VaultCredentialValidation, error) {
+// ValidateMCPOAuth Live-probe and, when needed, refresh an MCP OAuth Credential (POST /v1/vaults/{vault_id}/credentials/{credential_id}/mcp_oauth_validate).
+func (c *VaultsCredentialsService) ValidateMCPOAuth(ctx context.Context, vault_id string, credential_id string) (VaultCredentialValidation, error) {
 	query := make(url.Values)
 	path := "/v1/vaults/" + escapePath(vault_id) + "/credentials/" + escapePath(credential_id) + "/mcp_oauth_validate"
 	var result VaultCredentialValidation
-	err := c.doJSON(ctx, "POST", path, query, nil, &result, true)
+	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
 	return result, err
 }

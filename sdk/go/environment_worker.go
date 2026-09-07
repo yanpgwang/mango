@@ -250,7 +250,7 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 				failureCtx, cancelFailure := context.WithTimeout(
 					context.WithoutCancel(ctx), min(w.stopTimeout, startup.ttl),
 				)
-				failErr := itemClient.FailEnvironmentWork(
+				failErr := itemClient.Environments.Work.Fail(
 					failureCtx, work.EnvironmentID, work.ID,
 					EnvironmentWorkFailureRequest{Message: sessionInputFailureMessage(preparationErr)},
 				)
@@ -317,7 +317,7 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 	}
 
 	stopCtx, cancelStop := context.WithTimeout(context.WithoutCancel(ctx), w.stopTimeout)
-	stopErr := itemClient.StopEnvironmentWork(stopCtx, work.EnvironmentID, work.ID, EnvironmentWorkStopRequest{Force: Some(true)})
+	stopErr := itemClient.Environments.Work.Stop(stopCtx, work.EnvironmentID, work.ID, EnvironmentWorkStopRequest{Force: Some(true)})
 	cancelStop()
 	if isAPIStatus(stopErr, http.StatusConflict) {
 		stopErr = nil
@@ -349,7 +349,7 @@ func (w *EnvironmentWorker) prepareSessionInputs(
 ) (*environmentSessionInputs, error, bool) {
 	var lastErr error
 	for attempt := 1; attempt <= maxSessionInputPreparationAttempts; attempt++ {
-		session, err := client.GetSession(ctx, sessionID)
+		session, err := client.Sessions.Get(ctx, sessionID)
 		if err != nil {
 			lastErr = fmt.Errorf("mango: retrieve Session inputs: %w", err)
 		} else {
@@ -610,7 +610,7 @@ func (w *EnvironmentWorker) runHeartbeat(
 		}
 		requestTimeout := min(w.heartbeatInterval(ttl), remaining)
 		beatCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-		response, err := client.HeartbeatEnvironmentWork(beatCtx, work.EnvironmentID, work.ID, HeartbeatEnvironmentWorkParams{
+		response, err := client.Environments.Work.Heartbeat(beatCtx, work.EnvironmentID, work.ID, HeartbeatEnvironmentWorkParams{
 			ExpectedLastHeartbeat: Some(lastHeartbeat), DesiredTTLSeconds: w.opts.DesiredTTLSeconds,
 		})
 		cancel()
@@ -706,6 +706,7 @@ func sessionTokenFromWorkSecret(secret string) (string, error) {
 func (c *Client) withAPIKey(apiKey string) *Client {
 	clone := *c
 	clone.apiKey = apiKey
+	clone.initServices()
 	return &clone
 }
 

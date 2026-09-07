@@ -27,7 +27,7 @@ func (e SSEEvent) Decode(output any) error { return json.Unmarshal(e.Data, outpu
 
 // EventStream is a live-only SSE iterator. Next is not safe for concurrent calls;
 // Close is safe while Next blocks. A disconnect does not reconnect automatically.
-// Reconcile durable history with ListSessionEvents/ListSessionThreadEvents.
+// Reconcile durable history with Sessions.Events.List/Sessions.Threads.Events.List.
 type EventStream struct {
 	scanner   *bufio.Scanner
 	body      io.ReadCloser

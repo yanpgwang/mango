@@ -11,11 +11,10 @@ loop; the Mango server still owns the Agent/model runtime and durable state.
 | Python | [Python SDK](python/) — synchronous and asynchronous clients |
 | TypeScript / JavaScript | [TypeScript SDK](typescript/) — native fetch and async iteration |
 
-The npm package [`mango-sdk@0.1.0-alpha.1`](https://www.npmjs.com/package/mango-sdk/v/0.1.0-alpha.1)
-is published. Install it with `npm install mango-sdk@0.1.0-alpha.1`.
-The Python package [`mango-sdk==0.1.0a1`](https://pypi.org/project/mango-sdk/0.1.0a1/)
-is published on PyPI. Install it with `python -m pip install 'mango-sdk==0.1.0a1'`
-in a Python 3.11+ virtual environment.
+This checkout prepares the **unreleased** resource-based Python `0.1.0a2` and
+TypeScript `0.1.0-alpha.2`. Use the source installation instructions below each
+language's README. The earlier alpha 1 packages remain published, but use the
+previous interface and cannot run current examples unchanged.
 
 All three target every operation in the current OpenAPI document: Agents,
 Environments, Environment Work, Sessions, Events, Threads, Resources, Files,
@@ -61,7 +60,7 @@ existing service and opt-in live test tiers.
 
 - Standard bearer authentication; no vendor beta headers or hosted credentials.
 - Explicit base URL selection; no hosted-service discovery.
-- Named, typed operations generated from Mango's OpenAPI operation IDs.
+- Resource services generated from explicit Mango OpenAPI SDK mappings.
 - Omitted values remain distinct from explicit `null`, `false` and empty lists.
 - Finite-request timeouts and cancellation. Close streams when no longer needed.
 - Errors retain HTTP status, Mango error type and request ID.

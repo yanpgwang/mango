@@ -16,17 +16,17 @@ def sync_types(client: Mango) -> None:
         },
     }
     body["tools"] = [tool]
-    agent: models.Agent = client.create_agent(body=body)
-    for candidate in client.iter_agents(limit=1, include_archived=False):
+    agent: models.Agent = client.agents.create(**body)
+    for candidate in client.agents.iter(limit=1, include_archived=False):
         name: str = candidate["name"]
         print(name, agent["id"])
     upload: models.FileUploadRequest = {"file": Upload("data.txt", b"hello")}
-    client.upload_file(body=upload)
+    client.files.upload(**upload)
     event: models.UserMessageEventInput = {
         "type": "user.message", "content": [{"type": "text", "text": "hello"}],
     }
-    client.send_session_events("sesn_example", body={"events": [event]})
-    with client.stream_session_events("sesn_example") as stream:
+    client.sessions.events.send("sesn_example", events=[event])
+    with client.sessions.events.stream("sesn_example") as stream:
         for envelope in stream:
             frame: models.EventStreamFrame = envelope.data
             if frame["type"] == "event_delta":
@@ -36,13 +36,13 @@ def sync_types(client: Mango) -> None:
 
 
 async def async_types(client: AsyncMango) -> None:
-    page: models.SessionList = await client.list_sessions(statuses=["idle"])
-    async for session in client.iter_sessions(limit=1):
+    page: models.SessionList = await client.sessions.list(statuses=["idle"])
+    async for session in client.sessions.iter(limit=1):
         print(session["id"], page["next_page"])
-    async with client.stream_session_events("sesn_example") as stream:
+    async with client.sessions.events.stream("sesn_example") as stream:
         async for event in stream:
             print(event.data["type"])
             break
-    async with client.download_file("file_example") as download:
+    async with client.files.download("file_example") as download:
         data: bytes = await download.read()
         print(len(data))

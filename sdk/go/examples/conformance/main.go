@@ -27,7 +27,7 @@ func run() (result error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := client.Health(ctx); err != nil {
+	if err := client.System.Health(ctx); err != nil {
 		return err
 	}
 	var environmentID, sessionID string
@@ -36,19 +36,19 @@ func run() (result error) {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cleanupCancel()
 		if sessionID != "" {
-			_, err := client.DeleteSession(cleanupCtx, sessionID)
+			_, err := client.Sessions.Delete(cleanupCtx, sessionID)
 			result = errors.Join(result, err)
 		}
 		for _, id := range agentIDs {
-			_, err := client.ArchiveAgent(cleanupCtx, id)
+			_, err := client.Agents.Archive(cleanupCtx, id)
 			result = errors.Join(result, err)
 		}
 		if environmentID != "" {
-			_, err := client.DeleteEnvironment(cleanupCtx, environmentID)
+			_, err := client.Environments.Delete(cleanupCtx, environmentID)
 			result = errors.Join(result, err)
 		}
 	}()
-	environment, err := client.CreateEnvironment(ctx, mango.EnvironmentCreateRequest{
+	environment, err := client.Environments.New(ctx, mango.EnvironmentCreateRequest{
 		Name:   "go-sdk-conformance",
 		Config: mango.Some(mango.EnvironmentConfigInput{CloudEnvironmentConfigInput: &mango.CloudEnvironmentConfigInput{Type: "cloud"}}),
 	})
@@ -57,12 +57,12 @@ func run() (result error) {
 	}
 	environmentID = environment.ID
 	for _, suffix := range []string{"one", "two"} {
-		agent, err := client.CreateAgent(ctx, mango.AgentCreateRequest{Name: "go-sdk-" + suffix, Model: mango.ModelInput{String: mango.Ptr("sdk-conformance")}})
+		agent, err := client.Agents.New(ctx, mango.AgentCreateRequest{Name: "go-sdk-" + suffix, Model: mango.ModelID("sdk-conformance")})
 		if err != nil {
 			return err
 		}
 		agentIDs = append(agentIDs, agent.ID)
-		fetched, err := client.GetAgent(ctx, agent.ID)
+		fetched, err := client.Agents.Get(ctx, agent.ID)
 		if err != nil {
 			return err
 		}
@@ -70,7 +70,7 @@ func run() (result error) {
 			return fmt.Errorf("wrong retrieved Agent name: %q", fetched.Name)
 		}
 	}
-	page, err := client.ListAgents(ctx, mango.ListAgentsParams{Limit: mango.Some(int64(1))})
+	page, err := client.Agents.List(ctx, mango.ListAgentsParams{Limit: mango.Some(int64(1))})
 	if err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func run() (result error) {
 		return errors.New("expected a paginated Agent result")
 	}
 	listed := make(map[string]bool)
-	iterator := client.ListAgentsAutoPaging(ctx, mango.ListAgentsParams{Limit: mango.Some(int64(1))})
+	iterator := client.Agents.ListAutoPaging(ctx, mango.ListAgentsParams{Limit: mango.Some(int64(1))})
 	for iterator.Next() {
 		listed[iterator.Value().ID] = true
 	}
@@ -90,24 +90,35 @@ func run() (result error) {
 			return fmt.Errorf("pagination omitted Agent %s", id)
 		}
 	}
-	session, err := client.CreateSession(ctx, mango.SessionCreateRequest{
-		Agent:         mango.SessionAgentInput{AgentReference: &mango.AgentReference{Type: "agent", ID: agentIDs[0]}},
+	coordinator, err := client.Agents.New(ctx, mango.AgentCreateRequest{
+		Name: "go-sdk-lead", Model: mango.ModelID("sdk-conformance"),
+		Multiagent: mango.Some(mango.Coordinator(
+			mango.RosterAgentVersion(agentIDs[0], 1), mango.RosterAgent(agentIDs[1]),
+			mango.Self(), mango.Advisor("review-model"),
+		)),
+	})
+	if err != nil {
+		return err
+	}
+	agentIDs = append(agentIDs, coordinator.ID)
+	roster := coordinator.Multiagent.ResolvedMultiagent
+	if roster == nil || len(roster.Agents) != 4 || roster.Agents[0].ResolvedAgentReference == nil || roster.Agents[0].ResolvedAgentReference.Version != 1 || roster.Agents[3].MultiagentAdvisor == nil || roster.Agents[3].MultiagentAdvisor.Model != "review-model" {
+		return errors.New("coordinator roster lost its pinned Agent or Advisor")
+	}
+	session, err := client.Sessions.New(ctx, mango.SessionCreateRequest{
+		Agent:         mango.AgentID(coordinator.ID),
 		EnvironmentID: environmentID,
 	})
 	if err != nil {
 		return err
 	}
 	sessionID = session.ID
-	stream, err := client.StreamSessionEvents(ctx, session.ID, mango.StreamSessionEventsParams{})
+	stream, err := client.Sessions.Events.Stream(ctx, session.ID, mango.StreamSessionEventsParams{})
 	if err != nil {
 		return err
 	}
 	defer stream.Close()
-	sent, err := client.SendSessionEvents(ctx, session.ID, mango.SendSessionEventsRequest{Events: []mango.ClientSessionEventInput{{
-		UserMessageEventInput: &mango.UserMessageEventInput{Type: "user.message", Content: []mango.MessageContentInput{{
-			TextBlockInput: &mango.TextBlockInput{Type: "text", Text: "sdk test"},
-		}}},
-	}}})
+	sent, err := client.Sessions.Events.Send(ctx, session.ID, mango.SendSessionEventsRequest{Events: []mango.ClientSessionEventInput{mango.UserMessage("sdk test")}})
 	if err != nil {
 		return err
 	}
@@ -135,7 +146,7 @@ func run() (result error) {
 		return err
 	}
 	foundUserMessage := false
-	history := client.ListSessionEventsAutoPaging(ctx, session.ID, mango.ListSessionEventsParams{Order: mango.Some("asc")})
+	history := client.Sessions.Events.ListAutoPaging(ctx, session.ID, mango.ListSessionEventsParams{Order: mango.Some("asc")})
 	for history.Next() {
 		if history.Value().PersistedUserMessageEvent != nil {
 			foundUserMessage = true
@@ -147,7 +158,7 @@ func run() (result error) {
 	if !foundUserMessage {
 		return errors.New("user message missing from typed Session history")
 	}
-	_, err = client.GetSession(ctx, "sesn_go_missing")
+	_, err = client.Sessions.Get(ctx, "sesn_go_missing")
 	var apiError *mango.APIError
 	if !errors.As(err, &apiError) || apiError.StatusCode != 404 || apiError.Type != "not_found_error" || apiError.RequestID == "" {
 		return fmt.Errorf("expected typed correlated 404, got %v", err)

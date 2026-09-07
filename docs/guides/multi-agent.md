@@ -30,6 +30,65 @@ Export `MANGO_API_KEY` with the same Workspace key used in Getting started.
 The HTTP snippets below show the wire requests; the first-party
 [SDKs](../sdk.md) handle authentication and these resource operations as well.
 
+## Use a first-party SDK
+
+The current source SDKs expose this workflow through resource services. These
+examples require [source installation](../sdk.md#install-from-source),
+`MANGO_API_KEY`, `MANGO_MODEL_ID`, and an existing `MANGO_ENVIRONMENT_ID`.
+Set `MANGO_BASE_URL` for your Mango deployment and optionally
+`MANGO_ADVISOR_MODEL` to add an Advisor. Model IDs must be served by your
+configured endpoint. `MANGO_TASK` overrides the example's comparison question.
+
+The standalone applications create two specialists and a coordinator, run a
+turn and a follow-up targeting the existing reviewer, and read each Thread's
+persisted messages. They clean up their own Session and Agents, preserving the
+supplied Environment. The specialists declare no shell/file tools, so this
+reasoning example does not require an external tool worker.
+
+From the repository root after source installation:
+
+```sh tab="TypeScript" tab-group="mango-language"
+node --experimental-strip-types sdk/typescript/examples/multiagent.ts
+```
+
+```sh tab="Python" tab-group="mango-language"
+.venv/bin/python sdk/python/examples/multiagent.py
+```
+
+```sh tab="Go" tab-group="mango-language"
+cd sdk/go && go run ./examples/multiagent
+```
+
+### Configure the team
+
+::include[../../sdk/typescript/examples/multiagent.ts#team]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../../sdk/python/examples/multiagent.py#team]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../../sdk/go/examples/multiagent/main.go#team]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+### Send a turn and observe completion
+
+The complete applications wrap this region in a `turn(text)` function. They
+subscribe before sending, reject incomplete/attention-required turns, and close
+the stream. After disconnection, inspect durable events before deciding to retry.
+
+::include[../../sdk/typescript/examples/multiagent.ts#observe]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../../sdk/python/examples/multiagent.py#observe]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../../sdk/go/examples/multiagent/main.go#observe]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+### Inspect the specialist Threads
+
+::include[../../sdk/typescript/examples/multiagent.ts#threads]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
+
+::include[../../sdk/python/examples/multiagent.py#threads]{lang="python" meta='tab="Python" tab-group="mango-language"'}
+
+::include[../../sdk/go/examples/multiagent/main.go#threads]{lang="go" meta='tab="Go" tab-group="mango-language"'}
+
+The HTTP examples below show the same resource contract directly.
+
 ## Create the worker Agents
 
 ```bash

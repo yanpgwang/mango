@@ -97,7 +97,7 @@ func (p *WorkPoller) Next() bool {
 		if p.ctx.Err() != nil {
 			return false
 		}
-		response, err := p.client.PollEnvironmentWork(p.ctx, p.opts.EnvironmentID, params)
+		response, err := p.client.Environments.Work.Poll(p.ctx, p.opts.EnvironmentID, params)
 		if err != nil {
 			if p.ctx.Err() != nil {
 				return false
@@ -133,7 +133,7 @@ func (p *WorkPoller) Next() bool {
 			return false
 		}
 
-		acknowledged, err := p.client.AcknowledgeEnvironmentWork(
+		acknowledged, err := p.client.Environments.Work.Ack(
 			p.ctx, p.opts.EnvironmentID, work.ID,
 		)
 		if err != nil {

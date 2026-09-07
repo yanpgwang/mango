@@ -329,7 +329,7 @@ func (r *SessionToolRunner) ingest(ctx context.Context, queue chan<- pendingSess
 	failures := 0
 	for ctx.Err() == nil {
 		streamCtx, stopStream := context.WithCancel(ctx)
-		stream, err := r.client.StreamSessionEvents(streamCtx, r.sessionID, StreamSessionEventsParams{})
+		stream, err := r.client.Sessions.Events.Stream(streamCtx, r.sessionID, StreamSessionEventsParams{})
 		if err != nil {
 			stopStream()
 			if terminal := classifySessionRequestError("open event stream", err); terminal != nil {
@@ -456,7 +456,7 @@ func (r *SessionToolRunner) reconcile(
 	var pending []pendingSessionToolCall
 	var last SessionEvent
 	hasLast := false
-	pager := r.client.ListSessionEventsAutoPaging(ctx, r.sessionID, ListSessionEventsParams{
+	pager := r.client.Sessions.Events.ListAutoPaging(ctx, r.sessionID, ListSessionEventsParams{
 		Limit: Some(int64(1000)), Order: Some("asc"),
 	})
 	for pager.Next() {
@@ -738,7 +738,7 @@ func (r *SessionToolRunner) sendResult(ctx context.Context, toolUseID string, ev
 			return fmt.Errorf("mango: send tool result %s: retry window exhausted: %w", toolUseID, cause)
 		}
 		sendCtx, cancel := context.WithTimeout(retryCtx, r.sendTimeout())
-		_, err := r.client.SendSessionEvents(sendCtx, r.sessionID, request)
+		_, err := r.client.Sessions.Events.Send(sendCtx, r.sessionID, request)
 		cancel()
 		if err == nil {
 			return nil
@@ -769,7 +769,7 @@ func (r *SessionToolRunner) sendResult(ctx context.Context, toolUseID string, ev
 }
 
 func (r *SessionToolRunner) resultExists(ctx context.Context, toolUseID string) (bool, error) {
-	pager := r.client.ListSessionEventsAutoPaging(ctx, r.sessionID, ListSessionEventsParams{
+	pager := r.client.Sessions.Events.ListAutoPaging(ctx, r.sessionID, ListSessionEventsParams{
 		Limit: Some(int64(1000)), Order: Some("asc"),
 		Types: Some([]CoreSessionEventType{
 			CoreSessionEventTypeUserToolResult,

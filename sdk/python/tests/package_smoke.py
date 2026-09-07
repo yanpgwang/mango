@@ -11,7 +11,7 @@ from mango_sdk._generated import OPERATIONS
 package = distribution("mango-sdk")
 assert package.version == __version__
 assert package.locate_file("mango_sdk/py.typed").is_file()
-assert len(OPERATIONS) == 98
+assert len(OPERATIONS) == 99
 assert models.Agent
 
 
@@ -27,7 +27,7 @@ with Mango(
     base_url="https://mango.invalid/proxy", api_key="package-test-only",
     transport=httpx.MockTransport(handle),
 ) as client:
-    assert client.create_agent(body={"name": "test", "model": "test"})["id"] == "agent_package_test"
+    assert client.agents.create(name="test", model="test")["id"] == "agent_package_test"
 
 
 async def main() -> None:
@@ -35,9 +35,9 @@ async def main() -> None:
         base_url="https://mango.invalid/proxy", api_key="package-test-only",
         transport=httpx.MockTransport(handle),
     ) as client:
-        result = await client.create_agent(body={"name": "test", "model": "test"})
+        result = await client.agents.create(name="test", model="test")
         assert result["id"] == "agent_package_test"
 
 
 asyncio.run(main())
-print(f"Installed mango-sdk {__version__}: sync/async requests, 98 operations, and typing marker verified")
+print(f"Installed mango-sdk {__version__}: sync/async requests, 99 operations, and typing marker verified")
