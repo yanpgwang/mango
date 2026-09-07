@@ -136,6 +136,11 @@ type dockerSystemFixture struct {
 	launcherWG       sync.WaitGroup
 }
 
+// DockerLauncher cancellation may spend 15 seconds stopping a container and
+// another 15 seconds removing it. Keep the fixture alive until both operations
+// have had time to finish so later LIFO cleanups cannot close the Engine early.
+const dockerSystemLauncherCleanupTimeout = 40 * time.Second
+
 func newDockerSystemFixture(
 	t *testing.T,
 	modelClient model.Client,
@@ -297,7 +302,7 @@ func (f *dockerSystemFixture) stopLaunchers() {
 	}()
 	select {
 	case <-done:
-	case <-time.After(20 * time.Second):
+	case <-time.After(dockerSystemLauncherCleanupTimeout):
 		f.t.Error("self-hosted Docker launchers did not stop during cleanup")
 	}
 }
