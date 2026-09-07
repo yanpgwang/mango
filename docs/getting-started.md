@@ -27,17 +27,18 @@ MANGO_MODEL_BASE_URL= MANGO_MODEL_API_KEY= MANGO_MODEL_ID= \
 make local-health
 ```
 
-This builds and starts separate API and worker containers plus PostgreSQL,
+This builds and starts separate API and Temporal orchestration-worker containers plus PostgreSQL,
 Temporal, Temporal UI, NATS, and MinIO. The examples use `http://localhost:8080`;
 the Workflow explorer is at `http://localhost:8233`. No model credentials are
 required for this offline walkthrough.
 
 The convenience command `make local-up` behaves differently: it automatically
 loads an existing development environment file and can enable a real model.
-Do not use it as an offline-only guarantee. Both startup paths use the Docker
-sandbox provider: each Session that needs sandbox tools gets its own container.
-The worker needs access to the local Docker daemon and its resource directory;
-see [Docker worker configuration](deployment.md#docker-worker-configuration).
+Do not use it as an offline-only guarantee. The Compose orchestration worker
+still includes the transitional Docker sandbox path for an explicitly selected
+`cloud` Environment. It is not the operator-run `mango-worker docker` process
+used by the default `self_hosted` Environment. The text-only walkthrough below
+does not invoke sandbox tools, so it needs no Environment worker.
 
 In another shell, verify readiness:
 
@@ -105,9 +106,12 @@ The Workspace key authenticates to Mango, not to the model provider.
 
 ## Create an environment
 
-A cloud Environment routes sandbox tools to the Mango worker. A
-`self_hosted` Environment instead parks built-in calls for a client's
-`user.tool_result`; it is not required for ordinary self-hosted Mango deployment.
+Omitting `config` creates a `self_hosted` Environment, Mango's default OSS
+execution boundary. The control plane still owns model calls and durable
+orchestration. If an Agent calls one of the six shell/file tools, an
+operator-run worker for this Environment claims the queued work and executes it
+in operator-managed infrastructure. The quickstart Agent has no tools, so this
+first turn completes without starting that worker.
 
 ::include[../sdk/typescript/examples/quickstart.ts#environment]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
 
@@ -116,6 +120,12 @@ A cloud Environment routes sandbox tools to the Mango worker. A
 ::include[../sdk/go/examples/quickstart/main.go#environment]{lang="go" meta='tab="Go" tab-group="mango-language"'}
 
 ::include[../examples/sdk-quickstart.sh#environment]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
+
+To run tool-capable Sessions, build and start the
+[Docker self-hosted worker](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
+with the Environment ID and a Workspace key. Mango currently uses that key only
+on the trusted supervisor; each Session container receives a narrower Work
+credential. Scoped Environment polling credentials remain future hardening.
 
 ## Create an agent
 
@@ -185,8 +195,9 @@ curl -N -H "Authorization: Bearer $MANGO_API_KEY" \
 
 ## Use a real model endpoint
 
-The same Compose stack supports real-model tasks with Docker sandboxes and
-Files. You do not need to replace its API or worker with source processes.
+The same Compose stack supports real-model tasks. You do not need to replace
+its API or orchestration worker with source processes. A separate Environment
+worker is needed only when a `self_hosted` Agent calls shell/file tools.
 
 Create the repository-external configuration file, then edit it:
 
@@ -201,8 +212,6 @@ The stack already configures PostgreSQL, Temporal, NATS, and MinIO internally:
 
 ```ini
 MANGO_API_KEY=sk-mango-local-development
-MANGO_SANDBOX=docker
-MANGO_SANDBOX_IMAGE=python:3.12-alpine
 MANGO_MODEL_BASE_URL=https://api.example.com
 MANGO_MODEL_API_KEY=replace-me
 MANGO_MODEL_ID=your-model-id
@@ -217,19 +226,16 @@ make local-up
 make local-health
 ```
 
-The API and worker select Docker consistently. The default sandbox image
-contains Python; it is pulled on first use if missing. Packages requiring other
-language runtimes need an operator-selected image that includes those runtimes.
-Model credentials are supplied only to the worker, not the API or Session
-containers. Real model calls may incur charges.
+Model credentials are supplied only to the orchestration worker, not the API
+or Session containers. Real model calls may incur charges. For shell/file tools,
+run the [self-hosted Docker worker](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
+with an image containing the runtimes the Agent needs. The launcher fails if
+Docker is unreachable; it never falls back to host-process execution.
 
-Native `serve` and `orchestrate` processes also default to Docker. They must
-agree on the provider and object-store configuration when run outside Compose;
-see [Deployment model](deployment.md). The runtime choices are `docker`, `e2b`,
-`cube`, `opensandbox`, and `daytona`; `local` and unknown values are rejected.
-An unreachable Docker daemon fails worker startup instead of permitting host
-execution. Remote-provider variables and live-test commands are listed in
-[Sandbox backends](sandboxes.md).
+The Compose file still configures the old `MANGO_SANDBOX=docker` path for the
+transitional File-input/output coding example. That setting selects an internal
+adapter only for an explicitly created `cloud` Environment; it does not control
+the default self-hosted worker.
 
 The current built-in external-model adapter expects a Messages-shaped
 `/v1/messages` API. This adapter constraint does not define Mango's public API

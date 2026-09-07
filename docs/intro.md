@@ -35,9 +35,10 @@ multi-tenant boundary.
 - A durable **model-and-tool loop**: multi-round inference, custom-tool and
   confirmation waits, single- and multi-Thread interrupts, and outcome
   evaluation.
-- Tools run in **replaceable sandboxes** — Docker by default, or remote providers —
-  with eight built-ins plus provider-native Web Search/Fetch and remote MCP
-  tools.
+- Shell/file tools run through a **provider-neutral Environment Work** boundary;
+  the first operator-managed launcher uses Docker. Provider-native Web
+  Search/Fetch stay with the model endpoint, and remote MCP tools stay with the
+  orchestration runtime.
 - Opt-in **live previews** of assistant text, streamed while the authoritative
   event is still being produced.
 

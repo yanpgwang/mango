@@ -236,7 +236,7 @@ func newDockerSystemFixture(
 	)
 	fixture.environmentID = createAuthenticatedResource(
 		t, fixture.hostBaseURL, fixture.workspaceKey, "/v1/environments",
-		map[string]any{"name": "operator-docker", "config": map[string]any{"type": "self_hosted"}},
+		map[string]any{"name": "operator-docker"},
 	)
 	fixture.sessionID = createAuthenticatedResource(
 		t, fixture.hostBaseURL, fixture.workspaceKey, "/v1/sessions",

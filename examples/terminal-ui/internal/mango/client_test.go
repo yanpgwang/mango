@@ -121,7 +121,7 @@ func TestClientCreatesAgentEnvironmentAndSession(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.CreateEnvironment(ctx, CreateEnvironmentInput{Name: "cloud"}); err != nil {
+	if _, err := client.CreateEnvironment(ctx, CreateEnvironmentInput{Name: "self-hosted"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.CreateSession(ctx, CreateSessionInput{AgentID: "agent_1", EnvironmentID: "env_1", Title: "Fix", InitialPrompt: "inspect this repo"}); err != nil {
@@ -137,7 +137,7 @@ func TestClientCreatesAgentEnvironmentAndSession(t *testing.T) {
 		t.Fatalf("agent capabilities = %#v", requests["/v1/agents"])
 	}
 	config, _ := requests["/v1/environments"]["config"].(map[string]any)
-	if config["type"] != "cloud" {
+	if config["type"] != "self_hosted" {
 		t.Fatalf("environment body = %#v", requests["/v1/environments"])
 	}
 	initial, _ := requests["/v1/sessions"]["initial_events"].([]any)

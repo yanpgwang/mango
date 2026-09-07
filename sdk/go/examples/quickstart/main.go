@@ -58,7 +58,7 @@ func run() (result error) {
 
 	// #region environment
 	environment, err := client.CreateEnvironment(ctx, mango.EnvironmentCreateRequest{
-		Name: "Quickstart", // defaults to a cloud Environment
+		Name: "Quickstart", // omitted config defaults to self-hosted execution
 	})
 	if err != nil {
 		return err

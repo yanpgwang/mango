@@ -111,7 +111,7 @@ provider-neutral.
 
 ## Start and prompt the Session
 
-Create a cloud Environment and Session as in the quick start, using
+Create a self-hosted Environment and Session as in the quick start, using
 `COORDINATOR_ID` as the Session Agent. Then send a normal `user.message`:
 
 ```bash

@@ -134,7 +134,9 @@ scripts/with-dev-env make demo-hitl-gate
 The example connects to that deployment; it does not start services or change
 the worker's model or sandbox configuration.
 
-The program creates an Environment, Agent, and Session through public HTTP,
+The program creates a default `self_hosted` Environment, Agent, and Session
+through public HTTP. Custom tools are application-owned, so this example does
+not require an Environment worker. It
 sends two receipts, and waits for the complete `requires_action` barrier. The
 real model must produce `decide` for the clear receipt and `escalate` for the
 ambiguous one. The application records `decide` automatically; for `escalate`,

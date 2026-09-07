@@ -417,7 +417,7 @@ const historyScanLimit = 10000
 // sandboxTurnTimeout bounds a built-in tool execution within a turn.
 const sandboxTurnTimeout = 120 * time.Second
 
-// The public cloud Environment default resolves to unrestricted networking.
+// An explicit cloud Environment resolves omitted networking to unrestricted.
 // Provider defaults remain deny-by-default for direct sandbox consumers; the
 // Mango execution path opts into provider egress explicitly.
 const defaultCloudSandboxNetwork = "bridge"

@@ -30,7 +30,7 @@ trap cleanup EXIT
 ENV_ID=$(curl -fsS --max-time 30 "$MANGO_BASE_URL/v1/environments" \
   -H "Authorization: Bearer $MANGO_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Quickstart","config":{"type":"cloud"}}' | jq -er .id)
+  -d '{"name":"Quickstart"}' | jq -er .id)
 # endregion environment
 
 # region agent

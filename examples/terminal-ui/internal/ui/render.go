@@ -781,7 +781,7 @@ func (m Model) renderToolbarHelpCard(width, height int) string {
 	case 1:
 		title, body = "Find a Session", "Search every durable Session by title, Agent name, or ID. Useful when the fleet grows beyond the visible list."
 	case 2:
-		title, body = "Refresh from Cloud", "Re-fetch the Session list from Mango. Sessions keep running in the cloud after you detach, so their state may have moved since you last looked."
+		title, body = "Refresh from Mango", "Re-fetch the Session list from Mango. Sessions keep running after you detach, so their state may have moved since you last looked."
 	}
 	head := m.theme.title.Render(truncate(title, inner))
 	rule := m.theme.dim.Render(strings.Repeat("─", inner))
@@ -1024,7 +1024,7 @@ func (m Model) renderDialog() string {
 	case dialogQuit:
 		title = "Quit Mango?"
 		content = lipgloss.JoinVertical(lipgloss.Center,
-			"Managed Sessions and Agents keep running in the cloud.",
+			"Managed Sessions and Agents keep running after you disconnect.",
 			"Leaving only detaches this terminal.",
 			"",
 			choice(m.theme, "Quit", m.dialogCursor == 0, true)+"  "+

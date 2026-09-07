@@ -15,7 +15,7 @@ let sessionID: string | undefined;
 try {
   // #region environment
   const environment = await client.createEnvironment({
-    body: { name: 'Quickstart', config: { type: 'cloud' } },
+    body: { name: 'Quickstart' },
   });
   // #endregion environment
   environmentID = environment.id;

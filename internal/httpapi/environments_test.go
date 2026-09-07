@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestEnvironments_DefaultCloudWireShape(t *testing.T) {
+func TestEnvironments_DefaultSelfHostedWireShape(t *testing.T) {
 	srv := newTestServer(t)
 	rec := do(srv, http.MethodPost, "/v1/environments", `{"name":"default"}`)
 	if rec.Code != http.StatusOK {
@@ -23,18 +23,8 @@ func TestEnvironments_DefaultCloudWireShape(t *testing.T) {
 		t.Fatalf("metadata = %#v", environment["metadata"])
 	}
 	config, _ := environment["config"].(map[string]any)
-	if config["type"] != "cloud" {
+	if len(config) != 1 || config["type"] != "self_hosted" {
 		t.Fatalf("config = %#v", config)
-	}
-	networking, _ := config["networking"].(map[string]any)
-	if networking["type"] != "unrestricted" {
-		t.Fatalf("networking = %#v", networking)
-	}
-	packages, _ := config["packages"].(map[string]any)
-	for _, key := range []string{"apt", "cargo", "gem", "go", "npm", "pip"} {
-		if values, ok := packages[key].([]any); !ok || len(values) != 0 {
-			t.Errorf("packages.%s = %#v", key, packages[key])
-		}
 	}
 }
 
@@ -175,9 +165,10 @@ func TestEnvironments_RejectsMalformedOptionalFields(t *testing.T) {
 		`{"name":"bad","metadata":{"team":1}}`,
 		`{"name":"bad","scope":null}`,
 		`{"name":"bad","scope":"workspace","config":{"type":"self_hosted"}}`,
-		`{"name":"bad","scope":"account"}`,
+		`{"name":"bad","scope":"account","config":{"type":"cloud"}}`,
 		`{"name":"bad","config":null}`,
 		`{"name":"bad","config":[]}`,
+		`{"name":"bad","config":{}}`,
 		`{"name":"bad","config":{"type":"cloud","networking":null}}`,
 		`{"name":"bad","config":{"type":"cloud","networking":{"type":"unrestricted","future":true}}}`,
 		`{"name":"bad","config":{"type":"cloud","networking":{"type":"limited","allowed_hosts":["https://example.com"]}}}`,

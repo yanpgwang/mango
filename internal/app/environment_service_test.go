@@ -183,7 +183,7 @@ func TestEnvironmentService_NormalizesAndPatchesLimitedNetworking(t *testing.T) 
 func TestEnvironmentService_NormalizesSupportedConfiguration(t *testing.T) {
 	svc := newEnvService(t)
 	created, err := svc.Create(context.Background(), domain.Environment{
-		Name: "cloud", Description: "analysis", Metadata: map[string]any{"team": "data"},
+		Name: "cloud", Description: "analysis", Metadata: map[string]any{"team": "data"}, ConfigType: "cloud",
 		Config: map[string]any{
 			"networking": map[string]any{"type": "unrestricted"},
 			"packages": map[string]any{
@@ -211,6 +211,9 @@ func TestEnvironmentService_NormalizesSupportedConfiguration(t *testing.T) {
 	}
 	if defaults.Description != "" || defaults.Scope != "" || defaults.Metadata == nil || len(defaults.Metadata) != 0 {
 		t.Fatalf("default resource fields = %#v", defaults)
+	}
+	if defaults.ConfigType != "self_hosted" || defaults.Config["type"] != "self_hosted" {
+		t.Fatalf("default config = %#v", defaults.Config)
 	}
 }
 

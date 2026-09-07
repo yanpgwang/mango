@@ -66,15 +66,20 @@ session for a client response.
 
 ## Sandbox provider
 
-The application provisions a sandbox only when the resolved toolset contains
-tools. The same interface supports process execution and confined file reads
-and writes. This is currently an in-process Go interface, not a separate
-sandbox HTTP service. See the [sandbox backend matrix](../sandboxes.md) for
-support levels, backend requirements, and the ordered evolution path.
+The default `self_hosted` Environment parks shell/file calls behind Environment
+Work. An operator worker claims that work and chooses the isolation platform;
+the control plane has no provider-specific field. Mango's first launcher uses
+Docker and the provider-neutral Go SDK worker lifecycle.
+
+The application also retains a transitional `cloud` path. There the
+orchestration process provisions a sandbox only when the resolved toolset
+contains tools. Its in-process interface supports process execution and
+confined file reads and writes. See the [sandbox backend matrix](../sandboxes.md)
+for the legacy registry that remains until this path is removed.
 
 ### Docker provider
 
-Docker is the default; `MANGO_SANDBOX=docker` selects it explicitly. The worker
+Docker is the legacy registry default; `MANGO_SANDBOX=docker` selects it explicitly. The worker
 requires a reachable Docker daemon even with the offline model. Host-process
 execution is not selectable, and no unsafe-local override is supported. The
 provider talks directly to the Docker Engine API through the supported Moby Go
@@ -87,8 +92,8 @@ Docker `config.json` selected by `DOCKER_CONFIG` or `~/.docker`. Inline `auths`,
 credential helper must be installed on the worker. Containers use a separate
 filesystem, Linux namespaces/cgroups, configurable resource limits, and no
 networking for direct provider calls. Mango's cloud Environment path explicitly
-requests `bridge` networking because the public Environment default is
-unrestricted. The default image is `python:3.12-alpine`; operators select another
+requests `bridge` networking because that config resolves to unrestricted
+networking. The default image is `python:3.12-alpine`; operators select another
 image with `MANGO_SANDBOX_IMAGE`. The Compose worker mounts its resource directory
 at the same absolute path seen by the daemon. See
 [Docker worker configuration](../deployment.md#docker-worker-configuration).

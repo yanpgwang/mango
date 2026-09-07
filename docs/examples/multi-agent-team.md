@@ -52,7 +52,9 @@ With the same `~/.config/mango/dev.env`, run the public-HTTP client:
 scripts/with-dev-env make demo-multi-agent-team
 ```
 
-The example does not start services or change the worker's model or sandbox.
+The example creates a default `self_hosted` Environment but enables no
+shell/file tools, so it does not need an Environment worker. It does not start
+services or change the orchestration worker's model configuration.
 
 The Make target passes the configured model IDs to the example but removes the
 provider base URL and key from the client process. Set

@@ -19,6 +19,35 @@ and self-hosted. Public surface definitions may be design inputs, but external
 implementation code and non-public types must not be copied, and an external
 release is never an automatic roadmap.
 
+## Self-hosted default user path
+
+- User/operator problem: an OSS runtime should lead users through the execution
+  boundary it intends to support. Mango's API and quickstarts previously created
+  a Mango-managed `cloud` Environment even though the product direction and
+  worker implementation select operator-owned self-hosted execution.
+- Reviewed the public [CMA self-hosted integration guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+  on 2026-09-07 alongside the cookbook and public Go, Python, and TypeScript SDK
+  sources at `a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5`,
+  `de6914c544629b14a67c0695ce147edae6a291e0`,
+  `62de60b27d04f0927a0ccf0f2610597fafcfab6a`, and
+  `ba14b1f4fdf2e840a7b32297965342a099f6201d`. CMA confirms the reusable
+  Environment queue, trusted poller, per-Session worker, operator-owned
+  File/Git staging, workspace outputs, and SDK-owned Skill/Memory lifecycle.
+- Mango adopts that high-level lifecycle and maps it coherently across HTTP,
+  OpenAPI, the three SDK quickstarts, HTTP quickstart, terminal UI, and examples
+  that need no managed File/Git mounts. Unlike CMA's hosted-product default,
+  omitting Mango's Environment config now resolves to `self_hosted`; this is an
+  intentional OSS trust-boundary choice, not wire compatibility.
+- The control plane continues to own model calls and durable orchestration. A
+  text-only or application-custom-tool turn needs no Environment worker;
+  shell/file calls wait for an operator worker. Mango does not auto-register or
+  auto-provision a worker when an Environment is created.
+- Non-goals for this slice: no new credential shape, provider launcher,
+  automatic File/Git transfer, workspace-output API, or removal of the legacy
+  runtime. The coding-agent File/output tutorial remains the only user-facing
+  `cloud` example until a separate user workflow replaces or retires it. The
+  next convergence slice removes that path and its compiled provider registry.
+
 ## Self-hosted Web execution and convergence scope
 
 - Reviewed the public [CMA tool execution boundary](https://platform.claude.com/docs/en/managed-agents/tools#restrict-web-search-and-web-fetch-domains)

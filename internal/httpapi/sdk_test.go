@@ -1595,11 +1595,15 @@ func TestSDK_AgentVersionListParamsAndPaging(t *testing.T) {
 func TestSDK_EnvironmentLifecycle(t *testing.T) {
 	client, _ := sdkClientAndServer(t)
 	ctx := context.Background()
+	cloud := anthropic.BetaCloudConfigParams{}
 
 	environment, err := client.Beta.Environments.New(ctx, anthropic.BetaEnvironmentNewParams{
 		Name:        "SDK environment",
 		Description: anthropic.String("created through the official SDK"),
 		Metadata:    map[string]string{"team": "platform"},
+		Config: anthropic.BetaEnvironmentNewParamsConfigUnion{
+			OfCloud: &cloud,
+		},
 	})
 	if err != nil {
 		t.Fatalf("create environment: %v", err)

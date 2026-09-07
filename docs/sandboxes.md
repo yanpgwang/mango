@@ -5,7 +5,9 @@ slug: /sandboxes
 
 # Sandbox backends
 
-Sandbox support is intentionally incremental. A backend is not presented as
+This page currently inventories the transitional Mango-managed sandbox
+registry. New OSS execution uses the provider-neutral Environment Work boundary
+and an operator launcher; the first such launcher is Docker. A backend is not presented as
 production-ready merely because it can execute a command: its isolation model,
 lifecycle guarantees, operational dependencies, and known limits must also be
 clear.
@@ -46,7 +48,7 @@ These labels describe project support, not a security certification.
 
 | Backend | Status | Isolation model | Limited egress | Session state | Intended use |
 |---|---|---|---|---|---|
-| Docker | Available; default | Container filesystem, namespaces/cgroups, configurable limits; provider calls default to no network while cloud Environments request bridge networking | No; rejected | Reattaches by container ID on the same Docker daemon | Controlled single-host self-hosting |
+| Docker | Available; transitional registry default | Container filesystem, namespaces/cgroups, configurable limits; provider calls default to no network while cloud Environments request bridge networking | No; rejected | Reattaches by container ID on the same Docker daemon | Legacy managed path pending removal |
 | [E2B](https://github.com/e2b-dev/E2B) | Preview | Managed microVM service | No; rejected | E2B ID plus auto-pause filesystem persistence | Managed production |
 | [Tencent CubeSandbox](https://github.com/TencentCloud/CubeSandbox) | Preview | E2B-compatible microVM service | No; rejected | Provider-owned durable sandbox ID | Self-hosted production on Linux/KVM |
 | [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox) | Preview; Docker runtime manually live-verified | Docker or Kubernetes-backed sandbox service | Yes; host allowlist | Provider-owned durable sandbox ID | Self-hosted production |

@@ -120,11 +120,14 @@ Provider-specific self-hosted launcher examples remain future work.
 
 ### Docker worker configuration
 
-Docker is the default for native processes and the local Compose stack. An
-unreachable daemon fails worker startup; `MANGO_SANDBOX=local` is rejected and
-the former unsafe-local override has no effect. API startup reads the Docker
-capability declaration without needing daemon access. A healthy API alone does
-not establish worker or sandbox readiness.
+This subsection describes the transitional Mango-managed `cloud` adapter still
+present in native `orchestrate` processes and the local Compose stack. It is not
+the default Environment type and not the standalone self-hosted Docker worker.
+An unreachable daemon fails orchestration-worker startup;
+`MANGO_SANDBOX=local` is rejected and the former unsafe-local override has no
+effect. API startup reads the Docker capability declaration without needing
+daemon access. A healthy API alone does not establish worker or sandbox
+readiness.
 
 The Compose worker is a trusted daemon controller. It runs as root and mounts
 `/var/run/docker.sock`, or the host Unix socket selected by `MANGO_DOCKER_SOCKET`.
