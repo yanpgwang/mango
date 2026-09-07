@@ -297,7 +297,7 @@ export class Transport {
     } catch (error) { lease.dispose(); throw error; }
   }
 
-  protected async request<T>(operation: Operation, params: object, options: RequestOptions = {}): Promise<T> {
+  async request<T>(operation: Operation, params: object, options: RequestOptions = {}): Promise<T> {
     const { response, lease } = await this.open(operation, params as Record<string, unknown>, options, false);
     try {
       if (response.status === 204 || operation.response === 'empty') {
@@ -313,7 +313,7 @@ export class Transport {
     } finally { lease.dispose(); }
   }
 
-  protected async download(operation: Operation, params: object, options: RequestOptions = {}): Promise<Response> {
+  async download(operation: Operation, params: object, options: RequestOptions = {}): Promise<Response> {
     const { response, lease } = await this.open(operation, params as Record<string, unknown>, options, true);
     if (!response.body) { lease.dispose(); return response; }
     const reader = response.body.getReader();
@@ -384,19 +384,15 @@ export class Transport {
     return result;
   }
 
-  protected openFrames<T>(operation: Operation, params: object, options: RequestOptions = {}): Promise<EventStream<T>> {
+  openFrames<T>(operation: Operation, params: object, options: RequestOptions = {}): Promise<EventStream<T>> {
     return this.readyStream<T, T>(operation, params, options, message => message.data);
   }
 
-  protected async *stream<T>(operation: Operation, params: object, options: RequestOptions = {}): AsyncGenerator<SSEMessage<T>> {
+  async *stream<T>(operation: Operation, params: object, options: RequestOptions = {}): AsyncGenerator<SSEMessage<T>> {
     yield* await this.readyStream<T, SSEMessage<T>>(operation, params, options, message => message);
   }
 
-  protected async *frames<T>(operation: Operation, params: object, options: RequestOptions = {}): AsyncGenerator<T> {
-    for await (const message of this.stream<T>(operation, params, options)) yield message.data;
-  }
-
-  protected async *pages<T>(operation: Operation, params: object, options: RequestOptions = {}): AsyncGenerator<T> {
+  async *pages<T>(operation: Operation, params: object, options: RequestOptions = {}): AsyncGenerator<T> {
     const next: Record<string, unknown> = { ...params };
     const seen = new Set<string>();
     const startingCursor = operation.pagination === 'files' ? (next.before_id ?? next.after_id) : next.page;

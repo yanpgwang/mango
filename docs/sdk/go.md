@@ -20,9 +20,12 @@ streams. `BaseURL` supports a reverse-proxy prefix; do not append `/v1`.
 
 ## Methods and inputs
 
-Methods use exported OpenAPI operation IDs: `CreateSession`, `SendSessionEvents`,
-and `CreateMemory`. Path identifiers are positional; requests and query filters
-are generated structs.
+Operations are grouped by resource: `client.Sessions.New`,
+`client.Sessions.Events.Send`, and `client.MemoryStores.Memories.New`.
+Path IDs are positional in HTTP hierarchy order, followed by generated request
+or query structs. `ModelID`, `ModelSettings`, `AgentID`, `AgentVersion`,
+`Coordinator`, `RosterAgent`, `RosterAgentVersion`, `Self`, `Advisor`, `Text`,
+and `UserMessage` construct common wire variants without pointer boilerplate.
 
 - The zero value of `Optional[T]` omits a field.
 - `mango.Some(value)` sends the value, including zero, `false`, or an empty list.
@@ -32,11 +35,11 @@ are generated structs.
 
 ## Streaming and pagination
 
-`StreamSessionEvents` establishes the subscription before returning. Call it
+`Sessions.Events.Stream` establishes the subscription before returning. Call it
 before sending input, iterate with `Next()`, decode `Event()`, check `Err()`,
 and close the stream. The stream is live-only and does not automatically reconnect.
 
-`ListSessionEventsAutoPaging` follows pages; `ListSessionEvents` fetches one page.
+`Sessions.Events.ListAutoPaging` follows pages; `Sessions.Events.List` fetches one page.
 Use the [open-stream-then-list recovery procedure](../api/events.md#stream-events)
 to recover durable events after disconnects.
 

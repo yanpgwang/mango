@@ -29,6 +29,7 @@ type Config struct {
 }
 
 type Client struct {
+	resourceServices
 	baseURL        string
 	apiKey         string
 	http           *http.Client
@@ -59,7 +60,9 @@ func New(config Config) (*Client, error) {
 	}
 	client.Timeout = 0
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-	return &Client{baseURL: endpoint, apiKey: config.APIKey, http: &client, requestTimeout: timeout}, nil
+	result := &Client{baseURL: endpoint, apiKey: config.APIKey, http: &client, requestTimeout: timeout}
+	result.initServices()
+	return result, nil
 }
 
 // APIError is a non-2xx response. Body is capped at 1 MiB; do not log it when

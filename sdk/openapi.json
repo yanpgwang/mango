@@ -9318,7 +9318,9 @@
           }
         },
         "security": [],
-        "summary": "Liveness probe"
+        "summary": "Liveness probe",
+        "x-sdk-method": "health",
+        "x-sdk-resource": "system"
       }
     },
     "/openapi.yaml": {
@@ -9337,7 +9339,9 @@
           }
         },
         "security": [],
-        "summary": "Get the Mango OpenAPI document"
+        "summary": "Get the Mango OpenAPI document",
+        "x-sdk-method": "open_api",
+        "x-sdk-resource": "system"
       }
     },
     "/readyz": {
@@ -9349,7 +9353,9 @@
           }
         },
         "security": [],
-        "summary": "Readiness probe"
+        "summary": "Readiness probe",
+        "x-sdk-method": "readiness",
+        "x-sdk-resource": "system"
       }
     },
     "/v1/agents": {
@@ -9383,7 +9389,9 @@
         "summary": "List Agents",
         "tags": [
           "Agents"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "agents"
       },
       "post": {
         "operationId": "createAgent",
@@ -9411,7 +9419,9 @@
         "summary": "Create an Agent",
         "tags": [
           "Agents"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "agents"
       }
     },
     "/v1/agents/{agent_id}": {
@@ -9428,7 +9438,9 @@
         "summary": "Get an Agent",
         "tags": [
           "Agents"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "agents"
       },
       "parameters": [
         {
@@ -9467,7 +9479,9 @@
         "summary": "Update an Agent and create a new version when fields change",
         "tags": [
           "Agents"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "agents"
       }
     },
     "/v1/agents/{agent_id}/archive": {
@@ -9489,7 +9503,9 @@
         "summary": "Archive an Agent",
         "tags": [
           "Agents"
-        ]
+        ],
+        "x-sdk-method": "archive",
+        "x-sdk-resource": "agents"
       }
     },
     "/v1/agents/{agent_id}/versions": {
@@ -9517,7 +9533,9 @@
         "summary": "List Agent versions",
         "tags": [
           "Agents"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "agents.versions"
       },
       "parameters": [
         {
@@ -9568,7 +9586,9 @@
         "summary": "List Deployment Runs",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "deployment_runs"
       }
     },
     "/v1/deployment_runs/{deployment_run_id}": {
@@ -9585,7 +9605,9 @@
         "summary": "Get a Deployment Run",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "deployment_runs"
       },
       "parameters": [
         {
@@ -9630,7 +9652,9 @@
         "summary": "List Deployments",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "deployments"
       },
       "post": {
         "operationId": "createDeployment",
@@ -9658,7 +9682,9 @@
         "summary": "Create a Deployment",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "deployments"
       }
     },
     "/v1/deployments/{deployment_id}": {
@@ -9675,7 +9701,9 @@
         "summary": "Get a Deployment",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "deployments"
       },
       "parameters": [
         {
@@ -9714,7 +9742,9 @@
         "summary": "Update a Deployment",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "deployments"
       }
     },
     "/v1/deployments/{deployment_id}/archive": {
@@ -9736,7 +9766,9 @@
         "summary": "Archive a Deployment",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "archive",
+        "x-sdk-resource": "deployments"
       }
     },
     "/v1/deployments/{deployment_id}/pause": {
@@ -9758,7 +9790,9 @@
         "summary": "Pause scheduled triggers",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "pause",
+        "x-sdk-resource": "deployments"
       }
     },
     "/v1/deployments/{deployment_id}/run": {
@@ -9784,7 +9818,9 @@
         "summary": "Run a Deployment immediately",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "run",
+        "x-sdk-resource": "deployments"
       }
     },
     "/v1/deployments/{deployment_id}/unpause": {
@@ -9806,7 +9842,9 @@
         "summary": "Resume scheduled triggers without backfilling missed occurrences",
         "tags": [
           "Deployments"
-        ]
+        ],
+        "x-sdk-method": "unpause",
+        "x-sdk-resource": "deployments"
       }
     },
     "/v1/environments": {
@@ -9834,7 +9872,9 @@
         "summary": "List Environments",
         "tags": [
           "Environments"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "environments"
       },
       "post": {
         "operationId": "createEnvironment",
@@ -9862,7 +9902,9 @@
         "summary": "Create an Environment",
         "tags": [
           "Environments"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "environments"
       }
     },
     "/v1/environments/{environment_id}": {
@@ -9882,7 +9924,9 @@
         "summary": "Delete an unreferenced Environment",
         "tags": [
           "Environments"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "environments"
       },
       "get": {
         "operationId": "getEnvironment",
@@ -9897,7 +9941,9 @@
         "summary": "Get an Environment",
         "tags": [
           "Environments"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "environments"
       },
       "parameters": [
         {
@@ -9933,7 +9979,9 @@
         "summary": "Update an Environment",
         "tags": [
           "Environments"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "environments"
       }
     },
     "/v1/environments/{environment_id}/archive": {
@@ -9955,7 +10003,9 @@
         "summary": "Archive an Environment",
         "tags": [
           "Environments"
-        ]
+        ],
+        "x-sdk-method": "archive",
+        "x-sdk-resource": "environments"
       }
     },
     "/v1/environments/{environment_id}/work": {
@@ -9983,7 +10033,9 @@
         "summary": "List self-hosted Environment Work items",
         "tags": [
           "Environment Work"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "environments.work"
       },
       "parameters": [
         {
@@ -10019,7 +10071,9 @@
         "summary": "Poll and tentatively claim the oldest available Work item",
         "tags": [
           "Environment Work"
-        ]
+        ],
+        "x-sdk-method": "poll",
+        "x-sdk-resource": "environments.work"
       },
       "parameters": [
         {
@@ -10041,7 +10095,9 @@
         "summary": "Get Environment Work queue statistics",
         "tags": [
           "Environment Work"
-        ]
+        ],
+        "x-sdk-method": "stats",
+        "x-sdk-resource": "environments.work"
       },
       "parameters": [
         {
@@ -10063,7 +10119,9 @@
         "summary": "Get an Environment Work item",
         "tags": [
           "Environment Work"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "environments.work"
       },
       "parameters": [
         {
@@ -10099,7 +10157,9 @@
         "summary": "Merge metadata into an Environment Work item",
         "tags": [
           "Environment Work"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "environments.work"
       }
     },
     "/v1/environments/{environment_id}/work/{work_id}/ack": {
@@ -10127,7 +10187,9 @@
         "summary": "Acknowledge a polled Work item and transition it to starting",
         "tags": [
           "Environment Work"
-        ]
+        ],
+        "x-sdk-method": "ack",
+        "x-sdk-resource": "environments.work"
       }
     },
     "/v1/environments/{environment_id}/work/{work_id}/fail": {
@@ -10172,7 +10234,9 @@
         "summary": "Terminate a Session whose immutable worker inputs are invalid",
         "tags": [
           "Environment Work"
-        ]
+        ],
+        "x-sdk-method": "fail",
+        "x-sdk-resource": "environments.work"
       }
     },
     "/v1/environments/{environment_id}/work/{work_id}/heartbeat": {
@@ -10211,7 +10275,9 @@
         "summary": "Record a conditional heartbeat and extend the Work lease",
         "tags": [
           "Environment Work"
-        ]
+        ],
+        "x-sdk-method": "heartbeat",
+        "x-sdk-resource": "environments.work"
       }
     },
     "/v1/environments/{environment_id}/work/{work_id}/stop": {
@@ -10252,7 +10318,9 @@
         "summary": "Request graceful or forced Work shutdown",
         "tags": [
           "Environment Work"
-        ]
+        ],
+        "x-sdk-method": "stop",
+        "x-sdk-resource": "environments.work"
       }
     },
     "/v1/files": {
@@ -10286,7 +10354,9 @@
         "summary": "List Files",
         "tags": [
           "Files"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "files"
       },
       "post": {
         "operationId": "uploadFile",
@@ -10317,7 +10387,9 @@
         "summary": "Upload a File",
         "tags": [
           "Files"
-        ]
+        ],
+        "x-sdk-method": "upload",
+        "x-sdk-resource": "files"
       }
     },
     "/v1/files/{file_id}": {
@@ -10340,7 +10412,9 @@
         "summary": "Delete a File",
         "tags": [
           "Files"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "files"
       },
       "get": {
         "operationId": "getFileMetadata",
@@ -10358,7 +10432,9 @@
         "summary": "Get File metadata",
         "tags": [
           "Files"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "files"
       },
       "parameters": [
         {
@@ -10386,7 +10462,9 @@
         "summary": "Download a File marked as downloadable",
         "tags": [
           "Files"
-        ]
+        ],
+        "x-sdk-method": "download",
+        "x-sdk-resource": "files"
       },
       "parameters": [
         {
@@ -10428,7 +10506,9 @@
         "summary": "List Memory Stores",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "memory_stores"
       },
       "post": {
         "operationId": "createMemoryStore",
@@ -10456,7 +10536,9 @@
         "summary": "Create a Memory Store",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "memory_stores"
       }
     },
     "/v1/memory_stores/{store_id}": {
@@ -10479,7 +10561,9 @@
         "summary": "Delete a Memory Store",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "memory_stores"
       },
       "get": {
         "operationId": "getMemoryStore",
@@ -10497,7 +10581,9 @@
         "summary": "Get a Memory Store",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "memory_stores"
       },
       "parameters": [
         {
@@ -10533,7 +10619,9 @@
         "summary": "Update a Memory Store",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "memory_stores"
       }
     },
     "/v1/memory_stores/{store_id}/archive": {
@@ -10558,7 +10646,9 @@
         "summary": "Archive a Memory Store",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "archive",
+        "x-sdk-resource": "memory_stores"
       }
     },
     "/v1/memory_stores/{store_id}/memories": {
@@ -10598,7 +10688,9 @@
         "summary": "List Memories and optional depth-one path prefixes",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "memory_stores.memories"
       },
       "parameters": [
         {
@@ -10645,7 +10737,9 @@
         "summary": "Create a Memory",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "memory_stores.memories"
       }
     },
     "/v1/memory_stores/{store_id}/memories/{memory_id}": {
@@ -10676,7 +10770,9 @@
         "summary": "Delete a Memory with an optional SHA-256 precondition",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "memory_stores.memories"
       },
       "get": {
         "operationId": "getMemory",
@@ -10702,7 +10798,9 @@
         "summary": "Get a Memory",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "memory_stores.memories"
       },
       "parameters": [
         {
@@ -10752,7 +10850,9 @@
         "summary": "Update a Memory with an optional SHA-256 precondition",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "memory_stores.memories"
       }
     },
     "/v1/memory_stores/{store_id}/memory_versions": {
@@ -10804,7 +10904,9 @@
         "summary": "List immutable Memory Versions",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "memory_stores.versions"
       },
       "parameters": [
         {
@@ -10837,7 +10939,9 @@
         "summary": "Get an immutable Memory Version",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "memory_stores.versions"
       },
       "parameters": [
         {
@@ -10876,7 +10980,9 @@
         "summary": "Permanently redact the content of an historical Memory Version",
         "tags": [
           "Memory"
-        ]
+        ],
+        "x-sdk-method": "redact",
+        "x-sdk-resource": "memory_stores.versions"
       }
     },
     "/v1/sessions": {
@@ -10934,7 +11040,9 @@
         "summary": "List Sessions",
         "tags": [
           "Sessions"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "sessions"
       },
       "post": {
         "description": "Custom Skills on the effective primary Agent or any resolved roster member require a capable execution path. Overrides apply before this check. Cloud adapters configured without Skill support return 422 before any Session, Work item, or execution wakeup is created; self-hosted Sessions expose their immutable pins to the external worker.",
@@ -10969,7 +11077,9 @@
         "summary": "Create a Session",
         "tags": [
           "Sessions"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "sessions"
       }
     },
     "/v1/sessions/{session_id}": {
@@ -10990,7 +11100,9 @@
         "summary": "Delete a non-running Session and its event history",
         "tags": [
           "Sessions"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "sessions"
       },
       "get": {
         "operationId": "getSession",
@@ -11005,7 +11117,9 @@
         "summary": "Get a Session",
         "tags": [
           "Sessions"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "sessions"
       },
       "parameters": [
         {
@@ -11044,7 +11158,9 @@
         "summary": "Update Session metadata, title, or the next-turn tool configuration",
         "tags": [
           "Sessions"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "sessions"
       }
     },
     "/v1/sessions/{session_id}/archive": {
@@ -11070,7 +11186,9 @@
         "summary": "Archive a non-running Session",
         "tags": [
           "Sessions"
-        ]
+        ],
+        "x-sdk-method": "archive",
+        "x-sdk-resource": "sessions"
       }
     },
     "/v1/sessions/{session_id}/events": {
@@ -11116,7 +11234,9 @@
         "summary": "List Session event history",
         "tags": [
           "Session Events"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "sessions.events"
       },
       "parameters": [
         {
@@ -11161,7 +11281,9 @@
         "summary": "Send Session events",
         "tags": [
           "Session Events"
-        ]
+        ],
+        "x-sdk-method": "send",
+        "x-sdk-resource": "sessions.events"
       }
     },
     "/v1/sessions/{session_id}/events/stream": {
@@ -11209,7 +11331,9 @@
         "summary": "Stream live Session events over SSE",
         "tags": [
           "Session Events"
-        ]
+        ],
+        "x-sdk-method": "stream",
+        "x-sdk-resource": "sessions.events"
       },
       "parameters": [
         {
@@ -11245,7 +11369,9 @@
         "summary": "List Session Resources",
         "tags": [
           "Session Resources"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "sessions.resources"
       },
       "parameters": [
         {
@@ -11287,7 +11413,9 @@
         "summary": "Attach a File copy to a Session",
         "tags": [
           "Session Resources"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "sessions.resources"
       }
     },
     "/v1/sessions/{session_id}/resources/{resource_id}": {
@@ -11310,7 +11438,9 @@
         "summary": "Detach a File Resource from a Session",
         "tags": [
           "Session Resources"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "sessions.resources"
       },
       "get": {
         "operationId": "getSessionResource",
@@ -11328,7 +11458,9 @@
         "summary": "Get a Session Resource",
         "tags": [
           "Session Resources"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "sessions.resources"
       },
       "parameters": [
         {
@@ -11364,7 +11496,9 @@
         "summary": "List Session Threads, primary first",
         "tags": [
           "Session Threads"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "sessions.threads"
       },
       "parameters": [
         {
@@ -11386,7 +11520,9 @@
         "summary": "Get a Session Thread",
         "tags": [
           "Session Threads"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "sessions.threads"
       },
       "parameters": [
         {
@@ -11422,7 +11558,9 @@
         "summary": "Archive a non-running Session Thread",
         "tags": [
           "Session Threads"
-        ]
+        ],
+        "x-sdk-method": "archive",
+        "x-sdk-resource": "sessions.threads"
       }
     },
     "/v1/sessions/{session_id}/threads/{thread_id}/events": {
@@ -11450,7 +11588,9 @@
         "summary": "List persisted events for one Session Thread",
         "tags": [
           "Session Threads"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "sessions.threads.events"
       },
       "parameters": [
         {
@@ -11506,7 +11646,9 @@
         "summary": "Stream live events for one Session Thread over SSE",
         "tags": [
           "Session Threads"
-        ]
+        ],
+        "x-sdk-method": "stream",
+        "x-sdk-resource": "sessions.threads.events"
       },
       "parameters": [
         {
@@ -11545,7 +11687,9 @@
         "summary": "List Skills",
         "tags": [
           "Skills"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "skills"
       },
       "post": {
         "operationId": "createSkill",
@@ -11576,7 +11720,9 @@
         "summary": "Create a custom Skill and its first immutable Version",
         "tags": [
           "Skills"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "skills"
       }
     },
     "/v1/skills/{skill_id}": {
@@ -11599,7 +11745,9 @@
         "summary": "Delete a Skill after all of its Versions have been deleted",
         "tags": [
           "Skills"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "skills"
       },
       "get": {
         "operationId": "getSkill",
@@ -11617,7 +11765,9 @@
         "summary": "Get a Skill",
         "tags": [
           "Skills"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "skills"
       },
       "parameters": [
         {
@@ -11653,7 +11803,9 @@
         "summary": "List immutable Skill Versions",
         "tags": [
           "Skills"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "skills.versions"
       },
       "parameters": [
         {
@@ -11692,7 +11844,9 @@
         "summary": "Create an immutable Skill Version",
         "tags": [
           "Skills"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "skills.versions"
       }
     },
     "/v1/skills/{skill_id}/versions/{version}": {
@@ -11715,7 +11869,9 @@
         "summary": "Delete a Skill Version and its archived contents",
         "tags": [
           "Skills"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "skills.versions"
       },
       "get": {
         "operationId": "getSkillVersion",
@@ -11733,7 +11889,9 @@
         "summary": "Get a Skill Version",
         "tags": [
           "Skills"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "skills.versions"
       },
       "parameters": [
         {
@@ -11761,7 +11919,9 @@
         "summary": "Download a Skill Version as a zip archive",
         "tags": [
           "Skills"
-        ]
+        ],
+        "x-sdk-method": "download",
+        "x-sdk-resource": "skills.versions"
       },
       "parameters": [
         {
@@ -11800,7 +11960,9 @@
         "summary": "List Vaults",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "vaults"
       },
       "post": {
         "operationId": "createVault",
@@ -11828,7 +11990,9 @@
         "summary": "Create a Vault",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "vaults"
       }
     },
     "/v1/vaults/{vault_id}": {
@@ -11848,7 +12012,9 @@
         "summary": "Delete a Vault and all of its Credentials",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "vaults"
       },
       "get": {
         "operationId": "getVault",
@@ -11866,7 +12032,9 @@
         "summary": "Get a Vault",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "vaults"
       },
       "parameters": [
         {
@@ -11902,7 +12070,9 @@
         "summary": "Update a Vault",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "vaults"
       }
     },
     "/v1/vaults/{vault_id}/archive": {
@@ -11927,7 +12097,9 @@
         "summary": "Archive a Vault, archive its Credentials, and purge their encrypted payloads",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "archive",
+        "x-sdk-resource": "vaults"
       }
     },
     "/v1/vaults/{vault_id}/credentials": {
@@ -11961,7 +12133,9 @@
         "summary": "List Credentials in a Vault",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "vaults.credentials"
       },
       "parameters": [
         {
@@ -12001,7 +12175,9 @@
         "summary": "Create an encrypted Credential",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "vaults.credentials"
       }
     },
     "/v1/vaults/{vault_id}/credentials/{credential_id}": {
@@ -12021,7 +12197,9 @@
         "summary": "Delete a Credential",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "vaults.credentials"
       },
       "get": {
         "operationId": "getVaultCredential",
@@ -12039,7 +12217,9 @@
         "summary": "Get a Credential without sensitive fields",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "vaults.credentials"
       },
       "parameters": [
         {
@@ -12078,7 +12258,9 @@
         "summary": "Update a Credential",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "vaults.credentials"
       }
     },
     "/v1/vaults/{vault_id}/credentials/{credential_id}/archive": {
@@ -12106,7 +12288,9 @@
         "summary": "Archive a Credential and purge its encrypted payload",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "archive",
+        "x-sdk-resource": "vaults.credentials"
       }
     },
     "/v1/vaults/{vault_id}/credentials/{credential_id}/mcp_oauth_validate": {
@@ -12140,7 +12324,9 @@
         "summary": "Live-probe and, when needed, refresh an MCP OAuth Credential",
         "tags": [
           "Vaults"
-        ]
+        ],
+        "x-sdk-method": "validate_mcp_oauth",
+        "x-sdk-resource": "vaults.credentials"
       }
     },
     "/v1/webhooks": {
@@ -12168,7 +12354,9 @@
         "summary": "List Webhook endpoints",
         "tags": [
           "Webhooks"
-        ]
+        ],
+        "x-sdk-method": "list",
+        "x-sdk-resource": "webhooks"
       },
       "post": {
         "description": "The signing_secret is returned only by this response and explicit rotation.",
@@ -12200,7 +12388,9 @@
         "summary": "Create a Webhook endpoint",
         "tags": [
           "Webhooks"
-        ]
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "webhooks"
       }
     },
     "/v1/webhooks/{webhook_id}": {
@@ -12220,7 +12410,9 @@
         "summary": "Delete a Webhook endpoint and its pending deliveries",
         "tags": [
           "Webhooks"
-        ]
+        ],
+        "x-sdk-method": "delete",
+        "x-sdk-resource": "webhooks"
       },
       "get": {
         "operationId": "getWebhook",
@@ -12238,7 +12430,9 @@
         "summary": "Get a Webhook endpoint without its signing secret",
         "tags": [
           "Webhooks"
-        ]
+        ],
+        "x-sdk-method": "retrieve",
+        "x-sdk-resource": "webhooks"
       },
       "parameters": [
         {
@@ -12274,7 +12468,9 @@
         "summary": "Update a Webhook endpoint",
         "tags": [
           "Webhooks"
-        ]
+        ],
+        "x-sdk-method": "update",
+        "x-sdk-resource": "webhooks"
       }
     },
     "/v1/webhooks/{webhook_id}/regenerate_signing_secret": {
@@ -12300,7 +12496,9 @@
         "summary": "Replace and reveal a Webhook signing secret",
         "tags": [
           "Webhooks"
-        ]
+        ],
+        "x-sdk-method": "regenerate_signing_secret",
+        "x-sdk-resource": "webhooks"
       }
     }
   },

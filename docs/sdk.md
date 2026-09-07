@@ -22,35 +22,14 @@ Start with the [multi-language quickstart](getting-started.md), or read the
 language-specific guides: [Go](sdk/go.md), [Python](sdk/python.md), and
 [TypeScript / JavaScript](sdk/typescript.md).
 
-## Install an alpha
+## Current development version
 
-The packages cover the current OpenAPI operation inventory, including Memory,
-Skills, Files, multi-agent Threads and Environment Work. Coverage means API
-access, not an expansion of the [server capabilities](capabilities.md).
-These are alpha SDKs; a stable SDK contract has not been established. Match the
-SDK version to the server revision you deploy.
-
-Python and TypeScript/JavaScript are published on
-[PyPI](https://pypi.org/project/mango-sdk/0.1.0a1/) and
-[npm](https://www.npmjs.com/package/mango-sdk/v/0.1.0-alpha.1). Install by exact
-version; Go has no independently tagged release yet and uses source installation.
-
-```sh tab="TypeScript" tab-group="mango-language"
-npm install mango-sdk@0.1.0-alpha.1
-```
-
-```sh tab="Python" tab-group="mango-language"
-python3 -m venv .venv
-.venv/bin/python -m pip install 'mango-sdk==0.1.0a1'
-```
-
-The TypeScript package includes compiled JavaScript and declarations; consuming
-it does not require building the SDK. The alpha is not a stable release even if
-npm displays it under `latest`. See the
-[release record](https://github.com/yanpgwang/mango/blob/main/sdk/releases/0.1.0-alpha.1.md)
-for verified artifacts and the
-[release guide](https://github.com/yanpgwang/mango/blob/main/sdk/RELEASING.md)
-for the publishing process. Package metadata alone is not evidence of publication.
+This guide documents the resource-based SDK in the current source checkout:
+Python `0.1.0a2` and TypeScript `0.1.0-alpha.2`. These versions are not published.
+Use source installation below. The previously published alpha 1 packages have
+an earlier client interface; they cannot run the examples on this page.
+The [first alpha release record](https://github.com/yanpgwang/mango/blob/main/sdk/releases/0.1.0-alpha.1.md)
+remains the record of published artifacts. Go has no independently tagged release.
 
 ## Install from source
 
@@ -77,6 +56,35 @@ go mod edit -replace=github.com/yanpgwang/mango/sdk/go=/absolute/path/to/mango/s
 # Add your Mango import before running tidy.
 go mod tidy
 ```
+
+## Resource services
+
+Services follow the API's resource relationships. They share the client's
+transport and credentials; getting a service does not issue an HTTP request.
+
+| Resource | Python / TypeScript | Go |
+| --- | --- | --- |
+| Agent definitions and versions | `agents`, `agents.versions` | `Agents`, `Agents.Versions` |
+| Environments and queued Work | `environments`, `environments.work` | `Environments`, `Environments.Work` |
+| Sessions and events | `sessions`, `sessions.events` | `Sessions`, `Sessions.Events` |
+| Child Threads and their events | `sessions.threads.events` | `Sessions.Threads.Events` |
+| Session attachments | `sessions.resources` | `Sessions.Resources` |
+| Files and Skills | `files`, `skills.versions` | `Files`, `Skills.Versions` |
+| Memory | `memory_stores` / `memoryStores`, with `memories` and `versions` | `MemoryStores.Memories`, `MemoryStores.Versions` |
+| Credentials | `vaults.credentials` | `Vaults.Credentials` |
+| Scheduling | `deployments`, `deployment_runs` / `deploymentRuns` | `Deployments`, `DeploymentRuns` |
+| Webhooks and public probes | `webhooks`, `system` | `Webhooks`, `System` |
+
+Python accepts request fields as keyword arguments; TypeScript accepts a direct
+request object. Go uses request structs and constructors such as `ModelID`,
+`Coordinator`, and `UserMessage`. Path identifiers precede parameters in HTTP
+hierarchy order: Session ID, then Thread ID, for a Thread's events.
+
+Lists provide one-page methods and explicit all-item iterators. Python uses
+`resource.list(...)` / `resource.iter(...)`; TypeScript uses `list`, `listItems`
+and `listPages`; Go uses `List` / `ListAutoPaging`.
+See [the multiagent SDK applications](guides/multi-agent.md#use-a-first-party-sdk)
+for team configuration, completion handling, follow-ups and Thread inspection.
 
 ## Authentication and errors
 

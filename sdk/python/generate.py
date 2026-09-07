@@ -70,9 +70,10 @@ class Generator:
         self.schemas[name] = schema
         return name
 
-    def expression(self, schema: dict[str, Any], context: str, inline: bool = False) -> str:
+    def expression(self, schema: dict[str, Any], context: str, inline: bool = False, prefix: str = "") -> str:
         if "$ref" in schema:
-            return repr(schema["$ref"].rsplit("/", 1)[1])
+            name = schema["$ref"].rsplit("/", 1)[1]
+            return prefix + name if prefix else repr(name)
         schema = self.flatten(schema)
         if "const" in schema:
             return f"Literal[{schema['const']!r}]" if schema["const"] is not None else "None"
@@ -81,17 +82,17 @@ class Generator:
         for union in ("oneOf", "anyOf"):
             if union in schema:
                 items = [
-                    self.expression(part, context + "Variant" + str(index + 1))
+                    self.expression(part, context + "Variant" + str(index + 1), prefix=prefix)
                     for index, part in enumerate(schema[union])
                 ]
                 return "Union[" + ", ".join(items) + "]"
         kind = schema.get("type")
         if isinstance(kind, list):
             return "Union[" + ", ".join(
-                self.expression({**schema, "type": item}, context + pascal(item)) for item in kind
+                self.expression({**schema, "type": item}, context + pascal(item), prefix=prefix) for item in kind
             ) + "]"
         if kind == "array":
-            return "List[" + self.expression(schema.get("items", {}), context + "Item") + "]"
+            return "List[" + self.expression(schema.get("items", {}), context + "Item", prefix=prefix) + "]"
         if kind == "object" or "properties" in schema:
             # Python 3.11 TypedDict cannot describe arbitrary extra keys. JSON
             # Schemas (notably custom-tool input_schema) must remain open maps,
@@ -101,9 +102,10 @@ class Generator:
             if schema.get("properties"):
                 if inline:
                     raise ValueError("TypedDict objects are emitted as declarations")
-                return repr(self.named(schema, context))
+                name = self.named(schema, context)
+                return prefix + name if prefix else repr(name)
             additional = schema.get("additionalProperties", {})
-            value = self.expression(additional, context + "Value") if isinstance(additional, dict) else "Any"
+            value = self.expression(additional, context + "Value", prefix=prefix) if isinstance(additional, dict) else "Any"
             return "Dict[str, " + value + "]"
         if kind == "string" and schema.get("format") == "binary":
             return "Upload"
@@ -151,8 +153,7 @@ class Generator:
             for parameter in item.get("parameters") or []:
                 parameter = dict(parameter)
                 parameter["pyname"] = snake(parameter["name"])
-                name = self.named(parameter.get("schema", {}), context + pascal(parameter["pyname"]) + "Parameter")
-                parameter["annotation"] = "models." + name
+                parameter["annotation"] = self.expression(parameter.get("schema", {}), context + pascal(parameter["pyname"]) + "Parameter", prefix="models.")
                 parameters.append(parameter)
             item["parameters"] = parameters
             request_schema = item["request_schema"]
@@ -188,67 +189,104 @@ class Generator:
         return output
 
     def client_source(self, operations: list[dict[str, Any]]) -> str:
-        lines = [HEADER, '"""One named operation per Mango route; sync and async share the same contract."""\n',
+        lines = [HEADER, '"""Resource services generated from Mango OpenAPI."""\n',
                  "from __future__ import annotations\n\n",
-                 "from typing import Any, AsyncIterator, Iterator, cast\n",
+                 "from functools import cached_property\n",
+                 "from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Union, cast\n",
                  "from . import models\n",
+                 "# Model aliases contain forward references. Runtime signature inspection\n",
+                 "# resolves those names in this module, so keep their public types in scope.\n",
+                 "from .models import *  # noqa: F403\n",
                  "from ._client import BaseClient, AsyncBaseClient\n",
                  "from ._streaming import BinaryStream, AsyncBinaryStream, SSEStream, AsyncSSEStream\n",
-                 "from ._types import NOT_GIVEN, NotGiven\n\n",
+                 "from ._types import NOT_GIVEN, NotGiven, Upload\n\n",
                  "OPERATIONS: dict[str, dict[str, Any]] = " + pprint.pformat({item["name"]: item["metadata"] for item in operations}, sort_dicts=False, width=100) + "\n\n\n"]
+        resources = sorted({".".join(op["sdk_resource"].split(".")[:i])
+                            for op in operations for i in range(1, len(op["sdk_resource"].split(".")) + 1)})
+
+        def resource_type(resource: str, async_mode: bool) -> str:
+            return ("Async" if async_mode else "") + pascal(resource.replace(".", "_")) + "Resource"
+
+        def children(owner: str, async_mode: bool) -> None:
+            for resource in resources:
+                parent, _, field = resource.rpartition(".")
+                if parent == owner:
+                    child = resource_type(resource, async_mode)
+                    client = "self" if not owner else "self._client"
+                    lines.append(f"    @cached_property\n    def {field}(self) -> {child}:\n        return {child}({client})\n\n")
+
         for async_mode in (False, True):
             client = "AsyncMango" if async_mode else "Mango"
             parent = "AsyncBaseClient" if async_mode else "BaseClient"
             lines.append(f"class {client}({parent}):\n")
             enter = "    async def __aenter__(self)" if async_mode else "    def __enter__(self)"
             lines.append(f"{enter} -> {client}:\n        return self\n\n")
-            for item in operations:
-                variants = [False, True] if "item_type" in item else [False]
-                for pagination in variants:
-                    name = item["name"]
-                    method_name = ("iter_" + name.removeprefix("list_")) if pagination else name
-                    parameters = ["self"]
-                    path: dict[str, str] = {}
-                    query: dict[str, str] = {}
-                    for parameter in item["parameters"]:
-                        if parameter["in"] != "path":
-                            continue
-                        pyname = parameter["pyname"]
-                        parameters.append(f"{pyname}: {parameter['annotation']}")
-                        path[parameter["name"]] = pyname
-                    optional = [parameter for parameter in item["parameters"] if parameter["in"] == "query"]
-                    if optional or "body_type" in item:
-                        parameters.append("*")
-                    if "body_type" in item:
-                        suffix = "" if item["request_required"] else " | NotGiven = NOT_GIVEN"
-                        parameters.append(f"body: {item['body_type']}" + suffix)
-                    for parameter in optional:
-                        pyname = parameter["pyname"]
-                        suffix = "" if parameter.get("required") else " | NotGiven = NOT_GIVEN"
-                        parameters.append(f"{pyname}: {parameter['annotation']}" + suffix)
-                        query[parameter["name"]] = pyname
-                    mode = item["metadata"]["mode"]
-                    prefix = "async " if async_mode and mode not in ("sse", "binary") and not pagination else ""
-                    return_type = item["response_type"]
-                    if pagination:
-                        return_type = ("AsyncIterator" if async_mode else "Iterator") + "[" + item["item_type"] + "]"
-                    elif mode in ("sse", "binary"):
-                        return_type = ("Async" if async_mode else "") + ("SSEStream" if mode == "sse" else "BinaryStream")
-                    lines.append(f"    {prefix}def {method_name}(\n        " + ",\n        ".join(parameters) + f",\n    ) -> {return_type}:\n")
-                    lines.append(f'        """{item["method"]} {item["path"]}' + ("; iterate every page." if pagination else ".") + '"""\n')
-                    path_expr = "{" + ", ".join(repr(key) + ": " + value for key, value in path.items()) + "}"
-                    query_expr = "{" + ", ".join(repr(key) + ": " + value for key, value in query.items()) + "}"
-                    arguments = f"OPERATIONS[{name!r}], {path_expr}, {query_expr}"
-                    if pagination:
-                        lines.append(f"        return cast({return_type}, self._paginate({arguments}))\n\n")
-                    elif mode in ("sse", "binary"):
-                        helper = "_stream" if mode == "sse" else "_binary"
-                        lines.append(f"        return self.{helper}({arguments})\n\n")
-                    else:
+            children("", async_mode)
+            for resource in resources:
+                lines.append(f"class {resource_type(resource, async_mode)}:\n")
+                lines.append(f"    def __init__(self, client: {parent}) -> None:\n        self._client = client\n\n")
+                children(resource, async_mode)
+                for item in operations:
+                    if item["sdk_resource"] != resource:
+                        continue
+                    for pagination in ([False, True] if "item_type" in item else [False]):
+                        name = item["name"]
+                        method_name = "iter" if pagination else item["sdk_method"]
+                        parameters = ["self"]
+                        path: dict[str, str] = {}
+                        query: dict[str, str] = {}
+                        body: dict[str, str] = {}
+                        for parameter in item["parameters"]:
+                            if parameter["in"] == "path":
+                                pyname = parameter["pyname"]
+                                parameters.append(f"{pyname}: {parameter['annotation']}")
+                                path[parameter["name"]] = pyname
+                        optional = [parameter for parameter in item["parameters"] if parameter["in"] == "query"]
+                        if optional or "body_type" in item:
+                            parameters.append("*")
                         if "body_type" in item:
-                            arguments += ", body"
-                        awaited = "await " if async_mode else ""
-                        lines.append(f"        return cast({return_type}, {awaited}self._request({arguments}))\n\n")
+                            schema = self.flatten(self.resolve(item["request_schema"]))
+                            if schema.get("type") != "object":
+                                raise ValueError(f"Expected object request for {name}")
+                            required = set(schema.get("required", [])) if item["request_required"] else set()
+                            for field, value in sorted(schema.get("properties", {}).items(), key=lambda pair: (pair[0] not in required, pair[0])):
+                                pyname = snake(field)
+                                annotation = self.expression(value, pascal(item["id"]) + pascal(field) + "Argument", prefix="models.")
+                                suffix = "" if field in required else " | NotGiven = NOT_GIVEN"
+                                parameters.append(f"{pyname}: {annotation}{suffix}")
+                                body[field] = pyname
+                        for parameter in optional:
+                            pyname = parameter["pyname"]
+                            if pyname in body or pyname in path:
+                                raise ValueError(f"Ambiguous argument {name}.{pyname}")
+                            suffix = "" if parameter.get("required") else " | NotGiven = NOT_GIVEN"
+                            parameters.append(f"{pyname}: {parameter['annotation']}{suffix}")
+                            query[parameter["name"]] = pyname
+                        mode = item["metadata"]["mode"]
+                        prefix = "async " if async_mode and mode not in ("sse", "binary") and not pagination else ""
+                        return_type = item["response_type"]
+                        if pagination:
+                            return_type = ("AsyncIterator" if async_mode else "Iterator") + "[" + item["item_type"] + "]"
+                        elif mode in ("sse", "binary"):
+                            return_type = ("Async" if async_mode else "") + ("SSEStream" if mode == "sse" else "BinaryStream")
+                        lines.append(f"    {prefix}def {method_name}(\n        " + ",\n        ".join(parameters) + f",\n    ) -> {return_type}:\n")
+                        lines.append(f'        """{item["method"]} {item["path"]}' + ("; iterate every page." if pagination else ".") + '"""\n')
+                        def mapping(values: dict[str, str]) -> str:
+                            return "{" + ", ".join(repr(key) + ": " + value for key, value in values.items()) + "}"
+                        arguments = f"OPERATIONS[{name!r}], {mapping(path)}, {mapping(query)}"
+                        if pagination:
+                            lines.append(f"        return cast({return_type}, self._client._paginate({arguments}))\n\n")
+                        elif mode in ("sse", "binary"):
+                            helper = "_stream" if mode == "sse" else "_binary"
+                            lines.append(f"        return self._client.{helper}({arguments})\n\n")
+                        else:
+                            if "body_type" in item:
+                                body_expr = mapping(body)
+                                if not item["request_required"]:
+                                    body_expr = f"({body_expr} if any(not isinstance(v, NotGiven) for v in {body_expr}.values()) else NOT_GIVEN)"
+                                arguments += ", " + body_expr
+                            awaited = "await " if async_mode else ""
+                            lines.append(f"        return cast({return_type}, {awaited}self._client._request({arguments}))\n\n")
         return "".join(lines)
 
 

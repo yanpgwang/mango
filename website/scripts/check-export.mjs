@@ -100,7 +100,7 @@ export async function checkExport(directory = resolve('out')) {
       assert.ok(!markdown.includes('::include['), `${path}: unresolved Markdown snippet`);
       if (path === '/markdown/getting-started/index.md') {
         assert.ok(markdown.includes(absoluteUrl('/sdk#install-from-source')), 'Markdown links must work outside the source tree');
-        for (const method of ['createSession', 'create_session', 'CreateSession', 'curl']) {
+        for (const method of ['client.sessions.create', 'client.Sessions.New', 'curl']) {
           assert.ok(markdown.includes(method), `${path}: missing ${method} example`);
         }
       }

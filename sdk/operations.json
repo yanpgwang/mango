@@ -7,6 +7,8 @@
       "method": "POST",
       "path": "/v1/environments/{environment_id}/work/{work_id}/ack",
       "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "ack",
       "parameters": [
         {
           "in": "path",
@@ -42,6 +44,8 @@
       "method": "POST",
       "path": "/v1/sessions/{session_id}/resources",
       "tag": "Session Resources",
+      "sdk_resource": "sessions.resources",
+      "sdk_method": "create",
       "parameters": [
         {
           "in": "path",
@@ -70,6 +74,8 @@
       "method": "POST",
       "path": "/v1/agents/{agent_id}/archive",
       "tag": "Agents",
+      "sdk_resource": "agents",
+      "sdk_method": "archive",
       "parameters": [
         {
           "in": "path",
@@ -96,6 +102,8 @@
       "method": "POST",
       "path": "/v1/deployments/{deployment_id}/archive",
       "tag": "Deployments",
+      "sdk_resource": "deployments",
+      "sdk_method": "archive",
       "parameters": [
         {
           "in": "path",
@@ -122,6 +130,8 @@
       "method": "POST",
       "path": "/v1/environments/{environment_id}/archive",
       "tag": "Environments",
+      "sdk_resource": "environments",
+      "sdk_method": "archive",
       "parameters": [
         {
           "in": "path",
@@ -148,6 +158,8 @@
       "method": "POST",
       "path": "/v1/memory_stores/{store_id}/archive",
       "tag": "Memory",
+      "sdk_resource": "memory_stores",
+      "sdk_method": "archive",
       "parameters": [
         {
           "in": "path",
@@ -174,6 +186,8 @@
       "method": "POST",
       "path": "/v1/sessions/{session_id}/archive",
       "tag": "Sessions",
+      "sdk_resource": "sessions",
+      "sdk_method": "archive",
       "parameters": [
         {
           "in": "path",
@@ -200,6 +214,8 @@
       "method": "POST",
       "path": "/v1/sessions/{session_id}/threads/{thread_id}/archive",
       "tag": "Session Threads",
+      "sdk_resource": "sessions.threads",
+      "sdk_method": "archive",
       "parameters": [
         {
           "in": "path",
@@ -235,6 +251,8 @@
       "method": "POST",
       "path": "/v1/vaults/{vault_id}/archive",
       "tag": "Vaults",
+      "sdk_resource": "vaults",
+      "sdk_method": "archive",
       "parameters": [
         {
           "in": "path",
@@ -261,6 +279,8 @@
       "method": "POST",
       "path": "/v1/vaults/{vault_id}/credentials/{credential_id}/archive",
       "tag": "Vaults",
+      "sdk_resource": "vaults.credentials",
+      "sdk_method": "archive",
       "parameters": [
         {
           "in": "path",
@@ -296,6 +316,8 @@
       "method": "POST",
       "path": "/v1/agents",
       "tag": "Agents",
+      "sdk_resource": "agents",
+      "sdk_method": "create",
       "parameters": [],
       "request_content_type": "application/json",
       "request_schema": {
@@ -314,6 +336,8 @@
       "method": "POST",
       "path": "/v1/deployments",
       "tag": "Deployments",
+      "sdk_resource": "deployments",
+      "sdk_method": "create",
       "parameters": [],
       "request_content_type": "application/json",
       "request_schema": {
@@ -332,6 +356,8 @@
       "method": "POST",
       "path": "/v1/environments",
       "tag": "Environments",
+      "sdk_resource": "environments",
+      "sdk_method": "create",
       "parameters": [],
       "request_content_type": "application/json",
       "request_schema": {
@@ -350,6 +376,8 @@
       "method": "POST",
       "path": "/v1/memory_stores/{store_id}/memories",
       "tag": "Memory",
+      "sdk_resource": "memory_stores.memories",
+      "sdk_method": "create",
       "parameters": [
         {
           "in": "path",
@@ -390,6 +418,8 @@
       "method": "POST",
       "path": "/v1/memory_stores",
       "tag": "Memory",
+      "sdk_resource": "memory_stores",
+      "sdk_method": "create",
       "parameters": [],
       "request_content_type": "application/json",
       "request_schema": {
@@ -408,6 +438,8 @@
       "method": "POST",
       "path": "/v1/sessions",
       "tag": "Sessions",
+      "sdk_resource": "sessions",
+      "sdk_method": "create",
       "parameters": [],
       "request_content_type": "application/json",
       "request_schema": {
@@ -426,6 +458,8 @@
       "method": "POST",
       "path": "/v1/skills",
       "tag": "Skills",
+      "sdk_resource": "skills",
+      "sdk_method": "create",
       "parameters": [],
       "request_content_type": "multipart/form-data",
       "request_schema": {
@@ -444,6 +478,8 @@
       "method": "POST",
       "path": "/v1/skills/{skill_id}/versions",
       "tag": "Skills",
+      "sdk_resource": "skills.versions",
+      "sdk_method": "create",
       "parameters": [
         {
           "in": "path",
@@ -472,6 +508,8 @@
       "method": "POST",
       "path": "/v1/vaults",
       "tag": "Vaults",
+      "sdk_resource": "vaults",
+      "sdk_method": "create",
       "parameters": [],
       "request_content_type": "application/json",
       "request_schema": {
@@ -490,6 +528,8 @@
       "method": "POST",
       "path": "/v1/vaults/{vault_id}/credentials",
       "tag": "Vaults",
+      "sdk_resource": "vaults.credentials",
+      "sdk_method": "create",
       "parameters": [
         {
           "in": "path",
@@ -518,6 +558,8 @@
       "method": "POST",
       "path": "/v1/webhooks",
       "tag": "Webhooks",
+      "sdk_resource": "webhooks",
+      "sdk_method": "create",
       "parameters": [],
       "request_content_type": "application/json",
       "request_schema": {
@@ -536,6 +578,8 @@
       "method": "DELETE",
       "path": "/v1/environments/{environment_id}",
       "tag": "Environments",
+      "sdk_resource": "environments",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -562,6 +606,8 @@
       "method": "DELETE",
       "path": "/v1/files/{file_id}",
       "tag": "Files",
+      "sdk_resource": "files",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -588,6 +634,8 @@
       "method": "DELETE",
       "path": "/v1/memory_stores/{store_id}/memories/{memory_id}",
       "tag": "Memory",
+      "sdk_resource": "memory_stores.memories",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -631,6 +679,8 @@
       "method": "DELETE",
       "path": "/v1/memory_stores/{store_id}",
       "tag": "Memory",
+      "sdk_resource": "memory_stores",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -657,6 +707,8 @@
       "method": "DELETE",
       "path": "/v1/sessions/{session_id}",
       "tag": "Sessions",
+      "sdk_resource": "sessions",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -683,6 +735,8 @@
       "method": "DELETE",
       "path": "/v1/sessions/{session_id}/resources/{resource_id}",
       "tag": "Session Resources",
+      "sdk_resource": "sessions.resources",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -718,6 +772,8 @@
       "method": "DELETE",
       "path": "/v1/skills/{skill_id}",
       "tag": "Skills",
+      "sdk_resource": "skills",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -744,6 +800,8 @@
       "method": "DELETE",
       "path": "/v1/skills/{skill_id}/versions/{version}",
       "tag": "Skills",
+      "sdk_resource": "skills.versions",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -779,6 +837,8 @@
       "method": "DELETE",
       "path": "/v1/vaults/{vault_id}",
       "tag": "Vaults",
+      "sdk_resource": "vaults",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -805,6 +865,8 @@
       "method": "DELETE",
       "path": "/v1/vaults/{vault_id}/credentials/{credential_id}",
       "tag": "Vaults",
+      "sdk_resource": "vaults.credentials",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -840,6 +902,8 @@
       "method": "DELETE",
       "path": "/v1/webhooks/{webhook_id}",
       "tag": "Webhooks",
+      "sdk_resource": "webhooks",
+      "sdk_method": "delete",
       "parameters": [
         {
           "in": "path",
@@ -866,6 +930,8 @@
       "method": "GET",
       "path": "/v1/files/{file_id}/content",
       "tag": "Files",
+      "sdk_resource": "files",
+      "sdk_method": "download",
       "parameters": [
         {
           "in": "path",
@@ -893,6 +959,8 @@
       "method": "GET",
       "path": "/v1/skills/{skill_id}/versions/{version}/content",
       "tag": "Skills",
+      "sdk_resource": "skills.versions",
+      "sdk_method": "download",
       "parameters": [
         {
           "in": "path",
@@ -929,6 +997,8 @@
       "method": "POST",
       "path": "/v1/environments/{environment_id}/work/{work_id}/fail",
       "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "fail",
       "parameters": [
         {
           "in": "path",
@@ -964,6 +1034,8 @@
       "method": "GET",
       "path": "/v1/agents/{agent_id}",
       "tag": "Agents",
+      "sdk_resource": "agents",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -990,6 +1062,8 @@
       "method": "GET",
       "path": "/v1/deployments/{deployment_id}",
       "tag": "Deployments",
+      "sdk_resource": "deployments",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1016,6 +1090,8 @@
       "method": "GET",
       "path": "/v1/deployment_runs/{deployment_run_id}",
       "tag": "Deployments",
+      "sdk_resource": "deployment_runs",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1042,6 +1118,8 @@
       "method": "GET",
       "path": "/v1/environments/{environment_id}",
       "tag": "Environments",
+      "sdk_resource": "environments",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1068,6 +1146,8 @@
       "method": "GET",
       "path": "/v1/environments/{environment_id}/work/{work_id}",
       "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1103,6 +1183,8 @@
       "method": "GET",
       "path": "/v1/environments/{environment_id}/work/stats",
       "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "stats",
       "parameters": [
         {
           "in": "path",
@@ -1129,6 +1211,8 @@
       "method": "GET",
       "path": "/v1/files/{file_id}",
       "tag": "Files",
+      "sdk_resource": "files",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1155,6 +1239,8 @@
       "method": "GET",
       "path": "/v1/memory_stores/{store_id}/memories/{memory_id}",
       "tag": "Memory",
+      "sdk_resource": "memory_stores.memories",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1202,6 +1288,8 @@
       "method": "GET",
       "path": "/v1/memory_stores/{store_id}",
       "tag": "Memory",
+      "sdk_resource": "memory_stores",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1228,6 +1316,8 @@
       "method": "GET",
       "path": "/v1/memory_stores/{store_id}/memory_versions/{version_id}",
       "tag": "Memory",
+      "sdk_resource": "memory_stores.versions",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1275,6 +1365,8 @@
       "method": "GET",
       "path": "/v1/sessions/{session_id}",
       "tag": "Sessions",
+      "sdk_resource": "sessions",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1301,6 +1393,8 @@
       "method": "GET",
       "path": "/v1/sessions/{session_id}/resources/{resource_id}",
       "tag": "Session Resources",
+      "sdk_resource": "sessions.resources",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1336,6 +1430,8 @@
       "method": "GET",
       "path": "/v1/sessions/{session_id}/threads/{thread_id}",
       "tag": "Session Threads",
+      "sdk_resource": "sessions.threads",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1371,6 +1467,8 @@
       "method": "GET",
       "path": "/v1/skills/{skill_id}",
       "tag": "Skills",
+      "sdk_resource": "skills",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1397,6 +1495,8 @@
       "method": "GET",
       "path": "/v1/skills/{skill_id}/versions/{version}",
       "tag": "Skills",
+      "sdk_resource": "skills.versions",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1432,6 +1532,8 @@
       "method": "GET",
       "path": "/v1/vaults/{vault_id}",
       "tag": "Vaults",
+      "sdk_resource": "vaults",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1458,6 +1560,8 @@
       "method": "GET",
       "path": "/v1/vaults/{vault_id}/credentials/{credential_id}",
       "tag": "Vaults",
+      "sdk_resource": "vaults.credentials",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1493,6 +1597,8 @@
       "method": "GET",
       "path": "/v1/webhooks/{webhook_id}",
       "tag": "Webhooks",
+      "sdk_resource": "webhooks",
+      "sdk_method": "retrieve",
       "parameters": [
         {
           "in": "path",
@@ -1519,6 +1625,8 @@
       "method": "GET",
       "path": "/healthz",
       "tag": "System",
+      "sdk_resource": "system",
+      "sdk_method": "health",
       "parameters": [],
       "request_content_type": "",
       "request_schema": null,
@@ -1533,6 +1641,8 @@
       "method": "POST",
       "path": "/v1/environments/{environment_id}/work/{work_id}/heartbeat",
       "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "heartbeat",
       "parameters": [
         {
           "in": "path",
@@ -1587,6 +1697,8 @@
       "method": "GET",
       "path": "/v1/agents/{agent_id}/versions",
       "tag": "Agents",
+      "sdk_resource": "agents.versions",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -1632,6 +1744,8 @@
       "method": "GET",
       "path": "/v1/agents",
       "tag": "Agents",
+      "sdk_resource": "agents",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -1692,6 +1806,8 @@
       "method": "GET",
       "path": "/v1/deployment_runs",
       "tag": "Deployments",
+      "sdk_resource": "deployment_runs",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -1787,6 +1903,8 @@
       "method": "GET",
       "path": "/v1/deployments",
       "tag": "Deployments",
+      "sdk_resource": "deployments",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -1865,6 +1983,8 @@
       "method": "GET",
       "path": "/v1/environments/{environment_id}/work",
       "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -1910,6 +2030,8 @@
       "method": "GET",
       "path": "/v1/environments",
       "tag": "Environments",
+      "sdk_resource": "environments",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -1954,6 +2076,8 @@
       "method": "GET",
       "path": "/v1/files",
       "tag": "Files",
+      "sdk_resource": "files",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -2008,6 +2132,8 @@
       "method": "GET",
       "path": "/v1/memory_stores/{store_id}/memories",
       "tag": "Memory",
+      "sdk_resource": "memory_stores.memories",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -2087,6 +2213,8 @@
       "method": "GET",
       "path": "/v1/memory_stores",
       "tag": "Memory",
+      "sdk_resource": "memory_stores",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -2147,6 +2275,8 @@
       "method": "GET",
       "path": "/v1/memory_stores/{store_id}/memory_versions",
       "tag": "Memory",
+      "sdk_resource": "memory_stores.versions",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -2254,6 +2384,8 @@
       "method": "GET",
       "path": "/v1/sessions/{session_id}/events",
       "tag": "Session Events",
+      "sdk_resource": "sessions.events",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -2355,6 +2487,8 @@
       "method": "GET",
       "path": "/v1/sessions/{session_id}/resources",
       "tag": "Session Resources",
+      "sdk_resource": "sessions.resources",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -2400,6 +2534,8 @@
       "method": "GET",
       "path": "/v1/sessions/{session_id}/threads/{thread_id}/events",
       "tag": "Session Threads",
+      "sdk_resource": "sessions.threads.events",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -2454,6 +2590,8 @@
       "method": "GET",
       "path": "/v1/sessions/{session_id}/threads",
       "tag": "Session Threads",
+      "sdk_resource": "sessions.threads",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -2499,6 +2637,8 @@
       "method": "GET",
       "path": "/v1/sessions",
       "tag": "Sessions",
+      "sdk_resource": "sessions",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -2633,6 +2773,8 @@
       "method": "GET",
       "path": "/v1/skills/{skill_id}/versions",
       "tag": "Skills",
+      "sdk_resource": "skills.versions",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -2678,6 +2820,8 @@
       "method": "GET",
       "path": "/v1/skills",
       "tag": "Skills",
+      "sdk_resource": "skills",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -2725,6 +2869,8 @@
       "method": "GET",
       "path": "/v1/vaults/{vault_id}/credentials",
       "tag": "Vaults",
+      "sdk_resource": "vaults.credentials",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "path",
@@ -2778,6 +2924,8 @@
       "method": "GET",
       "path": "/v1/vaults",
       "tag": "Vaults",
+      "sdk_resource": "vaults",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -2822,6 +2970,8 @@
       "method": "GET",
       "path": "/v1/webhooks",
       "tag": "Webhooks",
+      "sdk_resource": "webhooks",
+      "sdk_method": "list",
       "parameters": [
         {
           "in": "query",
@@ -2858,6 +3008,8 @@
       "method": "GET",
       "path": "/openapi.yaml",
       "tag": "System",
+      "sdk_resource": "system",
+      "sdk_method": "open_api",
       "parameters": [],
       "request_content_type": "",
       "request_schema": null,
@@ -2874,6 +3026,8 @@
       "method": "POST",
       "path": "/v1/deployments/{deployment_id}/pause",
       "tag": "Deployments",
+      "sdk_resource": "deployments",
+      "sdk_method": "pause",
       "parameters": [
         {
           "in": "path",
@@ -2900,6 +3054,8 @@
       "method": "GET",
       "path": "/v1/environments/{environment_id}/work/poll",
       "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "poll",
       "parameters": [
         {
           "in": "path",
@@ -2963,6 +3119,8 @@
       "method": "GET",
       "path": "/readyz",
       "tag": "System",
+      "sdk_resource": "system",
+      "sdk_method": "readiness",
       "parameters": [],
       "request_content_type": "",
       "request_schema": null,
@@ -2977,6 +3135,8 @@
       "method": "POST",
       "path": "/v1/memory_stores/{store_id}/memory_versions/{version_id}/redact",
       "tag": "Memory",
+      "sdk_resource": "memory_stores.versions",
+      "sdk_method": "redact",
       "parameters": [
         {
           "in": "path",
@@ -3012,6 +3172,8 @@
       "method": "POST",
       "path": "/v1/webhooks/{webhook_id}/regenerate_signing_secret",
       "tag": "Webhooks",
+      "sdk_resource": "webhooks",
+      "sdk_method": "regenerate_signing_secret",
       "parameters": [
         {
           "in": "path",
@@ -3038,6 +3200,8 @@
       "method": "POST",
       "path": "/v1/deployments/{deployment_id}/run",
       "tag": "Deployments",
+      "sdk_resource": "deployments",
+      "sdk_method": "run",
       "parameters": [
         {
           "in": "path",
@@ -3064,6 +3228,8 @@
       "method": "POST",
       "path": "/v1/sessions/{session_id}/events",
       "tag": "Session Events",
+      "sdk_resource": "sessions.events",
+      "sdk_method": "send",
       "parameters": [
         {
           "in": "path",
@@ -3092,6 +3258,8 @@
       "method": "POST",
       "path": "/v1/environments/{environment_id}/work/{work_id}/stop",
       "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "stop",
       "parameters": [
         {
           "in": "path",
@@ -3127,6 +3295,8 @@
       "method": "GET",
       "path": "/v1/sessions/{session_id}/events/stream",
       "tag": "Session Events",
+      "sdk_resource": "sessions.events",
+      "sdk_method": "stream",
       "parameters": [
         {
           "in": "path",
@@ -3171,6 +3341,8 @@
       "method": "GET",
       "path": "/v1/sessions/{session_id}/threads/{thread_id}/stream",
       "tag": "Session Threads",
+      "sdk_resource": "sessions.threads.events",
+      "sdk_method": "stream",
       "parameters": [
         {
           "in": "path",
@@ -3224,6 +3396,8 @@
       "method": "POST",
       "path": "/v1/deployments/{deployment_id}/unpause",
       "tag": "Deployments",
+      "sdk_resource": "deployments",
+      "sdk_method": "unpause",
       "parameters": [
         {
           "in": "path",
@@ -3250,6 +3424,8 @@
       "method": "POST",
       "path": "/v1/agents/{agent_id}",
       "tag": "Agents",
+      "sdk_resource": "agents",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3278,6 +3454,8 @@
       "method": "POST",
       "path": "/v1/deployments/{deployment_id}",
       "tag": "Deployments",
+      "sdk_resource": "deployments",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3306,6 +3484,8 @@
       "method": "POST",
       "path": "/v1/environments/{environment_id}",
       "tag": "Environments",
+      "sdk_resource": "environments",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3334,6 +3514,8 @@
       "method": "POST",
       "path": "/v1/environments/{environment_id}/work/{work_id}",
       "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3371,6 +3553,8 @@
       "method": "POST",
       "path": "/v1/memory_stores/{store_id}/memories/{memory_id}",
       "tag": "Memory",
+      "sdk_resource": "memory_stores.memories",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3420,6 +3604,8 @@
       "method": "POST",
       "path": "/v1/memory_stores/{store_id}",
       "tag": "Memory",
+      "sdk_resource": "memory_stores",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3448,6 +3634,8 @@
       "method": "POST",
       "path": "/v1/sessions/{session_id}",
       "tag": "Sessions",
+      "sdk_resource": "sessions",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3476,6 +3664,8 @@
       "method": "POST",
       "path": "/v1/vaults/{vault_id}",
       "tag": "Vaults",
+      "sdk_resource": "vaults",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3504,6 +3694,8 @@
       "method": "POST",
       "path": "/v1/vaults/{vault_id}/credentials/{credential_id}",
       "tag": "Vaults",
+      "sdk_resource": "vaults.credentials",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3541,6 +3733,8 @@
       "method": "POST",
       "path": "/v1/webhooks/{webhook_id}",
       "tag": "Webhooks",
+      "sdk_resource": "webhooks",
+      "sdk_method": "update",
       "parameters": [
         {
           "in": "path",
@@ -3569,6 +3763,8 @@
       "method": "POST",
       "path": "/v1/files",
       "tag": "Files",
+      "sdk_resource": "files",
+      "sdk_method": "upload",
       "parameters": [],
       "request_content_type": "multipart/form-data",
       "request_schema": {
@@ -3587,6 +3783,8 @@
       "method": "POST",
       "path": "/v1/vaults/{vault_id}/credentials/{credential_id}/mcp_oauth_validate",
       "tag": "Vaults",
+      "sdk_resource": "vaults.credentials",
+      "sdk_method": "validate_mcp_oauth",
       "parameters": [
         {
           "in": "path",

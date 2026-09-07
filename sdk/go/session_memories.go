@@ -306,7 +306,7 @@ func (s *SessionMemoryStores) listMemories(ctx context.Context, storeID string, 
 	if full {
 		view, limit = "full", fullMemoryPageSize
 	}
-	iterator := s.client.ListMemoriesAutoPaging(ctx, storeID, ListMemoriesParams{
+	iterator := s.client.MemoryStores.Memories.ListAutoPaging(ctx, storeID, ListMemoriesParams{
 		Depth: Some[int64](0), Limit: Some(limit), View: Some(view),
 	})
 	result := make([]Memory, 0)
@@ -544,7 +544,7 @@ func (s *SessionMemoryStores) syncLocalDeletion(
 		s.logger.Info("Memory deletion sync is log-only", "memory_store_id", store.storeID, "path", "/"+relative)
 		return false
 	}
-	_, err = s.client.DeleteMemory(ctx, store.storeID, remote.ID, DeleteMemoryParams{
+	_, err = s.client.MemoryStores.Memories.Delete(ctx, store.storeID, remote.ID, DeleteMemoryParams{
 		ExpectedContentSHA256: Some(baseSHA),
 	})
 	if err == nil || isAPIStatus(err, 404) {
@@ -637,11 +637,11 @@ func (s *SessionMemoryStores) uploadMemory(
 	}
 	var result Memory
 	if existing == nil {
-		result, err = s.client.CreateMemory(ctx, store.storeID, CreateMemoryParams{View: Some("full")}, MemoryCreateRequest{
+		result, err = s.client.MemoryStores.Memories.New(ctx, store.storeID, CreateMemoryParams{View: Some("full")}, MemoryCreateRequest{
 			Path: MemoryPath("/" + filepath.ToSlash(relative)), Content: string(content),
 		})
 	} else {
-		result, err = s.client.UpdateMemory(ctx, store.storeID, existing.ID, UpdateMemoryParams{View: Some("full")}, MemoryUpdateRequest{
+		result, err = s.client.MemoryStores.Memories.Update(ctx, store.storeID, existing.ID, UpdateMemoryParams{View: Some("full")}, MemoryUpdateRequest{
 			Content: Some(string(content)), Precondition: Some(MemoryPrecondition{
 				Type: "content_sha256", ContentSHA256: existing.ContentSHA256,
 			}),
@@ -666,7 +666,7 @@ func (s *SessionMemoryStores) uploadMemory(
 }
 
 func (s *SessionMemoryStores) pullMemory(ctx context.Context, store *mountedMemoryStore, listed Memory) (string, bool) {
-	full, err := s.client.GetMemory(ctx, store.storeID, listed.ID, GetMemoryParams{View: Some("full")})
+	full, err := s.client.MemoryStores.Memories.Get(ctx, store.storeID, listed.ID, GetMemoryParams{View: Some("full")})
 	if err != nil {
 		s.logger.Warn("Memory download failed", "memory_store_id", store.storeID,
 			"path", listed.Path, "error", err)

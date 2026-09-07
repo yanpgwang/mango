@@ -44,11 +44,16 @@ test('every OpenAPI operation has a generated, callable method with correct wire
       return new Response('payload');
     } });
     const params = {};
-    for (const p of op.parameters.filter(p => p.required)) params[p.name] = p.in === 'path' ? 'part/%?#' : 'test';
-    if (op.request_content_type === 'multipart/form-data') params.body = op.id === 'uploadFile' ? { file: new File(['x'], 'x.txt') } : { files: [new File(['skill'], 'test/SKILL.md')] };
-    else if (op.request_required) params.body = {};
-    const result = client[op.id](params);
-    if (op.response_content_type === 'text/event-stream') assert.deepEqual(await collect(result), [{}]);
+    const ids = op.parameters.filter(p => p.in === 'path').map(() => 'part/%?#');
+    for (const p of op.parameters.filter(p => p.in === 'query' && p.required)) params[p.name] = 'test';
+    if (op.request_content_type === 'multipart/form-data') Object.assign(params, op.id === 'uploadFile' ? { file: new File(['x'], 'x.txt') } : { files: [new File(['skill'], 'test/SKILL.md')] });
+    const camel = name => name.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    const resource = op.sdk_resource.split('.').reduce((value, key) => value[camel(key)], client);
+    const method = op.sdk_method === 'open_api' ? 'openAPI' : camel(op.sdk_method);
+    const args = [...ids];
+    if (op.request_schema || op.parameters.some(p => p.in === 'query')) args.push(params);
+    const result = resource[method](...args);
+    if (op.response_content_type === 'text/event-stream') assert.deepEqual(await collect(await result), [{}]);
     else {
       const response = await result;
       if (response instanceof Response) await response.arrayBuffer();
@@ -60,23 +65,23 @@ test('every OpenAPI operation has a generated, callable method with correct wire
 test('query arrays repeat bracket keys; false and timestamp filters survive', async () => {
   const urls = [];
   const client = new Mango({ baseURL: 'http://localhost/prefix/', apiKey: 'test-only', fetch: async url => { urls.push(new URL(url)); return json({ data: [], next_page: null }); } });
-  await client.listSessions({ 'statuses[]': ['idle', 'running'], include_archived: false, 'created_at[gte]': '2026-01-01T00:00:00Z', limit: 1 });
+  await client.sessions.list({ statuses: ['idle', 'running'], include_archived: false, created_at_gte: '2026-01-01T00:00:00Z', limit: 1 });
   assert.equal(urls[0].pathname, '/prefix/v1/sessions');
   assert.deepEqual(urls[0].searchParams.getAll('statuses[]'), ['idle', 'running']);
   assert.equal(urls[0].searchParams.get('include_archived'), 'false');
   assert.equal(urls[0].searchParams.get('created_at[gte]'), '2026-01-01T00:00:00Z');
-  await client.listSessionEvents({ session_id: 'sesn_1', 'types[]': [] });
+  await client.sessions.events.list('sesn_1', { types: [] });
   assert.equal(urls[1].searchParams.has('types[]'), false);
 });
 
 test('JSON distinguishes omitted fields from explicit null, false, and empty lists', async () => {
   const bodies = [];
   const client = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only', fetch: async (_, request) => { bodies.push(JSON.parse(request.body)); return json({}); } });
-  await client.updateAgent({ agent_id: 'agent', body: { system: null, description: undefined, tools: [], metadata: {} } });
+  await client.agents.update('agent', { system: null, description: undefined, tools: [], metadata: {} });
   assert.deepEqual(bodies[0], { system: null, tools: [], metadata: {} });
-  await client.sendSessionEvents({ session_id: 'session', body: { events: [{ type: 'user.tool_result', tool_use_id: 'tool', is_error: false, content: [] }] } });
+  await client.sessions.events.send('session', { events: [{ type: 'user.tool_result', tool_use_id: 'tool', is_error: false, content: [] }] });
   assert.equal(bodies[1].events[0].is_error, false);
-  await client.updateSession({ session_id: 'session', body: { budget: null } });
+  await client.sessions.update('session', { budget: null });
   assert.deepEqual(bodies[2], { budget: null });
 });
 
@@ -86,7 +91,7 @@ test('typed errors preserve status/type/request id and writes are not retried', 
     calls++;
     return json({ type: 'error', error: { type: 'conflict_error', message: 'Try later' }, request_id: 'req_body' }, { status: 409, headers: { 'request-id': 'req_header' } });
   } });
-  await assert.rejects(client.createAgent({ body: { name: 'test', model: 'model' } }), error => {
+  await assert.rejects(client.agents.create({ name: 'test', model: 'model' }), error => {
     assert.ok(error instanceof APIError);
     assert.equal(error.message, 'Try later');
     assert.equal(error.status, 409);
@@ -97,7 +102,7 @@ test('typed errors preserve status/type/request id and writes are not retried', 
   });
   assert.equal(calls, 1);
   const proxy = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only', fetch: async () => new Response('upstream failed', { status: 502 }) });
-  await assert.rejects(proxy.listAgents(), error => error instanceof APIError && error.type === 'http_error' && error.body === 'upstream failed');
+  await assert.rejects(proxy.agents.list(), error => error instanceof APIError && error.type === 'http_error' && error.body === 'upstream failed');
 });
 
 test('error bodies stop at 1 MiB and cancel an unbounded upstream response', async () => {
@@ -107,7 +112,7 @@ test('error bodies stop at 1 MiB and cancel an unbounded upstream response', asy
     pull(controller) { pulls++; controller.enqueue(encoder.encode('x'.repeat(64 * 1024))); },
     cancel() { cancelled = true; },
   }), { status: 502 }) });
-  await assert.rejects(client.listAgents(), error => {
+  await assert.rejects(client.agents.list(), error => {
     assert.ok(error instanceof APIError);
     assert.equal(error.status, 502);
     assert.equal(error.bodyTruncated, true);
@@ -125,10 +130,10 @@ test('public operations work without a key; protected routes retain normal 401 e
     if (url.endsWith('/openapi.yaml')) return new Response('openapi: 3.1.0');
     return json({ type: 'error', error: { type: 'authentication_error', message: 'A key is required' }, request_id: 'req_auth' }, { status: 401 });
   } });
-  await client.health();
-  await client.readiness();
-  assert.equal(await client.openAPI(), 'openapi: 3.1.0');
-  await assert.rejects(client.listAgents(), error => error instanceof APIError && error.status === 401);
+  await client.system.health();
+  await client.system.readiness();
+  assert.equal(await client.system.openAPI(), 'openapi: 3.1.0');
+  await assert.rejects(client.agents.list(), error => error instanceof APIError && error.status === 401);
 });
 
 test('multipart uploads preserve filenames, file bytes, and repeated skill file fields', async t => {
@@ -142,10 +147,10 @@ test('multipart uploads preserve filenames, file bytes, and repeated skill file 
     } catch (error) { response.statusCode = 500; response.end(String(error)); }
   });
   const client = new Mango({ baseURL, apiKey: 'test-only' });
-  await client.uploadFile({ body: { file: { data: new Blob(['a,b\n1,2'], { type: 'text/csv' }), filename: 'data.csv' } } });
+  await client.files.upload({ file: { data: new Blob(['a,b\n1,2'], { type: 'text/csv' }), filename: 'data.csv' } });
   assert.equal(observed[0].get('file').name, 'data.csv');
   assert.equal(await observed[0].get('file').text(), 'a,b\n1,2');
-  await client.createSkill({ body: { display_title: 'Review', files: [new File(['# Review'], 'review/SKILL.md'), new File(['x'], 'review/references/data.txt')] } });
+  await client.skills.create({ display_title: 'Review', files: [new File(['# Review'], 'review/SKILL.md'), new File(['x'], 'review/references/data.txt')] });
   assert.equal(observed[1].get('display_title'), 'Review');
   assert.deepEqual(observed[1].getAll('files').map(file => file.name), ['review/SKILL.md', 'review/references/data.txt']);
 });
@@ -154,7 +159,7 @@ test('downloads return streaming bodies and preserve content metadata', async ()
   let cancelled = false;
   const source = new ReadableStream({ start(controller) { controller.enqueue(encoder.encode('first')); }, cancel() { cancelled = true; } });
   const client = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only', fetch: async () => new Response(source, { headers: { 'content-type': 'application/zip', 'content-disposition': 'attachment; filename=skill.zip' } }) });
-  const response = await client.downloadSkillVersion({ skill_id: 'skill_x', version: '1' });
+  const response = await client.skills.versions.download('skill_x', '1');
   assert.equal(response.headers.get('content-type'), 'application/zip');
   const reader = response.body.getReader();
   assert.equal(new TextDecoder().decode((await reader.read()).value), 'first');
@@ -199,16 +204,16 @@ test('eager stream is ready before input submission and closes without iteration
     }
   });
   const client = new Mango({ baseURL, apiKey: 'test-only' });
-  const events = await client.openSessionEvents({ session_id: 'sesn_1' });
+  const events = await client.sessions.events.stream('sesn_1');
   assert.equal(subscribed, true);
-  await client.sendSessionEvents({ session_id: 'sesn_1', body: { events: [{ type: 'user.message', content: [{ type: 'text', text: 'Hello' }] }] } });
+  await client.sessions.events.send('sesn_1', { events: [{ type: 'user.message', content: [{ type: 'text', text: 'Hello' }] }] });
   assert.equal((await events.next()).value.type, 'agent.message');
   await events.close();
   assert.equal((await events.next()).done, true);
 
   let cancelled = false;
   const fake = new Mango({ baseURL: 'http://localhost', fetch: async () => new Response(new ReadableStream({ cancel() { cancelled = true; } }), { headers: { 'content-type': 'text/event-stream' } }) });
-  const unopened = await fake.openSessionThreadEvents({ session_id: 'sesn_1', thread_id: 'sthr_1' });
+  const unopened = await fake.sessions.threads.events.stream('sesn_1', 'sthr_1');
   await unopened.close();
   assert.equal(cancelled, true);
   assert.equal((await unopened.next()).done, true);
@@ -220,7 +225,7 @@ test('closing an eager stream unblocks a pending read with no next event', { tim
     response.flushHeaders();
   });
   const client = new Mango({ baseURL });
-  const events = await client.openSessionEvents({ session_id: 'sesn_1' });
+  const events = await client.sessions.events.stream('sesn_1');
   const next = events.next();
   await events.close();
   assert.equal((await next).done, true);
@@ -232,11 +237,11 @@ test('SSE stops cleanly when consumer breaks and rejects invalid frames/content 
     assert.equal(request.headers.has('last-event-id'), false);
     return new Response(new ReadableStream({ start(controller) { controller.enqueue(encoder.encode('data: {"type":"agent.message"}\n\n')); }, cancel() { cancelled = true; } }), { headers: { 'content-type': 'text/event-stream' } });
   } });
-  for await (const frame of client.streamSessionEvents({ session_id: 'sesn_1' })) { assert.equal(frame.type, 'agent.message'); break; }
+  for await (const frame of (await client.sessions.events.stream('sesn_1'))) { assert.equal(frame.type, 'agent.message'); break; }
   assert.equal(cancelled, true);
   await assert.rejects(collect(parseSSE(bytes('data: not-json\n\n'))), ProtocolError);
   const wrong = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only', fetch: async () => json({}) });
-  await assert.rejects(collect(wrong.streamSessionEvents({ session_id: 'sesn_1' })), ProtocolError);
+  await assert.rejects(wrong.sessions.events.stream('sesn_1'), ProtocolError);
 });
 
 test('streaming outlives JSON deadline, caller cancellation remains active', async t => {
@@ -250,20 +255,20 @@ test('streaming outlives JSON deadline, caller cancellation remains active', asy
   });
   const client = new Mango({ baseURL, apiKey: 'test-only', timeoutMs: 40 });
   const controller = new AbortController();
-  const stream = client.streamSessionEvents({ session_id: 'sesn_1' }, { signal: controller.signal });
+  const stream = (await client.sessions.events.stream('sesn_1', {}, { signal: controller.signal }));
   assert.equal((await stream.next()).value.type, 'agent.message');
   controller.abort();
   await assert.rejects(stream.next(), error => error.name === 'AbortError');
-  await assert.rejects(client.getSession({ session_id: 'sesn_1' }), error => error.name === 'TimeoutError');
+  await assert.rejects(client.sessions.retrieve('sesn_1'), error => error.name === 'TimeoutError');
 });
 
 test('JSON deadline includes delayed body and already-aborted calls do not dispatch', async t => {
   let requests = 0;
   const baseURL = await serverFor(t, (request, response) => { requests++; response.writeHead(200, { 'content-type': 'application/json' }); response.flushHeaders(); });
   const client = new Mango({ baseURL, apiKey: 'test-only', timeoutMs: 30 });
-  await assert.rejects(client.listAgents(), error => error.name === 'TimeoutError');
+  await assert.rejects(client.agents.list(), error => error.name === 'TimeoutError');
   const controller = new AbortController(); controller.abort();
-  await assert.rejects(client.listAgents({}, { signal: controller.signal }), error => error.name === 'AbortError');
+  await assert.rejects(client.agents.list({}, { signal: controller.signal }), error => error.name === 'AbortError');
   await delay(10);
   assert.equal(requests, 1);
 });
@@ -273,7 +278,7 @@ test('redirects never forward bearer credentials to another origin', async t => 
   const destination = await serverFor(t, (_, response) => { destinationCalls++; response.end('{}'); });
   const baseURL = await serverFor(t, (_, response) => { response.writeHead(302, { location: destination }); response.end(); });
   const client = new Mango({ baseURL, apiKey: 'test-only' });
-  await assert.rejects(client.listAgents(), error => error instanceof APIError && error.status === 302);
+  await assert.rejects(client.agents.list(), error => error instanceof APIError && error.status === 302);
   assert.equal(destinationCalls, 0);
 });
 
@@ -284,19 +289,19 @@ test('page and Files cursor helpers are lazy, preserve filters, and reject loops
     if (parsed.pathname.endsWith('/files')) return json(parsed.searchParams.has('after_id') ? { data: [{ id: 'file2' }], has_more: false, first_id: 'file2', last_id: 'file2' } : { data: [{ id: 'file1' }], has_more: true, first_id: 'file1', last_id: 'file1' });
     return json(parsed.searchParams.has('page') ? { data: [{ id: 'agent2' }], next_page: null } : { data: [{ id: 'agent1' }], next_page: 'opaque+/=' });
   } });
-  const items = client.listAgentsItems({ limit: 1, include_archived: false });
+  const items = client.agents.listItems({ limit: 1, include_archived: false });
   assert.equal(urls.length, 0);
   assert.deepEqual(await collect(items), [{ id: 'agent1' }, { id: 'agent2' }]);
   assert.equal(urls[1].searchParams.get('page'), 'opaque+/=');
   assert.equal(urls[1].searchParams.get('include_archived'), 'false');
-  assert.deepEqual(await collect(client.listFilesItems({ scope_id: 'sesn_1' })), [{ id: 'file1' }, { id: 'file2' }]);
+  assert.deepEqual(await collect(client.files.listItems({ scope_id: 'sesn_1' })), [{ id: 'file1' }, { id: 'file2' }]);
   assert.equal(urls[3].searchParams.get('after_id'), 'file1');
   assert.equal(urls[3].searchParams.get('scope_id'), 'sesn_1');
   const loop = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only', fetch: async () => json({ data: [], next_page: 'same' }) });
-  await assert.rejects(collect(loop.listAgentsPages()), ProtocolError);
+  await assert.rejects(collect(loop.agents.listPages()), ProtocolError);
   let startingCalls = 0;
   const startingLoop = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only', fetch: async () => { startingCalls++; return json({ data: [], next_page: 'start' }); } });
-  await assert.rejects(collect(startingLoop.listAgentsPages({ page: 'start' })), ProtocolError);
+  await assert.rejects(collect(startingLoop.agents.listPages({ page: 'start' })), ProtocolError);
   assert.equal(startingCalls, 1);
 });
 
@@ -308,12 +313,12 @@ test('Files before_id traversal uses first_id and stopping pages does not prefet
       ? { data: [{ id: 'file_b' }], has_more: true, first_id: 'file_b', last_id: 'file_b' }
       : { data: [{ id: 'file_a' }], has_more: false, first_id: 'file_a', last_id: 'file_a' });
   } });
-  assert.deepEqual(await collect(client.listFilesItems({ before_id: 'file_c' })), [{ id: 'file_b' }, { id: 'file_a' }]);
+  assert.deepEqual(await collect(client.files.listItems({ before_id: 'file_c' })), [{ id: 'file_b' }, { id: 'file_a' }]);
   assert.equal(urls[1].searchParams.get('before_id'), 'file_b');
   assert.equal(urls[1].searchParams.has('after_id'), false);
   let requests = 0;
   const lazy = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only', fetch: async () => { requests++; return json({ data: [], next_page: 'next' }); } });
-  for await (const page of lazy.listAgentsPages()) { assert.deepEqual(page.data, []); break; }
+  for await (const page of lazy.agents.listPages()) { assert.deepEqual(page.data, []); break; }
   assert.equal(requests, 1);
 });
 
@@ -324,7 +329,7 @@ test('download cancellation still works after the connection deadline', async t 
   });
   const client = new Mango({ baseURL, apiKey: 'test-only', timeoutMs: 50 });
   const controller = new AbortController();
-  const response = await client.downloadFile({ file_id: 'file_1' }, { signal: controller.signal });
+  const response = await client.files.download('file_1', { signal: controller.signal });
   const reader = response.body.getReader();
   assert.equal(new TextDecoder().decode((await reader.read()).value), 'head');
   await delay(70);
@@ -336,7 +341,28 @@ test('path dot segments and malformed base URLs cannot redirect resource access'
   for (const baseURL of ['file:///tmp/test', 'https://user:pass@example.com', 'https://example.com?key=1', 'https://example.com#frag']) assert.throws(() => new Mango({ baseURL, apiKey: 'test-only' }), TypeError);
   let calls = 0;
   const client = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only', fetch: async () => { calls++; return json({}); } });
-  await assert.rejects(client.getSession({ session_id: '..' }), TypeError);
-  await assert.rejects(client.getSession({ session_id: '' }), TypeError);
+  await assert.rejects(client.sessions.retrieve('..'), TypeError);
+  await assert.rejects(client.sessions.retrieve(''), TypeError);
   assert.equal(calls, 0);
+});
+
+test('nested thread stream keeps parent IDs and plain SDK filters on the exact wire route', async () => {
+  const client = new Mango({ baseURL: 'http://localhost', fetch: async (url, request) => {
+    assert.equal(new URL(url).pathname, '/v1/sessions/sesn_parent/threads/sthr_child/stream');
+    assert.deepEqual(new URL(url).searchParams.getAll('event_deltas[]'), ['agent.message']);
+    assert.equal(request.body, undefined);
+    return new Response(bytes('data: {"type":"agent.message","content":[]}\n\n'), { headers: { 'content-type': 'text/event-stream' } });
+  } });
+  const stream = await client.sessions.threads.events.stream('sesn_parent', 'sthr_child', { event_deltas: ['agent.message'] });
+  try { assert.equal((await stream.next()).value.type, 'agent.message'); }
+  finally { await stream.close(); }
+});
+
+test('optional action body remains absent when no request fields are supplied', async () => {
+  const client = new Mango({ baseURL: 'http://localhost', fetch: async (url, request) => {
+    assert.equal(new URL(url).pathname, '/v1/deployments/dpl_1/run');
+    assert.equal(request.body, undefined);
+    return json({});
+  } });
+  await client.deployments.run('dpl_1');
 });

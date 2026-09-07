@@ -43,21 +43,21 @@ func run() (result error) {
 		cleanup, done := context.WithTimeout(context.Background(), 30*time.Second)
 		defer done()
 		if sessionID != "" {
-			_, err := client.DeleteSession(cleanup, sessionID)
+			_, err := client.Sessions.Delete(cleanup, sessionID)
 			result = errors.Join(result, err)
 		}
 		if agentID != "" {
-			_, err := client.ArchiveAgent(cleanup, agentID)
+			_, err := client.Agents.Archive(cleanup, agentID)
 			result = errors.Join(result, err)
 		}
 		if environmentID != "" {
-			_, err := client.DeleteEnvironment(cleanup, environmentID)
+			_, err := client.Environments.Delete(cleanup, environmentID)
 			result = errors.Join(result, err)
 		}
 	}()
 
 	// #region environment
-	environment, err := client.CreateEnvironment(ctx, mango.EnvironmentCreateRequest{
+	environment, err := client.Environments.New(ctx, mango.EnvironmentCreateRequest{
 		Name: "Quickstart", // omitted config defaults to self-hosted execution
 	})
 	if err != nil {
@@ -67,9 +67,9 @@ func run() (result error) {
 	environmentID = environment.ID
 
 	// #region agent
-	agent, err := client.CreateAgent(ctx, mango.AgentCreateRequest{
+	agent, err := client.Agents.New(ctx, mango.AgentCreateRequest{
 		Name:   "Assistant",
-		Model:  mango.ModelInput{String: mango.Ptr("offline-fake")},
+		Model:  mango.ModelID("offline-fake"),
 		System: mango.SomePtr("Be concise."),
 	})
 	if err != nil {
@@ -79,8 +79,8 @@ func run() (result error) {
 	agentID = agent.ID
 
 	// #region session
-	session, err := client.CreateSession(ctx, mango.SessionCreateRequest{
-		Agent:         mango.SessionAgentInput{String: mango.Ptr(agent.ID)},
+	session, err := client.Sessions.New(ctx, mango.SessionCreateRequest{
+		Agent:         mango.AgentID(agent.ID),
 		EnvironmentID: environment.ID,
 		Title:         mango.Some("First session"),
 	})
@@ -92,20 +92,13 @@ func run() (result error) {
 
 	// #region stream
 	// Subscribe before sending: the stream does not replay earlier events.
-	stream, err := client.StreamSessionEvents(ctx, session.ID, mango.StreamSessionEventsParams{})
+	stream, err := client.Sessions.Events.Stream(ctx, session.ID, mango.StreamSessionEventsParams{})
 	if err != nil {
 		return err
 	}
 	defer stream.Close()
-	_, err = client.SendSessionEvents(ctx, session.ID, mango.SendSessionEventsRequest{
-		Events: []mango.ClientSessionEventInput{{
-			UserMessageEventInput: &mango.UserMessageEventInput{
-				Type: "user.message",
-				Content: []mango.MessageContentInput{{
-					TextBlockInput: &mango.TextBlockInput{Type: "text", Text: "Hello, Mango!"},
-				}},
-			},
-		}},
+	_, err = client.Sessions.Events.Send(ctx, session.ID, mango.SendSessionEventsRequest{
+		Events: []mango.ClientSessionEventInput{mango.UserMessage("Hello, Mango!")},
 	})
 	if err != nil {
 		return err
@@ -139,7 +132,7 @@ func run() (result error) {
 	// #endregion stream
 
 	// #region history
-	history := client.ListSessionEventsAutoPaging(ctx, session.ID, mango.ListSessionEventsParams{
+	history := client.Sessions.Events.ListAutoPaging(ctx, session.ID, mango.ListSessionEventsParams{
 		Order: mango.Some("asc"), Limit: mango.Some(int64(100)),
 	})
 	var events []mango.SessionEvent

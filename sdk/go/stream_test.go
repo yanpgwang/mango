@@ -18,7 +18,7 @@ func TestSSEChunkBoundariesCommentsMultilineCRLFAndID(t *testing.T) {
 			w.(http.Flusher).Flush()
 		}
 	})
-	stream, err := client.StreamSessionEvents(context.Background(), "s", StreamSessionEventsParams{})
+	stream, err := client.Sessions.Events.Stream(context.Background(), "s", StreamSessionEventsParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestSSEBOMIsStrippedOnlyAtStart(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(w, "\uFEFFdata: first\n\n\uFEFFdata: ignored\n\ndata: last\n\n")
 	})
-	stream, err := client.StreamSessionEvents(context.Background(), "s", StreamSessionEventsParams{})
+	stream, err := client.Sessions.Events.Stream(context.Background(), "s", StreamSessionEventsParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestSSESupportsLargeAdmittedEvents(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(w, "data: ", strings.Repeat("x", size), "\n\n")
 	})
-	stream, err := client.StreamSessionEvents(context.Background(), "s", StreamSessionEventsParams{})
+	stream, err := client.Sessions.Events.Stream(context.Background(), "s", StreamSessionEventsParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestSSEIgnoresFiniteTimeoutAndCancels(t *testing.T) {
 	client.requestTimeout = time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	stream, err := client.StreamSessionEvents(ctx, "s", StreamSessionEventsParams{})
+	stream, err := client.Sessions.Events.Stream(ctx, "s", StreamSessionEventsParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestSSEIgnoresFiniteTimeoutAndCancels(t *testing.T) {
 
 func TestSSERejectsWrongContentType(t *testing.T) {
 	client := testClient(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "{}") })
-	if _, err := client.StreamSessionEvents(context.Background(), "s", StreamSessionEventsParams{}); err == nil {
+	if _, err := client.Sessions.Events.Stream(context.Background(), "s", StreamSessionEventsParams{}); err == nil {
 		t.Fatal("accepted non SSE response")
 	}
 }

@@ -863,3 +863,45 @@ support, so they run the same credential-free and opt-in live conformance suites
   should drain provisioning intents before upgrading. Existing bound Sessions
   still use their provider reference and package-setup evidence, without a
   legacy-spec translation layer or automatic data deletion.
+
+## SDK resource services (2026-09-07)
+
+Mango's user problem is configuring a reusable Agent team and following its
+Session/Thread lifecycle without navigating a flat HTTP operation inventory or
+wrapping request fields in transport-only objects. The accepted design and
+validation criteria are in [SDK resource design](design/sdk-resources.md).
+
+Paired references: the current public [Agent setup](https://platform.claude.com/docs/en/managed-agents/agent-setup)
+and [multiagent orchestration](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration)
+API guides, together with official [Python v1.4.0 resource source](https://github.com/anthropics/anthropic-sdk-python/tree/v1.4.0/src/anthropic/resources/beta),
+[TypeScript sdk-v0.124.0 resource source](https://github.com/anthropics/anthropic-sdk-typescript/tree/sdk-v0.124.0/src/resources/beta),
+and [Go v1.71.0 source](https://github.com/anthropics/anthropic-sdk-go/tree/v1.71.0).
+These are clean-room design references only; none is used to implement or run the
+Mango SDK. Existing unrelated third-party-client research tests are not the
+validation of this change.
+
+- Adopted resource grouping, direct Python keyword and TypeScript object
+  parameters, and language-idiomatic operations (Go New/Get; Python/TypeScript
+  create/retrieve). Agent, Session, Thread and Event relationships are preserved.
+- Kept Mango's HTTP schemas, generated tagged unions, explicit Optional/null
+  values, typed Python dictionaries, and independently implemented transport and
+  worker helpers. Go adds constructors for common model, roster and message
+  variants; advanced variants remain accessible.
+- Adapted nested path IDs to one parent-first positional order across languages.
+  TypeScript bracket filters become ordinary identifiers and are encoded back
+  into the unchanged HTTP query keys. Its stream method resolves when subscribed;
+  raw SSE metadata has a separate lazy iterator. Pagination keeps explicit
+  one-page and all-item operations. These choices make request and connection
+  ownership visible without hidden writes or reconnection.
+- Rejected the hosted beta namespace, Anthropic authentication/headers, model
+  catalog restrictions and `ant apply` deployment lifecycle as requirements for
+  this SDK slice. File-based deployment management is a separate product problem.
+- The Go scoped-client clone reinitializes resource services to use the new
+  Session credential. Services share one transport and do not cache remote state.
+
+OpenAPI carries explicit `x-sdk-resource` and `x-sdk-method` metadata, exported
+and checked for missing or duplicate mappings. All clients, generators, existing
+callers, examples and tests move together; there are no legacy forwarding methods.
+Validation uses Mango HTTP conformance, literal payload/routing checks, language
+static checks, transport and worker tests, with durability coverage remaining in
+its owning Go packages. The source-only alpha 2 packages have not been published.

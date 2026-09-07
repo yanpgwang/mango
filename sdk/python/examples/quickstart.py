@@ -18,33 +18,27 @@ agent_id: str | None = None
 session_id: str | None = None
 try:
     # region environment
-    environment = client.create_environment(body={
-        "name": "Quickstart",
-    })
+    environment = client.environments.create(name="Quickstart")
     # endregion environment
     environment_id = environment["id"]
 
     # region agent
-    agent = client.create_agent(body={
-        "name": "Assistant", "model": "offline-fake", "system": "Be concise.",
-    })
+    agent = client.agents.create(name="Assistant", model="offline-fake", system="Be concise.")
     # endregion agent
     agent_id = agent["id"]
 
     # region session
-    session = client.create_session(body={
-        "agent": agent["id"], "environment_id": environment["id"], "title": "First session",
-    })
+    session = client.sessions.create(agent=agent["id"], environment_id=environment["id"], title="First session")
     # endregion session
     session_id = session["id"]
 
     # region stream
     # Enter the stream context before sending: it is live-only, not a replay.
-    with client.stream_session_events(session["id"]) as stream:
-        client.send_session_events(session["id"], body={"events": [{
+    with client.sessions.events.stream(session["id"]) as stream:
+        client.sessions.events.send(session["id"], events=[{
             "type": "user.message",
             "content": [{"type": "text", "text": "Hello, Mango!"}],
-        }]})
+        }])
         completed = False
         for envelope in stream:
             event = envelope.data
@@ -60,7 +54,7 @@ try:
     # endregion stream
 
     # region history
-    history = list(client.iter_session_events(session["id"], order="asc", limit=100))
+    history = list(client.sessions.events.iter(session["id"], order="asc", limit=100))
     print(f"Persisted events: {len(history)}")
     # endregion history
     assert any(event["type"] == "agent.message" for event in history)
@@ -69,14 +63,14 @@ finally:
     # Only clean up the resources created by this invocation.
     try:
         if session_id:
-            client.delete_session(session_id)
+            client.sessions.delete(session_id)
     finally:
         try:
             if agent_id:
-                client.archive_agent(agent_id)
+                client.agents.archive(agent_id)
         finally:
             try:
                 if environment_id:
-                    client.delete_environment(environment_id)
+                    client.environments.delete(environment_id)
             finally:
                 client.close()

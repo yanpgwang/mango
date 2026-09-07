@@ -4,7 +4,7 @@
 
 Mango users should be able to install a real, working client from PyPI or npm
 under the same distribution name, `mango-sdk`, without cloning the runtime.
-The first candidates are Python `0.1.0a1` and TypeScript `0.1.0-alpha.1`.
+The current unreleased candidates are Python `0.1.0a2` and TypeScript `0.1.0-alpha.2`.
 Python's import remains `mango_sdk`; TypeScript's import is `mango-sdk`.
 
 Acceptance requires generated-source checks, language tests, HTTP conformance,
@@ -58,9 +58,9 @@ Publish the inspected artifacts, rather than rebuilding during upload:
 
 ```sh
 uv publish --publish-url https://upload.pypi.org/legacy/ \
-  sdk/python/dist/mango_sdk-0.1.0a1-py3-none-any.whl \
-  sdk/python/dist/mango_sdk-0.1.0a1.tar.gz
-npm publish sdk/typescript/artifacts/mango-sdk-0.1.0-alpha.1.tgz \
+  sdk/python/dist/mango_sdk-0.1.0a2-py3-none-any.whl \
+  sdk/python/dist/mango_sdk-0.1.0a2.tar.gz
+npm publish sdk/typescript/artifacts/mango-sdk-0.1.0-alpha.2.tgz \
   --registry=https://registry.npmjs.org/ --access public --tag alpha
 ```
 

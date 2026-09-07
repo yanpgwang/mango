@@ -1,7 +1,7 @@
 # Mango TypeScript / JavaScript SDK
 
-First-party client for Mango's current development API: all 98 OpenAPI operations
-and 279 schema types. It uses native `fetch`, supports Node.js 22+, and has no
+First-party client for Mango's current development API: all 99 OpenAPI operations
+and 280 schema types. It uses native `fetch`, supports Node.js 22+, and has no
 runtime dependencies. JavaScript uses the same package; TypeScript gets generated
 request/response types and discriminated event unions.
 
@@ -13,17 +13,9 @@ capability that the operator has not configured.
 
 ## Install
 
-For a published alpha version, install by its exact version:
-
-```sh
-npm install mango-sdk@0.1.0-alpha.1
-```
-
-The release is an alpha even if npm displays it under `latest`: the first upload
-created both tags, and the registry rejected removal of `latest`. Prefer the
-exact version above. Registry packages include compiled JavaScript and type
-declarations; consumers do not need to compile the SDK. Use an SDK version built
-for your Mango server revision.
+This checkout prepares `0.1.0-alpha.2`, which is **not published**. Build from
+source to use the resource-based API below. Published alpha 1 uses the previous
+interface; match SDK source to your server checkout.
 
 ### Build and install from source
 
@@ -54,33 +46,24 @@ const client = new Mango({
   apiKey: process.env.MANGO_API_KEY!,
 });
 
-const environment = await client.createEnvironment({
-  // Omitted config defaults to self-hosted execution.
-  body: { name: 'Example' },
-});
-const agent = await client.createAgent({
-  body: { name: 'Assistant', model: process.env.MANGO_MODEL_ID! },
-});
-const session = await client.createSession({
-  body: { agent: agent.id, environment_id: environment.id },
-});
-await client.sendSessionEvents({
-  session_id: session.id,
-  body: { events: [{ type: 'user.message', content: [{ type: 'text', text: 'Hello!' }] }] },
-});
+const environment = await client.environments.create({ name: 'Example' });
+const agent = await client.agents.create({ name: 'Assistant', model: process.env.MANGO_MODEL_ID! });
+const session = await client.sessions.create({ agent: agent.id, environment_id: environment.id });
+await client.sessions.events.send(session.id, { events: [{ type: 'user.message', content: [{ type: 'text', text: 'Hello!' }] }] });
 ```
 
-Methods use OpenAPI `operationId` names, such as `getSession`, `createMemory`,
-`heartbeatEnvironmentWork`, and `runDeployment`. The first argument combines
-exact path/query parameter names and an optional `body`; the second contains
-request options. Date/time fields remain ISO strings, opaque IDs remain strings,
+Methods are grouped by resource: `client.sessions.retrieve`,
+`client.memoryStores.memories.create`, `client.environments.work.heartbeat`,
+and `client.deployments.run`. Path IDs are positional in HTTP hierarchy order,
+followed by an object with request fields/query filters and optional request
+options. There is no `body` wrapper. Date/time and opaque IDs remain strings,
 and monetary decimal fields keep their wire representation.
-`apiKey` can be omitted for public `health`, `readiness`, and `openAPI` calls;
+`apiKey` can be omitted for public `system.health`, `system.readiness`, and `system.openAPI` calls;
 protected routes then return the server's normal 401 response. No default key is
 injected.
 
 ```ts
-await client.updateAgent({ agent_id: agent.id, body: { system: null, tools: [] } });
+await client.agents.update(agent.id, { system: null, tools: [] });
 // Omit a field (or use undefined in JavaScript) to leave it absent; null means
 // explicit null, and [] remains an empty list. Server validation still applies.
 ```
@@ -90,17 +73,13 @@ await client.updateAgent({ agent_id: agent.id, body: { system: null, tools: [] }
 ```ts
 import { APIError } from 'mango-sdk';
 
-for await (const item of client.listSessionsItems({
-  'statuses[]': ['idle', 'running'],
-  include_archived: false,
-  limit: 50,
-})) console.log(item.id);
+for await (const item of client.sessions.listItems({ statuses: ['idle', 'running'], include_archived: false, limit: 50 })) console.log(item.id);
 
-// Every paginated list also exposes listXPages and the ordinary single-page listX.
-for await (const page of client.listFilesPages({ limit: 20 })) console.log(page.data.length);
+// Every paginated list also exposes `listPages` and the ordinary single-page `list`.
+for await (const page of client.files.listPages({ limit: 20 })) console.log(page.data.length);
 
 try {
-  await client.getSession({ session_id: 'sesn_missing' });
+  await client.sessions.retrieve('sesn_missing');
 } catch (error) {
   if (error instanceof APIError) console.error(error.status, error.type, error.requestId);
   else throw error;
@@ -120,15 +99,9 @@ Error response bodies are limited to 1 MiB and cancelled at that bound;
 const abort = new AbortController();
 // This Promise resolves after successful subscription headers, not after the
 // first event. Input can now be sent without waiting for an event to arrive.
-const events = await client.openSessionEvents(
-  { session_id: session.id, 'event_deltas[]': ['agent.message'] },
-  { signal: abort.signal },
-);
+const events = await client.sessions.events.stream(session.id, { event_deltas: ['agent.message'] }, { signal: abort.signal });
 try {
-  await client.sendSessionEvents({
-    session_id: session.id,
-    body: { events: [{ type: 'user.message', content: [{ type: 'text', text: 'Hello!' }] }] },
-  });
+  await client.sessions.events.send(session.id, { events: [{ type: 'user.message', content: [{ type: 'text', text: 'Hello!' }] }] });
   for await (const frame of events) {
     if (frame.type === 'agent.message') console.log(frame.content);
     if (frame.type === 'session.status_idle') break;
@@ -138,15 +111,14 @@ try {
 }
 ```
 
-Streams are **live-only**. `openSessionEvents` and `openSessionThreadEvents` are
-eager, returning a ready async-iterator handle with `close()`. The lower-level
-`streamSessionEvents` and `streamSessionThreadEvents` async generators are lazy:
-they connect on the first `next()`/`for await` iteration, **not** when constructed
-or awaited. Use the eager helpers above to establish subscription before input.
+Streams are **live-only**. `sessions.events.stream` and `sessions.threads.events.stream` are
+eager, returning a Promise for a ready async-iterator handle with `close()`.
+Await subscription before sending input. `streamMessages` is a separate lazy
+iterator for raw SSE metadata; it subscribes when iteration starts.
 The SDK does not reconnect, send `Last-Event-ID`, or promise replay.
-Use `listSessionEvents` for durable history; applications that combine live and
+Use `sessions.events.list` for durable history; applications that combine live and
 history views must deduplicate persisted event IDs. Preview deltas are ephemeral.
-`streamSessionEventsMessages` (and the thread equivalent) also exposes SSE
+`sessions.events.streamMessages` (and the thread equivalent) also exposes SSE
 `event`, `id`, and `retry` metadata; these are not a replay guarantee.
 JSON data within each SSE frame is limited to 64 MiB; larger frames fail with
 `ProtocolError` and cancel the connection. This includes ordinary persisted
@@ -165,25 +137,18 @@ are rejected; a bearer key is not forwarded to another destination.
 ## Files and Skills
 
 ```ts
-const file = await client.uploadFile({
-  body: { file: new File(['name,value\nexample,42'], 'data.csv', { type: 'text/csv' }) },
-});
-await client.createSkill({
-  body: {
-    display_title: 'Reviewer',
-    files: [new File(['---\nname: reviewer\ndescription: Review inputs\n---\nCheck facts.'], 'reviewer/SKILL.md')],
-  },
-});
+const file = await client.files.upload({ file: new File(['name,value\nexample,42'], 'data.csv', { type: 'text/csv' }) });
+await client.skills.create({ display_title: 'Reviewer', files: [new File(['---\nname: reviewer\ndescription: Review inputs\n---\nCheck facts.'], 'reviewer/SKILL.md')] });
 ```
 
 Uploads accept `Blob`, `File`, or `{ data: Blob, filename: string }`; Skill files
 preserve relative filenames. Fetch creates the multipart boundary. Downloads
-(`downloadFile`, `downloadSkillVersion`) return a native `Response` with streaming
+(`files.download`, `skills.versions.download`) return a native `Response` with streaming
 `body` and content headers; consume or cancel the body to release the connection.
 Only Files marked downloadable can be downloaded; the server enforces this.
 
 ```ts
-const response = await client.downloadFile({ file_id: 'file_downloadable_output' });
+const response = await client.files.download('file_downloadable_output');
 const bytes = await response.arrayBuffer(); // Optional buffering; body is a stream.
 ```
 

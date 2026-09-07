@@ -73,3 +73,31 @@ func TestResolveRejectsUnknownAndCyclicRefs(t *testing.T) {
 		}
 	}
 }
+
+func TestSDKResourceMappingsAreExplicitAndUnique(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "sdk", "openapi.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []string{"missing", "duplicate", "invalid"} {
+		t.Run(change, func(t *testing.T) {
+			var document map[string]any
+			if err := json.Unmarshal(data, &document); err != nil {
+				t.Fatal(err)
+			}
+			paths := object(document["paths"])
+			agent := object(object(paths["/v1/agents"])["post"])
+			switch change {
+			case "missing":
+				delete(agent, "x-sdk-resource")
+			case "duplicate":
+				agent["x-sdk-resource"] = "environments"
+			case "invalid":
+				agent["x-sdk-method"] = "create.agent"
+			}
+			if _, err := operations(document); err == nil {
+				t.Fatal("invalid SDK mapping was accepted")
+			}
+		})
+	}
+}

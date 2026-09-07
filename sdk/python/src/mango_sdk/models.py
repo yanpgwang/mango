@@ -1755,622 +1755,7 @@ class WebhookWithSigningSecret(TypedDict, total=False):
     url: Required[str]
 
 
-AcknowledgeEnvironmentWorkEnvironmentIdParameter: TypeAlias = str
-
-
-AcknowledgeEnvironmentWorkWorkIdParameter: TypeAlias = str
-
-
-AddSessionResourceSessionIdParameter: TypeAlias = str
-
-
-ArchiveAgentAgentIdParameter: TypeAlias = str
-
-
-ArchiveDeploymentDeploymentIdParameter: TypeAlias = str
-
-
-ArchiveEnvironmentEnvironmentIdParameter: TypeAlias = str
-
-
-ArchiveMemoryStoreStoreIdParameter: TypeAlias = str
-
-
-ArchiveSessionSessionIdParameter: TypeAlias = str
-
-
-ArchiveSessionThreadSessionIdParameter: TypeAlias = str
-
-
-ArchiveSessionThreadThreadIdParameter: TypeAlias = str
-
-
-ArchiveVaultVaultIdParameter: TypeAlias = str
-
-
-ArchiveVaultCredentialVaultIdParameter: TypeAlias = str
-
-
-ArchiveVaultCredentialCredentialIdParameter: TypeAlias = str
-
-
-CreateMemoryStoreIdParameter: TypeAlias = str
-
-
-CreateMemoryViewParameter: TypeAlias = Literal['basic', 'full']
-
-
-CreateSkillVersionSkillIdParameter: TypeAlias = str
-
-
-CreateVaultCredentialVaultIdParameter: TypeAlias = str
-
-
-DeleteEnvironmentEnvironmentIdParameter: TypeAlias = str
-
-
-DeleteFileFileIdParameter: TypeAlias = str
-
-
-DeleteMemoryStoreIdParameter: TypeAlias = str
-
-
-DeleteMemoryMemoryIdParameter: TypeAlias = str
-
-
-DeleteMemoryExpectedContentSha256Parameter: TypeAlias = str
-
-
-DeleteMemoryStoreStoreIdParameter: TypeAlias = str
-
-
-DeleteSessionSessionIdParameter: TypeAlias = str
-
-
-DeleteSessionResourceSessionIdParameter: TypeAlias = str
-
-
-DeleteSessionResourceResourceIdParameter: TypeAlias = str
-
-
-DeleteSkillSkillIdParameter: TypeAlias = str
-
-
-DeleteSkillVersionSkillIdParameter: TypeAlias = str
-
-
-DeleteSkillVersionVersionParameter: TypeAlias = str
-
-
-DeleteVaultVaultIdParameter: TypeAlias = str
-
-
-DeleteVaultCredentialVaultIdParameter: TypeAlias = str
-
-
-DeleteVaultCredentialCredentialIdParameter: TypeAlias = str
-
-
-DeleteWebhookWebhookIdParameter: TypeAlias = str
-
-
-DownloadFileFileIdParameter: TypeAlias = str
-
-
-DownloadSkillVersionSkillIdParameter: TypeAlias = str
-
-
-DownloadSkillVersionVersionParameter: TypeAlias = str
-
-
-FailEnvironmentWorkEnvironmentIdParameter: TypeAlias = str
-
-
-FailEnvironmentWorkWorkIdParameter: TypeAlias = str
-
-
-GetAgentAgentIdParameter: TypeAlias = str
-
-
-GetDeploymentDeploymentIdParameter: TypeAlias = str
-
-
-GetDeploymentRunDeploymentRunIdParameter: TypeAlias = str
-
-
-GetEnvironmentEnvironmentIdParameter: TypeAlias = str
-
-
-GetEnvironmentWorkEnvironmentIdParameter: TypeAlias = str
-
-
-GetEnvironmentWorkWorkIdParameter: TypeAlias = str
-
-
-GetEnvironmentWorkStatsEnvironmentIdParameter: TypeAlias = str
-
-
-GetFileMetadataFileIdParameter: TypeAlias = str
-
-
-GetMemoryStoreIdParameter: TypeAlias = str
-
-
-GetMemoryMemoryIdParameter: TypeAlias = str
-
-
-GetMemoryViewParameter: TypeAlias = Literal['basic', 'full']
-
-
-GetMemoryStoreStoreIdParameter: TypeAlias = str
-
-
-GetMemoryVersionStoreIdParameter: TypeAlias = str
-
-
-GetMemoryVersionVersionIdParameter: TypeAlias = str
-
-
-GetMemoryVersionViewParameter: TypeAlias = Literal['basic', 'full']
-
-
-GetSessionSessionIdParameter: TypeAlias = str
-
-
-GetSessionResourceSessionIdParameter: TypeAlias = str
-
-
-GetSessionResourceResourceIdParameter: TypeAlias = str
-
-
-GetSessionThreadSessionIdParameter: TypeAlias = str
-
-
-GetSessionThreadThreadIdParameter: TypeAlias = str
-
-
-GetSkillSkillIdParameter: TypeAlias = str
-
-
-GetSkillVersionSkillIdParameter: TypeAlias = str
-
-
-GetSkillVersionVersionParameter: TypeAlias = str
-
-
-GetVaultVaultIdParameter: TypeAlias = str
-
-
-GetVaultCredentialVaultIdParameter: TypeAlias = str
-
-
-GetVaultCredentialCredentialIdParameter: TypeAlias = str
-
-
-GetWebhookWebhookIdParameter: TypeAlias = str
-
-
-HeartbeatEnvironmentWorkEnvironmentIdParameter: TypeAlias = str
-
-
-HeartbeatEnvironmentWorkWorkIdParameter: TypeAlias = str
-
-
-HeartbeatEnvironmentWorkExpectedLastHeartbeatParameter: TypeAlias = str
-
-
-HeartbeatEnvironmentWorkDesiredTtlSecondsParameter: TypeAlias = int
-
-
-ListAgentVersionsAgentIdParameter: TypeAlias = str
-
-
-ListAgentVersionsLimitParameter: TypeAlias = int
-
-
-ListAgentVersionsPageParameter: TypeAlias = str
-
-
-ListAgentsLimitParameter: TypeAlias = int
-
-
-ListAgentsPageParameter: TypeAlias = str
-
-
-ListAgentsIncludeArchivedParameter: TypeAlias = bool
-
-
-ListAgentsCreatedAtGteParameter: TypeAlias = str
-
-
-ListAgentsCreatedAtLteParameter: TypeAlias = str
-
-
-ListDeploymentRunsLimitParameter: TypeAlias = int
-
-
-ListDeploymentRunsPageParameter: TypeAlias = str
-
-
-ListDeploymentRunsCreatedAtGtParameter: TypeAlias = str
-
-
-ListDeploymentRunsCreatedAtGteParameter: TypeAlias = str
-
-
-ListDeploymentRunsCreatedAtLtParameter: TypeAlias = str
-
-
-ListDeploymentRunsCreatedAtLteParameter: TypeAlias = str
-
-
-ListDeploymentRunsDeploymentIdParameter: TypeAlias = str
-
-
-ListDeploymentRunsHasErrorParameter: TypeAlias = bool
-
-
-ListDeploymentRunsTriggerTypeParameter: TypeAlias = Literal['schedule', 'manual']
-
-
-ListDeploymentsLimitParameter: TypeAlias = int
-
-
-ListDeploymentsPageParameter: TypeAlias = str
-
-
-ListDeploymentsAgentIdParameter: TypeAlias = str
-
-
-ListDeploymentsCreatedAtGteParameter: TypeAlias = str
-
-
-ListDeploymentsCreatedAtLteParameter: TypeAlias = str
-
-
-ListDeploymentsIncludeArchivedParameter: TypeAlias = bool
-
-
-ListDeploymentsStatusParameter: TypeAlias = Literal['active', 'paused']
-
-
-ListEnvironmentWorkEnvironmentIdParameter: TypeAlias = str
-
-
-ListEnvironmentWorkLimitParameter: TypeAlias = int
-
-
-ListEnvironmentWorkPageParameter: TypeAlias = str
-
-
-ListEnvironmentsLimitParameter: TypeAlias = int
-
-
-ListEnvironmentsPageParameter: TypeAlias = str
-
-
-ListEnvironmentsIncludeArchivedParameter: TypeAlias = bool
-
-
-ListFilesLimitParameter: TypeAlias = int
-
-
-ListFilesAfterIdParameter: TypeAlias = str
-
-
-ListFilesBeforeIdParameter: TypeAlias = str
-
-
-ListFilesScopeIdParameter: TypeAlias = str
-
-
-ListMemoriesStoreIdParameter: TypeAlias = str
-
-
-ListMemoriesLimitParameter: TypeAlias = int
-
-
-ListMemoriesPageParameter: TypeAlias = str
-
-
-ListMemoriesViewParameter: TypeAlias = Literal['basic', 'full']
-
-
-ListMemoriesPathPrefixParameter: TypeAlias = str
-
-
-ListMemoriesDepthParameter: TypeAlias = Literal[0, 1]
-
-
-ListMemoryStoresLimitParameter: TypeAlias = int
-
-
-ListMemoryStoresPageParameter: TypeAlias = str
-
-
-ListMemoryStoresIncludeArchivedParameter: TypeAlias = bool
-
-
-ListMemoryStoresCreatedAtGteParameter: TypeAlias = str
-
-
-ListMemoryStoresCreatedAtLteParameter: TypeAlias = str
-
-
-ListMemoryVersionsStoreIdParameter: TypeAlias = str
-
-
-ListMemoryVersionsLimitParameter: TypeAlias = int
-
-
-ListMemoryVersionsPageParameter: TypeAlias = str
-
-
-ListMemoryVersionsViewParameter: TypeAlias = Literal['basic', 'full']
-
-
-ListMemoryVersionsApiKeyIdParameter: TypeAlias = str
-
-
-ListMemoryVersionsSessionIdParameter: TypeAlias = str
-
-
-ListMemoryVersionsMemoryIdParameter: TypeAlias = str
-
-
-ListMemoryVersionsOperationParameter: TypeAlias = Literal['created', 'modified', 'deleted']
-
-
-ListMemoryVersionsCreatedAtGteParameter: TypeAlias = str
-
-
-ListMemoryVersionsCreatedAtLteParameter: TypeAlias = str
-
-
-ListSessionEventsSessionIdParameter: TypeAlias = str
-
-
-ListSessionEventsLimitParameter: TypeAlias = int
-
-
-ListSessionEventsOrderParameter: TypeAlias = Literal['asc', 'desc']
-
-
-ListSessionEventsPageParameter: TypeAlias = str
-
-
-ListSessionEventsTypesParameter: TypeAlias = List['CoreSessionEventType']
-
-
-ListSessionEventsCreatedAtGtParameter: TypeAlias = str
-
-
-ListSessionEventsCreatedAtGteParameter: TypeAlias = str
-
-
-ListSessionEventsCreatedAtLtParameter: TypeAlias = str
-
-
-ListSessionEventsCreatedAtLteParameter: TypeAlias = str
-
-
-ListSessionResourcesSessionIdParameter: TypeAlias = str
-
-
-ListSessionResourcesLimitParameter: TypeAlias = int
-
-
-ListSessionResourcesPageParameter: TypeAlias = str
-
-
-ListSessionThreadEventsSessionIdParameter: TypeAlias = str
-
-
-ListSessionThreadEventsThreadIdParameter: TypeAlias = str
-
-
-ListSessionThreadEventsLimitParameter: TypeAlias = int
-
-
-ListSessionThreadEventsPageParameter: TypeAlias = str
-
-
-ListSessionThreadsSessionIdParameter: TypeAlias = str
-
-
-ListSessionThreadsLimitParameter: TypeAlias = int
-
-
-ListSessionThreadsPageParameter: TypeAlias = str
-
-
-ListSessionsLimitParameter: TypeAlias = int
-
-
-ListSessionsPageParameter: TypeAlias = str
-
-
-ListSessionsOrderParameter: TypeAlias = Literal['asc', 'desc']
-
-
-ListSessionsAgentIdParameter: TypeAlias = str
-
-
-ListSessionsAgentVersionParameter: TypeAlias = int
-
-
-ListSessionsStatusesParameter: TypeAlias = List['SessionStatus']
-
-
-ListSessionsIncludeArchivedParameter: TypeAlias = bool
-
-
-ListSessionsCreatedAtGtParameter: TypeAlias = str
-
-
-ListSessionsCreatedAtGteParameter: TypeAlias = str
-
-
-ListSessionsCreatedAtLtParameter: TypeAlias = str
-
-
-ListSessionsCreatedAtLteParameter: TypeAlias = str
-
-
-ListSessionsDeploymentIdParameter: TypeAlias = str
-
-
-ListSessionsMemoryStoreIdParameter: TypeAlias = str
-
-
-ListSkillVersionsSkillIdParameter: TypeAlias = str
-
-
-ListSkillVersionsLimitParameter: TypeAlias = int
-
-
-ListSkillVersionsPageParameter: TypeAlias = str
-
-
-ListSkillsLimitParameter: TypeAlias = int
-
-
-ListSkillsPageParameter: TypeAlias = str
-
-
-ListSkillsSourceParameter: TypeAlias = Literal['custom', 'anthropic']
-
-
-ListVaultCredentialsVaultIdParameter: TypeAlias = str
-
-
-ListVaultCredentialsLimitParameter: TypeAlias = int
-
-
-ListVaultCredentialsPageParameter: TypeAlias = str
-
-
-ListVaultCredentialsIncludeArchivedParameter: TypeAlias = bool
-
-
-ListVaultsLimitParameter: TypeAlias = int
-
-
-ListVaultsPageParameter: TypeAlias = str
-
-
-ListVaultsIncludeArchivedParameter: TypeAlias = bool
-
-
-ListWebhooksLimitParameter: TypeAlias = int
-
-
-ListWebhooksPageParameter: TypeAlias = str
-
-
-PauseDeploymentDeploymentIdParameter: TypeAlias = str
-
-
-PollEnvironmentWorkEnvironmentIdParameter: TypeAlias = str
-
-
-PollEnvironmentWorkBlockMsParameter: TypeAlias = int
-
-
-PollEnvironmentWorkReclaimOlderThanMsParameter: TypeAlias = int
-
-
-PollEnvironmentWorkWorkerIdParameter: TypeAlias = str
-
-
 PollEnvironmentWorkResponse: TypeAlias = Union['EnvironmentWork', Dict[str, Any]]
-
-
-RedactMemoryVersionStoreIdParameter: TypeAlias = str
-
-
-RedactMemoryVersionVersionIdParameter: TypeAlias = str
-
-
-RegenerateWebhookSigningSecretWebhookIdParameter: TypeAlias = str
-
-
-RunDeploymentDeploymentIdParameter: TypeAlias = str
-
-
-SendSessionEventsSessionIdParameter: TypeAlias = str
-
-
-StopEnvironmentWorkEnvironmentIdParameter: TypeAlias = str
-
-
-StopEnvironmentWorkWorkIdParameter: TypeAlias = str
-
-
-StreamSessionEventsSessionIdParameter: TypeAlias = str
-
-
-StreamSessionEventsEventDeltasParameter: TypeAlias = List[Literal['agent.message', 'agent.thinking']]
-
-
-StreamSessionThreadEventsSessionIdParameter: TypeAlias = str
-
-
-StreamSessionThreadEventsThreadIdParameter: TypeAlias = str
-
-
-StreamSessionThreadEventsEventDeltasParameter: TypeAlias = List[Literal['agent.message', 'agent.thinking']]
-
-
-UnpauseDeploymentDeploymentIdParameter: TypeAlias = str
-
-
-UpdateAgentAgentIdParameter: TypeAlias = str
-
-
-UpdateDeploymentDeploymentIdParameter: TypeAlias = str
-
-
-UpdateEnvironmentEnvironmentIdParameter: TypeAlias = str
-
-
-UpdateEnvironmentWorkEnvironmentIdParameter: TypeAlias = str
-
-
-UpdateEnvironmentWorkWorkIdParameter: TypeAlias = str
-
-
-UpdateMemoryStoreIdParameter: TypeAlias = str
-
-
-UpdateMemoryMemoryIdParameter: TypeAlias = str
-
-
-UpdateMemoryViewParameter: TypeAlias = Literal['basic', 'full']
-
-
-UpdateMemoryStoreStoreIdParameter: TypeAlias = str
-
-
-UpdateSessionSessionIdParameter: TypeAlias = str
-
-
-UpdateVaultVaultIdParameter: TypeAlias = str
-
-
-UpdateVaultCredentialVaultIdParameter: TypeAlias = str
-
-
-UpdateVaultCredentialCredentialIdParameter: TypeAlias = str
-
-
-UpdateWebhookWebhookIdParameter: TypeAlias = str
-
-
-ValidateVaultCredentialMCPOAuthVaultIdParameter: TypeAlias = str
-
-
-ValidateVaultCredentialMCPOAuthCredentialIdParameter: TypeAlias = str
 
 
 class BuiltinToolsetConfigsItem(TypedDict, total=False):
@@ -2463,10 +1848,7 @@ class SessionUsageSnapshotServerToolUse(TypedDict, total=False):
     web_search_requests: Required[int]
 
 
-__all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
- 'AcknowledgeEnvironmentWorkWorkIdParameter',
- 'AddSessionResourceSessionIdParameter',
- 'Agent',
+__all__ = ['Agent',
  'AgentCreateRequest',
  'AgentCustomToolUseEvent',
  'AgentList',
@@ -2485,16 +1867,6 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'AgentUpdateRequest',
  'AgentWithOverrides',
  'AnthropicSkillReferenceInput',
- 'ArchiveAgentAgentIdParameter',
- 'ArchiveDeploymentDeploymentIdParameter',
- 'ArchiveEnvironmentEnvironmentIdParameter',
- 'ArchiveMemoryStoreStoreIdParameter',
- 'ArchiveSessionSessionIdParameter',
- 'ArchiveSessionThreadSessionIdParameter',
- 'ArchiveSessionThreadThreadIdParameter',
- 'ArchiveVaultCredentialCredentialIdParameter',
- 'ArchiveVaultCredentialVaultIdParameter',
- 'ArchiveVaultVaultIdParameter',
  'Base64DocumentSourceInput',
  'Base64ImageSourceInput',
  'BuiltinToolset',
@@ -2504,30 +1876,10 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'CloudEnvironmentConfig',
  'CloudEnvironmentConfigInput',
  'CoreSessionEventType',
- 'CreateMemoryStoreIdParameter',
- 'CreateMemoryViewParameter',
- 'CreateSkillVersionSkillIdParameter',
- 'CreateVaultCredentialVaultIdParameter',
  'Cursor',
  'CustomSkillReferenceInput',
  'CustomTool',
  'DefineOutcomeInitialEvent',
- 'DeleteEnvironmentEnvironmentIdParameter',
- 'DeleteFileFileIdParameter',
- 'DeleteMemoryExpectedContentSha256Parameter',
- 'DeleteMemoryMemoryIdParameter',
- 'DeleteMemoryStoreIdParameter',
- 'DeleteMemoryStoreStoreIdParameter',
- 'DeleteSessionResourceResourceIdParameter',
- 'DeleteSessionResourceSessionIdParameter',
- 'DeleteSessionSessionIdParameter',
- 'DeleteSkillSkillIdParameter',
- 'DeleteSkillVersionSkillIdParameter',
- 'DeleteSkillVersionVersionParameter',
- 'DeleteVaultCredentialCredentialIdParameter',
- 'DeleteVaultCredentialVaultIdParameter',
- 'DeleteVaultVaultIdParameter',
- 'DeleteWebhookWebhookIdParameter',
  'Deployment',
  'DeploymentAgentInput',
  'DeploymentCreateRequest',
@@ -2551,9 +1903,6 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'DeploymentUpdateRequest',
  'DocumentBlockInput',
  'DocumentSourceInput',
- 'DownloadFileFileIdParameter',
- 'DownloadSkillVersionSkillIdParameter',
- 'DownloadSkillVersionVersionParameter',
  'Environment',
  'EnvironmentConfig',
  'EnvironmentConfigInput',
@@ -2585,8 +1934,6 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'EventStart',
  'EventStartPreview',
  'EventStreamFrame',
- 'FailEnvironmentWorkEnvironmentIdParameter',
- 'FailEnvironmentWorkWorkIdParameter',
  'File',
  'FileDeleted',
  'FileDocumentSourceInput',
@@ -2597,43 +1944,12 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'FileSessionResource',
  'FileSessionResourceInput',
  'FileUploadRequest',
- 'GetAgentAgentIdParameter',
- 'GetDeploymentDeploymentIdParameter',
- 'GetDeploymentRunDeploymentRunIdParameter',
- 'GetEnvironmentEnvironmentIdParameter',
- 'GetEnvironmentWorkEnvironmentIdParameter',
- 'GetEnvironmentWorkStatsEnvironmentIdParameter',
- 'GetEnvironmentWorkWorkIdParameter',
- 'GetFileMetadataFileIdParameter',
- 'GetMemoryMemoryIdParameter',
- 'GetMemoryStoreIdParameter',
- 'GetMemoryStoreStoreIdParameter',
- 'GetMemoryVersionStoreIdParameter',
- 'GetMemoryVersionVersionIdParameter',
- 'GetMemoryVersionViewParameter',
- 'GetMemoryViewParameter',
- 'GetSessionResourceResourceIdParameter',
- 'GetSessionResourceSessionIdParameter',
- 'GetSessionSessionIdParameter',
- 'GetSessionThreadSessionIdParameter',
- 'GetSessionThreadThreadIdParameter',
- 'GetSkillSkillIdParameter',
- 'GetSkillVersionSkillIdParameter',
- 'GetSkillVersionVersionParameter',
- 'GetVaultCredentialCredentialIdParameter',
- 'GetVaultCredentialVaultIdParameter',
- 'GetVaultVaultIdParameter',
- 'GetWebhookWebhookIdParameter',
  'GitRepositoryBranchCheckout',
  'GitRepositoryCheckout',
  'GitRepositoryCommitCheckout',
  'GitRepositoryDeploymentResource',
  'GitRepositorySessionResource',
  'GitRepositorySessionResourceInput',
- 'HeartbeatEnvironmentWorkDesiredTtlSecondsParameter',
- 'HeartbeatEnvironmentWorkEnvironmentIdParameter',
- 'HeartbeatEnvironmentWorkExpectedLastHeartbeatParameter',
- 'HeartbeatEnvironmentWorkWorkIdParameter',
  'ImageBlockInput',
  'ImageSourceInput',
  'InitialEvent',
@@ -2641,108 +1957,6 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'LegacySkillReference',
  'LimitedNetwork',
  'LimitedNetworkInput',
- 'ListAgentVersionsAgentIdParameter',
- 'ListAgentVersionsLimitParameter',
- 'ListAgentVersionsPageParameter',
- 'ListAgentsCreatedAtGteParameter',
- 'ListAgentsCreatedAtLteParameter',
- 'ListAgentsIncludeArchivedParameter',
- 'ListAgentsLimitParameter',
- 'ListAgentsPageParameter',
- 'ListDeploymentRunsCreatedAtGtParameter',
- 'ListDeploymentRunsCreatedAtGteParameter',
- 'ListDeploymentRunsCreatedAtLtParameter',
- 'ListDeploymentRunsCreatedAtLteParameter',
- 'ListDeploymentRunsDeploymentIdParameter',
- 'ListDeploymentRunsHasErrorParameter',
- 'ListDeploymentRunsLimitParameter',
- 'ListDeploymentRunsPageParameter',
- 'ListDeploymentRunsTriggerTypeParameter',
- 'ListDeploymentsAgentIdParameter',
- 'ListDeploymentsCreatedAtGteParameter',
- 'ListDeploymentsCreatedAtLteParameter',
- 'ListDeploymentsIncludeArchivedParameter',
- 'ListDeploymentsLimitParameter',
- 'ListDeploymentsPageParameter',
- 'ListDeploymentsStatusParameter',
- 'ListEnvironmentWorkEnvironmentIdParameter',
- 'ListEnvironmentWorkLimitParameter',
- 'ListEnvironmentWorkPageParameter',
- 'ListEnvironmentsIncludeArchivedParameter',
- 'ListEnvironmentsLimitParameter',
- 'ListEnvironmentsPageParameter',
- 'ListFilesAfterIdParameter',
- 'ListFilesBeforeIdParameter',
- 'ListFilesLimitParameter',
- 'ListFilesScopeIdParameter',
- 'ListMemoriesDepthParameter',
- 'ListMemoriesLimitParameter',
- 'ListMemoriesPageParameter',
- 'ListMemoriesPathPrefixParameter',
- 'ListMemoriesStoreIdParameter',
- 'ListMemoriesViewParameter',
- 'ListMemoryStoresCreatedAtGteParameter',
- 'ListMemoryStoresCreatedAtLteParameter',
- 'ListMemoryStoresIncludeArchivedParameter',
- 'ListMemoryStoresLimitParameter',
- 'ListMemoryStoresPageParameter',
- 'ListMemoryVersionsApiKeyIdParameter',
- 'ListMemoryVersionsCreatedAtGteParameter',
- 'ListMemoryVersionsCreatedAtLteParameter',
- 'ListMemoryVersionsLimitParameter',
- 'ListMemoryVersionsMemoryIdParameter',
- 'ListMemoryVersionsOperationParameter',
- 'ListMemoryVersionsPageParameter',
- 'ListMemoryVersionsSessionIdParameter',
- 'ListMemoryVersionsStoreIdParameter',
- 'ListMemoryVersionsViewParameter',
- 'ListSessionEventsCreatedAtGtParameter',
- 'ListSessionEventsCreatedAtGteParameter',
- 'ListSessionEventsCreatedAtLtParameter',
- 'ListSessionEventsCreatedAtLteParameter',
- 'ListSessionEventsLimitParameter',
- 'ListSessionEventsOrderParameter',
- 'ListSessionEventsPageParameter',
- 'ListSessionEventsSessionIdParameter',
- 'ListSessionEventsTypesParameter',
- 'ListSessionResourcesLimitParameter',
- 'ListSessionResourcesPageParameter',
- 'ListSessionResourcesSessionIdParameter',
- 'ListSessionThreadEventsLimitParameter',
- 'ListSessionThreadEventsPageParameter',
- 'ListSessionThreadEventsSessionIdParameter',
- 'ListSessionThreadEventsThreadIdParameter',
- 'ListSessionThreadsLimitParameter',
- 'ListSessionThreadsPageParameter',
- 'ListSessionThreadsSessionIdParameter',
- 'ListSessionsAgentIdParameter',
- 'ListSessionsAgentVersionParameter',
- 'ListSessionsCreatedAtGtParameter',
- 'ListSessionsCreatedAtGteParameter',
- 'ListSessionsCreatedAtLtParameter',
- 'ListSessionsCreatedAtLteParameter',
- 'ListSessionsDeploymentIdParameter',
- 'ListSessionsIncludeArchivedParameter',
- 'ListSessionsLimitParameter',
- 'ListSessionsMemoryStoreIdParameter',
- 'ListSessionsOrderParameter',
- 'ListSessionsPageParameter',
- 'ListSessionsStatusesParameter',
- 'ListSkillVersionsLimitParameter',
- 'ListSkillVersionsPageParameter',
- 'ListSkillVersionsSkillIdParameter',
- 'ListSkillsLimitParameter',
- 'ListSkillsPageParameter',
- 'ListSkillsSourceParameter',
- 'ListVaultCredentialsIncludeArchivedParameter',
- 'ListVaultCredentialsLimitParameter',
- 'ListVaultCredentialsPageParameter',
- 'ListVaultCredentialsVaultIdParameter',
- 'ListVaultsIncludeArchivedParameter',
- 'ListVaultsLimitParameter',
- 'ListVaultsPageParameter',
- 'ListWebhooksLimitParameter',
- 'ListWebhooksPageParameter',
  'MCPOAuthCredentialAuth',
  'MCPOAuthCredentialCreate',
  'MCPOAuthCredentialUpdate',
@@ -2805,7 +2019,6 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'OutcomeRubric',
  'Packages',
  'PackagesInput',
- 'PauseDeploymentDeploymentIdParameter',
  'PermissionPolicy',
  'PersistedSessionEventBase',
  'PersistedSystemMessageEvent',
@@ -2815,24 +2028,15 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'PersistedUserMessageEvent',
  'PersistedUserToolConfirmationEvent',
  'PersistedUserToolResultEvent',
- 'PollEnvironmentWorkBlockMsParameter',
- 'PollEnvironmentWorkEnvironmentIdParameter',
- 'PollEnvironmentWorkReclaimOlderThanMsParameter',
  'PollEnvironmentWorkResponse',
- 'PollEnvironmentWorkWorkerIdParameter',
- 'RedactMemoryVersionStoreIdParameter',
- 'RedactMemoryVersionVersionIdParameter',
- 'RegenerateWebhookSigningSecretWebhookIdParameter',
  'ResolvedAgentReference',
  'ResolvedMultiagent',
  'ResolvedSkillReference',
  'ResultContentInput',
- 'RunDeploymentDeploymentIdParameter',
  'SearchResultBlock',
  'SearchResultBlockCitations',
  'SelfHostedEnvironmentConfig',
  'SendSessionEventsRequest',
- 'SendSessionEventsSessionIdParameter',
  'Session',
  'SessionAgentInput',
  'SessionAgentUpdate',
@@ -2901,13 +2105,6 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'StaticBearerCredentialAuth',
  'StaticBearerCredentialCreate',
  'StaticBearerCredentialUpdate',
- 'StopEnvironmentWorkEnvironmentIdParameter',
- 'StopEnvironmentWorkWorkIdParameter',
- 'StreamSessionEventsEventDeltasParameter',
- 'StreamSessionEventsSessionIdParameter',
- 'StreamSessionThreadEventsEventDeltasParameter',
- 'StreamSessionThreadEventsSessionIdParameter',
- 'StreamSessionThreadEventsThreadIdParameter',
  'SystemMessageEventInput',
  'TextBlockInput',
  'TextDocumentSourceInput',
@@ -2916,22 +2113,7 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'ToolDefaultConfig',
  'URLDocumentSourceInput',
  'URLImageSourceInput',
- 'UnpauseDeploymentDeploymentIdParameter',
  'UnrestrictedNetwork',
- 'UpdateAgentAgentIdParameter',
- 'UpdateDeploymentDeploymentIdParameter',
- 'UpdateEnvironmentEnvironmentIdParameter',
- 'UpdateEnvironmentWorkEnvironmentIdParameter',
- 'UpdateEnvironmentWorkWorkIdParameter',
- 'UpdateMemoryMemoryIdParameter',
- 'UpdateMemoryStoreIdParameter',
- 'UpdateMemoryStoreStoreIdParameter',
- 'UpdateMemoryViewParameter',
- 'UpdateSessionSessionIdParameter',
- 'UpdateVaultCredentialCredentialIdParameter',
- 'UpdateVaultCredentialVaultIdParameter',
- 'UpdateVaultVaultIdParameter',
- 'UpdateWebhookWebhookIdParameter',
  'UserCustomToolResultEventInput',
  'UserDefineOutcomeEventInput',
  'UserInterruptEventInput',
@@ -2939,8 +2121,6 @@ __all__ = ['AcknowledgeEnvironmentWorkEnvironmentIdParameter',
  'UserMessageInitialEvent',
  'UserToolConfirmationEventInput',
  'UserToolResultEventInput',
- 'ValidateVaultCredentialMCPOAuthCredentialIdParameter',
- 'ValidateVaultCredentialMCPOAuthVaultIdParameter',
  'Vault',
  'VaultCreateRequest',
  'VaultCredential',
