@@ -80,8 +80,8 @@ async def observe_until_done(client: AsyncMango, session_id: str, turn: Turn) ->
     # live events by ID. Never resend the task after an ambiguous HTTP response.
     while True:
         try:
-            async with client.stream_session_events(session_id) as stream:
-                async for event in client.iter_session_events(session_id, order="asc", limit=100):
+            async with client.sessions.events.stream(session_id) as stream:
+                async for event in client.sessions.events.iter(session_id, order="asc", limit=100):
                     if turn.observe(event):
                         return
                 async for envelope in stream:
@@ -115,13 +115,13 @@ class Created:
                 async with asyncio.timeout(30):
                     match kind:
                         case "session":
-                            await client.delete_session(id_)
+                            await client.sessions.delete(id_)
                         case "agent":
-                            await client.archive_agent(id_)
+                            await client.agents.archive(id_)
                         case "environment":
-                            await client.delete_environment(id_)
+                            await client.environments.delete(id_)
                         case "file":
-                            await client.delete_file(id_)
+                            await client.files.delete(id_)
             except Exception:
                 failures.append(f"{kind} {id_}")
         if failures:
@@ -130,9 +130,9 @@ class Created:
 
 async def create_session(client: AsyncMango, model: str, created: Created) -> str:
     # region environment
-    environment = await client.create_environment(body={
-        "name": "Coding-agent example", "config": {"type": "cloud"},
-    })
+    environment = await client.environments.create(
+        name="Coding-agent example", config={"type": "cloud"},
+    )
     # endregion environment
     created.environment = environment["id"]
 
@@ -140,37 +140,37 @@ async def create_session(client: AsyncMango, model: str, created: Created) -> st
     tool_names: tuple[Literal["bash", "read", "write", "edit", "glob", "grep"], ...] = (
         "bash", "read", "write", "edit", "glob", "grep",
     )
-    agent = await client.create_agent(body={
-        "name": "Debugging assistant", "model": model,
-        "system": "Use your tools to run failing tests, repair the code, and verify the result.",
-        "tools": [{
+    agent = await client.agents.create(
+        name="Debugging assistant", model=model,
+        system="Use your tools to run failing tests, repair the code, and verify the result.",
+        tools=[{
             "type": "agent_toolset_20260401",
             "default_config": {"enabled": False},
             "configs": [{"name": name, "enabled": True,
                          "permission_policy": {"type": "always_allow"}}
                         for name in tool_names],
         }],
-    })
+    )
     # endregion agent
     created.agent = agent["id"]
 
     # region upload
     resources: list[SessionResourceInput] = []
     for name in ("calc.py", "test_calc.py"):
-        uploaded = await client.upload_file(body={
-            "file": Upload(name, (FIXTURES / name).read_bytes(), "text/x-python"),
-        })
+        uploaded = await client.files.upload(
+            file=Upload(name, (FIXTURES / name).read_bytes(), "text/x-python"),
+        )
         created.files.append(uploaded["id"])
         resources.append({"type": "file", "file_id": uploaded["id"],
                           "mount_path": f"/mnt/session/uploads/{name}"})
     # endregion upload
 
     # region session
-    session = await client.create_session(body={
-        "agent": {"type": "agent", "id": agent["id"], "version": agent["version"]},
-        "environment_id": environment["id"], "resources": resources,
-        "title": "Repair the calculator", "metadata": {"example": "coding-agent"},
-    })
+    session = await client.sessions.create(
+        agent={"type": "agent", "id": agent["id"], "version": agent["version"]},
+        environment_id=environment["id"], resources=resources,
+        title="Repair the calculator", metadata={"example": "coding-agent"},
+    )
     # endregion session
     created.session = session["id"]
     print(f"Session: {session['id']}", flush=True)
@@ -179,7 +179,7 @@ async def create_session(client: AsyncMango, model: str, created: Created) -> st
 
 async def download_output(client: AsyncMango, session_id: str, directory: Path) -> Path:
     # region download
-    candidates = [file async for file in client.iter_files(scope_id=session_id, limit=100)
+    candidates = [file async for file in client.files.iter(scope_id=session_id, limit=100)
                   if file["filename"] == OUTPUT_NAME and file["downloadable"]]
     if len(candidates) != 1:
         raise RuntimeError(f"Expected exactly one published {OUTPUT_NAME}, got {len(candidates)}")
@@ -187,7 +187,7 @@ async def download_output(client: AsyncMango, session_id: str, directory: Path) 
     if artifact["size_bytes"] > MAX_OUTPUT_BYTES:
         raise RuntimeError("Calculator output exceeds the example's 64 KiB limit")
     content = bytearray()
-    async with client.download_file(artifact["id"]) as response:
+    async with client.files.download(artifact["id"]) as response:
         async for chunk in response.iter_bytes():
             content.extend(chunk)
             if len(content) > MAX_OUTPUT_BYTES:
@@ -216,16 +216,16 @@ async def run(args: argparse.Namespace) -> None:
                 turn = Turn()
                 if args.session_id:
                     session_id = args.session_id
-                    session = await client.get_session(session_id)
+                    session = await client.sessions.retrieve(session_id)
                     if session.get("metadata", {}).get("example") != "coding-agent":
                         raise RuntimeError("Resume requires a dedicated coding-agent example Session")
                 else:
                     session_id = await create_session(client, args.model, created)
                     # region stream
-                    async with client.stream_session_events(session_id) as stream:
-                        await client.send_session_events(session_id, body={"events": [{
+                    async with client.sessions.events.stream(session_id) as stream:
+                        await client.sessions.events.send(session_id, events=[{
                             "type": "user.message", "content": [{"type": "text", "text": PROMPT}],
-                        }]})
+                        }])
                         try:
                             async for envelope in stream:
                                 if turn.observe(envelope.data):

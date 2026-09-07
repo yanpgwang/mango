@@ -56,7 +56,7 @@ reconnection or pretending that preview deltas are durable events.
 
 Validated on 2026-09-07 against main `5ee63a8` (self-hosted Environment default):
 
-- `make sdk-test`: generation drift checks, Go race tests and vet, 124 Python
+- `make sdk-test`: generation drift checks, Go race tests and vet, 125 Python
   tests plus mypy/ruff, and 22 TypeScript tests plus client/example typechecks.
 - `make sdk-conformance`: all three clients and the documentation quickstarts
   passed against Mango HTTP handlers with test-only storage/model implementations.
@@ -75,5 +75,12 @@ Validated on 2026-09-07 against main `5ee63a8` (self-hosted Environment default)
   Each finished with the primary and two specialist Threads idle and cleaned up
   its own resources. The optional Advisor was covered by contract tests rather
   than enabled in these three manual runs.
+
+Independent subagent review found and fixed unresolved Python forward references
+when inspecting resource methods with `typing.get_type_hints`; a regression test
+covers synchronous and asynchronous resource signatures. Caller review also
+migrated the coding-agent application and added it to mypy's checked files.
+That application subsequently completed a real-model repair, downloaded its
+result, verified the original checks in Docker, and cleaned up its resources.
 
 The packages remain unpublished development candidates.

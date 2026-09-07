@@ -6,6 +6,9 @@ from __future__ import annotations
 from functools import cached_property
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Union, cast
 from . import models
+# Model aliases contain forward references. Runtime signature inspection
+# resolves those names in this module, so keep their public types in scope.
+from .models import *  # noqa: F403
 from ._client import BaseClient, AsyncBaseClient
 from ._streaming import BinaryStream, AsyncBinaryStream, SSEStream, AsyncSSEStream
 from ._types import NOT_GIVEN, NotGiven, Upload

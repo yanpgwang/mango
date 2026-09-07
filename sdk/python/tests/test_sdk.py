@@ -25,6 +25,7 @@ from mango_sdk import (
     models,
 )
 from mango_sdk._generated import OPERATIONS
+from mango_sdk import _generated
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = json.loads((ROOT.parent / "operations.json").read_text())
@@ -172,6 +173,24 @@ def test_generated_contract_and_all_component_types() -> None:
         if isinstance(value, type) and hasattr(value, "__annotations__"):
             get_type_hints(value, include_extras=True)
     subprocess.run([sys.executable, "generate.py", "--check"], cwd=ROOT, check=True)
+
+
+def test_resource_method_type_hints_resolve_nested_model_aliases() -> None:
+    # Signature consumers such as tool wrappers must resolve flattened union
+    # arguments in both clients without supplying a custom models namespace.
+    for _, resource in inspect.getmembers(_generated, inspect.isclass):
+        if resource.__module__ != _generated.__name__:
+            continue
+        for _, method in inspect.getmembers(resource, inspect.isfunction):
+            get_type_hints(method, include_extras=True)
+
+    for client_type in (Mango, AsyncMango):
+        # Inspect unbound resources to avoid opening even a mock transport.
+        resource_type = get_type_hints(client_type.agents.func)["return"]
+        hints = get_type_hints(resource_type.create)
+        assert "model" in hints
+        resource_type = get_type_hints(client_type.sessions.func)["return"]
+        assert "agent" in get_type_hints(resource_type.create)
 
 
 def test_path_query_and_json_omission_are_lossless() -> None:
