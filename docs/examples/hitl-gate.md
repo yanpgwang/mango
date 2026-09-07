@@ -1,9 +1,10 @@
 ---
-title: Gate agent actions on application or human input
+title: Human-in-the-loop gate
+description: Pause an agent for an application action or a human decision.
 slug: /examples/hitl-gate
 ---
 
-# Gate agent actions on application or human input
+# Human-in-the-loop gate
 
 Custom tools let an Agent ask your application to perform work that should not
 run inside its sandbox. The application can call an internal service, record an
@@ -15,7 +16,7 @@ It currently uses the standard `net/http` client. First-party
 [Go, Python, and TypeScript SDKs](../sdk.md) are available for the same operations;
 this example has not yet been migrated to one.
 It never calls the model provider directly: the configured Mango worker owns
-that credential and model request. Complete [Getting started](../getting-started.md)
+that credential and model request. Complete [Quickstart](../getting-started.md)
 first and use the exact request shapes from the [Agents](../api/agents.md) and
 [Events](../api/events.md) references.
 
@@ -124,7 +125,7 @@ bounded reconciliation after receiving it.
 ## Run the example
 
 First configure a running API and worker using
-[Use a real model endpoint](../getting-started.md#use-a-real-model-endpoint).
+[Model configuration](../guides/model-configuration.md).
 With the same `~/.config/mango/dev.env`, run the interactive client:
 
 ```bash

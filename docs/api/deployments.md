@@ -1,5 +1,6 @@
 ---
 title: Deployments and Deployment Runs
+description: Schedule Sessions, run them on demand, and inspect their Run history.
 slug: /api/deployments
 ---
 

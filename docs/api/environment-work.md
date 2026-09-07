@@ -1,5 +1,6 @@
 ---
 title: Environment Work
+description: Claim, renew, and stop leased Session activations for self-hosted workers.
 slug: /api/environment-work
 ---
 

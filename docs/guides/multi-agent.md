@@ -1,9 +1,10 @@
 ---
-title: Run a multi-agent Session
+title: Multi-agent Sessions
+description: Configure a coordinator, delegate to specialists, and inspect their Threads.
 slug: /guides/multi-agent
 ---
 
-# Run a multi-agent Session
+# Multi-agent Sessions
 
 This guide creates two worker Agents, places them in a coordinator roster, and
 observes the persistent child Threads that the coordinator starts while
@@ -19,7 +20,7 @@ an Advisor, and persistent follow-up, see
 
 ## Prerequisites
 
-- Complete [Getting started](../getting-started.md).
+- Complete [Quickstart](../getting-started.md).
 - Use the current Messages-shaped model adapter with a model that can call
   tools. The deterministic local
   model is useful for platform smoke tests but does not make open-ended

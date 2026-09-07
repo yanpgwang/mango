@@ -1,5 +1,6 @@
 ---
 title: Runtime and sandbox
+description: The boundaries between conversation orchestration, inference, and tool execution.
 ---
 
 # Runtime and sandbox

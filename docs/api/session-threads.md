@@ -1,5 +1,6 @@
 ---
 title: Session Threads
+description: Inspect child conversations and manage delegated work.
 slug: /api/session-threads
 ---
 

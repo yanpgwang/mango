@@ -8,7 +8,7 @@ import { remarkDocumentTitle, remarkRelativeDocLinks } from './src/lib/markdown.
 export const docs = defineDocs({
   dir: '../docs',
   docs: {
-    schema: pageSchema.extend({ slug: z.string().optional() }),
+    schema: pageSchema.extend({ description: z.string().min(1), slug: z.string().optional() }),
     postprocess: { includeMDAST: true },
   },
   meta: { schema: metaSchema },

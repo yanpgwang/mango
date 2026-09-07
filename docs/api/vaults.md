@@ -1,5 +1,6 @@
 ---
 title: Vaults and Credentials
+description: Manage encrypted credentials for MCP connections.
 slug: /api/vaults
 ---
 

@@ -1,5 +1,6 @@
 ---
 title: Events and streaming
+description: Send input, handle actions, and recover live event streams.
 ---
 
 # Events and streaming
@@ -219,7 +220,7 @@ deleted.
 ### SDK streaming example
 
 The examples use a newly created Session and the configured client from
-[Getting started](../getting-started.md). SDKs open a live subscription before
+[Quickstart](../getting-started.md). SDKs open a live subscription before
 sending; HTTP polls this new Session's first turn. They check the stop reason
 and close the subscription. Do not reuse this first-turn polling shortcut to
 identify completion of a later turn in existing history.

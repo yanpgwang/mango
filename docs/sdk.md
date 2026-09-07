@@ -1,59 +1,61 @@
 ---
-title: Mango SDKs
+title: SDKs
+description: Use Mango from TypeScript, Python, or Go with typed resource clients.
 slug: /sdk
 ---
 
-# Mango SDKs
+# SDKs
 
-Use the first-party Go, Python, or TypeScript/JavaScript SDK to avoid repeating
-HTTP, multipart, pagination, and SSE code in every application. The client
-connects to your Mango server, which continues to own execution, persistence,
-scheduling, and sandboxes.
+The first-party SDKs handle authentication, request encoding, pagination, file
+uploads, and event streams. They connect to your Mango server through the same
+HTTP API documented in the [API reference](api/overview.md).
 
-## Packages
+## Choose a language
 
-| Language | Package / module | Installation and examples |
+| Guide | Runtime | Package / module |
 | --- | --- | --- |
-| Go | `github.com/yanpgwang/mango/sdk/go` | [Go SDK](https://github.com/yanpgwang/mango/tree/main/sdk/go) |
-| Python | `mango-sdk` (import `mango_sdk`) | [Python SDK](https://github.com/yanpgwang/mango/tree/main/sdk/python) |
-| TypeScript / JavaScript | `mango-sdk` | [TypeScript SDK](https://github.com/yanpgwang/mango/tree/main/sdk/typescript) |
+| [TypeScript and JavaScript](sdk/typescript.md) | Node.js 22+ | `mango-sdk` |
+| [Python](sdk/python.md) | Python 3.11+ | `mango-sdk`, imported as `mango_sdk` |
+| [Go](sdk/go.md) | Go 1.24+ | `github.com/yanpgwang/mango/sdk/go` |
 
-Start with the [multi-language quickstart](getting-started.md), or read the
-language-specific guides: [Go](sdk/go.md), [Python](sdk/python.md), and
-[TypeScript / JavaScript](sdk/typescript.md).
+For your first complete application, follow the [Quickstart](getting-started.md).
 
 ## Current development version
 
-This guide documents the resource-based SDK in the current source checkout:
-Python `0.1.0a2` and TypeScript `0.1.0-alpha.2`. These versions are not published.
-Use source installation below. The previously published alpha 1 packages have
-an earlier client interface; they cannot run the examples on this page.
-The [first alpha release record](https://github.com/yanpgwang/mango/blob/main/sdk/releases/0.1.0-alpha.1.md)
-remains the record of published artifacts. Go has no independently tagged release.
+The current resource-based clients are **source-only**: Python `0.1.0a2` and
+TypeScript `0.1.0-alpha.2` have not been published, and Go has no independently
+tagged release. Install from the same checkout as your server.
+
+The previously published alpha 1 packages use an earlier interface and do not
+run these examples. The [release record](https://github.com/yanpgwang/mango/blob/main/sdk/releases/0.1.0-alpha.1.md)
+identifies those artifacts. All SDKs remain alpha.
 
 ## Install from source
 
-Use source installation when developing against this checkout, running the
-repository examples, or using the Go SDK before a tagged release. Run from the
-Mango repository root unless a command says to use your application directory.
+[Clone the repository](getting-started.md#get-the-code) if needed. For
+TypeScript, build the SDK in that checkout before installing it in your app.
+For Python and Go, run the installation commands from your application's directory.
+Replace `/absolute/path/to/mango` with the checkout's actual location.
 
 ```sh tab="TypeScript" tab-group="mango-language"
+# In the Mango checkout:
 npm --prefix sdk/typescript ci
 npm --prefix sdk/typescript run build
-# Then, in your application directory:
+
+# In your application directory:
 npm install /absolute/path/to/mango/sdk/typescript
 ```
 
 ```sh tab="Python" tab-group="mango-language"
 python3 -m venv .venv
-.venv/bin/python -m pip install ./sdk/python
+.venv/bin/python -m pip install /absolute/path/to/mango/sdk/python
 ```
 
 ```sh tab="Go" tab-group="mango-language"
-# In your application module (run go mod init first if needed):
+# In an application with a go.mod file:
 go mod edit -require=github.com/yanpgwang/mango/sdk/go@v0.0.0
 go mod edit -replace=github.com/yanpgwang/mango/sdk/go=/absolute/path/to/mango/sdk/go
-# Add your Mango import before running tidy.
+# Add your Mango import, then resolve dependencies:
 go mod tidy
 ```
 
@@ -83,7 +85,7 @@ hierarchy order: Session ID, then Thread ID, for a Thread's events.
 Lists provide one-page methods and explicit all-item iterators. Python uses
 `resource.list(...)` / `resource.iter(...)`; TypeScript uses `list`, `listItems`
 and `listPages`; Go uses `List` / `ListAutoPaging`.
-See [the multiagent SDK applications](guides/multi-agent.md#use-a-first-party-sdk)
+See [the multi-agent SDK applications](guides/multi-agent.md#use-a-first-party-sdk)
 for team configuration, completion handling, follow-ups and Thread inspection.
 
 ## Authentication and errors
@@ -116,27 +118,8 @@ permanent-input failure, and final Stop without selecting a sandbox provider. Se
 Its optional `tools/agenttoolset` package supplies the six core local tool
 executors for an already-isolated worker; it does not create a sandbox.
 
-## Development and verification
+## Contributing to the SDKs
 
-```sh
-make sdk-install
-make sdk-check
-make sdk-test
-make sdk-conformance
-```
-
-`make sdk-generate` regenerates all language bindings from the checked-in
-OpenAPI document. Generated-source checks are separate from transport tests.
-HTTP conformance exercises real Mango handlers with test-only storage and
-model implementations. Service recovery and real-model workflows remain
-separate validation tiers.
-
-The SDKs do not depend on the documentation framework. Fumadocs includes named
-regions from the runnable quickstart files under each SDK's `examples/`
-directory; it does not maintain a second copy of those snippets. `sdk-test`
-checks their language types, and `sdk-conformance` runs those exact files against
-Mango's HTTP handlers with deterministic test-only repositories and model behavior.
-
-The API reference keeps HTTP routes, request/response schemas, and lifecycle
-constraints visible. SDK tabs explain how to invoke that same contract, not a
-second contract or a promise that every server capability is production-ready.
+Bindings are generated from Mango's checked-in OpenAPI document. See the
+[contributor guide](https://github.com/yanpgwang/mango/blob/main/CONTRIBUTING.md#public-api-changes)
+for generation, drift checks, language tests, and HTTP conformance.

@@ -1,1 +1,1 @@
-{ "title": "Examples", "pages": ["index", "terminal-ui", "coding-agent-iterate", "hitl-gate", "multi-agent-team"] }
+{ "title": "Examples", "pagesIndex": "index", "pages": ["terminal-ui", "hitl-gate", "multi-agent-team", "coding-agent-iterate"] }

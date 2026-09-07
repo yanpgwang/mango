@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { DocsBody, DocsDescription, DocsPage, DocsTitle, MarkdownCopyButton } from 'fumadocs-ui/layouts/docs/page';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
+import { Card } from 'fumadocs-ui/components/card';
 import { source, markdownPath } from '@/lib/source';
 import { getMDXComponents } from '@/components/mdx';
 import { absoluteUrl, githubUrl, withBasePath } from '@/lib/site.mjs';
@@ -16,12 +17,17 @@ export default async function Page(props: PageProps<'/[[...slug]]'>) {
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
       <DocsTitle>{page.data.title}</DocsTitle>
-      {page.data.description && <DocsDescription className="mb-0">{page.data.description}</DocsDescription>}
+      <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
       <div className="flex items-center gap-3 border-b pb-6">
         <MarkdownCopyButton markdownUrl={withBasePath(markdownPath(page))} />
         <a href={`${githubUrl}/edit/main/docs/${page.path}`} className="text-xs text-fd-muted-foreground hover:text-fd-foreground">Edit on GitHub</a>
       </div>
-      <DocsBody><Content components={getMDXComponents({ a: createRelativeLink(source, page) })} /></DocsBody>
+      <DocsBody>
+        <Content components={getMDXComponents({
+          a: createRelativeLink(source, page),
+          Card: ({ href, ...props }) => <Card {...props} href={href ? source.resolveHref(href, page) : undefined} />,
+        })} />
+      </DocsBody>
     </DocsPage>
   );
 }
@@ -32,7 +38,7 @@ export async function generateMetadata(props: PageProps<'/[[...slug]]'>): Promis
   const { slug } = await props.params;
   const page = source.getPage(slug);
   if (!page) notFound();
-  const description = page.data.description ?? `${page.data.title} — Mango documentation.`;
+  const description = page.data.description;
   return {
     title: page.data.title,
     description,

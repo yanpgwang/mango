@@ -1,14 +1,15 @@
 ---
 title: Product direction
+description: The principles and release policy that guide Mango’s development.
 slug: /product
-sidebar_position: 2
 ---
 
 # Product direction
 
-Mango is a self-hosted runtime for durable AI agents. It owns the control
-plane, execution lifecycle, public API, and product roadmap needed to run
-long-lived agent work on infrastructure an operator controls.
+Mango is an open-source, self-hosted alternative to Claude Managed Agents.
+Applications define Agents and submit work through Sessions; Mango manages the
+agent loop, conversation state, tool coordination, and recovery. Operators run
+the control plane, state, and workers on infrastructure they control.
 
 Mango began with resource and workflow ideas documented by Claude Managed
 Agents. Its routes, resource models, JSON shapes, events, and public SDK types

@@ -1,5 +1,6 @@
 ---
 title: Session Resources
+description: Attach Files, Memory Stores, and public Git snapshots to Sessions.
 slug: /api/session-resources
 ---
 

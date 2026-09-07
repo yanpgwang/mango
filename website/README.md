@@ -36,8 +36,8 @@ npm run serve
 ```
 
 `npm run build` writes `out/` and checks page metadata, internal links and
-anchors, assets, language tabs, static search, Markdown exports, and existing
-landing-page URLs. `npm run serve` serves that exact artifact on loopback only
+anchors, assets, language tabs, static search, Markdown exports, and the main
+reader paths. `npm run serve` serves that exact artifact on loopback only
 at `http://127.0.0.1:4175/mango/`; override `DOCS_PORT` if needed. Unknown routes
 return 404 rather than falling back to the home page.
 
@@ -49,14 +49,45 @@ model credentials, provider requests, or remote font downloads.
 ## Write documentation
 
 - Keep page content in `docs/*.md` (or `.mdx` when JSX is required). Frontmatter
-  `title` is required; `description` and a root-relative `slug` are optional.
+  `title` and a one-sentence `description` are required by Mango's editorial
+  convention; a root-relative `slug` is optional.
 - The source H1 remains readable on GitHub and is rendered once by the site.
 - Organize navigation with `meta.json`. Use `pagesIndex` for a folder landing
-  page, including an existing sibling such as `../sdk`.
-- Use relative `.md` links for documentation. Code/source links outside `docs/`
+  page, including an existing sibling such as `../sdk`; do not also list that
+  index as a child. Do not use `sidebar_label` or `sidebar_position`.
+- Use relative `.md` or `.mdx` links for documentation, including literal
+  relative `href` values on native Fumadocs `Card` components. Code/source links outside `docs/`
   should point to the corresponding GitHub file. Put images in `public/`.
 - Mermaid fences render diagrams locally. Admonitions use `:::warning[Title]`
   (or `info`, `danger`, etc.) and a closing `:::`.
+
+### Content responsibilities
+
+The README and docs home are independent entry points: both introduce Mango
+as an open-source, self-hosted alternative to Claude Managed Agents and explain
+what its runtime manages. Lead with that product category and operator control;
+durability supports the execution promise. Detailed tutorials need not repeat
+the positioning. The README shows how to start Mango and points to the docs;
+the docs home helps readers choose a path. Core concepts explain the public
+resource model; the quickstart completes one offline, text-only Session with
+the current source SDKs. Model setup and tool-worker setup have their own
+guides. Tutorials state prerequisites, expected results, and cleanup; API
+reference pages describe requests, responses, and lifecycle constraints.
+Architecture explains implementation and recovery. Capability status and
+design provenance each have one authoritative home.
+
+Keep these boundaries when editing: a new reader must be able to get the
+repository, start the stack, run one example, recognize success, and stop it
+without reading a design record or the contributor test matrix. Keep alpha
+status and task-specific security limits visible, but link to their full
+explanation instead of repeating policy paragraphs. SDK examples must match
+the server checkout and state whether their packages are published.
+
+Use the standard Docs layout, page title, description, TOC, code tabs, callouts,
+and cards. Avoid additional navigation layers or custom visual components when
+these suffice. A docs rewrite changes presentation, not runtime, storage, or
+API semantics. Validate the static export, search, Markdown links, and the
+desktop/mobile reading path before delivery.
 
 ### Multi-language examples
 

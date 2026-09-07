@@ -1,93 +1,94 @@
 ---
 title: Capabilities and limits
+description: Check the supported scope of a workflow before building on it.
 slug: /capabilities
 ---
 
 # Capabilities and limits
 
-This page inventories Mango's observable API and runtime behavior so operators
-can decide whether a workflow is ready for their deployment.
+Mango is alpha. There is no supported stable runtime release or production
+distribution, and the API may change on `/v1`. The tables below describe current
+behavior, not a promise that every combination is production-ready.
 
-Mango owns its contract and roadmap. The current HTTP resource model retains
-ideas and selected surface shapes from public agent-platform specifications.
-Mango may continue to reuse or adapt sound routes, schemas, events, and public
-SDK types, but the adopted result is Mango-owned and an external service or SDK
-does not define future work. See [Product direction](product.md) for the design
-and prioritization rules.
+- **Supported:** implemented and exercised end to end for the stated scope.
+- **Limited:** usable with constraints that affect applications or operations.
+- **Preview:** implemented, but broader provider or production evidence is incomplete.
 
-Mango has no customers or supported stable release, so there is no
-backward-compatibility baseline. All API work changes the existing `/v1`
-surface directly. Earlier commits, development databases, and third-party
-client behavior are not supported contracts.
+## Choose an execution path
 
-Use this page to decide whether a workflow is ready for your deployment:
+New Environments default to `self_hosted`. The first-party launcher runs on
+Docker; other self-hosted launchers are not yet provided. The explicit `cloud`
+Environment remains a transitional, operator-deployed managed-sandbox path.
 
-- **Supported** — implemented and exercised end to end for the stated scope.
-- **Limited** — usable with constraints that may affect architecture or
-  operations.
-- **Preview** — implemented, but live-provider or production evidence is not
-  yet strong enough for a support commitment.
-- **Not supported** — rejected explicitly rather than silently accepted.
+| Capability | Self-hosted Docker worker | Transitional managed path |
+| --- | --- | --- |
+| Text-only model turns and application-owned custom tools | Available without an Environment worker. | Available. |
+| Shell and file tools | Six core tools; Bash preserves process state within one Work activation. | Six core tools; Bash is a one-shot shell. |
+| Custom Skills | Immutable pins are downloaded, verified, and prepared before execution. | Materialized by the configured adapter. |
+| Memory Store attachments | Downloaded and synchronized through the Memory API. | Supported by the Docker adapter. |
+| File and public Git inputs | Automatic preparation not implemented. | Supported by Docker, E2B, Cube, OpenSandbox, and Daytona. |
+| Automatic output publication | Not implemented; workspace files stay with the operator. | Supported under `/mnt/session/outputs`. |
+| Web Search / Web Fetch | Run at a supporting model endpoint, with `always_allow`. | Same model-endpoint behavior. |
+| Remote MCP | Runs through the orchestration runtime. | Same orchestration-runtime behavior. |
 
-Capability claims are enforced by Mango's HTTP/OpenAPI, PostgreSQL, Temporal,
-and service test suites.
+The Docker worker's workspace volume persists between activations, but its Bash
+process does not. File tools reject writes to read-only Memory roots; Bash
+access still depends on the sandbox boundary. Remote managed adapters have
+additional image, transfer, and isolation constraints in [Sandbox backends](sandboxes.md).
 
 ## Capability summary
 
-| Capability | Status | Supported scope and important constraints |
+| Capability | Status | Scope and principal limits |
 | --- | --- | --- |
-| Agents and Versions | Supported | Create, get, list, update, immutable Version history, archive, filters, and pagination. Model ID, effort, and speed reach working and grader requests. Provider routing policy remains outside the Agent contract. |
-| [First-party SDKs](sdk.md) | Preview | Go, Python (sync/async), and TypeScript/JavaScript clients cover the current OpenAPI operations through resource services, with direct Python/TypeScript request parameters, Go configuration constructors, generated types, pagination, multipart and streaming transports. The resource-based alpha 2 interface is currently source-only; published alpha 1 uses the earlier interface. The Go SDK also provides provider-neutral Work polling, a single-Session tool runner, their composed Environment worker, and an isolation-bound core agent toolset. TypeScript `mango-sdk@0.1.0-alpha.1` is published on npm; Python `mango-sdk==0.1.0a1` is published on PyPI. Alpha publication does not establish a stable contract. HTTP conformance uses test-only storage/model implementations. Server capability limits still apply. |
-| Environments | Limited | Omitting Environment `config` selects `self_hosted`, the target OSS Work lifecycle. The API still accepts the earlier Mango-managed `cloud` lifecycle and provider configuration while the Docker worker reaches equivalent observable behavior; that path is transitional, not the target product model. Package execution requires a capable sandbox; limited egress is currently enforced only by the legacy OpenSandbox adapter. |
-| Sessions | Supported | Create from immutable Agent snapshots, get/list/update/archive/delete, metadata, filters, exact shared public-list-cost budgets, usage, timing, and resource projections. Deletion fences admission and durably releases the Workflow and sandbox. Archive retains history and Files but does not release the sandbox; automatic idle reclamation is not implemented. |
-| Events and client actions | Limited | System context, messages, thinking, tool events, confirmation/custom/self-hosted result barriers, outcomes, retries, interrupts, and the budget-boundary `session.usage`/`budget_reached` idle sequence are implemented. Self-hosted `always_ask` calls require durable approval followed by an external result; denial never executes the tool. File-backed message documents are limited to bounded UTF-8 text; File-sourced images and File documents in tool results are not supported. |
-| Outcome evaluation | Limited | Snapshotted text/File rubrics, isolated tool-free grading of candidate conversation evidence, and bounded iteration. The grader does not independently read output Files, fetch URLs, or execute tests; artifact acceptance requires a separate check. |
-| Event streaming | Supported | PostgreSQL-authoritative Session and Thread streams with NATS wakeups, cursor repair, bounded backpressure, and opt-in ephemeral text previews. Streams do not replay history or interpret `Last-Event-ID`. |
-| Model and context runtime | Limited | Durable provider-native transcripts, Catwalk-derived model-window profiles with a conservative fallback, provider-usage anchors plus post-anchor estimates, predictive request admission, extractive and oversized-tool-result compaction, one-shot working-turn overflow recovery, and immutable per-Thread turn-preparation checkpoints are implemented. Explicit custom-endpoint overrides, provider-exact counters, complete per-provider-request audit records, later-round projection checkpoints, equivalent Outcome/Advisor overflow recovery, and compaction quality and retention evidence remain open. |
-| Sandbox tools | Limited | `bash`, `read`, `write`, `edit`, `glob`, and `grep`, plus provider-native Web Search/Fetch in both Environment paths. Web tools require a supporting model endpoint and `always_allow`; they never create external tool-result waits, and their opaque responses survive in the durable model transcript. The first-party self-hosted Docker worker runs the six core tools inside its Work container through the Go SDK's `agenttoolset`; it never falls back to a host process and scrubs Mango control variables from shell environments. File tools accept the Session's exact Memory roots and reject `write`/`edit` beneath read-only roots. Its PTY-backed Bash preserves cwd, environment variables, and background jobs across calls in one Work activation; `restart` and `timeout_ms` reset an interrupted or explicitly replaced shell. Bash read-only behavior still depends on the sandbox boundary. The transitional Mango-managed path remains a one-shot shell and advertises only that contract. Portable Web providers, Web approval gates, and domain filters remain open. `read` is capped at 64 KiB. |
-| MCP tools | Limited | Streamable HTTP discovery/execution, permissions, journaled calls, large-result materialization, and Vault bearer/OAuth authentication. Private-network connectivity, deprecated SSE, MCP resources, and prompts are not supported. |
-| [Files](api/files.md) | Limited | Configured S3-compatible storage, crash-recoverable intents, reusable snapshotted UTF-8 outcome rubrics, bounded UTF-8 File documents snapshotted into `user.message`, downloadable Session Resource copies, and Docker/E2B/Cube/OpenSandbox/Daytona publication of regular files beneath `/mnt/session/outputs` before idle. Client uploads are intentionally not downloadable. E2B/Cube currently buffer each output archive in worker memory. File-sourced images/PDFs and distributed reconciliation remain open. |
-| [Session Resources](api/session-resources.md) | Limited | Independent File copies, create-time Memory attachments, and create-time public HTTPS Git repository snapshots frozen to an exact commit. The self-hosted Go worker prepares Memory attachments; File/Git inputs remain on the transitional managed path. Runtime File attach/detach works. Git worktrees are writable on Docker/E2B/Cube/OpenSandbox/Daytona and restore offline from Mango storage. Private repository credentials, recursive submodules, LFS objects, repository Skill discovery, runtime Git attach/detach, and non-Docker self-hosted launcher evidence remain open. |
-| [Skills](api/skills.md) | Limited | Custom Skill lifecycle, immutable Version pins, strict bundle validation, Agent-scoped paths, and on-demand instruction injection. Session admission bounds primary plus roster pins together. The Go self-hosted worker atomically publishes one symlink-safe tree, verifies archive size and SHA-256, applies byte/file limits, retries temporary retrieval failures, durably terminates permanent failures, and cleans up after Work; the control-plane Agent loop loads the same pin without reverse access to the worker filesystem. Legacy Docker/E2B/Cube/OpenSandbox/Daytona materialization remains on the transitional managed path. External catalogs and repository sources are not implemented. |
-| [Memory](api/memory.md) | Limited | Store/Memory/Version lifecycle, immutable history, and SHA-256 preconditions. The self-hosted Go worker downloads attached Stores before tool construction, supports read-only and read-write roots, reconciles remote/local changes at a bounded cadence, corroborates and caps deletes, performs final and cancellation-safe flushes, and transactionally fences writes against Work reclaim. Docker supplies a bounded `/mnt/memory` tmpfs. Non-Docker self-hosted launchers and automatic retention are not implemented. |
-| [Vaults](api/vaults.md) | Limited | Encrypted Vault/Credential lifecycle, ordered Session attachment, OAuth validation, expiry refresh, and token rotation. Environment-variable egress and refresh-failure notifications are not implemented. |
-| [Webhooks](api/webhooks.md) | Limited | Workspace-scoped endpoint CRUD and secret rotation; encrypted Standard Webhooks signing; transactional subscription snapshots; leased at-least-once delivery with three attempts; redirect/private-address auto-disable; Session and scheduled Deployment Run lifecycle events. Delivery logs, an operator-configured sustained-failure threshold, and broader resource events are not implemented. |
-| [Deployments](api/deployments.md) | Limited | Deployment/Run lifecycle, pinned Agent Versions, File/Memory/public Git repository templates, per-Run Git resolution and immutable Session snapshots, Session budget templates, manual runs, cron scheduling, leases, and atomic success/failure records. Agent-archive propagation remains open. |
-| [Environment Work](api/environment-work.md) | Limited | Self-hosted worker leases, polling, state transitions, reclaim, Session activation, and permanent input-failure termination are implemented. Poll returns a base64url Work secret payload; after Ack its per-claim `sessions_token` authorizes only that Work's Heartbeat/Fail/Stop, the claimed Session's read/stream/tool-result routes, pinned Skills/Files, and attached Memory CRUD according to access. TTL is capped at five minutes; expiry, Fail, Stop, and reclaim fence event and Memory writes and close old streams. The first-party Docker launcher keeps the Workspace key on its trusted supervisor, sends only the item secret over one-shot stdin to a non-dumpable Work process, retains a per-Session workspace volume, and prepares pinned custom Skills and Memory Stores while heartbeating. Environment-scoped polling credentials, File/Git preparation, health-check Work, non-Docker launcher evidence, and production multi-tenant hardening are not implemented. |
-| [Multi-agent](guides/multi-agent.md) | Limited | Persistent ordinary child Agents plus primary-only Mango-managed Advisor consultations over client tool calls, independent transcripts/events/usage, shared Session budgets, reports, routing, interrupts, retries, archive, deletion, and durable context-compaction checkpoints. A real-provider specialist-team journey covers parallel delegation, Advisor consultation, synthesis, and persistent-Thread follow-up; repeated broader live-provider evidence and targeted interruption timing remain open. |
-| [Sandbox adapters](sandboxes.md) | Limited / Preview | A first-party Docker self-hosted launcher proves the default Environment Work boundary, with no host-process fallback. The local Compose orchestration worker still carries a transitional Mango-managed Docker path. E2B, CubeSandbox, OpenSandbox, and Daytona remain compiled legacy adapters while that path is removed; they are not a long-term provider inventory or a claim that Mango hosts those services. |
-| Distributed operation | Limited | API and worker roles scale independently around PostgreSQL, Temporal, and NATS. Worker Versioning, heterogeneous-provider routing, distributed Files reconciliation, and production rollout evidence remain open. |
+| [Agents](api/agents.md) | Supported | Versioned definitions, immutable Session snapshots, updates, archive, filters, and pagination. |
+| [SDKs](sdk.md) | Preview | Go, Python sync/async, and TypeScript resource clients cover the OpenAPI operations. The current alpha 2 interface is source-only; published alpha 1 has an earlier interface. |
+| [Sessions](api/sessions.md) | Supported | Persistent work, shared budgets, usage, updates, interrupts, archive, and deletion. Archive retains history; automatic idle reclamation is not implemented. |
+| [Events and actions](api/events.md) | Limited | Messages, tool/approval barriers, outcomes, retries, and interrupts. Approval and execution results are separate. File messages support bounded UTF-8 documents, not images or PDFs. |
+| [Event streams](api/events.md#stream-events) | Supported | Durable history plus live Session/Thread SSE and optional ephemeral previews. Streams do not replay history or interpret `Last-Event-ID`. |
+| [Outcome evaluation](api/sessions.md) | Limited | Text/File rubrics and bounded grading/iteration. The grader does not independently execute tests or inspect output artifacts; validate deliverables separately. |
+| [Model and context](architecture/storage-context-and-tools.md) | Limited | Durable transcripts, model-window profiles, usage-based estimates, request admission, and compaction. Exact provider token counts, complete request audit records, and equivalent Outcome/Advisor overflow recovery remain open. |
+| [Shell and file tools](guides/self-hosted-worker.md) | Limited | `bash`, `read`, `write`, `edit`, `glob`, and `grep`; `read` is capped at 64 KiB. No host-process fallback. See the execution-path table above. |
+| [MCP](architecture/storage-context-and-tools.md#mcp) | Limited | Streamable HTTP, permissions, journaled calls, and Vault bearer/OAuth authentication. Private-network connectivity, deprecated SSE, MCP resources, and prompts are unsupported. |
+| [Files](api/files.md) | Limited | S3-compatible immutable uploads, lifecycle recovery, and supported Session outputs. Client uploads are intentionally not downloadable. File-sourced images/PDFs and distributed reconciliation remain open. |
+| [Session Resources](api/session-resources.md) | Limited | File copies, create-time Memory attachments, and public HTTPS Git snapshots. Private Git credentials, submodules, LFS, and runtime Git attach/detach are unsupported. |
+| [Skills](api/skills.md) | Limited | Validated bundles, immutable Versions, Agent-scoped pins, and instruction loading. External catalogs and repository discovery are not implemented. |
+| [Memory](api/memory.md) | Limited | Versioned UTF-8 files, optimistic preconditions, and attached-Store synchronization. Automatic retention and non-Docker self-hosted launchers are not implemented. |
+| [Vaults](api/vaults.md) | Limited | Encrypted credentials, Session attachment, OAuth validation/refresh, and rotation. Environment-variable secret egress and refresh-failure notifications are not implemented. |
+| [Webhooks](api/webhooks.md) | Limited | Signed Session and Deployment Run lifecycle delivery, with three at-least-once attempts. No delivery-log API or configurable sustained-failure threshold. |
+| [Deployments](api/deployments.md) | Limited | Pinned templates, manual and cron runs, resources, budgets, leases, and Run records. Agent-archive propagation remains open. |
+| [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, and permanent-input failure. Environment-scoped polling keys, health-check Work, and File/Git preparation remain open. |
+| [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. |
 
 ## Product and operational boundaries
 
-Mango currently has these product and operational boundaries:
+- **Identity:** Workspace API keys and scoped Work credentials are implemented.
+  Your application owns end-user identity and authorization; general roles,
+  enterprise key lifecycle, quota, and billing are incomplete.
+- **Isolation:** Docker shares the host kernel. The local stack and reference
+  worker are not hardened boundaries for hostile tenants. The supervisor has
+  Docker daemon authority; network egress policy is operator-owned.
+- **Deployment:** the local Compose stack is reproducible, but supported
+  production Compose and Kubernetes distributions are not available.
+- **Scaling and recovery:** API and orchestration roles can scale independently.
+  Worker Versioning, heterogeneous-worker routing, distributed Files
+  reconciliation, backup, audit, and observability still need work.
+- **Managed Docker ownership:** native Linux workers with rootful Docker need
+  appropriate host-file authority for bind-mount synchronization and cleanup.
+  Docker socket group membership alone is insufficient; see [Deployment](deployment.md#docker-worker-configuration).
 
-- Drop-in interoperability with a hosted agent service or third-party agent SDK
-  is not a product goal;
-- the API is not stable before the first release;
-- the OSS server accepts Workspace-scoped API keys through standard bearer
-  authentication and issues internal per-Work Session credentials, but does not
-  provide end-user identity, general roles/policy, or enterprise key lifecycle;
-- quota, billing, audit, backup, and observability are incomplete;
-- Kubernetes and production Compose distributions are not supported;
-- Docker sandboxes share the host kernel and are not hardened hostile
-  multi-tenant boundaries; the Compose worker is trusted with daemon access.
-  Native Linux workers using rootful Docker need the same root-worker model
-  for arbitrary container-owned bind-mount files; socket group membership alone
-  does not guarantee Memory synchronization or output cleanup.
-
-Unsupported behavior should fail with an explicit validation or capability
-error whenever it can be detected at admission time.
+Mango owns its API and does not promise drop-in use with a hosted agent service
+or third-party SDK. [Product direction](product.md) describes the release and
+design policy.
 
 ## Verification boundary
 
-Capability changes use raw HTTP/OpenAPI tests, PostgreSQL transaction tests,
-Temporal replay and integration tests, and real
-PostgreSQL/Temporal/NATS/MinIO/Docker service tests.
+Mango's HTTP/SDK tests establish request and response behavior. PostgreSQL,
+Temporal, and Docker integration tests cover persistence, recovery, and execution.
+Opt-in real-model journeys establish narrower workflow evidence; they do not
+establish general production readiness. See
+[CONTRIBUTING.md](https://github.com/yanpgwang/mango/blob/main/CONTRIBUTING.md#test-layers-and-ownership)
+for the test layers.
 
-The Mango runtime has not published a versioned release. Runtime versions will
-appear in [GitHub Releases](https://github.com/yanpgwang/mango/releases). Follow Mango's
-[API reference](api/overview.md) for the current wire surface, this page for
-operational boundaries, and current
-[pull requests](https://github.com/yanpgwang/mango/pulls) or optional
-[Issues](https://github.com/yanpgwang/mango/issues) for active work.
+Runtime releases will appear in [GitHub Releases](https://github.com/yanpgwang/mango/releases).
+Until a supported release exists, match the SDK to the server checkout and use
+the [API reference](api/overview.md) for its current contract.

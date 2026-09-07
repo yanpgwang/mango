@@ -1,5 +1,6 @@
 ---
 title: Session lifecycle
+description: How a Session admits input, executes turns, and recovers from failures.
 ---
 
 # Session lifecycle

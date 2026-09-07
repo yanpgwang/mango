@@ -1,0 +1,38 @@
+---
+title: Examples
+description: Build with Mango through runnable applications.
+---
+
+# Examples
+
+Each example includes its source, prerequisites, expected results, and cleanup.
+For a first offline API call, start with the [Quickstart](../getting-started.md).
+
+<Cards>
+  <Card title="Terminal UI" href="./terminal-ui.md">
+    Browse Sessions, stream responses, inspect child Threads, and answer action requests.
+  </Card>
+  <Card title="Human-in-the-loop gate" href="./hitl-gate.md">
+    Review sample expenses and let an agent continue after an application or human decision.
+  </Card>
+  <Card title="Specialist team" href="./multi-agent-team.md">
+    Run a release-readiness review with persistent specialists and an Advisor.
+  </Card>
+  <Card title="Coding agent" href="./coding-agent-iterate.md">
+    Upload failing tests, follow a repair, and verify the downloaded result independently.
+  </Card>
+</Cards>
+
+## Before you run
+
+The terminal UI includes an offline demo. The approval, team, and coding examples
+require a running Mango deployment and a [configured model](../guides/model-configuration.md).
+Their commands connect to that deployment; start it before running the client.
+
+:::info[Coding example support]
+
+The coding example currently uses the explicit `cloud` Environment path for
+File inputs and output publication. Those mounts are not yet available through
+the default self-hosted Docker worker. See the example's prerequisites before running it.
+
+:::

@@ -1,1 +1,1 @@
-{ "title": "Guides", "pages": ["..." ] }
+{ "title": "Guides", "pagesIndex": "index", "pages": ["model-configuration", "self-hosted-worker", "multi-agent"] }

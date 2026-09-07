@@ -1,5 +1,6 @@
 ---
 title: Skills
+description: Manage instruction bundles and pin immutable Skill Versions.
 slug: /api/skills
 ---
 

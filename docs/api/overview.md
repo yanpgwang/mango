@@ -1,60 +1,36 @@
 ---
-title: API overview
+title: API reference
+description: Requests, responses, authentication, and event streams for Mango's HTTP API.
 slug: /api
 ---
 
-# API overview
+# API reference
 
-The server exposes Mango's current Agent, Environment, Session, Event, File,
-Skill, Memory, Vault, Webhook, Deployment, Environment Work, and Session Thread HTTP
-surface under `/v1`. Operation presence does not imply unrestricted support
-for every workflow; resource-specific limitations are documented explicitly.
-
-Use the [first-party SDKs](../sdk.md) for typed Go, Python, or TypeScript access
-to this API. SDKs and API reference share the same checked-in OpenAPI source.
-
-:::info
-
-This reference documents repository behavior. See
-[capabilities and limits](../capabilities.md) for what is supported, limited,
-or still in preview. Mango's API is not defined by a third-party SDK.
-
-:::
+Send requests to your Mango server under `/v1`. The local stack uses
+`http://localhost:8080`. Use a [first-party SDK](../sdk.md) for typed access, or
+call the HTTP endpoints directly.
 
 ## Endpoints
 
-| Resource | Endpoints |
-| --- | --- |
-| Agents | `POST/GET /v1/agents`, `GET/POST /v1/agents/{id}`, versions, archive |
-| Environments | `POST/GET /v1/environments`, get, update, archive, delete |
-| Environment Work | Get/update/list/Ack/Heartbeat/Poll/Stats/Stop under `/v1/environments/{id}/work`; consumed by self-hosted workers |
-| Sessions | `POST/GET /v1/sessions`, get, update, archive, delete |
-| Events | `POST/GET /v1/sessions/{id}/events`, SSE stream |
-| Session Threads | List/get/archive Threads; list and stream one Thread's events |
-| Files | `POST/GET /v1/files`, metadata, content download, delete |
-| Skills | Create/list/get/delete custom Skills and immutable Versions; download Version zip archives |
-| Memory | Create/list/get/update/archive/delete Stores; create/list/get/update/delete Memories; get/list/redact immutable Versions |
-| Vaults | Create/list/get/update/archive/delete Vaults; create/list/get/update/archive/delete encrypted Credentials; validate MCP OAuth Credentials |
-| Webhooks | Create/list/get/update/delete signed lifecycle endpoints; rotate one-time signing secrets |
-| Deployments | Create/list/get/update/archive/pause/unpause/run under `/v1/deployments`; get/list immutable records under `/v1/deployment_runs` |
-| Session Resources | Add, list, get, update contract, and delete under `/v1/sessions/{id}/resources` |
-| Operations | `GET /healthz`, `GET /readyz`, `GET /openapi.yaml` |
+| Resource | Use it to… | Base path |
+| --- | --- | --- |
+| [Agents](agents.md) | Define and version an agent's instructions, model, and tools. | `/v1/agents` |
+| [Environments](environments.md) | Group Sessions by execution configuration. | `/v1/environments` |
+| [Sessions](sessions.md) | Create, steer, inspect, archive, or delete ongoing work. | `/v1/sessions` |
+| [Events](events.md) | Send input, return tool results, read history, and stream output. | `/v1/sessions/{id}/events` |
+| [Threads](session-threads.md) | Inspect and manage a Session's child conversations. | `/v1/sessions/{id}/threads` |
+| [Session Resources](session-resources.md) | Attach supported Files, Memory Stores, and Git snapshots. | `/v1/sessions/{id}/resources` |
+| [Files](files.md) | Upload immutable bytes and retrieve supported outputs. | `/v1/files` |
+| [Skills](skills.md) | Manage instruction bundles and immutable Versions. | `/v1/skills` |
+| [Memory](memory.md) | Store versioned UTF-8 files across Sessions. | `/v1/memory_stores` |
+| [Vaults](vaults.md) | Store credentials used by MCP connections. | `/v1/vaults` |
+| [Webhooks](webhooks.md) | Subscribe to signed lifecycle notifications. | `/v1/webhooks` |
+| [Deployments](deployments.md) | Schedule or manually start Sessions and inspect their Runs. | `/v1/deployments`, `/v1/deployment_runs` |
+| [Environment Work](environment-work.md) | Claim and renew leased work for self-hosted execution. | `/v1/environments/{id}/work` |
 
-Resource-specific request shapes are covered in:
-
-- [Agents](agents.md)
-- [Environments](environments.md)
-- [Environment Work](environment-work.md)
-- [Sessions](sessions.md)
-- [Events and streaming](events.md)
-- [Session Threads](session-threads.md)
-- [Session Resources](session-resources.md)
-- [Files](files.md)
-- [Skills](skills.md)
-- [Memory](memory.md)
-- [Vaults and Credentials](vaults.md)
-- [Webhooks](webhooks.md)
-- [Deployments and Deployment Runs](deployments.md)
+The public probes are `GET /healthz` and `GET /readyz`; `GET /openapi.yaml`
+returns the schema. For execution-path constraints, consult
+[capabilities and limits](../capabilities.md).
 
 ## Headers
 
@@ -95,8 +71,7 @@ configured S3-compatible storage.
 
 ## Errors
 
-Errors use Mango's current error envelope, whose shape is retained from the
-original `/v1` design:
+JSON errors include a type, message, and request ID:
 
 ```json
 {
@@ -123,9 +98,6 @@ original `/v1` design:
 
 A failed Memory SHA-256 precondition is the more specific
 `409 memory_precondition_failed_error`.
-
-These mappings are Mango's current public contract. See
-[capabilities and limits](../capabilities.md) for behavioral boundaries.
 
 ## Pagination
 
@@ -170,7 +142,6 @@ error responses. The Session Event contract includes the client-submittable
 and persisted variants plus ephemeral SSE `event_start` and `event_delta`
 preview frames.
 
-Repository tests keep local references resolvable and lock the intended
-operation inventory and event unions. During alpha, Mango may change that
-inventory in place when the implementation, OpenAPI, documentation, and tests
-move together for a clear product reason.
+Use the [OpenAPI source](https://github.com/yanpgwang/mango/blob/main/internal/httpapi/openapi.yaml)
+when generating integrations. The API is alpha and may change on `/v1`; deploy
+a client that matches your server checkout.

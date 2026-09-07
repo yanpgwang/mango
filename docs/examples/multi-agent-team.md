@@ -1,9 +1,10 @@
 ---
-title: Coordinate a specialist team
+title: Specialist team
+description: Run a release-readiness review with persistent specialists and an Advisor.
 slug: /examples/multi-agent-team
 ---
 
-# Coordinate a specialist team
+# Specialist team
 
 This example runs a release-readiness review through Mango's public HTTP API.
 The current Go client uses `net/http`; the same operations are available in
@@ -45,7 +46,7 @@ adds the explicitly opt-in real-model evidence that public CI cannot provide.
 ## Run the example
 
 Configure a running API and worker using
-[Use a real model endpoint](../getting-started.md#use-a-real-model-endpoint).
+[Model configuration](../guides/model-configuration.md).
 With the same `~/.config/mango/dev.env`, run the public-HTTP client:
 
 ```bash

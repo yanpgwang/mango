@@ -1,70 +1,73 @@
 ---
-title: Getting started
+title: Quickstart
+description: Start Mango locally and complete a Session in your preferred language.
 slug: /getting-started
-sidebar_position: 2
 ---
 
-# Getting started
+# Quickstart
 
-This guide runs the server with its deterministic offline model and sends one
-message through the full environment → agent → session → event flow.
+Run a text-only Session with the built-in offline model. You will create an
+Environment and an Agent, send a message, and read its persisted reply. No
+model-provider account or credentials are required.
 
 ## Requirements
 
-- Docker with Compose
-- Go 1.24+, Python 3.11+, or Node.js 22+ for the selected SDK
-- `curl` for the readiness check; `jq` for the HTTP-only example
+- Git, Docker with Compose, and `make`.
+- `curl` for the readiness check; `jq` if you choose the HTTP example.
+- One SDK runtime if needed: Node.js 22+, Python 3.11+, or Go 1.24+.
+
+## Get the code
+
+```bash
+git clone https://github.com/yanpgwang/mango.git
+cd mango
+```
+
+Run the following commands from this directory.
 
 ## Run the server
 
-Run from the repository root. This command explicitly selects the offline model
-and does not load `~/.config/mango/dev.env`:
-
 ```bash
-export MANGO_API_KEY="${MANGO_API_KEY:-sk-mango-local-development}"
+export MANGO_API_KEY=sk-mango-local-development
 MANGO_MODEL_BASE_URL= MANGO_MODEL_API_KEY= MANGO_MODEL_ID= \
   docker compose -f deployments/local/compose.yaml up -d --build
 make local-health
 ```
 
-This builds and starts separate API and Temporal orchestration-worker containers plus PostgreSQL,
-Temporal, Temporal UI, NATS, and MinIO. The examples use `http://localhost:8080`;
-the Workflow explorer is at `http://localhost:8233`. No model credentials are
-required for this offline walkthrough.
-
-The convenience command `make local-up` behaves differently: it automatically
-loads an existing development environment file and can enable a real model.
-Do not use it as an offline-only guarantee. The Compose orchestration worker
-still includes the transitional Docker sandbox path for an explicitly selected
-`cloud` Environment. It is not the operator-run `mango-worker docker` process
-used by the default `self_hosted` Environment. The text-only walkthrough below
-does not invoke sandbox tools, so it needs no Environment worker.
-
-In another shell, verify readiness:
+Wait for every service to report `healthy`. The API listens on
+`http://localhost:8080`; Temporal's workflow explorer is at
+`http://localhost:8233`.
 
 ```bash
 curl -i http://localhost:8080/readyz
 ```
 
-The Compose API bootstraps the Workspace key selected above. In another shell,
-export the same key for the protected examples below. If you did not override
-it, the development-only value is:
+Expect `HTTP/1.1 200 OK`. The stack starts Mango's API and orchestration worker,
+PostgreSQL, Temporal, NATS, and MinIO. The model variables above explicitly
+select offline mode. Later, use [Model configuration](guides/model-configuration.md)
+to connect a real endpoint.
 
-```bash
-export MANGO_API_KEY=sk-mango-local-development
-```
+:::warning[Local development]
 
-## Choose a client
+The example key and Compose configuration are for local use. Docker shares the
+host kernel; this stack is not a hardened boundary for untrusted tenants. Use
+[Deployment](deployment.md) to review its operating limits.
 
-The examples below show the same workflow in TypeScript, Python, Go, and HTTP.
-The selected language is shared across code groups. The resource-based SDKs
-on this page are currently [source-only](sdk.md#current-development-version);
-published alpha 1 uses an earlier interface. These SDKs do not yet have a stable
-API contract. The HTTP variant needs `curl` and `jq`.
+:::
 
-The complete repository examples below install/build the SDK from this checkout
-so it matches the server source. Run them from the repository root. For your own
-application, [install from source](sdk.md#install-from-source).
+## Run your first Session
+
+Choose a language below. Each command runs a complete application that creates
+its own resources and removes them when finished. Keep `MANGO_API_KEY` set in
+this terminal; in a new terminal, export the same value again.
+
+:::info[Install the SDK from this checkout]
+
+These examples use the current resource-based SDKs, which are not yet published.
+The commands below install them from source. For use in your own application,
+see [SDK installation](sdk.md#install-from-source).
+
+:::
 
 ```sh tab="TypeScript" tab-group="mango-language"
 npm --prefix sdk/typescript ci
@@ -86,10 +89,22 @@ python3 -m venv .venv
 bash examples/sdk-quickstart.sh
 ```
 
-Each complete example creates its own resources and cleans them up on exit.
-The following sections explain excerpts from those exact executable files; they
-share variables and are not separate standalone programs. In Go, the excerpts
-run inside a function returning `error`; the full file includes its imports.
+The program prints the offline response and persisted history, then finishes with:
+
+```text
+Quickstart completed
+```
+
+The offline model exercises the Session lifecycle; it does not generate
+open-ended answers or choose tools. A successful run confirms that your local
+stack can accept input, complete a turn, and retrieve its recorded response.
+
+## Understand the example
+
+The following snippets come from the complete programs above. They share the
+same client and resource variables; run the complete file to execute them
+rather than pasting each excerpt as a separate program. Go excerpts belong
+inside a function returning `error`.
 
 ### Configure the client
 
@@ -104,14 +119,11 @@ The Workspace key authenticates to Mango, not to the model provider.
 
 ::include[../examples/sdk-quickstart.sh#client]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
 
-## Create an environment
+### Create an environment
 
-Omitting `config` creates a `self_hosted` Environment, Mango's default OSS
-execution boundary. The control plane still owns model calls and durable
-orchestration. If an Agent calls one of the six shell/file tools, an
-operator-run worker for this Environment claims the queued work and executes it
-in operator-managed infrastructure. The quickstart Agent has no tools, so this
-first turn completes without starting that worker.
+An Environment groups Sessions by their execution configuration. Omitting
+`config` selects `self_hosted`. This example has no shell or file tools, so it
+completes without a separate Environment worker.
 
 ::include[../sdk/typescript/examples/quickstart.ts#environment]{lang="typescript" meta='tab="TypeScript" tab-group="mango-language"'}
 
@@ -121,13 +133,7 @@ first turn completes without starting that worker.
 
 ::include[../examples/sdk-quickstart.sh#environment]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
 
-To run tool-capable Sessions, build and start the
-[Docker self-hosted worker](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
-with the Environment ID and a Workspace key. Mango currently uses that key only
-on the trusted supervisor; each Session container receives a narrower Work
-credential. Scoped Environment polling credentials remain future hardening.
-
-## Create an agent
+### Create an agent
 
 The offline stack uses `offline-fake`. Agents are versioned; each Session keeps
 the resolved definition captured at creation.
@@ -140,7 +146,7 @@ the resolved definition captured at creation.
 
 ::include[../examples/sdk-quickstart.sh#agent]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
 
-## Create a session
+### Create a session
 
 Creating the Session without initial events does not start a model turn.
 
@@ -152,7 +158,7 @@ Creating the Session without initial events does not start a model turn.
 
 ::include[../examples/sdk-quickstart.sh#session]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
 
-## Send a message and observe the turn
+### Send a message and observe the turn
 
 Sending an event admits durable work; the response contains accepted input,
 not the eventual agent reply. The SDK variants subscribe **before** sending,
@@ -172,7 +178,7 @@ They do not blindly retry a message after an ambiguous network failure. For an
 existing or reconnected Session, [open a stream and reconcile history](api/events.md#stream-events)
 before deciding whether to send again. Preview deltas are ephemeral, not durable output.
 
-## Read persisted history
+### Read persisted history
 
 SDK iterators follow pagination. With raw HTTP, follow `next_page` until it is
 null; the first-turn example is small enough for one page.
@@ -185,148 +191,21 @@ null; the first-turn example is small enough for one page.
 
 ::include[../examples/sdk-quickstart.sh#history]{lang="bash" meta='tab="HTTP" tab-group="mango-language"'}
 
-To inspect live events with raw HTTP, open this in a separate terminal **before**
-sending the next message; substitute the ID of a Session you have kept alive:
-
-```sh
-curl -N -H "Authorization: Bearer $MANGO_API_KEY" \
-  "http://localhost:8080/v1/sessions/$SESSION_ID/events/stream"
-```
-
-## Use a real model endpoint
-
-The same Compose stack supports real-model tasks. You do not need to replace
-its API or orchestration worker with source processes. A separate Environment
-worker is needed only when a `self_hosted` Agent calls shell/file tools.
-
-Create the repository-external configuration file, then edit it:
-
-```bash
-make dev-env-init
-$EDITOR ~/.config/mango/dev.env
-```
-
-Set the following values in that file. It uses literal `NAME=VALUE` lines,
-without shell quotes or `export`; replace the model placeholders securely.
-The stack already configures PostgreSQL, Temporal, NATS, and MinIO internally:
-
-```ini
-MANGO_API_KEY=sk-mango-local-development
-MANGO_MODEL_BASE_URL=https://api.example.com
-MANGO_MODEL_API_KEY=replace-me
-MANGO_MODEL_ID=your-model-id
-MANGO_MODEL_AUTH=x-api-key
-```
-
-Use `authorization-bearer` for `MANGO_MODEL_AUTH` if your endpoint requires it.
-Then apply that configuration:
-
-```bash
-make local-up
-make local-health
-```
-
-Model credentials are supplied only to the orchestration worker, not the API
-or Session containers. Real model calls may incur charges. For shell/file tools,
-run the [self-hosted Docker worker](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
-with an image containing the runtimes the Agent needs. The launcher fails if
-Docker is unreachable; it never falls back to host-process execution.
-
-The Compose file still configures the old `MANGO_SANDBOX=docker` path for the
-transitional File-input/output coding example. That setting selects an internal
-adapter only for an explicitly created `cloud` Environment; it does not control
-the default self-hosted worker.
-
-The current built-in external-model adapter expects a Messages-shaped
-`/v1/messages` API. This adapter constraint does not define Mango's public API
-or permanently limit future model integrations.
-Do not run workers with different model or sandbox configuration on the same
-Temporal Task Queue. Keep credentials in the environment and never commit them.
-
-Only this model endpoint is called; Mango does not call a separate hosted agent
-service. Whether a credential is usable depends on whether its gateway permits
-authenticated `POST /v1/messages` requests with streaming. The following
-explicit live checks and examples exercise that endpoint:
-
-```bash
-# Checks the external Messages endpoint only. This makes a real, potentially
-# billable request.
-scripts/with-dev-env make test-model-live
-
-# With PostgreSQL, Temporal, NATS, and Docker running, checks one complete
-# real-model Bash turn through a self-hosted Environment Work container.
-scripts/with-dev-env make test-self-hosted-live
-
-# Convenience alias for the same self-hosted smoke.
-scripts/with-dev-env make test-platform-live
-
-# Runs the longer File Resource -> coding loop -> Session Output scenario.
-# The wrapper loads ~/.config/mango/dev.env without copying secrets into the
-# repository or evaluating their contents as shell syntax.
-scripts/with-dev-env make test-coding-agent-live
-
-# Runs the public-HTTP expense gate example. The real model generates the
-# decide/escalate calls and the terminal prompts for the human decision.
-scripts/with-dev-env make demo-hitl-gate
-
-# Runs a real coordinator, two specialist Agents, one Advisor consultation,
-# and an interactive follow-up on a persistent child Thread.
-scripts/with-dev-env make demo-multi-agent-team
-```
-
-The [coding-agent iteration example](examples/coding-agent-iterate.md) is a
-standalone Python SDK application that connects to a running Mango deployment.
-It owns its inputs and is independent of the system-test commands above. The
-[HITL gate example](examples/hitl-gate.md) documents the interactive public-HTTP
-example and its application-owned action boundary. The
-[specialist-team example](examples/multi-agent-team.md) verifies real-model
-delegation, Advisor usage, and persistent Thread follow-up.
-
-These commands never print the API key. The model-only smoke test does not
-enable tools; the platform tests use an isolated Docker sandbox, the coding
-scenario excludes Web Search/Fetch from its least-privilege toolset, and the
-interactive examples remove provider credentials from their client processes.
-Live checks
-are excluded from public CI because external credentials, availability,
-latency, user input, and cost are not deterministic.
-Use a newly issued key if a credential has ever appeared in chat, logs, or shell
-history.
-
-Docker containers share the host kernel. The development stack is not a hardened
-boundary for hostile multi-tenant workloads. The former local-provider unsafe
-override is no longer supported. Before upgrading an older local-backed stack,
-finish and delete its Sessions using the old worker; existing local workspaces
-are not migrated or silently replaced by empty Docker containers.
-
-## Reusable local credentials
-
-Development secrets should not be committed or copied between worktrees.
-Create a user-local file once, then edit the values you actually use:
-
-```bash
-make dev-env-init
-$EDITOR ~/.config/mango/dev.env
-```
-
-Run a command with that environment explicitly:
-
-```bash
-scripts/with-dev-env make demo-coding-agent
-```
-
-The wrapper requires the file to have no group or other permissions. Set
-`MANGO_ENV_FILE` only when a different repository-external path is needed.
-It loads configuration; it does not start or reconfigure a deployment. The
-example above also requires its [Python SDK setup](examples/coding-agent-iterate.md#run-the-example).
-
 ## Clean up
+
+The example deletes its Session and Environment and archives its Agent. Stop
+the local services when you are done:
 
 ```bash
 make local-down
 ```
 
-Stop any source API and worker processes with Ctrl-C before running this command.
-It keeps the
-PostgreSQL and MinIO volumes. Add `VOLUMES=1` only when you intentionally
-want to delete local data. PostgreSQL schema changes are applied by embedded,
-versioned `goose` migrations when API or worker processes start.
+This keeps the PostgreSQL and MinIO volumes for your next run. Use
+`make local-down VOLUMES=1` only when you intend to delete the stack's stored data.
+
+## Next steps
+
+- [Connect a model](guides/model-configuration.md) for open-ended agent work.
+- [Run a Docker worker](guides/self-hosted-worker.md) to enable shell and file tools.
+- [Learn the core concepts](concepts.md) before adding resources or multi-agent work.
+- [Explore the examples](examples/index.mdx) for approval gates and specialist teams.

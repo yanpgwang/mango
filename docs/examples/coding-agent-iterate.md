@@ -1,9 +1,10 @@
 ---
-title: Repair failing tests with the Python SDK
+title: Coding agent
+description: Use the Python SDK to repair failing tests and verify the result.
 slug: /examples/coding-agent-iterate
 ---
 
-# Repair failing tests with the Python SDK
+# Coding agent
 
 Upload a broken calculator and its tests, let an Agent repair a writable copy,
 then download the result and run the original tests independently. An Agent
@@ -48,7 +49,7 @@ server. Running the example with a real model may incur provider charges.
 
 The default `make local-up` stack provides Docker File Resources and Session
 Outputs with a Python-capable image. Configure its real model as described in
-[Getting started](../getting-started.md#use-a-real-model-endpoint) before running
+[Model configuration](../guides/model-configuration.md) before running
 this example: `offline-fake` is a text demo, not a coding model.
 
 With a capable deployment running, provide its Workspace key through your

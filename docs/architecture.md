@@ -1,214 +1,121 @@
 ---
-title: Architecture overview
+title: Architecture
+description: How Mango persists accepted work and coordinates model and tool execution.
 slug: /architecture
 ---
 
-# Architecture overview
+# Architecture
 
-`mango` is one codebase with explicit API and worker process roles.
-PostgreSQL owns public resources and events, Temporal owns in-flight
-orchestration, and NATS Core carries ephemeral wakeups and previews. The local
-Compose stack runs those roles separately; they can also be packaged in one
-deployment for development.
+Mango separates its HTTP API, durable orchestration, and tool execution. This
+lets applications reconnect independently of running work and lets operators
+choose where shell and file tools execute.
 
-The selected stack is Temporal orchestration, PostgreSQL, NATS Core,
-S3-compatible File and Skill archive storage, and replaceable sandbox providers.
-Provider sandbox bindings and File/Skill lifecycle intents are persisted in
-PostgreSQL; File bytes and immutable custom Skill archives live in object
-storage when those optional surfaces are enabled.
+For the user-facing resource model, start with [Core concepts](concepts.md).
+For configuration, use [Deployment](deployment.md).
 
-The HTTP edge authenticates opaque API keys into a Workspace tenant scope and
-per-Work Session tokens into a narrow execution scope. PostgreSQL roots,
-asynchronous execution, and object keys preserve those scopes; end-user identity
-and enterprise RBAC remain outside Mango. See
-[Workspace tenancy](architecture/workspace-tenancy.md).
+## Process topology
 
 ```mermaid
 flowchart LR
-  Client["Mango client"] --> API["HTTP API"]
-  API --> PG[("PostgreSQL resources<br/>events + outbox")]
-  API --> Objects[("S3-compatible<br/>Files + Skill archives")]
-  API --> Temporal["Temporal frontend"]
-  API <--> NATS["NATS Core"]
-  Relay["Outbox relay"] --> PG
-  Relay --> Temporal
-  Temporal --> Worker["Temporal worker"]
-  Worker --> PG
-  Worker --> Model["Model provider"]
-  Worker --> Sandbox["Sandbox provider"]
-  Worker --> NATS
-  NATS --> API
+  App["Application"] --> API["Mango API"]
+  API --> PG[("PostgreSQL")]
+  API --> Objects[("S3-compatible storage")]
+  PG -- "durable outbox" --> Orchestrator["Orchestration worker"]
+  Orchestrator <--> Temporal["Temporal"]
+  Orchestrator --> Model["Model endpoint"]
+  API <-- "Work leases and Session events" --> Worker["Environment worker"]
+  Worker --> Container["Work container"]
+  Orchestrator -. "wakeups and previews" .-> NATS["NATS"]
+  NATS -.-> API
 ```
 
-## Design principles
+This diagram shows the default self-hosted execution path. The orchestration
+worker calls the model and coordinates the agent loop. The Environment worker
+claims leased activations over HTTP and executes shell/file tools in its own
+sandbox. Provider-native Web tools and remote MCP have separate owners; see
+[where tools run](concepts.md#where-tools-run).
 
-### The server owns history
+The transitional `cloud` path instead invokes a sandbox adapter from the
+orchestration worker. It currently supplies File/Git preparation and automatic
+output publication that the first-party self-hosted worker does not yet offer.
+See [sandbox backends](sandboxes.md) for that path's limits.
 
-The event log is the source of truth for public session history. It is not the
-lossless provider transcript and must not be used to reconstruct provider-native
-context. Every event belongs to exactly one Session Thread. A Session-wide
-sequence preserves total order across child activity and explicit primary
-cross-posts, while Session history and the primary workflow read only the
-primary Thread ledger. Two different public orderings are read from the event
-ledger:
+## State ownership
 
-- **Public event history** (`GET .../events`, list, and the live SSE stream) is
-  the immutable receipt/commit sequence. It never reorders or hides events.
-- **Model-facing conversation order** is reconstructed per turn from causality,
-  not from raw commit order. PostgreSQL tags committed output with the trigger
-  event ID; prior processed triggers are replayed with their exact output before
-  the current trigger. A turn never sees a later message queued while it was
-  still running.
+| System | Owns |
+| --- | --- |
+| PostgreSQL | Public resources, immutable Events, private model transcripts, Memory Versions, Work leases, outboxes, and execution journals. |
+| Temporal | Session and Thread orchestration, durable waits, retries, and Activity scheduling. |
+| S3-compatible storage | File bytes and immutable Skill archives; PostgreSQL tracks their lifecycle. |
+| NATS Core | Best-effort event wakeups and optional live text previews. |
+| Operator sandbox | Tool processes and workspace files; the Docker launcher retains a named workspace volume per Session. |
 
-Each Thread continues model conversations from its own lossless Provider
-Transcript. Every transcript row has a database foreign key to its public
-trigger event, and Thread ownership is derived from that event rather than
-duplicated, so private context cannot drift between Threads. The causal
-public-event projection remains only as a legacy fallback for histories
-created before transcript support. Compacted Thread projections are preserved as
-immutable internal snapshots, and the owning Thread emits the documented
-context-compaction event. This separation is required for native server-tool
-blocks, citations, compaction, and large results. See
-[Storage, context, and connected tools](architecture/storage-context-and-tools.md).
-The model endpoint performs inference; it does not own session state.
+NATS is not a durable queue for accepted input. Consumers repair missed wakeups
+from PostgreSQL cursors. Public Event history is also distinct from a Thread's
+lossless model transcript: native tool blocks and other private inference
+context must survive without becoming public API fields.
 
-The sandbox filesystem and attached Session Resources are shared across
-Threads, but Agent runtime configuration is not. MCP discovery snapshots are
-owned by `(Session, Thread, server name)`, so roster members may use the same
-server name with different endpoints or tool surfaces without contaminating
-one another. Updating the primary Agent's MCP configuration invalidates only
-that Thread's snapshots in the same transaction as the Session projection. A
-Session also pins custom Skill Versions for every distinct resolved Agent
-execution scope, including its Session-overridden coordinator/self scope.
-Threads select only their Agent's discovery metadata and immutable bundle.
-Primary/self copies retain `/workspace/skills/<name>/`; external Agents use a
-stable namespace below `/workspace/skills/.agents/` so equal runtime names
-cannot overwrite one another in the shared filesystem.
+## Durable write path
 
-### Wire and domain models are separate
+1. The API validates input and its Workspace scope. PostgreSQL commits Events,
+   Session projections, and an outbox wakeup together. Self-hosted activation
+   creates or coalesces Environment Work in that transaction.
+2. A relay delivers the wakeup to the owning Temporal Workflow. A process crash
+   after commit leaves the outbox available for another attempt.
+3. The orchestration worker calls the model outside database transactions.
+   Completed model/tool rounds are recorded before later rounds begin.
+4. Shell/file requests in a self-hosted Session wait for an external result.
+   A worker claims Work, renews its lease, runs the tool, and submits a correlated
+   result. Expiry or reclaim fences the former worker's credentials and writes.
+5. Turn completion commits output, transcript, usage, processed input, and
+   Session/Thread state together. Subscribers receive committed Events through
+   SSE; NATS only accelerates notification.
 
-`internal/httpapi` owns request decoding and response encoding.
-`internal/domain` models persisted resources and execution facts. Mapping is
-explicit in both directions so internal sequence numbers, run states, and
-storage details cannot leak into the public wire API.
+Durable orchestration does not make an arbitrary external side effect exactly
+once. Journals, correlated results, and idempotency checks define what can be
+recovered safely after an ambiguous failure. See
+[Session lifecycle](architecture/session-lifecycle.md) and
+[Environment Work](api/environment-work.md).
 
-### Public history and execution bookkeeping are different things
+## Threads and shared resources
 
-Session events are the public append-only history. Temporal Workflow history,
-turn attempts, and tool steps are private execution facts. Keeping those models
-separate lets orchestration recover without leaking Temporal or retry details
-onto the public API.
+Every Session has a primary Thread; delegated Threads own separate transcripts,
+Events, and execution state. They share the Session budget and workspace.
+Agent definitions and Skill Versions are pinned for the Session, and MCP
+discovery is scoped by Session, Thread, and server name.
 
-### Interfaces sit at expensive boundaries
-
-The model client, agent runtime, and sandbox provider are interfaces because
-they cross process, trust, or infrastructure boundaries. Domain entities stay
-concrete. This keeps the code easy to follow without locking the project to one
-model vendor, sandbox backend, or worker topology.
+Archive, interrupt, and delete are different lifecycle operations. Session
+removal fences admission and coordinates execution cleanup; it does not imply
+that every operator-owned workspace volume has been erased. See
+[Sessions](api/sessions.md) and the [Docker worker guide](guides/self-hosted-worker.md#stop-the-worker).
 
 ## Package boundaries
 
 | Package | Responsibility |
 | --- | --- |
-| `cmd/mango` | Composition root, configuration, process lifecycle |
-| `internal/httpapi` | HTTP routes, transport validation, DTO mapping, SSE |
-| `internal/app` | Shared resource validation and transport-neutral use-case types |
-| `internal/blob` | S3-compatible storage for public File bytes and immutable Skill archives |
-| `internal/controlplane` | PostgreSQL-backed public Session/Event use cases |
-| `internal/domain` | Resource, event, message, tool, and run semantics |
-| `internal/pg` | PostgreSQL repositories, ledger, outbox, and tool journal |
-| `internal/temporal` | Session Workflow, Activities, worker, and relay |
-| `internal/live` | NATS wakeups/previews plus PostgreSQL cursor reconciliation |
-| `internal/agentruntime` | Reusable model, message, and tool execution primitives |
-| `internal/model` | Offline and Messages API model clients |
-| `internal/sandbox` | Provider registry, lifecycle contract, Docker and remote adapters |
+| `cmd/mango`, `cmd/mango-worker` | Process composition and configuration. |
+| `internal/httpapi` | HTTP routes, wire types, authentication, and SSE. |
+| `internal/app`, `internal/controlplane` | Resource validation and public use cases. |
+| `internal/domain` | Resource and execution semantics. |
+| `internal/pg` | Persistence, event ledger, leases, outboxes, and journals. |
+| `internal/temporal` | Workflows, Activities, orchestration workers, and relays. |
+| `internal/model`, `internal/agentruntime` | Model transport and conversation/tool-loop primitives. |
+| `internal/selfhosted` | Docker launcher and isolated Work execution. |
+| `internal/sandbox` | Transitional managed sandbox adapters. |
+| `internal/blob`, `internal/live` | Object storage and live transport. |
 
-The dependency direction points inward: transport and infrastructure depend on
-application/domain semantics, while the domain has no HTTP, SQL, model-client,
-or sandbox dependencies.
+Public wire types stay at the HTTP boundary. Storage and execution facts remain
+internal, and expensive external calls happen outside SQL transactions.
 
-## Durable write path
+## Further reading
 
-Submitting input is not “write an event, then call Temporal.” PostgreSQL commits
-the client events, status projections, and a coalescible owner-Workflow wakeup
-in one transaction. Primary work uses the legacy Session outbox; each child
-Thread uses a `(Session, Thread)` outbox and stable Workflow identity. A crash
-therefore cannot leave accepted input without a durable path to orchestration.
-The relay is the correctness path.
+- [Domain model](architecture/domain-model.md): resources and their relationships.
+- [Session lifecycle](architecture/session-lifecycle.md): ordering, recovery, and cleanup.
+- [Runtime and sandbox](architecture/runtime-and-sandbox.md): conversation and execution boundaries.
+- [Self-hosted workers](architecture/self-hosted-workers.md): Work ownership and launcher design.
+- [Storage and context](architecture/storage-context-and-tools.md): model transcripts, context preparation, and connected tools.
+- [Workspace tenancy](architecture/workspace-tenancy.md): authentication and tenant isolation.
 
-Model and tool calls happen as Temporal Activities outside SQL transactions.
-Before each provider call, PostgreSQL durably appends its model-request start;
-completed intermediate model/tool rounds are appended idempotently before a
-later provider call can start. Turn completion atomically commits the remaining
-output, owning Thread provider transcript and usage, trigger `processed_at`,
-Thread status, aggregate Session status/usage, and optional attempt
-finalization. A child report is appended to the primary ledger and wakes a
-later coordinator turn in that same transaction. PostgreSQL emits best-effort
-NATS wakeups after each commit; SSE subscribers read the selected Thread's
-committed rows by sequence.
-
-Physical session deletion is a small saga: PostgreSQL first marks the row as
-deleting under the admission lock, the API terminates its Session Workflow, a
-short Temporal Workflow durably releases the provider sandbox and binding, and
-only then does PostgreSQL remove the projection. The binding foreign key blocks
-deletion from discarding the last reference to a live sandbox. Workers scan the
-durable deletion fence and resume this sequence if the API process exits before
-cleanup or finalization completes.
-
-Live text deltas are the exception: they are explicitly ephemeral previews,
-delivered only to opted-in SSE subscribers. They are never returned by event
-history.
-
-## Scaling boundaries
-
-API replicas are stateless around PostgreSQL and NATS. Temporal assigns Workflow
-and Activity tasks to workers; the PostgreSQL tool journal records the
-side-effect ambiguity boundary. Core NATS is at-most-once, so streams
-periodically reconcile their durable cursor and never treat a wakeup as data.
-Worker Versioning and promotion of remote sandbox adapters through repeatable
-live conformance are still required before production rolling deployments.
-
-Workflow changes use Temporal version markers where replay safety
-requires them, and `internal/temporal` carries an offline `worker.WorkflowReplayer`
-harness that replays synthetic pre-change histories against the current code.
-The harness covers every recorded prefix of the ordered turn-level version
-gates and both sides of the Session Workflow durable-interrupt gate. A version
-marker is scoped to one Workflow execution, so it can only keep a code branch
-consistent inside that execution. `SessionWorkflow` continues-as-new and
-PostgreSQL outlives every execution, so any semantic that must agree with
-already-published events — such as which tool-result variant answers a parked
-tool call — is derived from the durable event rather than from a version gate.
-Production rolling deployments still need Worker Versioning.
-
-## Current implementation boundaries
-
-The strongest current risks are semantic rather than structural:
-
-1. Model requests are bounded by a conservative server-owned token estimate and
-   extractive compaction policy. Provider-exact tokenizers, per-model context
-   profiles, and complete per-provider-request audit snapshots are not yet
-   implemented. Compacted message projections are durably checkpointed per Thread.
-2. Sandboxes are session-scoped and durably bound to opaque provider IDs.
-   Restart reattachment and deletion cleanup are implemented for local and
-   Docker on the same host/daemon. Provisioning intent closes the
-   create-before-binding crash window and workers autonomously resume fenced
-   deletions. Provider-aware routing for heterogeneous workers, quotas, and
-   eviction are not implemented.
-3. Worker Versioning, observability, enterprise identity/RBAC, large-payload
-   offload, and production manifests remain open. The OSS Workspace API-key
-   and tenant-isolation boundary is implemented.
-4. Provider Transcript, native Web Search/Fetch, sandbox result
-   materialization, and unauthenticated MCP tools are implemented. Context
-   Snapshots, provider-round records, deployment-managed MCP authentication, and
-   reference-only Temporal payloads remain open.
-5. Ordinary coordinator delegation, persistent child execution, cross-posted
-   pending-action response routing, targeted/global multi-Thread interrupts,
-   and child Workflow shutdown are wired. Archive atomically upgrades the
-   child's coalesced orchestration row from wake to terminate; termination
-   dominates stale wake delivery. Session deletion enumerates and stops every
-   child before primary Workflow and sandbox cleanup.
-
-Current API support is tracked in [capabilities and limits](capabilities.md).
-[Product direction](product.md) defines how Mango selects work. Focused changes
-may be tracked directly in pull requests; Issues remain available when work
-needs discussion, sequencing, or longer-term coordination.
+For current support rather than design intent, use [Capabilities and limits](capabilities.md).
+Production Worker Versioning, heterogeneous-worker routing, and broader rollout
+and reconciliation guarantees remain unfinished.
