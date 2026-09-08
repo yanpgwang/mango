@@ -78,6 +78,7 @@ func newTestHandlerWithSessions(
 	)
 	return NewServer(Deps{
 		Agents: agents, Envs: environments, Sessions: sessions,
+		Files:  newTestFileService(),
 		Events: sessions, Stream: hub,
 	}, cfg).Handler(), sessions
 }

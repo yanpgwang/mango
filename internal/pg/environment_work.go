@@ -75,7 +75,6 @@ func (s *Store) AuthenticateSessionToken(
 	scope := workspace.SessionScope{
 		CredentialDigest: append([]byte(nil), digest...),
 		Skills:           map[workspace.SkillVersion]struct{}{},
-		Files:            map[string]struct{}{},
 		Memories:         map[string]string{},
 	}
 	var workspaceID string

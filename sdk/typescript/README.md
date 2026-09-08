@@ -145,10 +145,10 @@ Uploads accept `Blob`, `File`, or `{ data: Blob, filename: string }`; Skill file
 preserve relative filenames. Fetch creates the multipart boundary. Downloads
 (`files.download`, `skills.versions.download`) return a native `Response` with streaming
 `body` and content headers; consume or cancel the body to release the connection.
-Only Files marked downloadable can be downloaded; the server enforces this.
+An uploaded File can be downloaded by an authenticated application in the same Workspace.
 
 ```ts
-const response = await client.files.download('file_downloadable_output');
+const response = await client.files.download(file.id);
 const bytes = await response.arrayBuffer(); // Optional buffering; body is a stream.
 ```
 

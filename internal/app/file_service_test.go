@@ -31,11 +31,17 @@ func TestFileService_UploadDeleteAndReconcile(t *testing.T) {
 	if created.ID != "file_1" || created.SizeBytes != 5 || created.MimeType != "text/plain" {
 		t.Fatalf("created = %+v", created)
 	}
-	if created.Downloadable || created.Scope != nil || created.State != domain.FileStateReady {
-		t.Fatalf("uploaded visibility fields = %+v", created)
+	if created.State != domain.FileStateReady {
+		t.Fatalf("uploaded state = %+v", created)
 	}
-	if _, err := service.Download(context.Background(), created.ID); err == nil {
-		t.Fatal("uploaded file unexpectedly downloadable")
+	download, err := service.Download(context.Background(), created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(download.Body)
+	_ = download.Body.Close()
+	if err != nil || string(data) != "hello" {
+		t.Fatalf("download = %q, %v", data, err)
 	}
 
 	if _, err := service.Delete(context.Background(), created.ID); err != nil {
@@ -151,17 +157,6 @@ func TestFileService_ReadOutcomeRubricValidatesBoundedTextAndIntegrity(t *testin
 			want: "at most 262144 characters",
 		},
 		{
-			name: "Session scoped", data: []byte("valid"),
-			mutate: func(repo *memoryFileRepository, _ *memoryBlobStore, file domain.File) {
-				repo.mu.Lock()
-				stored := repo.files[file.ID]
-				stored.Scope = &domain.FileScope{ID: "sesn_1", Type: "session"}
-				repo.files[file.ID] = stored
-				repo.mu.Unlock()
-			},
-			want: "top-level File",
-		},
-		{
 			name: "metadata precheck", data: []byte("valid"),
 			mutate: func(repo *memoryFileRepository, _ *memoryBlobStore, file domain.File) {
 				repo.mu.Lock()
@@ -262,17 +257,6 @@ func TestFileService_ReadMessageFileValidatesTextScopeBoundsAndIntegrity(t *test
 			name:      "too many characters",
 			data:      []byte(strings.Repeat("x", domain.MaxFileMessageCharacters+1)),
 			mediaType: "text/plain", want: "at most 262144 characters",
-		},
-		{
-			name: "Session scoped", data: []byte("valid"), mediaType: "text/plain",
-			mutate: func(repo *memoryFileRepository, _ *memoryBlobStore, file domain.File) {
-				repo.mu.Lock()
-				stored := repo.files[file.ID]
-				stored.Scope = &domain.FileScope{ID: "sesn_1", Type: "session"}
-				repo.files[file.ID] = stored
-				repo.mu.Unlock()
-			},
-			want: "top-level File",
 		},
 		{
 			name: "integrity mismatch", data: []byte("valid"), mediaType: "text/plain",
@@ -394,8 +378,7 @@ func (r *memoryFileRepository) List(_ context.Context, query FileListQuery) (Fil
 	defer r.mu.Unlock()
 	files := make([]domain.File, 0, len(r.files))
 	for _, file := range r.files {
-		if file.State == domain.FileStateReady && (query.ScopeID == "" ||
-			(file.Scope != nil && file.Scope.ID == query.ScopeID)) {
+		if file.State == domain.FileStateReady {
 			files = append(files, file)
 		}
 	}

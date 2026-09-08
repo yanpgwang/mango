@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
 // These golden tests assert exact JSON wire shapes that the SDK's typed structs
@@ -45,8 +45,8 @@ func TestGolden_EventIsFlatTaggedUnion(t *testing.T) {
 	ctx := context.Background()
 	agent := mustAgent(t, client, "opus", "sys")
 	env := mustEnv(t, ts.URL)
-	session, err := client.Beta.Sessions.New(ctx, anthropic.BetaSessionNewParams{
-		Agent:         anthropic.BetaSessionNewParamsAgentUnion{OfString: anthropic.String(agent.ID)},
+	session, err := client.Sessions.New(ctx, mango.SessionCreateRequest{
+		Agent:         mango.AgentID(agent.ID),
 		EnvironmentID: env,
 	})
 	if err != nil {
@@ -141,10 +141,8 @@ func TestGolden_FileDocumentReferenceRemainsPublicAndFlat(t *testing.T) {
 	ctx := context.Background()
 	agent := mustAgent(t, client, "opus", "sys")
 	env := mustEnv(t, ts.URL)
-	session, err := client.Beta.Sessions.New(ctx, anthropic.BetaSessionNewParams{
-		Agent: anthropic.BetaSessionNewParamsAgentUnion{
-			OfString: anthropic.String(agent.ID),
-		},
+	session, err := client.Sessions.New(ctx, mango.SessionCreateRequest{
+		Agent:         mango.AgentID(agent.ID),
 		EnvironmentID: env,
 	})
 	if err != nil {
@@ -188,8 +186,8 @@ func TestGolden_RejectsServerOnlyEventType(t *testing.T) {
 	ctx := context.Background()
 	agent := mustAgent(t, client, "opus", "sys")
 	env := mustEnv(t, ts.URL)
-	session, err := client.Beta.Sessions.New(ctx, anthropic.BetaSessionNewParams{
-		Agent:         anthropic.BetaSessionNewParamsAgentUnion{OfString: anthropic.String(agent.ID)},
+	session, err := client.Sessions.New(ctx, mango.SessionCreateRequest{
+		Agent:         mango.AgentID(agent.ID),
 		EnvironmentID: env,
 	})
 	if err != nil {

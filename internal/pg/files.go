@@ -22,9 +22,9 @@ type FileRepository struct {
 const insertFileStatement = `
 INSERT INTO files (
     id, created_at, updated_at, filename, mime_type, size_bytes,
-    downloadable, scope_id, scope_type, blob_key, checksum_sha256, state,
+    blob_key, checksum_sha256, state,
     workspace_id
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 
 func NewFileRepository(store *Store) *FileRepository {
 	return &FileRepository{store: store}
@@ -37,13 +37,9 @@ func (r *FileRepository) BeginUpload(ctx context.Context, file domain.File) erro
 	}
 	file.CreatedAt = file.CreatedAt.UTC().Truncate(time.Microsecond)
 	file.UpdatedAt = file.UpdatedAt.UTC().Truncate(time.Microsecond)
-	var scopeID, scopeType *string
-	if file.Scope != nil {
-		scopeID, scopeType = &file.Scope.ID, &file.Scope.Type
-	}
 	_, err = r.store.pool.Exec(ctx, insertFileStatement,
 		file.ID, file.CreatedAt, file.UpdatedAt, file.Filename, file.MimeType,
-		file.SizeBytes, file.Downloadable, scopeID, scopeType, file.BlobKey,
+		file.SizeBytes, file.BlobKey,
 		file.ChecksumSHA256, string(file.State),
 		workspaceID,
 	)
@@ -70,7 +66,7 @@ SET size_bytes = $2,
     updated_at = now()
 WHERE id = $1 AND ($4 = '' OR workspace_id = $4) AND state = 'uploading'
 RETURNING id, created_at, updated_at, filename, mime_type, size_bytes,
-          downloadable, scope_id, scope_type, blob_key, checksum_sha256, state`,
+          blob_key, checksum_sha256, state`,
 		id, info.SizeBytes, info.ChecksumSHA256, workspaceID,
 	)
 	file, err := scanFile(row)
@@ -87,7 +83,7 @@ func (r *FileRepository) Get(ctx context.Context, id string) (domain.File, error
 	}
 	row := r.store.pool.QueryRow(ctx, `
 SELECT id, created_at, updated_at, filename, mime_type, size_bytes,
-       downloadable, scope_id, scope_type, blob_key, checksum_sha256, state
+       blob_key, checksum_sha256, state
 FROM files
 WHERE id = $1 AND ($2 = '' OR workspace_id = $2) AND state = 'ready'`, id, workspaceID)
 	file, err := scanFile(row)
@@ -110,10 +106,6 @@ func (r *FileRepository) List(
 	if scoped {
 		args = append(args, workspaceID)
 		where = append(where, fmt.Sprintf("workspace_id = $%d", len(args)))
-	}
-	if query.ScopeID != "" {
-		args = append(args, query.ScopeID)
-		where = append(where, fmt.Sprintf("scope_id = $%d", len(args)))
 	}
 
 	before := query.BeforeID != ""
@@ -142,7 +134,7 @@ func (r *FileRepository) List(
 	args = append(args, query.Limit+1)
 	statement := fmt.Sprintf(`
 SELECT id, created_at, updated_at, filename, mime_type, size_bytes,
-       downloadable, scope_id, scope_type, blob_key, checksum_sha256, state
+       blob_key, checksum_sha256, state
 FROM files
 WHERE %s
 ORDER BY %s
@@ -183,7 +175,7 @@ UPDATE files AS target
 SET state = 'deleting', updated_at = now()
 WHERE target.id = $1 AND ($2 = '' OR target.workspace_id = $2) AND target.state = 'ready'
 RETURNING id, created_at, updated_at, filename, mime_type, size_bytes,
-          downloadable, scope_id, scope_type, blob_key, checksum_sha256, state`, id, workspaceID)
+          blob_key, checksum_sha256, state`, id, workspaceID)
 	file, err := scanFile(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.File{}, domain.NotFound("file not found")
@@ -205,7 +197,7 @@ WHERE id = $1 AND ($2 = '' OR workspace_id = $2) AND state <> 'ready'`, id, work
 func (r *FileRepository) ListIncomplete(ctx context.Context) ([]domain.File, error) {
 	rows, err := r.store.pool.Query(ctx, `
 SELECT id, created_at, updated_at, filename, mime_type, size_bytes,
-       downloadable, scope_id, scope_type, blob_key, checksum_sha256, state
+       blob_key, checksum_sha256, state
 FROM files
 WHERE state <> 'ready'
 ORDER BY updated_at, id`)
@@ -230,11 +222,9 @@ type fileScanner interface {
 
 func scanFile(row fileScanner) (domain.File, error) {
 	var file domain.File
-	var scopeID, scopeType *string
 	err := row.Scan(
 		&file.ID, &file.CreatedAt, &file.UpdatedAt, &file.Filename,
-		&file.MimeType, &file.SizeBytes, &file.Downloadable,
-		&scopeID, &scopeType, &file.BlobKey, &file.ChecksumSHA256,
+		&file.MimeType, &file.SizeBytes, &file.BlobKey, &file.ChecksumSHA256,
 		&file.State,
 	)
 	if err != nil {
@@ -242,8 +232,5 @@ func scanFile(row fileScanner) (domain.File, error) {
 	}
 	file.CreatedAt = file.CreatedAt.UTC()
 	file.UpdatedAt = file.UpdatedAt.UTC()
-	if scopeID != nil && scopeType != nil {
-		file.Scope = &domain.FileScope{ID: *scopeID, Type: *scopeType}
-	}
 	return file, nil
 }

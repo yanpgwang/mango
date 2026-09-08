@@ -87,6 +87,9 @@ func TestWorkspaceIsolationAcrossTopLevelResources(t *testing.T) {
 		t.Fatalf("cross-workspace File get = %v, want not found", err)
 	}
 	fileService := app.NewFileService(files, nil, &seqIDGen{}, fixedClock{})
+	if _, err := fileService.Download(ctxB, file.ID); !isNotFound(err) {
+		t.Fatalf("cross-workspace File download = %v, want not found before opening blob storage", err)
+	}
 	if _, err := fileService.ReadOutcomeRubric(ctxB, file.ID); !isNotFound(err) {
 		t.Fatalf("cross-workspace outcome rubric read = %v, want not found", err)
 	}

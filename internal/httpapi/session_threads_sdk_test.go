@@ -9,14 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
-func TestOfficialGoSDKSessionThreadSurface(t *testing.T) {
+func TestMangoSDKSessionThreadSurface(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 9, 8, 0, 0, 0, time.UTC)
 	service := &sdkThreadService{thread: domain.SessionThread{
@@ -62,65 +60,56 @@ func TestOfficialGoSDKSessionThreadSurface(t *testing.T) {
 		Stream:  &sdkThreadStream{event: event},
 	}, Config{RequireAuth: true}).Handler())
 	t.Cleanup(server.Close)
-	client := anthropic.NewClient(
-		option.WithBaseURL(server.URL+"/"), option.WithAuthToken("test-key"),
-	)
+	client, responseJSON := recordedSDKClient(t, server.URL)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	thread, err := client.Beta.Sessions.Threads.Get(ctx, service.thread.ID,
-		anthropic.BetaSessionThreadGetParams{SessionID: service.thread.SessionID})
-	if err != nil || thread.ID != service.thread.ID || thread.ParentThreadID != "" ||
-		thread.Agent.ID != service.thread.Agent.ID || thread.Agent.Version != 3 ||
-		thread.Status != anthropic.BetaManagedAgentsSessionThreadStatusIdle ||
-		thread.Type != anthropic.BetaManagedAgentsSessionThreadTypeSessionThread {
+	thread, err := client.Sessions.Threads.Get(ctx, service.thread.SessionID, service.thread.ID)
+	if err != nil || thread.ID != service.thread.ID || thread.ParentThreadID != nil ||
+		thread.Agent.ManagedAgentThreadAgent.ID != service.thread.Agent.ID || thread.Agent.ManagedAgentThreadAgent.Version != 3 ||
+		thread.Status != "idle" ||
+		thread.Type != "session_thread" {
 		t.Fatalf("Get Session Thread = %+v, err=%v", thread, err)
 	}
-	assertRawObjectHasFields(t, thread.RawJSON(),
+	assertRawObjectHasFields(t, responseJSON(),
 		"id", "agent", "archived_at", "created_at", "parent_thread_id",
 		"session_id", "stats", "status", "type", "updated_at", "usage",
 	)
-	assertRawObjectHasFields(t, thread.Usage.RawJSON(),
+	assertRawObjectHasFields(t, rawJSONField(t, responseJSON(), "usage"),
 		"active_seconds", "cache_creation", "cache_read_input_tokens", "input_tokens",
 		"list_cost", "output_tokens", "server_tool_use")
-	if strings.Contains(thread.Agent.RawJSON(), `"multiagent"`) {
+	if strings.Contains(rawJSONField(t, responseJSON(), "agent"), `"multiagent"`) {
 		t.Fatal("thread agent repeated the coordinator multiagent roster")
 	}
 
-	page, err := client.Beta.Sessions.Threads.List(ctx, service.thread.SessionID,
-		anthropic.BetaSessionThreadListParams{Limit: param.NewOpt(int64(1))})
+	page, err := client.Sessions.Threads.List(ctx, service.thread.SessionID,
+		mango.ListSessionThreadsParams{Limit: mango.Some(int64(1))})
 	if err != nil || len(page.Data) != 1 || page.Data[0].ID != service.thread.ID {
 		t.Fatalf("List Session Threads = %+v, err=%v", page, err)
 	}
-	nextPage, err := page.GetNextPage()
+	nextPage, err := client.Sessions.Threads.List(ctx, service.thread.SessionID, mango.ListSessionThreadsParams{Limit: mango.Some[int64](1), Page: mango.Some(*page.NextPage)})
 	if err != nil || len(nextPage.Data) != 1 || nextPage.Data[0].ID != service.next.ID {
 		t.Fatalf("List next Session Threads page = %+v, err=%v", nextPage, err)
 	}
-	childEvents, err := client.Beta.Sessions.Threads.Events.List(ctx, service.next.ID,
-		anthropic.BetaSessionThreadEventListParams{SessionID: service.thread.SessionID},
-	)
-	if err != nil || len(childEvents.Data) != 1 || childEvents.Data[0].ID != childEvent.ID ||
-		childEvents.Data[0].Type != domain.EvAgentThreadContextCompacted ||
-		childEvents.Data[0].AsAgentThreadContextCompacted().ID != childEvent.ID {
+	childEvents, err := client.Sessions.Threads.Events.List(ctx, service.thread.SessionID, service.next.ID, mango.ListSessionThreadEventsParams{})
+	if err != nil || len(childEvents.Data) != 1 || childEvents.Data[0].AgentThreadContextCompactedEvent == nil ||
+		childEvents.Data[0].AgentThreadContextCompactedEvent.ID != childEvent.ID {
 		t.Fatalf("List child Session Thread Events = %+v, err=%v", childEvents, err)
 	}
 
-	events, err := client.Beta.Sessions.Threads.Events.List(ctx, service.thread.ID,
-		anthropic.BetaSessionThreadEventListParams{
-			SessionID: service.thread.SessionID, Limit: param.NewOpt(int64(1)),
-		})
+	events, err := client.Sessions.Threads.Events.List(ctx, service.thread.SessionID, service.thread.ID, mango.ListSessionThreadEventsParams{Limit: mango.Some(int64(1))})
 	if err != nil || len(events.Data) != 1 ||
-		events.Data[0].Type != domain.EvSessionThreadCreated ||
-		events.Data[0].AsSessionThreadCreated().SessionThreadID != service.next.ID {
+		events.Data[0].SessionThreadCreatedEvent == nil ||
+		events.Data[0].SessionThreadCreatedEvent.SessionThreadID != service.next.ID {
 		t.Fatalf("List Session Thread Events = %+v, err=%v", events, err)
 	}
-	nextEvents, err := events.GetNextPage()
-	if err != nil || len(nextEvents.Data) != 1 || nextEvents.Data[0].ID != nextEvent.ID {
+	nextEvents, err := client.Sessions.Threads.Events.List(ctx, service.thread.SessionID, service.thread.ID, mango.ListSessionThreadEventsParams{Limit: mango.Some[int64](1), Page: mango.Some(*events.NextPage)})
+	if err != nil || len(nextEvents.Data) != 1 || nextEvents.Data[0].SessionThreadCreatedEvent == nil || nextEvents.Data[0].SessionThreadCreatedEvent.ID != nextEvent.ID {
 		t.Fatalf("List next Session Thread Events page = %+v, err=%v", nextEvents, err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		server.URL+"/v1/sessions/"+service.thread.SessionID+"/events?order=asc&page="+
-			url.QueryEscape(events.NextPage), nil)
+			url.QueryEscape(*events.NextPage), nil)
 	if err != nil {
 		t.Fatalf("build cross-resource cursor request: %v", err)
 	}
@@ -134,26 +123,30 @@ func TestOfficialGoSDKSessionThreadSurface(t *testing.T) {
 		t.Fatalf("Thread cursor on Session Event list status = %d, want 400", response.StatusCode)
 	}
 
-	stream := client.Beta.Sessions.Threads.Events.StreamEvents(ctx, service.thread.ID,
-		anthropic.BetaSessionThreadEventStreamParams{SessionID: service.thread.SessionID})
+	stream, err := client.Sessions.Threads.Events.Stream(ctx, service.thread.SessionID, service.thread.ID, mango.StreamSessionThreadEventsParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = stream.Close() }()
 	if !stream.Next() {
 		t.Fatalf("Stream Session Thread Events yielded no event: %v", stream.Err())
 	}
-	if got := stream.Current(); got.ID != event.ID ||
-		got.Type != domain.EvSessionThreadCreated || got.AgentName != "reviewer" {
-		t.Fatalf("streamed event = %+v", got)
+	var streamed mango.SessionEvent
+	if err := stream.Event().Decode(&streamed); err != nil {
+		t.Fatal(err)
+	}
+	if got := streamed.SessionThreadCreatedEvent; got == nil || got.ID != event.ID || got.Type != domain.EvSessionThreadCreated || got.AgentName != "reviewer" {
+		t.Fatalf("streamed event = %+v", streamed)
 	}
 
-	archived, err := client.Beta.Sessions.Threads.Archive(ctx, service.thread.ID,
-		anthropic.BetaSessionThreadArchiveParams{SessionID: service.thread.SessionID})
-	if err != nil || archived.ArchivedAt.IsZero() ||
-		archived.Status != anthropic.BetaManagedAgentsSessionThreadStatusTerminated {
+	archived, err := client.Sessions.Threads.Archive(ctx, service.thread.SessionID, service.thread.ID)
+	if err != nil || archived.ArchivedAt == nil ||
+		archived.Status != "terminated" {
 		t.Fatalf("Archive Session Thread = %+v, err=%v", archived, err)
 	}
 }
 
-func TestOfficialGoSDKAdvisorSessionThreadAgentUnion(t *testing.T) {
+func TestMangoSDKAdvisorSessionThreadAgentUnion(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 9, 9, 0, 0, 0, time.UTC)
 	primaryID := "sthr_primary_advisor_sdk"
@@ -185,38 +178,34 @@ func TestOfficialGoSDKAdvisorSessionThreadAgentUnion(t *testing.T) {
 		},
 	}, Config{RequireAuth: true}).Handler())
 	t.Cleanup(server.Close)
-	client := anthropic.NewClient(
-		option.WithBaseURL(server.URL+"/"), option.WithAuthToken("test-key"),
-	)
-	got, err := client.Beta.Sessions.Threads.Get(
-		context.Background(), thread.ID,
-		anthropic.BetaSessionThreadGetParams{SessionID: thread.SessionID},
+	client, responseJSON := recordedSDKClient(t, server.URL)
+	got, err := client.Sessions.Threads.Get(
+		context.Background(), thread.SessionID, thread.ID,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved := got.Agent.AsAdvisor()
-	if got.Agent.Type != "advisor" || resolved.Model != "claude-opus-5" ||
-		resolved.Type != anthropic.BetaManagedAgentsAdvisorTypeAdvisor ||
-		got.ParentThreadID != primaryID ||
-		got.Status != anthropic.BetaManagedAgentsSessionThreadStatusTerminated {
-		t.Fatalf("Advisor Session Thread = %s", got.RawJSON())
+	resolved := got.Agent.MultiagentAdvisor
+	if resolved == nil || resolved.Model != "claude-opus-5" ||
+		resolved.Type != "advisor" ||
+		got.ParentThreadID == nil || *got.ParentThreadID != primaryID ||
+		got.Status != "terminated" {
+		t.Fatalf("Advisor Session Thread = %s", responseJSON())
 	}
-	if strings.Contains(got.Agent.RawJSON(), `"id"`) ||
-		strings.Contains(got.Agent.RawJSON(), `"name"`) {
-		t.Fatalf("Advisor union leaked Agent fields: %s", got.Agent.RawJSON())
+	if strings.Contains(rawJSONField(t, responseJSON(), "agent"), `"id"`) ||
+		strings.Contains(rawJSONField(t, responseJSON(), "agent"), `"name"`) {
+		t.Fatalf("Advisor union leaked Agent fields: %s", rawJSONField(t, responseJSON(), "agent"))
 	}
-	events, err := client.Beta.Sessions.Threads.Events.List(
-		context.Background(), thread.ID,
-		anthropic.BetaSessionThreadEventListParams{SessionID: thread.SessionID},
+	events, err := client.Sessions.Threads.Events.List(
+		context.Background(), thread.SessionID, thread.ID, mango.ListSessionThreadEventsParams{},
 	)
 	if err != nil || len(events.Data) != 1 {
 		t.Fatalf("Advisor Thread Events = %+v, err=%v", events, err)
 	}
-	sent := events.Data[0].AsAgentThreadMessageSent()
-	if sent.ToSessionThreadID != primaryID || len(sent.Content) != 1 ||
-		sent.Content[0].AsText().Text != "check the shutdown race" {
-		t.Fatalf("Advisor advice Event = %s", sent.RawJSON())
+	sent := events.Data[0].AgentThreadMessageSentEvent
+	if sent == nil || sent.ToSessionThreadID != primaryID || len(sent.Content) != 1 ||
+		sent.Content[0].TextBlockInput.Text != "check the shutdown race" {
+		t.Fatalf("Advisor advice Event = %s", responseJSON())
 	}
 }
 

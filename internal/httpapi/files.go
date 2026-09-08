@@ -172,7 +172,7 @@ func parseFileListQuery(r *http.Request) (app.FileListQuery, error) {
 	values := r.URL.Query()
 	query := app.FileListQuery{
 		AfterID: values.Get("after_id"), BeforeID: values.Get("before_id"),
-		ScopeID: values.Get("scope_id"), Limit: app.DefaultFileListLimit,
+		Limit: app.DefaultFileListLimit,
 	}
 	if values.Has("limit") {
 		limit, err := strconv.Atoi(values.Get("limit"))
@@ -188,15 +188,10 @@ func parseFileListQuery(r *http.Request) (app.FileListQuery, error) {
 }
 
 func fileToJSON(file domain.File) map[string]any {
-	var scope any
-	if file.Scope != nil {
-		scope = map[string]any{"id": file.Scope.ID, "type": file.Scope.Type}
-	}
 	return map[string]any{
 		"id": file.ID, "created_at": file.CreatedAt.Format(timeFmt),
 		"filename": file.Filename, "mime_type": file.MimeType,
 		"size_bytes": file.SizeBytes, "type": "file",
-		"downloadable": file.Downloadable, "scope": scope,
 	}
 }
 

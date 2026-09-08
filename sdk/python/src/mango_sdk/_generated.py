@@ -1181,10 +1181,9 @@ class FilesResource:
         limit: int | NotGiven = NOT_GIVEN,
         after_id: str | NotGiven = NOT_GIVEN,
         before_id: str | NotGiven = NOT_GIVEN,
-        scope_id: str | NotGiven = NOT_GIVEN,
     ) -> models.FileList:
         """GET /v1/files."""
-        return cast(models.FileList, self._client._request(OPERATIONS['list_files'], {}, {'limit': limit, 'after_id': after_id, 'before_id': before_id, 'scope_id': scope_id}))
+        return cast(models.FileList, self._client._request(OPERATIONS['list_files'], {}, {'limit': limit, 'after_id': after_id, 'before_id': before_id}))
 
     def iter(
         self,
@@ -1192,10 +1191,9 @@ class FilesResource:
         limit: int | NotGiven = NOT_GIVEN,
         after_id: str | NotGiven = NOT_GIVEN,
         before_id: str | NotGiven = NOT_GIVEN,
-        scope_id: str | NotGiven = NOT_GIVEN,
     ) -> Iterator[models.File]:
         """GET /v1/files; iterate every page."""
-        return cast(Iterator[models.File], self._client._paginate(OPERATIONS['list_files'], {}, {'limit': limit, 'after_id': after_id, 'before_id': before_id, 'scope_id': scope_id}))
+        return cast(Iterator[models.File], self._client._paginate(OPERATIONS['list_files'], {}, {'limit': limit, 'after_id': after_id, 'before_id': before_id}))
 
     def upload(
         self,
@@ -2491,10 +2489,9 @@ class AsyncFilesResource:
         limit: int | NotGiven = NOT_GIVEN,
         after_id: str | NotGiven = NOT_GIVEN,
         before_id: str | NotGiven = NOT_GIVEN,
-        scope_id: str | NotGiven = NOT_GIVEN,
     ) -> models.FileList:
         """GET /v1/files."""
-        return cast(models.FileList, await self._client._request(OPERATIONS['list_files'], {}, {'limit': limit, 'after_id': after_id, 'before_id': before_id, 'scope_id': scope_id}))
+        return cast(models.FileList, await self._client._request(OPERATIONS['list_files'], {}, {'limit': limit, 'after_id': after_id, 'before_id': before_id}))
 
     def iter(
         self,
@@ -2502,10 +2499,9 @@ class AsyncFilesResource:
         limit: int | NotGiven = NOT_GIVEN,
         after_id: str | NotGiven = NOT_GIVEN,
         before_id: str | NotGiven = NOT_GIVEN,
-        scope_id: str | NotGiven = NOT_GIVEN,
     ) -> AsyncIterator[models.File]:
         """GET /v1/files; iterate every page."""
-        return cast(AsyncIterator[models.File], self._client._paginate(OPERATIONS['list_files'], {}, {'limit': limit, 'after_id': after_id, 'before_id': before_id, 'scope_id': scope_id}))
+        return cast(AsyncIterator[models.File], self._client._paginate(OPERATIONS['list_files'], {}, {'limit': limit, 'after_id': after_id, 'before_id': before_id}))
 
     async def upload(
         self,

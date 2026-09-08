@@ -10,9 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/anthropics/anthropic-sdk-go/packages/param"
+	mango "github.com/yanpgwang/mango/sdk/go"
 
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/credentialruntime"
@@ -36,38 +34,32 @@ func TestSDK_VaultAndStaticBearerCredentialLifecycle(t *testing.T) {
 		RequireAuth: true,
 	}).Handler())
 	t.Cleanup(server.Close)
-	client := anthropic.NewClient(option.WithBaseURL(server.URL), option.WithAuthToken("sk-test"))
+	client, responseJSON := recordedSDKClient(t, server.URL)
 	ctx := context.Background()
 
-	vault, err := client.Beta.Vaults.New(ctx, anthropic.BetaVaultNewParams{
-		DisplayName: "Production tools", Metadata: map[string]string{"team": "platform"},
-	})
+	vault, err := client.Vaults.New(ctx, sdkBody[mango.VaultCreateRequest](t, `{"display_name":"Production tools","metadata":{"team":"platform"}}`))
 	if err != nil {
 		t.Fatalf("create vault: %v", err)
 	}
-	if vault.Type != anthropic.BetaManagedAgentsVaultTypeVault || vault.DisplayName != "Production tools" {
-		t.Fatalf("vault = %s", vault.RawJSON())
+	if vault.Type != "vault" || vault.DisplayName != "Production tools" {
+		t.Fatalf("vault = %s", responseJSON())
 	}
-	gotVault, err := client.Beta.Vaults.Get(ctx, vault.ID, anthropic.BetaVaultGetParams{})
+	gotVault, err := client.Vaults.Get(ctx, vault.ID)
 	if err != nil || gotVault.ID != vault.ID {
 		t.Fatalf("get vault = %#v, %v", gotVault, err)
 	}
-	updatedVault, err := client.Beta.Vaults.Update(ctx, vault.ID, anthropic.BetaVaultUpdateParams{
-		DisplayName: anthropic.String("Production MCP tools"),
-	})
+	updatedVault, err := client.Vaults.Update(ctx, vault.ID, sdkBody[mango.VaultUpdateRequest](t, `{"display_name":"Production MCP tools"}`))
 	if err != nil || updatedVault.DisplayName != "Production MCP tools" {
 		t.Fatalf("update vault = %#v, %v", updatedVault, err)
 	}
-	updatedVault, err = client.Beta.Vaults.Update(ctx, vault.ID, anthropic.BetaVaultUpdateParams{
-		DisplayName: param.Null[string](), Metadata: param.NullMap[map[string]string](),
-	})
+	updatedVault, err = client.Vaults.Update(ctx, vault.ID, sdkBody[mango.VaultUpdateRequest](t, `{"display_name":null,"metadata":null}`))
 	if err != nil || updatedVault.DisplayName != "Production MCP tools" || len(updatedVault.Metadata) != 0 {
 		t.Fatalf("nullable vault update = %#v, %v", updatedVault, err)
 	}
-	if _, err := client.Beta.Vaults.New(ctx, anthropic.BetaVaultNewParams{DisplayName: "Development tools"}); err != nil {
+	if _, err := client.Vaults.New(ctx, sdkBody[mango.VaultCreateRequest](t, `{"display_name":"Development tools"}`)); err != nil {
 		t.Fatalf("create second vault: %v", err)
 	}
-	vaultPager := client.Beta.Vaults.ListAutoPaging(ctx, anthropic.BetaVaultListParams{Limit: anthropic.Int(1)})
+	vaultPager := client.Vaults.ListAutoPaging(ctx, mango.ListVaultsParams{Limit: mango.Some[int64](1)})
 	vaultCount := 0
 	for vaultPager.Next() {
 		vaultCount++
@@ -76,172 +68,87 @@ func TestSDK_VaultAndStaticBearerCredentialLifecycle(t *testing.T) {
 		t.Fatalf("vault auto-pagination count = %d, err = %v", vaultCount, err)
 	}
 
-	credential, err := client.Beta.Vaults.Credentials.New(ctx, vault.ID, anthropic.BetaVaultCredentialNewParams{
-		DisplayName: anthropic.String("Build MCP"),
-		Auth: anthropic.BetaVaultCredentialNewParamsAuthUnion{
-			OfStaticBearer: &anthropic.BetaManagedAgentsStaticBearerCreateParams{
-				Type:         anthropic.BetaManagedAgentsStaticBearerCreateParamsTypeStaticBearer,
-				MCPServerURL: "https://MCP.example:443/api", Token: "sdk-secret-token",
-			},
-		},
-	})
+	credential, err := client.Vaults.Credentials.New(ctx, vault.ID, sdkBody[mango.VaultCredentialCreateRequest](t, `{"display_name":"Build MCP","auth":{"type":"static_bearer","mcp_server_url":"https://MCP.example:443/api","token":"sdk-secret-token"}}`))
 	if err != nil {
 		t.Fatalf("create credential: %v", err)
 	}
-	if credential.Auth.AsStaticBearer().MCPServerURL != "https://MCP.example:443/api" {
-		t.Fatalf("credential = %s", credential.RawJSON())
+	if credential.Auth.StaticBearerCredentialAuth.MCPServerURL != "https://MCP.example:443/api" {
+		t.Fatalf("credential = %s", responseJSON())
 	}
-	if strings.Contains(credential.RawJSON(), "sdk-secret-token") || strings.Contains(credential.RawJSON(), "cipher") {
-		t.Fatalf("credential response leaked secret material: %s", credential.RawJSON())
+	if strings.Contains(responseJSON(), "sdk-secret-token") || strings.Contains(responseJSON(), "cipher") {
+		t.Fatalf("credential response leaked secret material: %s", responseJSON())
 	}
 
-	got, err := client.Beta.Vaults.Credentials.Get(ctx, credential.ID, anthropic.BetaVaultCredentialGetParams{VaultID: vault.ID})
+	got, err := client.Vaults.Credentials.Get(ctx, vault.ID, credential.ID)
 	if err != nil || got.ID != credential.ID {
 		t.Fatalf("get credential = %#v, %v", got, err)
 	}
-	updated, err := client.Beta.Vaults.Credentials.Update(ctx, credential.ID, anthropic.BetaVaultCredentialUpdateParams{
-		VaultID:     vault.ID,
-		DisplayName: param.Null[string](),
-		Metadata:    param.NullMap[map[string]string](),
-		Auth: anthropic.BetaVaultCredentialUpdateParamsAuthUnion{
-			OfStaticBearer: &anthropic.BetaManagedAgentsStaticBearerUpdateParams{
-				Type:  anthropic.BetaManagedAgentsStaticBearerUpdateParamsTypeStaticBearer,
-				Token: param.Null[string](),
-			},
-		},
-	})
-	if err != nil || !strings.Contains(updated.RawJSON(), `"display_name":null`) || !strings.Contains(updated.RawJSON(), `"metadata":{}`) {
+	updated, err := client.Vaults.Credentials.Update(ctx, vault.ID, credential.ID, sdkBody[mango.VaultCredentialUpdateRequest](t, `{"display_name":null,"metadata":null,"auth":{"type":"static_bearer","token":null}}`))
+	if err != nil || !strings.Contains(responseJSON(), `"display_name":null`) || !strings.Contains(responseJSON(), `"metadata":{}`) {
 		t.Fatalf("update credential = %#v, %v", updated, err)
 	}
-	page, err := client.Beta.Vaults.Credentials.List(ctx, vault.ID, anthropic.BetaVaultCredentialListParams{})
-	if err != nil || len(page.Data) != 1 || page.Data[0].ID != credential.ID || strings.Contains(page.RawJSON(), `"has_more"`) {
+	page, err := client.Vaults.Credentials.List(ctx, vault.ID, mango.ListVaultCredentialsParams{})
+	if err != nil || len(page.Data) != 1 || page.Data[0].ID != credential.ID || strings.Contains(responseJSON(), `"has_more"`) {
 		t.Fatalf("credential page = %#v, %v", page, err)
 	}
-	archived, err := client.Beta.Vaults.Credentials.Archive(ctx, credential.ID, anthropic.BetaVaultCredentialArchiveParams{VaultID: vault.ID})
-	if err != nil || !archived.JSON.ArchivedAt.Valid() {
+	archived, err := client.Vaults.Credentials.Archive(ctx, vault.ID, credential.ID)
+	if err != nil || archived.ArchivedAt == nil {
 		t.Fatalf("archive credential = %#v, %v", archived, err)
 	}
-	deleted, err := client.Beta.Vaults.Credentials.Delete(ctx, credential.ID, anthropic.BetaVaultCredentialDeleteParams{VaultID: vault.ID})
-	if err != nil || deleted.Type != anthropic.BetaManagedAgentsDeletedCredentialTypeVaultCredentialDeleted {
+	deleted, err := client.Vaults.Credentials.Delete(ctx, vault.ID, credential.ID)
+	if err != nil || deleted.Type != "vault_credential_deleted" {
 		t.Fatalf("delete credential = %#v, %v", deleted, err)
 	}
-	oauth, err := client.Beta.Vaults.Credentials.New(ctx, vault.ID, anthropic.BetaVaultCredentialNewParams{
-		DisplayName: param.Null[string](),
-		Auth: anthropic.BetaVaultCredentialNewParamsAuthUnion{
-			OfMCPOAuth: &anthropic.BetaManagedAgentsMCPOAuthCreateParams{
-				Type:         anthropic.BetaManagedAgentsMCPOAuthCreateParamsTypeMCPOAuth,
-				MCPServerURL: "https://oauth-mcp.example/mcp", AccessToken: "oauth-access-secret",
-				ExpiresAt: anthropic.Time(time.Unix(4000, 0).UTC()),
-				Refresh: anthropic.BetaManagedAgentsMCPOAuthRefreshParams{
-					ClientID: "client-id", RefreshToken: "oauth-refresh-secret",
-					TokenEndpoint: "https://auth.example/token",
-					Resource:      param.Null[string](), Scope: anthropic.String("openid"),
-					TokenEndpointAuth: anthropic.BetaManagedAgentsMCPOAuthRefreshParamsTokenEndpointAuthUnion{
-						OfClientSecretBasic: &anthropic.BetaManagedAgentsTokenEndpointAuthBasicParam{
-							Type:         anthropic.BetaManagedAgentsTokenEndpointAuthBasicParamTypeClientSecretBasic,
-							ClientSecret: "oauth-client-secret",
-						},
-					},
-				},
-			},
-		},
-	})
+	oauth, err := client.Vaults.Credentials.New(ctx, vault.ID, sdkBody[mango.VaultCredentialCreateRequest](t, `{"display_name":null,"auth":{"type":"mcp_oauth","mcp_server_url":"https://oauth-mcp.example/mcp","access_token":"oauth-access-secret","expires_at":"1970-01-01T01:06:40Z","refresh":{"client_id":"client-id","refresh_token":"oauth-refresh-secret","token_endpoint":"https://auth.example/token","resource":null,"scope":"openid","token_endpoint_auth":{"type":"client_secret_basic","client_secret":"oauth-client-secret"}}}}`))
 	if err != nil {
 		t.Fatalf("create OAuth credential: %v", err)
 	}
 	for _, secret := range []string{"oauth-access-secret", "oauth-refresh-secret", "oauth-client-secret"} {
-		if strings.Contains(oauth.RawJSON(), secret) {
-			t.Fatalf("OAuth response leaked %q: %s", secret, oauth.RawJSON())
+		if strings.Contains(responseJSON(), secret) {
+			t.Fatalf("OAuth response leaked %q: %s", secret, responseJSON())
 		}
 	}
-	publicOAuth := oauth.Auth.AsMCPOAuth()
+	publicOAuth := oauth.Auth.MCPOAuthCredentialAuth
 	if publicOAuth.Refresh.ClientID != "client-id" || publicOAuth.Refresh.TokenEndpoint != "https://auth.example/token" {
-		t.Fatalf("OAuth public auth = %s", publicOAuth.RawJSON())
+		t.Fatalf("OAuth public auth = %s", responseJSON())
 	}
-	validation, err := client.Beta.Vaults.Credentials.MCPOAuthValidate(
-		ctx,
-		oauth.ID,
-		anthropic.BetaVaultCredentialMCPOAuthValidateParams{VaultID: vault.ID},
-	)
-	if err != nil || validation.Status != anthropic.BetaManagedAgentsCredentialValidationStatusValid ||
+	validation, err := client.Vaults.Credentials.ValidateMCPOAuth(ctx, vault.ID, oauth.ID)
+	if err != nil || validation.Status != "valid" ||
 		validation.CredentialID != oauth.ID || validation.VaultID != vault.ID ||
-		!validation.HasRefreshToken || !strings.Contains(validation.RawJSON(), `"mcp_probe":null`) ||
-		!strings.Contains(validation.RawJSON(), `"refresh":null`) {
+		!validation.HasRefreshToken || !strings.Contains(responseJSON(), `"mcp_probe":null`) ||
+		!strings.Contains(responseJSON(), `"refresh":null`) {
 		t.Fatalf("OAuth validation = %#v, %v", validation, err)
 	}
-	updatedOAuth, err := client.Beta.Vaults.Credentials.Update(ctx, oauth.ID, anthropic.BetaVaultCredentialUpdateParams{
-		VaultID: vault.ID,
-		Auth: anthropic.BetaVaultCredentialUpdateParamsAuthUnion{
-			OfMCPOAuth: &anthropic.BetaManagedAgentsMCPOAuthUpdateParams{
-				Type: anthropic.BetaManagedAgentsMCPOAuthUpdateParamsTypeMCPOAuth,
-				Refresh: anthropic.BetaManagedAgentsMCPOAuthRefreshUpdateParams{
-					RefreshToken: param.Null[string](), Scope: param.Null[string](),
-					TokenEndpointAuth: anthropic.BetaManagedAgentsMCPOAuthRefreshUpdateParamsTokenEndpointAuthUnion{
-						OfClientSecretBasic: &anthropic.BetaManagedAgentsTokenEndpointAuthBasicUpdateParam{
-							Type:         anthropic.BetaManagedAgentsTokenEndpointAuthBasicUpdateParamTypeClientSecretBasic,
-							ClientSecret: param.Null[string](),
-						},
-					},
-				},
-			},
-		},
-	})
-	if err != nil || !strings.Contains(updatedOAuth.RawJSON(), `"scope":null`) || strings.Contains(updatedOAuth.RawJSON(), "oauth-refresh-secret") {
+	updatedOAuth, err := client.Vaults.Credentials.Update(ctx, vault.ID, oauth.ID, sdkBody[mango.VaultCredentialUpdateRequest](t, `{"auth":{"type":"mcp_oauth","refresh":{"refresh_token":null,"scope":null,"token_endpoint_auth":{"type":"client_secret_basic","client_secret":null}}}}`))
+	if err != nil || !strings.Contains(responseJSON(), `"scope":null`) || strings.Contains(responseJSON(), "oauth-refresh-secret") {
 		t.Fatalf("nested nullable OAuth update = %#v, %v", updatedOAuth, err)
 	}
-	updatedOAuth, err = client.Beta.Vaults.Credentials.Update(ctx, oauth.ID, anthropic.BetaVaultCredentialUpdateParams{
-		VaultID:  vault.ID,
-		Metadata: param.NullMap[map[string]string](),
-		Auth: anthropic.BetaVaultCredentialUpdateParamsAuthUnion{
-			OfMCPOAuth: &anthropic.BetaManagedAgentsMCPOAuthUpdateParams{
-				Type:        anthropic.BetaManagedAgentsMCPOAuthUpdateParamsTypeMCPOAuth,
-				AccessToken: param.Null[string](), ExpiresAt: param.Null[time.Time](),
-				Refresh: param.NullStruct[anthropic.BetaManagedAgentsMCPOAuthRefreshUpdateParams](),
-			},
-		},
-	})
-	if err != nil || !strings.Contains(updatedOAuth.RawJSON(), `"expires_at":null`) || !strings.Contains(updatedOAuth.RawJSON(), `"refresh":null`) {
+	updatedOAuth, err = client.Vaults.Credentials.Update(ctx, vault.ID, oauth.ID, sdkBody[mango.VaultCredentialUpdateRequest](t, `{"metadata":null,"auth":{"type":"mcp_oauth","access_token":null,"expires_at":null,"refresh":null}}`))
+	if err != nil || !strings.Contains(responseJSON(), `"expires_at":null`) || !strings.Contains(responseJSON(), `"refresh":null`) {
 		t.Fatalf("nullable OAuth update = %#v, %v", updatedOAuth, err)
 	}
-	pagerCredential, err := client.Beta.Vaults.Credentials.New(ctx, vault.ID, anthropic.BetaVaultCredentialNewParams{
-		Auth: anthropic.BetaVaultCredentialNewParamsAuthUnion{
-			OfStaticBearer: &anthropic.BetaManagedAgentsStaticBearerCreateParams{
-				Type:         anthropic.BetaManagedAgentsStaticBearerCreateParamsTypeStaticBearer,
-				MCPServerURL: "https://pager.example/mcp", Token: "pager-secret",
-			},
-		},
-	})
+	pagerCredential, err := client.Vaults.Credentials.New(ctx, vault.ID, sdkBody[mango.VaultCredentialCreateRequest](t, `{"auth":{"type":"static_bearer","mcp_server_url":"https://pager.example/mcp","token":"pager-secret"}}`))
 	if err != nil {
 		t.Fatalf("create pager credential: %v", err)
 	}
-	credentialPager := client.Beta.Vaults.Credentials.ListAutoPaging(ctx, vault.ID, anthropic.BetaVaultCredentialListParams{Limit: anthropic.Int(1)})
+	credentialPager := client.Vaults.Credentials.ListAutoPaging(ctx, vault.ID, mango.ListVaultCredentialsParams{Limit: mango.Some[int64](1)})
 	credentialIDs := map[string]bool{}
 	for credentialPager.Next() {
-		credentialIDs[credentialPager.Current().ID] = true
+		credentialIDs[credentialPager.Value().ID] = true
 	}
 	if err := credentialPager.Err(); err != nil || !credentialIDs[oauth.ID] || !credentialIDs[pagerCredential.ID] || len(credentialIDs) != 2 {
 		t.Fatalf("credential auto-pagination IDs = %#v, err = %v", credentialIDs, err)
 	}
-	nullableCreate, err := client.Beta.Vaults.Credentials.New(ctx, vault.ID, anthropic.BetaVaultCredentialNewParams{
-		DisplayName: param.Null[string](),
-		Auth: anthropic.BetaVaultCredentialNewParamsAuthUnion{
-			OfMCPOAuth: &anthropic.BetaManagedAgentsMCPOAuthCreateParams{
-				Type:         anthropic.BetaManagedAgentsMCPOAuthCreateParamsTypeMCPOAuth,
-				MCPServerURL: "https://nullable.example/mcp", AccessToken: "nullable-access-secret",
-				ExpiresAt: param.Null[time.Time](),
-				Refresh:   param.NullStruct[anthropic.BetaManagedAgentsMCPOAuthRefreshParams](),
-			},
-		},
-	})
-	if err != nil || !strings.Contains(nullableCreate.RawJSON(), `"display_name":null`) || !strings.Contains(nullableCreate.RawJSON(), `"expires_at":null`) || !strings.Contains(nullableCreate.RawJSON(), `"refresh":null`) {
+	nullableCreate, err := client.Vaults.Credentials.New(ctx, vault.ID, sdkBody[mango.VaultCredentialCreateRequest](t, `{"display_name":null,"auth":{"type":"mcp_oauth","mcp_server_url":"https://nullable.example/mcp","access_token":"nullable-access-secret","expires_at":null,"refresh":null}}`))
+	if err != nil || !strings.Contains(responseJSON(), `"display_name":null`) || !strings.Contains(responseJSON(), `"expires_at":null`) || !strings.Contains(responseJSON(), `"refresh":null`) {
 		t.Fatalf("nullable OAuth create = %#v, %v", nullableCreate, err)
 	}
-	archivedVault, err := client.Beta.Vaults.Archive(ctx, vault.ID, anthropic.BetaVaultArchiveParams{})
-	if err != nil || !archivedVault.JSON.ArchivedAt.Valid() {
+	archivedVault, err := client.Vaults.Archive(ctx, vault.ID)
+	if err != nil || archivedVault.ArchivedAt == nil {
 		t.Fatalf("archive vault = %#v, %v", archivedVault, err)
 	}
-	deletedVault, err := client.Beta.Vaults.Delete(ctx, vault.ID, anthropic.BetaVaultDeleteParams{})
-	if err != nil || deletedVault.Type != anthropic.BetaManagedAgentsDeletedVaultTypeVaultDeleted {
+	deletedVault, err := client.Vaults.Delete(ctx, vault.ID)
+	if err != nil || deletedVault.Type != "vault_deleted" {
 		t.Fatalf("delete vault = %#v, %v", deletedVault, err)
 	}
 }

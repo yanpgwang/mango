@@ -32,6 +32,17 @@ func TestOpenAPITransportContract(t *testing.T) {
 		t.Fatalf("global security requirement = %#v, want BearerAuth", requirement)
 	}
 	components := openAPIMap(t, doc["components"], "components")
+	for key, value := range openAPIMap(t, components["parameters"], "parameters") {
+		parameter := openAPIMap(t, value, "parameter "+key)
+		if name, ok := parameter["name"].(string); !ok || name == "" {
+			t.Fatalf("parameter %s has no name: %#v", key, parameter)
+		}
+		switch parameter["in"] {
+		case "query", "header", "path", "cookie":
+		default:
+			t.Fatalf("parameter %s has invalid location: %#v", key, parameter)
+		}
+	}
 	schemes := openAPIMap(t, components["securitySchemes"], "security schemes")
 	if len(schemes) != 1 {
 		t.Fatalf("security schemes = %#v, want only BearerAuth", schemes)
@@ -767,7 +778,7 @@ func TestOpenAPIFilesContract(t *testing.T) {
 		"#/components/schemas/FileUploadRequest")
 	list := openAPIMap(t, openAPIMap(t, paths["/v1/files"], "Files path")["get"], "list")
 	assertOpenAPIParameterNames(t, doc, list["parameters"],
-		[]string{"after_id", "before_id", "limit", "scope_id"})
+		[]string{"after_id", "before_id", "limit"})
 	validateOpenAPIRefs(t, doc, doc)
 }
 

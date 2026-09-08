@@ -40,7 +40,6 @@ type FileUploadInput struct {
 type FileListQuery struct {
 	AfterID  string
 	BeforeID string
-	ScopeID  string
 	Limit    int
 }
 
@@ -168,9 +167,6 @@ func (s *FileService) Download(ctx context.Context, id string) (FileDownload, er
 	if err != nil {
 		return FileDownload{}, err
 	}
-	if !file.Downloadable {
-		return FileDownload{}, domain.Validation("file is not downloadable")
-	}
 	body, err := s.blobs.Open(ctx, file.BlobKey)
 	if err != nil {
 		return FileDownload{}, err
@@ -178,16 +174,15 @@ func (s *FileService) Download(ctx context.Context, id string) (FileDownload, er
 	return FileDownload{File: file, Body: body}, nil
 }
 
-// ReadOutcomeRubric returns validated text from a reusable top-level File.
-// Unlike the public content endpoint, this internal admission path may read
-// non-downloadable client uploads. Reads remain bounded to the largest valid
-// UTF-8 encoding of the documented character limit.
+// ReadOutcomeRubric validates an immutable File for use as model input.
+// Admission reads stay bounded to the largest valid UTF-8 encoding of the
+// documented character limit, independently of the binary download endpoint.
 func (s *FileService) ReadOutcomeRubric(ctx context.Context, id string) (string, error) {
 	file, err := s.publicFile(ctx, id)
 	if err != nil {
 		return "", err
 	}
-	content, err := s.readTopLevelUTF8(
+	content, err := s.readUTF8(
 		ctx, file, "file outcome rubric", "file outcome rubric content",
 		domain.MaxOutcomeRubricCharacters, maxOutcomeRubricBytes,
 	)
@@ -199,7 +194,7 @@ func (s *FileService) ReadOutcomeRubric(ctx context.Context, id string) (string,
 
 // ReadMessageFile returns a bounded, integrity-checked snapshot for a
 // user.message document source. Generic application/octet-stream is accepted
-// so official SDK uploads and source files without a registered media type can
+// so generic uploads and source files without a registered media type can
 // still be projected after their bytes pass UTF-8 validation.
 func (s *FileService) ReadMessageFile(
 	ctx context.Context,
@@ -215,7 +210,7 @@ func (s *FileService) ReadMessageFile(
 			"file message content supports UTF-8 text files only",
 		)
 	}
-	content, err := s.readTopLevelUTF8(
+	content, err := s.readUTF8(
 		ctx, file, "file message content", "file message content",
 		domain.MaxFileMessageCharacters, maxFileMessageBytes,
 	)
@@ -240,7 +235,7 @@ func (s *FileService) ReadMessageFile(
 
 var errFileContentInvalidUTF8 = errors.New("file content is not valid UTF-8")
 
-func (s *FileService) readTopLevelUTF8(
+func (s *FileService) readUTF8(
 	ctx context.Context,
 	file domain.File,
 	label string,
@@ -248,9 +243,6 @@ func (s *FileService) readTopLevelUTF8(
 	maxCharacters int,
 	maxBytes int64,
 ) (string, error) {
-	if file.Scope != nil {
-		return "", domain.Validation(label + " must reference a top-level File")
-	}
 	if file.SizeBytes == 0 {
 		return "", domain.Validation(label + " must not be empty")
 	}

@@ -7,14 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
-func TestOfficialGoSDKDeploymentSurface(t *testing.T) {
+func TestMangoSDKDeploymentSurface(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 	next := now.Add(time.Hour)
@@ -41,123 +39,80 @@ func TestOfficialGoSDKDeploymentSurface(t *testing.T) {
 	}
 	server := httptest.NewServer(NewServer(Deps{Deployments: service}, Config{}).Handler())
 	t.Cleanup(server.Close)
-	client := anthropic.NewClient(
-		option.WithBaseURL(server.URL+"/"), option.WithAuthToken("test-key"),
-	)
+	client, responseJSON := recordedSDKClient(t, server.URL)
 
-	created, err := client.Beta.Deployments.New(context.Background(), anthropic.BetaDeploymentNewParams{
-		Agent:         anthropic.BetaDeploymentNewParamsAgentUnion{OfString: anthropic.String("agent_sdk")},
-		EnvironmentID: "env_sdk", Name: "SDK deployment",
-		InitialEvents: []anthropic.BetaManagedAgentsDeploymentInitialEventParamsUnion{{
-			OfUserMessage: &anthropic.BetaManagedAgentsUserMessageEventParams{
-				Type: anthropic.BetaManagedAgentsUserMessageEventParamsTypeUserMessage,
-				Content: []anthropic.BetaManagedAgentsUserMessageEventParamsContentUnion{{
-					OfText: &anthropic.BetaManagedAgentsTextBlockParam{
-						Type: anthropic.BetaManagedAgentsTextBlockTypeText, Text: "Run the check",
-					},
-				}},
-			},
-		}},
-		Schedule: anthropic.BetaManagedAgentsScheduleParams{
-			Type:       anthropic.BetaManagedAgentsScheduleParamsTypeCron,
-			Expression: "0 * * * *", Timezone: "UTC",
-		},
-		Budget: param.NullStruct[anthropic.BetaManagedAgentsBudgetLimitParam](),
-	})
+	created, err := client.Deployments.New(context.Background(), sdkBody[mango.DeploymentCreateRequest](t, `{"agent":"agent_sdk","environment_id":"env_sdk","name":"SDK deployment","initial_events":[{"type":"user.message","content":[{"type":"text","text":"Run the check"}]}],"schedule":{"type":"cron","expression":"0 * * * *","timezone":"UTC"},"budget":null}`))
 	if err != nil {
 		t.Fatalf("create Deployment through SDK: %v", err)
 	}
-	if created.ID != service.item.ID || created.Agent.Version != 3 ||
+	if created.ID != service.item.ID || created.Agent.Version != mango.Some[int64](3) ||
 		created.Schedule.Expression != "0 * * * *" {
 		t.Fatalf("created Deployment = %+v", created)
 	}
-	if created.JSON.Budget.Raw() != "null" {
-		t.Fatalf("created Deployment budget = %q, want null", created.JSON.Budget.Raw())
+	if created.Budget != nil {
+		t.Fatalf("created Deployment budget = %q, want null", responseJSON())
 	}
-	limit := anthropic.BetaManagedAgentsBudgetLimitParam{
-		Type: anthropic.BetaManagedAgentsBudgetLimitTypeLimit,
-		MaxListCost: anthropic.BetaMonetaryAmountParam{
-			Amount: "2500", Currency: anthropic.BetaCurrencyUsd,
-		},
-	}
-	budgeted, err := client.Beta.Deployments.New(context.Background(), anthropic.BetaDeploymentNewParams{
-		Agent:         anthropic.BetaDeploymentNewParamsAgentUnion{OfString: anthropic.String("agent_sdk")},
-		EnvironmentID: "env_sdk", Name: "Budgeted deployment", Budget: limit,
-		InitialEvents: []anthropic.BetaManagedAgentsDeploymentInitialEventParamsUnion{{
-			OfUserMessage: &anthropic.BetaManagedAgentsUserMessageEventParams{
-				Type: anthropic.BetaManagedAgentsUserMessageEventParamsTypeUserMessage,
-				Content: []anthropic.BetaManagedAgentsUserMessageEventParamsContentUnion{{
-					OfText: &anthropic.BetaManagedAgentsTextBlockParam{
-						Type: anthropic.BetaManagedAgentsTextBlockTypeText, Text: "Run",
-					},
-				}},
-			},
-		}},
-	})
-	if err != nil || !strings.Contains(budgeted.RawJSON(), `"amount":"2500"`) {
+	budgeted, err := client.Deployments.New(context.Background(), sdkBody[mango.DeploymentCreateRequest](t, `{"agent":"agent_sdk","environment_id":"env_sdk","name":"Budgeted deployment","initial_events":[{"type":"user.message","content":[{"type":"text","text":"Run"}]}],"budget":{"type":"limit","max_list_cost":{"amount":"2500","currency":"USD"}}}`))
+	if err != nil || !strings.Contains(responseJSON(), `"amount":"2500"`) {
 		t.Fatalf("create budgeted Deployment: deployment=%+v err=%v", budgeted, err)
 	}
 
-	if _, err := client.Beta.Deployments.Get(
-		context.Background(), service.item.ID, anthropic.BetaDeploymentGetParams{},
+	if _, err := client.Deployments.Get(
+		context.Background(), service.item.ID,
 	); err != nil {
 		t.Fatalf("get Deployment through SDK: %v", err)
 	}
-	if _, err := client.Beta.Deployments.Update(
-		context.Background(), service.item.ID, anthropic.BetaDeploymentUpdateParams{
-			Name: anthropic.String("Updated SDK deployment"),
-		},
+	if _, err := client.Deployments.Update(
+		context.Background(), service.item.ID, sdkBody[mango.DeploymentUpdateRequest](t, `{"name":"Updated SDK deployment"}`),
 	); err != nil {
 		t.Fatalf("update Deployment through SDK: %v", err)
 	}
-	if _, err := client.Beta.Deployments.Update(
-		context.Background(), service.item.ID, anthropic.BetaDeploymentUpdateParams{
-			Budget: param.NullStruct[anthropic.BetaManagedAgentsBudgetLimitParam](),
-		},
+	if _, err := client.Deployments.Update(
+		context.Background(), service.item.ID, sdkBody[mango.DeploymentUpdateRequest](t, `{"budget":null}`),
 	); err != nil {
 		t.Fatalf("null Deployment budget update through SDK: %v", err)
 	}
-	updated, err := client.Beta.Deployments.Update(
-		context.Background(), service.item.ID, anthropic.BetaDeploymentUpdateParams{Budget: limit},
+	updated, err := client.Deployments.Update(
+		context.Background(), service.item.ID, sdkBody[mango.DeploymentUpdateRequest](t, `{"budget":{"type":"limit","max_list_cost":{"amount":"2500","currency":"USD"}}}`),
 	)
-	if err != nil || !strings.Contains(updated.RawJSON(), `"amount":"2500"`) {
+	if err != nil || !strings.Contains(responseJSON(), `"amount":"2500"`) {
 		t.Fatalf("reset Deployment budget: deployment=%+v err=%v", updated, err)
 	}
-	listed, err := client.Beta.Deployments.List(
-		context.Background(), anthropic.BetaDeploymentListParams{Limit: anthropic.Int(20)},
+	listed, err := client.Deployments.List(
+		context.Background(), mango.ListDeploymentsParams{Limit: mango.Some[int64](20)},
 	)
 	if err != nil || len(listed.Data) != 1 {
 		t.Fatalf("list Deployments through SDK: page=%+v err=%v", listed, err)
 	}
-	if _, err := client.Beta.Deployments.Pause(
-		context.Background(), service.item.ID, anthropic.BetaDeploymentPauseParams{},
+	if _, err := client.Deployments.Pause(
+		context.Background(), service.item.ID,
 	); err != nil {
 		t.Fatalf("pause Deployment through SDK: %v", err)
 	}
-	if _, err := client.Beta.Deployments.Unpause(
-		context.Background(), service.item.ID, anthropic.BetaDeploymentUnpauseParams{},
+	if _, err := client.Deployments.Unpause(
+		context.Background(), service.item.ID,
 	); err != nil {
 		t.Fatalf("unpause Deployment through SDK: %v", err)
 	}
-	if _, err := client.Beta.Deployments.Archive(
-		context.Background(), service.item.ID, anthropic.BetaDeploymentArchiveParams{},
+	if _, err := client.Deployments.Archive(
+		context.Background(), service.item.ID,
 	); err != nil {
 		t.Fatalf("archive Deployment through SDK: %v", err)
 	}
-	run, err := client.Beta.Deployments.Run(
-		context.Background(), service.item.ID, anthropic.BetaDeploymentRunParams{},
+	run, err := client.Deployments.Run(
+		context.Background(), service.item.ID,
 	)
-	if err != nil || run.ID != service.run.ID || run.SessionID != "sesn_sdk" {
+	if err != nil || run.ID != service.run.ID || run.SessionID == nil || *run.SessionID != "sesn_sdk" {
 		t.Fatalf("run Deployment through SDK: run=%+v err=%v", run, err)
 	}
-	if _, err := client.Beta.DeploymentRuns.Get(
-		context.Background(), service.run.ID, anthropic.BetaDeploymentRunGetParams{},
+	if _, err := client.DeploymentRuns.Get(
+		context.Background(), service.run.ID,
 	); err != nil {
 		t.Fatalf("get Deployment Run through SDK: %v", err)
 	}
-	runs, err := client.Beta.DeploymentRuns.List(
-		context.Background(), anthropic.BetaDeploymentRunListParams{
-			DeploymentID: anthropic.String(service.item.ID),
+	runs, err := client.DeploymentRuns.List(
+		context.Background(), mango.ListDeploymentRunsParams{
+			DeploymentID: mango.Some(service.item.ID),
 		},
 	)
 	if err != nil || len(runs.Data) != 1 || runs.Data[0].ID != service.run.ID {

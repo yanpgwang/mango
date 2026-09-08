@@ -3,9 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -28,6 +30,9 @@ func run() (result error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.System.Health(ctx); err != nil {
+		return err
+	}
+	if err := checkFiles(ctx, client); err != nil {
 		return err
 	}
 	var environmentID, sessionID string
@@ -162,6 +167,31 @@ func run() (result error) {
 	var apiError *mango.APIError
 	if !errors.As(err, &apiError) || apiError.StatusCode != 404 || apiError.Type != "not_found_error" || apiError.RequestID == "" {
 		return fmt.Errorf("expected typed correlated 404, got %v", err)
+	}
+	return nil
+}
+
+func checkFiles(ctx context.Context, client *mango.Client) (result error) {
+	payload := []byte{'m', 'a', 'n', 'g', 'o', 0, 255}
+	file, err := client.Files.Upload(ctx, mango.FileUploadRequest{File: mango.Upload{Filename: "result.bin", ContentType: "application/octet-stream", Reader: bytes.NewReader(payload)}})
+	if err != nil {
+		return err
+	}
+	defer func() { _, err := client.Files.Delete(ctx, file.ID); result = errors.Join(result, err) }()
+	if file.Filename != "result.bin" || file.SizeBytes != int64(len(payload)) {
+		return fmt.Errorf("File metadata: %+v", file)
+	}
+	download, err := client.Files.Download(ctx, file.ID)
+	if err != nil {
+		return err
+	}
+	body, err := io.ReadAll(download)
+	err = errors.Join(err, download.Close())
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(body, payload) {
+		return errors.New("File download changed immutable bytes")
 	}
 	return nil
 }

@@ -91,6 +91,7 @@ type EnvironmentWork struct {
 	StoppedAt         pgtype.Timestamptz
 	PolledAt          pgtype.Timestamptz
 	PollWorkerID      *string
+	SessionsTokenHash []byte
 }
 
 type EnvironmentWorkPoller struct {
@@ -119,9 +120,6 @@ type File struct {
 	Filename       string
 	MimeType       string
 	SizeBytes      int64
-	Downloadable   bool
-	ScopeID        *string
-	ScopeType      *string
 	BlobKey        string
 	ChecksumSha256 string
 	State          string

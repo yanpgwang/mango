@@ -219,10 +219,16 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 	log := w.logger.With("work_id", work.ID, "session_id", work.Data.ID)
 
 	sessionCtx, cancelSession := context.WithCancelCause(ctx)
+	defer cancelSession(context.Canceled)
+	// Cancellation stops tool execution, but the item still owns its Memory
+	// flush and final result delivery. Keep renewing until teardown completes;
+	// an actual lease rejection still cancels the Session immediately.
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelHeartbeat()
 	start := make(chan environmentHeartbeatStart, 1)
 	heartbeatDone := make(chan environmentHeartbeatEnd, 1)
 	go func() {
-		end := w.runHeartbeat(sessionCtx, itemClient, work, start, log)
+		end := w.runHeartbeat(heartbeatCtx, itemClient, work, start, log)
 		heartbeatDone <- end
 		switch {
 		case end.lost():
@@ -294,6 +300,7 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 	}
 
 	cancelSession(context.Canceled)
+	cancelHeartbeat()
 	heartbeatEnd := <-heartbeatDone
 	leaseLost := heartbeatEnd.lost() || errors.Is(runnerErr, ErrSessionLeaseLost)
 	if leaseLost {

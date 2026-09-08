@@ -2002,15 +2002,6 @@
             "minLength": 1,
             "type": "string"
           }
-        },
-        {
-          "description": "Filter Files by their producing Session ID.",
-          "in": "query",
-          "name": "scope_id",
-          "schema": {
-            "minLength": 1,
-            "type": "string"
-          }
         }
       ],
       "request_content_type": "",

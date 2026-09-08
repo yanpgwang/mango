@@ -41,8 +41,9 @@ Mango keeps these runtime requirements:
   configuration, not Agent or Session resources.
 - MCP tools default to `always_ask`; built-in tools default to `always_allow`.
   A running Session keeps the tool configuration snapshot with which it began.
-- Large tool output is materialized as a file in the Session sandbox. The model
-  receives a bounded preview and a path rather than an unbounded inline value.
+- Local tool output follows the operator worker's limits. Control-plane MCP
+  output above 100,000 characters becomes a 2,000-character preview without a
+  full-result file; binary MCP content is reported as unsupported.
 - Self-hosted sandboxes change the execution location, not the control-plane
   resource model. Tool inputs and results still cross the control plane.
 
@@ -62,7 +63,7 @@ authorities:
 | What did the client observe? | Public Event Ledger | PostgreSQL |
 | What exact context continues the model conversation? | Provider Transcript | PostgreSQL JSONB |
 | Did a tool possibly change the world? | Operation Journal | PostgreSQL |
-| Where are large tool bytes, mutable files, and processes? | Session Sandbox | Sandbox provider |
+| Where are local tool files and processes? | Operator workspace | Operator worker |
 | Where are independent public File bytes? | Files API | S3-compatible object storage |
 | What knowledge is shared across Sessions? | Memory Store | Separate versioned resource |
 | Where are credentials? | Deployment/worker configuration | Environment or operator-managed secret injection |
@@ -70,8 +71,9 @@ authorities:
 
 These are logical boundaries, not a requirement for separate services.
 PostgreSQL initially holds small transactional records and the lossless
-provider transcript. Large tool output and binary MCP content live in the
-Session sandbox. There is intentionally no general Artifact subsystem in the
+provider transcript. MCP results are projected into bounded inline content; the
+control plane does not write raw or binary MCP content into the operator
+workspace. There is intentionally no general Artifact subsystem in the
 first implementation. Independent public Files use a narrow S3-compatible byte
 store without changing the existing tool-result and provider-transcript paths.
 
@@ -222,8 +224,8 @@ flowchart LR
   Managed --> Raw
   Worker --> Raw
   Client --> Raw
-  Raw --> Sandbox["Sandbox file when large/binary"]
-  Raw --> Transcript["Exact provider transcript"]
+  Native --> Transcript["Exact provider transcript"]
+  Managed --> Bounded["Bounded MCP content; no file fallback"]
   Raw --> Context["Model context projection"]
   Raw --> Public["Public event projection"]
   Native --> Journal["Operation journal"]
@@ -328,8 +330,8 @@ A future `platform_managed` fetch executor must additionally enforce:
 - redirect count, response size, decompression, media-type, and time limits;
 - tenant/domain policy, egress proxy policy, and auditable provenance;
 - a deliberate cache and content-retention policy;
-- sanitization of model-facing previews without destroying the raw sandbox
-  file.
+- explicit treatment of oversized content and a retrieval contract if full
+  bytes need to remain available outside model context.
 
 The provider's rule that a fetched URL must already appear in conversation
 context is treated as a security boundary for native execution. A managed
@@ -391,8 +393,8 @@ An MCP tool call uses the normal operation journal:
 2. enforce `always_ask`, parking the Session before network execution;
 3. mark `started`;
 4. invoke the remote server with deadlines and bounded transport;
-5. retain a bounded raw MCP result in the journal, or write its large/binary
-   form into the Session sandbox;
+5. retain raw MCP JSON in the private journal only when it fits the
+   100,000-byte diagnostic limit; oversized raw content is omitted;
 6. create the model and public projections;
 7. atomically mark the step `completed`.
 
@@ -400,10 +402,16 @@ If the connection breaks after `started`, the step is `ambiguous` unless the
 tool has a proven idempotency contract. The runtime must not infer that read-like
 tool names are safe.
 
-MCP `structuredContent`, textual/image content, `isError`, and protocol metadata
-are retained in the raw result. Only explicitly allowed content enters model
-context; transport `_meta`, credentials, and control metadata do not. Oversized
-results use the same sandbox-file plus bounded-preview path as built-ins.
+MCP text, textual embedded resources, links, and `structuredContent` become
+model-visible text. Image, audio, and binary resource content become an explicit
+unsupported-content message. `_meta` and protocol control fields stay outside
+model context; bounded raw JSON may remain in the private journal.
+
+If the projected text exceeds 100,000 characters, only a 2,000-character preview
+and truncation notice reach the model and public event. There is no full-result
+File or sandbox path to read afterward. Applications should paginate or narrow
+large MCP responses. A future full-result transfer mechanism needs an explicit
+storage, authorization, retention, and worker-retrieval contract.
 
 The first MCP slice supports tools only. Resources and prompts should be added
 only when Mango's product requirements and context policy define their
@@ -480,8 +488,8 @@ deletion follows the File resource's own lifecycle.
 
 ## Implementation status
 
-The current code has a public ledger, outbox, Temporal workflow, sandbox
-binding, and tool ambiguity journal. This change adds the minimum context and
+The current code has a public ledger, outbox, Temporal workflow, Environment
+Work leases, and tool ambiguity journal. This change adds the minimum context and
 tool boundaries needed for native web and unauthenticated MCP:
 
 1. Committed turns load a lossless Provider Transcript rather than reconstruct
@@ -490,7 +498,8 @@ tool boundaries needed for native web and unauthenticated MCP:
    unchanged.
 3. Provider tool-use IDs remain private; explicit mappings connect them to
    public event IDs.
-4. Oversized local and MCP results share the 100,000-character sandbox policy.
+4. Local tools enforce worker-side output limits; oversized MCP projections
+   use a bounded preview and do not create a sandbox file.
 5. Native Web Search/Fetch declarations go to the configured Messages API
    `base_url`; provider-native web rejects `always_ask`.
 6. Remote MCP tools use the official Go SDK, Session-pinned discovery, normal
@@ -517,8 +526,8 @@ tool boundaries needed for native web and unauthenticated MCP:
 
 1. **Context foundation:** Provider Transcript, lossless provider blocks, and
    provider/public ID mappings. Implemented for committed turns.
-2. **Payload foundation:** Shared sandbox materialization. Implemented for
-   oversized local results and MCP raw/binary results.
+2. **Payload foundation:** Local worker output limits and bounded inline MCP
+   projections. Full MCP result transfer is not implemented.
 3. **Native web:** provider capability profile plus native Web Search/Fetch in
    `always_allow` mode, with exact replay, citations, and a hard per-request
    context-size ceiling. Native declarations and replay are implemented;

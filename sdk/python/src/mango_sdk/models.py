@@ -503,11 +503,9 @@ EventStreamFrame: TypeAlias = Union['SessionEvent', 'EventStart', 'EventDelta']
 
 class File(TypedDict, total=False):
     created_at: Required[str]
-    downloadable: Required[bool]
     filename: Required[str]
     id: Required[str]
     mime_type: Required[str]
-    scope: Required[Union['FileScope', None]]
     size_bytes: Required[int]
     type: Required[Literal['file']]
 
@@ -537,11 +535,6 @@ class FileList(TypedDict, total=False):
 class FileRubric(TypedDict, total=False):
     file_id: Required[str]
     type: Required[Literal['file']]
-
-
-class FileScope(TypedDict, total=False):
-    id: Required[str]
-    type: Required[Literal['session']]
 
 
 class FileUploadRequest(TypedDict, total=False):
@@ -1807,7 +1800,6 @@ __all__ = ['Agent',
  'FileImageSourceInput',
  'FileList',
  'FileRubric',
- 'FileScope',
  'FileUploadRequest',
  'ImageBlockInput',
  'ImageSourceInput',

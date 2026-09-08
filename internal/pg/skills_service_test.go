@@ -10,12 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/blob"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
 func TestSkillService_PostgresS3SDKLifecycleAndRestartReconciliation(t *testing.T) {
@@ -38,57 +37,55 @@ func TestSkillService_PostgresS3SDKLifecycleAndRestartReconciliation(t *testing.
 	service := app.NewSkillService(repo, blobs, domain.NewSeqIDGen(), fixedClock{})
 	server := httptestServerForSkills(t, service)
 	defer server.Close()
-	client := anthropic.NewClient(option.WithBaseURL(server.URL), option.WithAuthToken("sk-test"))
+	client, err := mango.New(mango.Config{BaseURL: server.URL, APIKey: "sk-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	archive := postgresSkillArchive(t)
 
-	created, err := client.Beta.Skills.New(ctx, anthropic.BetaSkillNewParams{
-		Files: []io.Reader{&postgresSkillReader{
-			Reader: bytes.NewReader(archive), filename: "database-audit.zip",
-		}},
+	created, err := client.Skills.New(ctx, mango.SkillUploadRequest{
+		Files: []mango.Upload{{Reader: bytes.NewReader(archive), Filename: "database-audit.zip", ContentType: "application/zip"}},
 	})
 	if err != nil {
 		t.Fatalf("Create Skill: %v", err)
 	}
-	if created.ID == "" || created.LatestVersion == "" || created.DisplayTitle != "database-audit" {
-		t.Fatalf("created = %s", created.RawJSON())
+	if created.ID == "" || created.LatestVersion == nil || created.DisplayTitle != "database-audit" {
+		t.Fatalf("created = %+v", created)
 	}
-	download, err := client.Beta.Skills.Versions.Download(
-		ctx, created.LatestVersion,
-		anthropic.BetaSkillVersionDownloadParams{SkillID: created.ID},
+	download, err := client.Skills.Versions.Download(
+		ctx, created.ID, *created.LatestVersion,
 	)
 	if err != nil {
 		t.Fatalf("Download: %v", err)
 	}
-	downloaded, readErr := io.ReadAll(download.Body)
-	_ = download.Body.Close()
+	downloaded, readErr := io.ReadAll(download)
+	_ = download.Close()
 	if readErr != nil || !zipContains(t, downloaded, "database-audit/SKILL.md") {
 		t.Fatalf("downloaded archive = %d bytes, %v", len(downloaded), readErr)
 	}
 
-	second, err := client.Beta.Skills.Versions.New(
-		ctx, created.ID, anthropic.BetaSkillVersionNewParams{Files: []io.Reader{
-			&postgresSkillReader{Reader: bytes.NewReader(archive), filename: "database-audit.zip"},
-		}},
+	second, err := client.Skills.Versions.New(
+		ctx, created.ID, mango.SkillVersionUploadRequest{Files: []mango.Upload{{Reader: bytes.NewReader(archive), Filename: "database-audit.zip", ContentType: "application/zip"}}},
 	)
-	if err != nil || second.Version == created.LatestVersion {
+	if err != nil || second.Version == *created.LatestVersion {
 		t.Fatalf("Create Version = %+v, %v", second, err)
 	}
-	if _, err := client.Beta.Skills.Delete(ctx, created.ID, anthropic.BetaSkillDeleteParams{}); err == nil {
+	if _, err := client.Skills.Delete(ctx, created.ID); err == nil {
 		t.Fatal("Skill with Versions was deleted")
 	}
-	for _, version := range []string{created.LatestVersion, second.Version} {
-		if _, err := client.Beta.Skills.Versions.Delete(
-			ctx, version, anthropic.BetaSkillVersionDeleteParams{SkillID: created.ID},
+	for _, version := range []string{*created.LatestVersion, second.Version} {
+		if _, err := client.Skills.Versions.Delete(
+			ctx, created.ID, version,
 		); err != nil {
 			t.Fatalf("Delete Version %s: %v", version, err)
 		}
 	}
-	empty, err := client.Beta.Skills.Get(ctx, created.ID, anthropic.BetaSkillGetParams{})
-	if err != nil || empty.LatestVersion != "" {
+	empty, err := client.Skills.Get(ctx, created.ID)
+	if err != nil || empty.LatestVersion != nil {
 		t.Fatalf("empty Skill = %+v, %v", empty, err)
 	}
-	if _, err := client.Beta.Skills.Delete(ctx, created.ID, anthropic.BetaSkillDeleteParams{}); err != nil {
+	if _, err := client.Skills.Delete(ctx, created.ID); err != nil {
 		t.Fatalf("Delete Skill: %v", err)
 	}
 

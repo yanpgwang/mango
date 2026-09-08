@@ -24,10 +24,6 @@ func TestFileRepository_LifecycleAndBidirectionalPaging(t *testing.T) {
 			Filename:  "file.txt", MimeType: "text/plain",
 			BlobKey: "files/file_" + itoa(int64(index)), State: domain.FileStateUploading,
 		}
-		if index == 3 {
-			file.Scope = &domain.FileScope{ID: "sesn_scope", Type: "session"}
-			file.Downloadable = true
-		}
 		if err := repo.BeginUpload(ctx, file); err != nil {
 			t.Fatalf("BeginUpload %d: %v", index, err)
 		}
@@ -82,15 +78,6 @@ func TestFileRepository_LifecycleAndBidirectionalPaging(t *testing.T) {
 		t.Fatal("newest backward page has_more = true")
 	}
 
-	scoped, err := repo.List(ctx, app.FileListQuery{ScopeID: "sesn_scope", Limit: 20})
-	if err != nil {
-		t.Fatalf("scope filter = %+v, %v", scoped, err)
-	}
-	assertFileIDs(t, scoped.Files, "file_3")
-	missingScope, err := repo.List(ctx, app.FileListQuery{ScopeID: "sesn_missing", Limit: 20})
-	if err != nil || len(missingScope.Files) != 0 {
-		t.Fatalf("missing scope filter = %+v, %v", missingScope, err)
-	}
 	if _, err := repo.List(ctx, app.FileListQuery{AfterID: "file_missing", Limit: 2}); err == nil {
 		t.Fatal("missing cursor accepted")
 	}

@@ -39,7 +39,6 @@ func (sessionTokenTestAuthenticator) AuthenticateSessionToken(
 		Skills: map[workspace.SkillVersion]struct{}{
 			{ID: "skill_one", Version: "v1"}: {},
 		},
-		Files: map[string]struct{}{"file_one": {}},
 		Memories: map[string]string{
 			"store_rw": domain.MemoryAccessReadWrite,
 			"store_ro": domain.MemoryAccessReadOnly,
@@ -218,7 +217,11 @@ func TestAuthMiddleware_SessionTokenIsResourceScoped(t *testing.T) {
 		{name: "events send", method: http.MethodPost, path: "/v1/sessions/sesn_one/events", want: 204},
 		{name: "events stream", method: http.MethodGet, path: "/v1/sessions/sesn_one/events/stream", want: 204},
 		{name: "skill content", method: http.MethodGet, path: "/v1/skills/skill_one/versions/v1/content", want: 204},
-		{name: "file content", method: http.MethodGet, path: "/v1/files/file_one/content", want: 204},
+		{name: "file content", method: http.MethodGet, path: "/v1/files/file_one/content", want: 403},
+		{name: "file metadata", method: http.MethodGet, path: "/v1/files/file_one", want: 403},
+		{name: "file list", method: http.MethodGet, path: "/v1/files", want: 403},
+		{name: "file upload", method: http.MethodPost, path: "/v1/files", want: 403},
+		{name: "file delete", method: http.MethodDelete, path: "/v1/files/file_one", want: 403},
 		{name: "memory list", method: http.MethodGet, path: "/v1/memory_stores/store_rw/memories?view=full", want: 204},
 		{name: "memory create", method: http.MethodPost, path: "/v1/memory_stores/store_rw/memories", want: 204},
 		{name: "memory get read-only", method: http.MethodGet, path: "/v1/memory_stores/store_ro/memories/mem_one?view=full", want: 204},

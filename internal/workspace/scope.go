@@ -44,7 +44,6 @@ type SessionScope struct {
 	// protected write, closing the middleware-to-database reclaim race.
 	CredentialDigest []byte
 	Skills           map[SkillVersion]struct{}
-	Files            map[string]struct{}
 	// Memories records the access snapshotted on each Memory Store attached to
 	// the Session. The per-Work credential may read only these stores and may
 	// mutate a store only when its value is "read_write".

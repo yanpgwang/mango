@@ -831,14 +831,12 @@ func (value *EventStreamFrame) UnmarshalJSON(data []byte) error {
 }
 
 type File struct {
-	CreatedAt    string     `json:"created_at"`
-	Downloadable bool       `json:"downloadable"`
-	Filename     string     `json:"filename"`
-	ID           string     `json:"id"`
-	MimeType     string     `json:"mime_type"`
-	Scope        *FileScope `json:"scope"`
-	SizeBytes    int64      `json:"size_bytes"`
-	Type         string     `json:"type"`
+	CreatedAt string `json:"created_at"`
+	Filename  string `json:"filename"`
+	ID        string `json:"id"`
+	MimeType  string `json:"mime_type"`
+	SizeBytes int64  `json:"size_bytes"`
+	Type      string `json:"type"`
 }
 
 type FileDeleted struct {
@@ -866,11 +864,6 @@ type FileList struct {
 type FileRubric struct {
 	FileID string `json:"file_id"`
 	Type   string `json:"type"`
-}
-
-type FileScope struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
 }
 
 type FileUploadRequest struct {
@@ -989,7 +982,6 @@ type ListFilesParams struct {
 	AfterID  Optional[string] `json:"after_id,omitzero"`
 	BeforeID Optional[string] `json:"before_id,omitzero"`
 	Limit    Optional[int64]  `json:"limit,omitzero"`
-	ScopeID  Optional[string] `json:"scope_id,omitzero"`
 }
 
 type ListMemoriesParams struct {

@@ -122,7 +122,7 @@ Content blocks are validated as closed tagged unions. Images accept `base64`
 and `url` sources. Documents accept `base64`, `text`, `url`, and `file`
 sources, with `text` sources requiring `media_type: text/plain`. A `file`
 source is supported only on `user.message` documents and must reference a
-ready, top-level File in the same Workspace whose declared media type and bytes
+ready File in the same Workspace whose declared media type and bytes
 are eligible for UTF-8 text projection. Mango checks the stored size and
 SHA-256, rejects empty, NUL-containing, non-UTF-8, scoped, missing, corrupt,
 and non-text Files, and limits resolved File content to 262,144 characters per
@@ -134,7 +134,7 @@ Tool-result search blocks require `source`, `title`, `citations.enabled`, and
 an array of text blocks. Unknown fields are rejected at every nested level.
 Outcome rubrics accept inline `{type: "text", content: "..."}` or reusable
 `{type: "file", file_id: "file_..."}` inputs. Both are limited to 262,144
-characters. A File rubric must be a ready, top-level File in the same Workspace;
+characters. A File rubric must be a ready File in the same Workspace;
 Mango validates and snapshots its UTF-8 text before admitting the event. The
 public event keeps the File reference and never exposes the private snapshot.
 

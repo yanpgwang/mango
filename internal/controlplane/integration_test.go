@@ -14,14 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
 	"github.com/yanpgwang/mango/internal/pg"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
 const testDatabaseURLEnv = "MANGO_TEST_DATABASE_URL"
@@ -312,7 +311,7 @@ func TestPostgresHTTPSessionPrimaryThreadLifecycle(t *testing.T) {
 	}
 }
 
-func TestOfficialGoSDKArchivesPostgresChildThread(t *testing.T) {
+func TestMangoSDKArchivesPostgresChildThread(t *testing.T) {
 	handler, fixture := postgresHandlerWithFixture(t)
 	ctx := context.Background()
 	session := domain.Session{
@@ -353,16 +352,13 @@ func TestOfficialGoSDKArchivesPostgresChildThread(t *testing.T) {
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-	client := anthropic.NewClient(
-		option.WithBaseURL(server.URL+"/"), option.WithAuthToken("test-key"),
-	)
-	archived, err := client.Beta.Sessions.Threads.Archive(
-		ctx,
-		child.ID,
-		anthropic.BetaSessionThreadArchiveParams{SessionID: session.ID},
-	)
-	if err != nil || archived.ID != child.ID || archived.ArchivedAt.IsZero() ||
-		archived.Status != anthropic.BetaManagedAgentsSessionThreadStatusTerminated {
+	client, err := mango.New(mango.Config{BaseURL: server.URL, APIKey: "test-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, err := client.Sessions.Threads.Archive(ctx, session.ID, child.ID)
+	if err != nil || archived.ID != child.ID || archived.ArchivedAt == nil ||
+		archived.Status != "terminated" {
 		t.Fatalf("Archive child Session Thread = %+v, err=%v", archived, err)
 	}
 	wakeups, err := fixture.store.ListWakeupsForDelivery(ctx, 100)

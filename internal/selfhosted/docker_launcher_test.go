@@ -345,6 +345,15 @@ func TestDockerLauncherStopsContainerWhenSupervisorIsCancelled(t *testing.T) {
 	if engine.stopCalls != 1 {
 		t.Fatalf("ContainerStop calls = %d, want 1", engine.stopCalls)
 	}
+	// Check the externally supplied Docker budget, not a matching internal
+	// constant: both Memory passes and result/Stop delivery must fit. A direct
+	// `docker stop` must receive the same safe default as supervisor shutdown.
+	if engine.stopTimeout < 120 || engine.stopRequestBudget < time.Duration(engine.stopTimeout)*time.Second {
+		t.Fatalf("Docker grace=%ds API budget=%s", engine.stopTimeout, engine.stopRequestBudget)
+	}
+	if stop := engine.created[0].Config.StopTimeout; stop == nil || *stop != engine.stopTimeout {
+		t.Fatalf("container StopTimeout = %v; supervisor uses %d", stop, engine.stopTimeout)
+	}
 }
 
 func TestDockerLauncherReportsNonZeroContainerExitWithoutLeakingSecret(t *testing.T) {
@@ -400,24 +409,26 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 }
 
 type fakeDockerEngine struct {
-	mu              sync.Mutex
-	created         []client.ContainerCreateOptions
-	attachedInput   chan []byte
-	attachOptions   client.ContainerAttachOptions
-	waitImmediately bool
-	waitStatus      int64
-	waitResult      chan container.WaitResponse
-	waitError       chan error
-	started         chan struct{}
-	stopCalls       int
-	removeCalls     int
-	stopErr         error
-	startErr        error
-	createErr       error
-	attachErr       error
-	removeErr       error
-	inspectResult   client.ContainerInspectResult
-	inspectErr      error
+	mu                sync.Mutex
+	created           []client.ContainerCreateOptions
+	attachedInput     chan []byte
+	attachOptions     client.ContainerAttachOptions
+	waitImmediately   bool
+	waitStatus        int64
+	waitResult        chan container.WaitResponse
+	waitError         chan error
+	started           chan struct{}
+	stopCalls         int
+	stopTimeout       int
+	stopRequestBudget time.Duration
+	removeCalls       int
+	stopErr           error
+	startErr          error
+	createErr         error
+	attachErr         error
+	removeErr         error
+	inspectResult     client.ContainerInspectResult
+	inspectErr        error
 }
 
 func newFakeDockerEngine() *fakeDockerEngine {
@@ -482,9 +493,15 @@ func (f *fakeDockerEngine) ContainerWait(context.Context, string, client.Contain
 	return client.ContainerWaitResult{Result: result, Error: errorsCh}
 }
 
-func (f *fakeDockerEngine) ContainerStop(context.Context, string, client.ContainerStopOptions) (client.ContainerStopResult, error) {
+func (f *fakeDockerEngine) ContainerStop(ctx context.Context, _ string, options client.ContainerStopOptions) (client.ContainerStopResult, error) {
 	f.mu.Lock()
 	f.stopCalls++
+	if options.Timeout != nil {
+		f.stopTimeout = *options.Timeout
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		f.stopRequestBudget = time.Until(deadline)
+	}
 	result := f.waitResult
 	err := f.stopErr
 	f.mu.Unlock()

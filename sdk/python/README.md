@@ -122,11 +122,10 @@ with Mango(api_key="workspace-key") as client:
     skill = client.skills.create(files=[
         Upload("analysis/SKILL.md", b"---\nname: analysis\ndescription: Analyze data\n---\n"),
     ])
-    # Only downloadable Session-scoped Files can be downloaded; client uploads cannot.
-    for output in client.files.iter(scope_id="sesn_..."):
-        with client.files.download(output["id"]) as stream:
-            for chunk in stream.iter_bytes():
-                consume(chunk)  # Your application owns the destination.
+    # Download the immutable upload using the same Workspace credential.
+    with client.files.download(uploaded["id"]) as stream:
+        for chunk in stream.iter_bytes():
+            consume(chunk)  # Your application owns the destination.
     try:
         client.sessions.retrieve("sesn_missing")
     except APIError as error:

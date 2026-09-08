@@ -498,15 +498,6 @@
           "type": "string"
         }
       },
-      "ScopeID": {
-        "description": "Filter Files by their producing Session ID.",
-        "in": "query",
-        "name": "scope_id",
-        "schema": {
-          "minLength": 1,
-          "type": "string"
-        }
-      },
       "SessionID": {
         "in": "path",
         "name": "session_id",
@@ -3893,9 +3884,6 @@
             "format": "date-time",
             "type": "string"
           },
-          "downloadable": {
-            "type": "boolean"
-          },
           "filename": {
             "maxLength": 255,
             "minLength": 1,
@@ -3908,16 +3896,6 @@
           "mime_type": {
             "minLength": 1,
             "type": "string"
-          },
-          "scope": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/FileScope"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "size_bytes": {
             "format": "int64",
@@ -3936,9 +3914,7 @@
           "filename",
           "mime_type",
           "size_bytes",
-          "type",
-          "downloadable",
-          "scope"
+          "type"
         ],
         "type": "object"
       },
@@ -4048,24 +4024,6 @@
         "required": [
           "type",
           "file_id"
-        ],
-        "type": "object"
-      },
-      "FileScope": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "type": {
-            "const": "session",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "type"
         ],
         "type": "object"
       },
@@ -9711,9 +9669,6 @@
           },
           {
             "$ref": "#/components/parameters/BeforeID"
-          },
-          {
-            "$ref": "#/components/parameters/ScopeID"
           }
         ],
         "responses": {
@@ -9835,7 +9790,7 @@
             "$ref": "#/components/responses/UnsupportedRequest"
           }
         },
-        "summary": "Download a File marked as downloadable",
+        "summary": "Download an immutable File in the authenticated Workspace",
         "tags": [
           "Files"
         ],

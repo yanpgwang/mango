@@ -132,6 +132,13 @@ responsibilities. On lease loss it cancels the runner, prevents later result
 submission, returns `ErrEnvironmentWorkLeaseLost`, and does not Stop a possibly
 newer owner's Work.
 
+Cancel the context passed to `EnvironmentWorker.Run` or `HandleItem` on shutdown.
+Tool execution is cancelled first; heartbeat renewal continues through Memory
+teardown, and Work Stop follows the flush. A full Memory reconciliation and
+rescue upload each have a 30-second budget. Allow additional time for tool/result
+cleanup and final Stop; the Docker reference grants 120 seconds. Hard kills and
+upload failures are not durable local Memory commits.
+
 For launchers that need Mango's core shell and file executors, the independent
 `tools/agenttoolset` package returns `bash`, `read`, `write`, `edit`, `glob`, and
 `grep` as `SessionTool` implementations:
