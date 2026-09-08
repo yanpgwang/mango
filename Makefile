@@ -16,7 +16,7 @@ LINT_BASE ?= origin/main
 # Optional test-binary wrapper; compilation and Go caches keep the caller's UID.
 SERVICE_TEST_EXEC ?=
 SERVICE_CORE_TEST_TIMEOUT ?= 10m
-SANDBOX_TEST_TIMEOUT ?= 20m
+SELF_HOSTED_TEST_TIMEOUT ?= 20m
 SERVICE_CORE_PACKAGES ?= \
 	./cmd/mango \
 	./internal/blob/... \
@@ -24,9 +24,8 @@ SERVICE_CORE_PACKAGES ?= \
 	./internal/live/... \
 	./internal/pg/... \
 	./internal/temporal/...
-SANDBOX_TEST_PACKAGES ?= \
+SELF_HOSTED_TEST_PACKAGES ?= \
 	./internal/agentruntime/... \
-	./internal/sandbox/... \
 	./internal/selfhosted/... \
 	./internal/testutil/dockertest
 WORKER_TEST_IMAGE ?= mango-self-hosted-worker:test
@@ -42,8 +41,6 @@ PYTHON ?= python3
 UV ?= uv
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
 MANGO_EXAMPLE_ADVISOR_MODEL_ID ?= $(MANGO_EXAMPLE_MODEL_ID)
-EXAMPLE_PYTHON ?= sdk/python/.venv/bin/python
-
 DOCKER_BUILD_ARGS := --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION)
 ifneq ($(strip $(GOPROXY)),)
 DOCKER_BUILD_ARGS += --build-arg GOPROXY=$(GOPROXY)
@@ -52,15 +49,14 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help build lint test test-race test-service test-service-core \
-	worker-test-image test-sandbox-docker test-model-live test-self-hosted-live test-platform-live \
-	test-coding-agent test-coding-agent-live test-hitl-gate demo-hitl-gate \
+	worker-test-image test-self-hosted-docker test-model-live test-self-hosted-live test-platform-live \
+	test-hitl-gate demo-hitl-gate \
 	demo-multi-agent-team \
 	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
 	terminal-ui-build terminal-ui-verify security docs-check image image-smoke dev-env-init \
 	local-config local-up local-down local-health local-ps local-logs
 
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
-.PHONY: demo-coding-agent
 
 help:
 	@echo "Development"
@@ -70,13 +66,10 @@ help:
 	@echo "  make test-race      run tests with the race detector"
 	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, MinIO, and Docker"
 	@echo "  make test-service-core  run stateful service integration tests"
-	@echo "  make test-sandbox-docker  run Docker sandbox conformance tests"
+	@echo "  make test-self-hosted-docker  run self-hosted Docker worker tests"
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"
 	@echo "  make test-self-hosted-live  run one real-model turn through a self-hosted Docker worker"
 	@echo "  make test-platform-live  alias for the self-hosted live smoke"
-	@echo "  make test-coding-agent   run the offline iterate coding scenario in Docker"
-	@echo "  make test-coding-agent-live  run the iterate scenario against the live model"
-	@echo "  make demo-coding-agent  run the Python SDK coding example against a running Mango server"
 	@echo "  make test-hitl-gate      run the durable custom-tool HITL scenario"
 	@echo "  make demo-hitl-gate      run the interactive HITL example over public HTTP"
 	@echo "  make demo-multi-agent-team  run the interactive multi-agent example over public HTTP"
@@ -116,7 +109,7 @@ test:
 test-race:
 	MANGO_TEST_DOCKER=0 $(GO) test -race ./...
 
-test-service: test-service-core test-sandbox-docker
+test-service: test-service-core test-self-hosted-docker
 
 worker-test-image:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
@@ -137,12 +130,12 @@ test-service-core: worker-test-image
 	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') \
 		-timeout '$(SERVICE_CORE_TEST_TIMEOUT)' $(SERVICE_CORE_PACKAGES) -count=1
 
-test-sandbox-docker: worker-test-image
+test-self-hosted-docker: worker-test-image
 	MANGO_TEST_DOCKER=1 \
 	MANGO_TEST_LIVE_MODEL=0 \
 	MANGO_TEST_WORKER_IMAGE='$(WORKER_TEST_IMAGE)' \
 	$(GO) test $(if $(SERVICE_TEST_EXEC),-exec '$(SERVICE_TEST_EXEC)') \
-		-timeout '$(SANDBOX_TEST_TIMEOUT)' $(SANDBOX_TEST_PACKAGES) -count=1
+		-timeout '$(SELF_HOSTED_TEST_TIMEOUT)' $(SELF_HOSTED_TEST_PACKAGES) -count=1
 
 test-model-live:
 	MANGO_TEST_LIVE_MODEL=1 \
@@ -161,21 +154,6 @@ test-self-hosted-live: worker-test-image
 
 test-platform-live: test-self-hosted-live
 
-test-coding-agent:
-	MANGO_TEST_DOCKER=1 \
-	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
-	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
-	$(GO) test ./internal/temporal \
-		-run '^TestVerticalSlice_DockerIterateFixFailingTestsEndToEnd$$' -count=1
-
-test-coding-agent-live:
-	MANGO_TEST_DOCKER=1 \
-	MANGO_TEST_LIVE_MODEL=1 \
-	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
-	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
-	$(GO) test ./internal/temporal \
-		-run '^TestVerticalSlice_LiveModelIterateFixFailingTestsEndToEnd$$' -count=1
-
 test-hitl-gate:
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
@@ -192,11 +170,6 @@ demo-multi-agent-team:
 	MANGO_EXAMPLE_ADVISOR_MODEL_ID='$(MANGO_EXAMPLE_ADVISOR_MODEL_ID)' \
 	env -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
 		$(GO) run ./examples/multi-agent-team
-
-demo-coding-agent:
-	MANGO_EXAMPLE_MODEL_ID='$(MANGO_EXAMPLE_MODEL_ID)' \
-	env -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
-		$(EXAMPLE_PYTHON) examples/coding-agent/main.py
 
 vet:
 	$(GO) vet ./...

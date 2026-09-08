@@ -212,11 +212,9 @@ their stored snapshot.
 }
 ```
 
-Custom Skill references are validated and version-pinned. Docker, E2B,
-CubeSandbox, OpenSandbox, and Daytona Sessions materialize those pins and
-expose a private `Skill` dispatcher that loads the selected `SKILL.md` into the
-conversation on demand. Docker uses a read-only bind mount; remote providers
-use permission-hardened sandbox-local copies whose canonical archives remain
-immutable in Mango storage. Agents with Skills must enable `read` for
+Custom Skill references are validated and version-pinned. The self-hosted
+worker verifies and prepares those pins, while Mango's private `Skill`
+dispatcher loads the selected `SKILL.md` into the conversation on demand.
+Canonical archives remain immutable in Mango storage. Agents with Skills must enable `read` for
 referenced files, and may not define a custom tool named `Skill`. Accepted Agent
 tool and MCP shapes are validated before a version is stored.

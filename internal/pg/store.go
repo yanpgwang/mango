@@ -209,19 +209,10 @@ func (s *Store) createSession(
 	if err != nil {
 		return Admission{}, err
 	}
-	if len(resources) > app.MaxSessionResources {
-		return Admission{}, domain.Validation("resources must contain at most 500 entries")
+	if len(resources) > domain.MaxSessionMemoryStores {
+		return Admission{}, domain.Validation("resources may contain at most 8 Memory Stores")
 	}
 	session.WorkspaceID = workspaceID
-	var resourceBytes int64
-	for _, resource := range resources {
-		if resource.Blob.SizeBytes > app.MaxSessionResourceBytes-resourceBytes {
-			return Admission{}, domain.TooLarge(
-				"Session File Resources exceed the 500 MB aggregate limit",
-			)
-		}
-		resourceBytes += resource.Blob.SizeBytes
-	}
 	// PostgreSQL timestamptz has microsecond precision. Normalize the JSON
 	// projection to the same value as the relational key so a list cursor never
 	// compares a nanosecond boundary against a truncated database timestamp.

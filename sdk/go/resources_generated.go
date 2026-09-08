@@ -72,19 +72,13 @@ type MemoryStoresVersionsService struct {
 
 // SessionsService operates on sessions resources.
 type SessionsService struct {
-	client    *Client
-	Events    SessionsEventsService
-	Resources SessionsResourcesService
-	Threads   SessionsThreadsService
+	client  *Client
+	Events  SessionsEventsService
+	Threads SessionsThreadsService
 }
 
 // SessionsEventsService operates on sessions.events resources.
 type SessionsEventsService struct {
-	client *Client
-}
-
-// SessionsResourcesService operates on sessions.resources resources.
-type SessionsResourcesService struct {
 	client *Client
 }
 
@@ -139,7 +133,7 @@ func (c *Client) initServices() {
 		Environments:   EnvironmentsService{client: c, Work: EnvironmentsWorkService{client: c}},
 		Files:          FilesService{client: c},
 		MemoryStores:   MemoryStoresService{client: c, Memories: MemoryStoresMemoriesService{client: c}, Versions: MemoryStoresVersionsService{client: c}},
-		Sessions:       SessionsService{client: c, Events: SessionsEventsService{client: c}, Resources: SessionsResourcesService{client: c}, Threads: SessionsThreadsService{client: c, Events: SessionsThreadsEventsService{client: c}}},
+		Sessions:       SessionsService{client: c, Events: SessionsEventsService{client: c}, Threads: SessionsThreadsService{client: c, Events: SessionsThreadsEventsService{client: c}}},
 		Skills:         SkillsService{client: c, Versions: SkillsVersionsService{client: c}},
 		System:         SystemService{client: c},
 		Vaults:         VaultsService{client: c, Credentials: VaultsCredentialsService{client: c}},

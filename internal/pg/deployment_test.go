@@ -22,10 +22,8 @@ func TestDeploymentSessionAndRunCommitAtomically(t *testing.T) {
 			Type: domain.EvUserMessage, Payload: map[string]any{"content": "run"},
 		}},
 		Resources: []domain.DeploymentResource{{
-			Type:                    domain.SessionResourceTypeGitRepository,
-			RepositoryURL:           "https://github.com/acme/widgets.git",
-			RepositoryCheckoutType:  domain.GitRepositoryCheckoutBranch,
-			RepositoryCheckoutValue: "main",
+			Type: domain.SessionResourceTypeMemoryStore, MemoryStoreID: "memstore_template",
+			Access: domain.MemoryAccessReadWrite, Instructions: "Keep the run history current.",
 		}},
 		Metadata: map[string]string{}, CreatedAt: now, UpdatedAt: now,
 	})
@@ -34,10 +32,9 @@ func TestDeploymentSessionAndRunCommitAtomically(t *testing.T) {
 	}
 	storedDeployment, err := repo.Get(ctx, deployment.ID)
 	if err != nil || len(storedDeployment.Resources) != 1 ||
-		storedDeployment.Resources[0].RepositoryURL != "https://github.com/acme/widgets.git" ||
-		storedDeployment.Resources[0].RepositoryCheckoutType != domain.GitRepositoryCheckoutBranch ||
-		storedDeployment.Resources[0].RepositoryCheckoutValue != "main" {
-		t.Fatalf("persisted Deployment repository template = %+v, %v", storedDeployment.Resources, err)
+		storedDeployment.Resources[0].MemoryStoreID != "memstore_template" ||
+		storedDeployment.Resources[0].Access != domain.MemoryAccessReadWrite {
+		t.Fatalf("persisted Deployment memory template = %+v, %v", storedDeployment.Resources, err)
 	}
 	if err := NewEnvironmentRepository(store).DeleteIfUnreferenced(ctx, deployment.EnvironmentID); err == nil {
 		t.Fatal("delete Deployment Environment succeeded; want conflict")
@@ -212,8 +209,8 @@ func seedDeploymentDependencies(t *testing.T, store *Store, now time.Time) {
 		t.Fatal(err)
 	}
 	if err := NewEnvironmentRepository(store).Put(context.Background(), domain.Environment{
-		ID: "env_deployment", Name: "Environment", ConfigType: "cloud",
-		Config: map[string]any{"type": "cloud"}, Metadata: map[string]any{},
+		ID: "env_deployment", Name: "Environment", ConfigType: "self_hosted",
+		Config: map[string]any{"type": "self_hosted"}, Metadata: map[string]any{},
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)

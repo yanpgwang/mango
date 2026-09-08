@@ -35,11 +35,6 @@ claims leased activations over HTTP and executes shell/file tools in its own
 sandbox. Provider-native Web tools and remote MCP have separate owners; see
 [where tools run](concepts.md#where-tools-run).
 
-The transitional `cloud` path instead invokes a sandbox adapter from the
-orchestration worker. It currently supplies File/Git preparation and automatic
-output publication that the first-party self-hosted worker does not yet offer.
-See [sandbox backends](sandboxes.md) for that path's limits.
-
 ## State ownership
 
 | System | Owns |
@@ -101,7 +96,6 @@ that every operator-owned workspace volume has been erased. See
 | `internal/temporal` | Workflows, Activities, orchestration workers, and relays. |
 | `internal/model`, `internal/agentruntime` | Model transport and conversation/tool-loop primitives. |
 | `internal/selfhosted` | Docker launcher and isolated Work execution. |
-| `internal/sandbox` | Transitional managed sandbox adapters. |
 | `internal/blob`, `internal/live` | Object storage and live transport. |
 
 Public wire types stay at the HTTP boundary. Storage and execution facts remain

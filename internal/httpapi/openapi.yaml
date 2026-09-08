@@ -5,7 +5,7 @@ info:
   description: >-
     Mango's current HTTP API for durable Sessions, Deployments, self-hosted
     Environment Work, conditional Files and Memory APIs, Vaults, Webhooks, and
-    File- and Memory-backed Session Resources. Mango is an independent, self-hosted
+    Memory-backed Session Resources. Mango is an independent, self-hosted
     runtime licensed under Apache-2.0.
   license:
     name: Apache-2.0
@@ -28,16 +28,12 @@ tags:
     description: Durable Session input and output events.
   - name: Session Threads
     description: Durable primary execution identities and thread-scoped event views.
-  - name: Session Resources
-    description: File copies and Memory Stores attached to durable Sessions.
   - name: Files
     description: Durable file metadata and S3-compatible byte storage.
   - name: Skills
     description: >-
       Custom filesystem Skills with immutable archived Versions and
-      provider-capability-gated Session materialization. Self-hosted Sessions
-      with custom Skills are rejected at creation; external worker Skill
-      activation is not implemented.
+      self-hosted worker preparation.
   - name: Memory
     description: Persistent path-addressed Memory Stores with immutable audit Versions.
   - name: Vaults
@@ -505,8 +501,8 @@ paths:
       tags: [Sessions]
       summary: Delete a non-running Session and its event history
       description: >-
-        Performs sandbox cleanup and removes Session-owned Files as well as
-        persisted history. Download outputs that must be retained first.
+        Removes persisted Session history and attached Memory Store state.
+        Operator-owned worker workspaces have an independent lifecycle.
       responses:
         '200':
           $ref: '#/components/responses/SessionDeletedResponse'
@@ -524,9 +520,8 @@ paths:
       tags: [Sessions]
       summary: Archive a non-running Session
       description: >-
-        Prevents further input and retains history and Session Files. Archive
-        does not release the sandbox; automatic idle or archive-based sandbox
-        reclamation is not implemented.
+        Prevents further input and retains history. Archive does not delete an
+        operator-owned worker workspace.
       responses:
         '200':
           $ref: '#/components/responses/SessionResponse'
@@ -534,86 +529,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
-
-  /v1/sessions/{session_id}/resources:
-    parameters:
-      - $ref: '#/components/parameters/SessionID'
-    post:
-      operationId: addSessionResource
-      x-sdk-resource: sessions.resources
-      x-sdk-method: create
-      tags: [Session Resources]
-      summary: Attach a File copy to a Session
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FileSessionResourceInput'
-      responses:
-        '200':
-          $ref: '#/components/responses/SessionResourceResponse'
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '413':
-          $ref: '#/components/responses/RequestTooLarge'
-        '422':
-          $ref: '#/components/responses/UnsupportedRequest'
-    get:
-      operationId: listSessionResources
-      x-sdk-resource: sessions.resources
-      x-sdk-method: list
-      tags: [Session Resources]
-      summary: List Session Resources
-      parameters:
-        - $ref: '#/components/parameters/SessionResourceListLimit'
-        - $ref: '#/components/parameters/Page'
-      responses:
-        '200':
-          $ref: '#/components/responses/SessionResourceListResponse'
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnsupportedRequest'
-
-  /v1/sessions/{session_id}/resources/{resource_id}:
-    parameters:
-      - $ref: '#/components/parameters/SessionID'
-      - $ref: '#/components/parameters/SessionResourceID'
-    get:
-      operationId: getSessionResource
-      x-sdk-resource: sessions.resources
-      x-sdk-method: retrieve
-      tags: [Session Resources]
-      summary: Get a Session Resource
-      responses:
-        '200':
-          $ref: '#/components/responses/SessionResourceResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnsupportedRequest'
-    delete:
-      operationId: deleteSessionResource
-      x-sdk-resource: sessions.resources
-      x-sdk-method: delete
-      tags: [Session Resources]
-      summary: Detach a File Resource from a Session
-      responses:
-        '200':
-          $ref: '#/components/responses/SessionResourceDeletedResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/UnsupportedRequest'
 
   /v1/sessions/{session_id}/events:
     parameters:
@@ -2301,21 +2216,6 @@ components:
       schema:
         type: string
         pattern: '^memstore_'
-    SessionResourceID:
-      name: resource_id
-      in: path
-      required: true
-      schema:
-        type: string
-        pattern: '^sesrsc_'
-    SessionResourceListLimit:
-      name: limit
-      in: query
-      description: Maximum resources per page. Omit to return all Session Resources.
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 1000
     CreatedAtGt:
       name: created_at[gt]
       in: query
@@ -2486,33 +2386,6 @@ components:
       content:
         application/json:
           schema: {$ref: '#/components/schemas/SessionThreadList'}
-    SessionResourceResponse:
-      description: File- or Memory-backed Session Resource
-      headers:
-        request-id:
-          $ref: '#/components/headers/RequestID'
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/SessionResource'
-    SessionResourceListResponse:
-      description: Session Resource page
-      headers:
-        request-id:
-          $ref: '#/components/headers/RequestID'
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/SessionResourceList'
-    SessionResourceDeletedResponse:
-      description: Session Resource deletion confirmation
-      headers:
-        request-id:
-          $ref: '#/components/headers/RequestID'
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/SessionResourceDeleted'
     SessionDeletedResponse:
       description: Session deleted
       headers:
@@ -2936,13 +2809,8 @@ components:
               maxItems: 5
               items: {type: string, format: date-time}
     DeploymentResourceInput:
-      oneOf:
-        - $ref: '#/components/schemas/FileSessionResourceInput'
-        - $ref: '#/components/schemas/MemoryStoreSessionResourceInput'
-        - $ref: '#/components/schemas/GitRepositorySessionResourceInput'
-      discriminator:
-        propertyName: type
-      description: Resource templates copied into each Run's Session. Git branch and default checkouts are resolved separately for every Run.
+      $ref: '#/components/schemas/MemoryStoreSessionResourceInput'
+      description: Memory Store template attached to each Run's Session.
     DeploymentMetadata:
       type: object
       maxProperties: 16
@@ -3035,45 +2903,14 @@ components:
           properties:
             type: {type: string}
     DeploymentResource:
-      oneOf:
-        - type: object
-          additionalProperties: false
-          required: [type, file_id, mount_path]
-          properties:
-            type: {type: string, const: file}
-            file_id: {type: string}
-            mount_path: {type: [string, 'null']}
-        - type: object
-          additionalProperties: false
-          required: [type, memory_store_id, access, instructions]
-          properties:
-            type: {type: string, const: memory_store}
-            memory_store_id: {type: string, pattern: '^memstore_'}
-            access: {type: [string, 'null'], enum: [read_write, read_only, null]}
-            instructions: {type: [string, 'null']}
-        - $ref: '#/components/schemas/GitRepositoryDeploymentResource'
-      discriminator:
-        propertyName: type
-    GitRepositoryDeploymentResource:
       type: object
       additionalProperties: false
-      required: [type, url, checkout, mount_path]
+      required: [type, memory_store_id, access, instructions]
       properties:
-        type:
-          type: string
-          const: git_repository
-        url:
-          type: string
-          format: uri
-          description: Anonymous public HTTPS Git remote retained as a Deployment template.
-        checkout:
-          oneOf:
-            - $ref: '#/components/schemas/GitRepositoryCheckout'
-            - type: 'null'
-          description: Requested branch or commit, or null to resolve the remote default branch on each Run.
-        mount_path:
-          type: [string, 'null']
-          description: Requested path, or null to derive /workspace/<repository> independently for each Run.
+        type: {type: string, const: memory_store}
+        memory_store_id: {type: string, pattern: '^memstore_'}
+        access: {type: [string, 'null'], enum: [read_write, read_only, null]}
+        instructions: {type: [string, 'null']}
     Deployment:
       type: object
       additionalProperties: false
@@ -3870,8 +3707,8 @@ components:
       type: object
       description: >-
         Shell and file tools execute in the Environment's sandbox. Web Search
-        and Web Fetch execute through the configured model endpoint in both
-        cloud and self_hosted Environments, require native Web-tool support and
+        and Web Fetch execute through the configured model endpoint, require
+        native Web-tool support and
         always_allow permission, and never request a worker user.tool_result.
       additionalProperties: false
       required: [type]
@@ -4382,112 +4219,6 @@ components:
         next_page:
           $ref: '#/components/schemas/Cursor'
 
-    UnrestrictedNetwork:
-      type: object
-      additionalProperties: false
-      required: [type]
-      properties:
-        type:
-          type: string
-          const: unrestricted
-    LimitedNetworkInput:
-      type: object
-      description: Deny-by-default sandbox egress. Admission returns 422 when the selected deployment backend cannot enforce host-level policy.
-      additionalProperties: false
-      required: [type]
-      properties:
-        type:
-          type: string
-          const: limited
-        allowed_hosts:
-          type: array
-          description: Bare hostnames or leading-star wildcard hostnames; schemes, ports, paths, and embedded wildcards are invalid.
-          items:
-            type: string
-        allow_mcp_servers:
-          type: boolean
-          default: false
-        allow_package_managers:
-          type: boolean
-          default: false
-    LimitedNetwork:
-      allOf:
-        - $ref: '#/components/schemas/LimitedNetworkInput'
-        - type: object
-          required: [type, allowed_hosts, allow_mcp_servers, allow_package_managers]
-    NetworkPolicyInput:
-      oneOf:
-        - $ref: '#/components/schemas/UnrestrictedNetwork'
-        - $ref: '#/components/schemas/LimitedNetworkInput'
-      discriminator:
-        propertyName: type
-    NetworkPolicy:
-      oneOf:
-        - $ref: '#/components/schemas/UnrestrictedNetwork'
-        - $ref: '#/components/schemas/LimitedNetwork'
-      discriminator:
-        propertyName: type
-    PackagesInput:
-      type: object
-      description: Packages to install before a Session sandbox becomes available to tool execution. Non-empty lists require an isolated package-capable deployment backend.
-      additionalProperties: false
-      properties:
-        type:
-          type: string
-          const: packages
-        apt:
-          type: array
-          items:
-            type: string
-        cargo:
-          type: array
-          items:
-            type: string
-        gem:
-          type: array
-          items:
-            type: string
-        go:
-          type: array
-          items:
-            type: string
-        npm:
-          type: array
-          items:
-            type: string
-        pip:
-          type: array
-          items:
-            type: string
-    Packages:
-      allOf:
-        - $ref: '#/components/schemas/PackagesInput'
-        - type: object
-          required: [type, apt, cargo, gem, go, npm, pip]
-    CloudEnvironmentConfigInput:
-      type: object
-      additionalProperties: false
-      required: [type]
-      properties:
-        type:
-          type: string
-          const: cloud
-        networking:
-          $ref: '#/components/schemas/NetworkPolicyInput'
-        packages:
-          $ref: '#/components/schemas/PackagesInput'
-    CloudEnvironmentConfig:
-      type: object
-      additionalProperties: false
-      required: [type, networking, packages]
-      properties:
-        type:
-          type: string
-          const: cloud
-        networking:
-          $ref: '#/components/schemas/NetworkPolicy'
-        packages:
-          $ref: '#/components/schemas/Packages'
     SelfHostedEnvironmentConfig:
       type: object
       additionalProperties: false
@@ -4497,17 +4228,9 @@ components:
           type: string
           const: self_hosted
     EnvironmentConfigInput:
-      oneOf:
-        - $ref: '#/components/schemas/CloudEnvironmentConfigInput'
-        - $ref: '#/components/schemas/SelfHostedEnvironmentConfig'
-      discriminator:
-        propertyName: type
+      $ref: '#/components/schemas/SelfHostedEnvironmentConfig'
     EnvironmentConfig:
-      oneOf:
-        - $ref: '#/components/schemas/CloudEnvironmentConfig'
-        - $ref: '#/components/schemas/SelfHostedEnvironmentConfig'
-      discriminator:
-        propertyName: type
+      $ref: '#/components/schemas/SelfHostedEnvironmentConfig'
     EnvironmentCreateRequest:
       type: object
       additionalProperties: false
@@ -5019,21 +4742,6 @@ components:
     SessionStatus:
       type: string
       enum: [idle, running, rescheduling, terminated]
-    FileSessionResourceInput:
-      type: object
-      additionalProperties: false
-      required: [type, file_id]
-      properties:
-        type:
-          type: string
-          const: file
-        file_id:
-          type: string
-          minLength: 1
-        mount_path:
-          type: string
-          minLength: 1
-          description: Absolute path normalized beneath /mnt/session/uploads.
     MemoryStoreSessionResourceInput:
       type: object
       additionalProperties: false
@@ -5053,85 +4761,7 @@ components:
           type: string
           maxLength: 4096
     SessionResourceInput:
-      oneOf:
-        - $ref: '#/components/schemas/FileSessionResourceInput'
-        - $ref: '#/components/schemas/MemoryStoreSessionResourceInput'
-        - $ref: '#/components/schemas/GitRepositorySessionResourceInput'
-      discriminator:
-        propertyName: type
-    GitRepositoryBranchCheckout:
-      type: object
-      additionalProperties: false
-      required: [type, name]
-      properties:
-        type:
-          type: string
-          const: branch
-        name:
-          type: string
-          minLength: 1
-          maxLength: 1024
-    GitRepositoryCommitCheckout:
-      type: object
-      additionalProperties: false
-      required: [type, sha]
-      properties:
-        type:
-          type: string
-          const: commit
-        sha:
-          type: string
-          pattern: '^[0-9a-fA-F]{40}$'
-    GitRepositoryCheckout:
-      oneOf:
-        - $ref: '#/components/schemas/GitRepositoryBranchCheckout'
-        - $ref: '#/components/schemas/GitRepositoryCommitCheckout'
-      discriminator:
-        propertyName: type
-    GitRepositorySessionResourceInput:
-      type: object
-      additionalProperties: false
-      required: [type, url]
-      properties:
-        type:
-          type: string
-          const: git_repository
-        url:
-          type: string
-          format: uri
-          pattern: '^https://'
-          maxLength: 2048
-          description: Anonymous public HTTPS Git remote. Credentials, query strings, and fragments are rejected.
-        checkout:
-          $ref: '#/components/schemas/GitRepositoryCheckout'
-        mount_path:
-          type: string
-          minLength: 1
-          maxLength: 1024
-          description: Absolute child of /workspace that does not overlap /workspace/skills.
-    FileSessionResource:
-      type: object
-      additionalProperties: false
-      required: [id, created_at, file_id, mount_path, type, updated_at]
-      properties:
-        id:
-          type: string
-          pattern: '^sesrsc_'
-        created_at:
-          type: string
-          format: date-time
-        file_id:
-          type: string
-          pattern: '^file_'
-          description: Independent downloadable Session-scoped File copy.
-        mount_path:
-          type: string
-        type:
-          type: string
-          const: file
-        updated_at:
-          type: string
-          format: date-time
+      $ref: '#/components/schemas/MemoryStoreSessionResourceInput'
     MemoryStoreSessionResource:
       type: object
       additionalProperties: false
@@ -5156,68 +4786,7 @@ components:
         name:
           type: string
     SessionResource:
-      oneOf:
-        - $ref: '#/components/schemas/FileSessionResource'
-        - $ref: '#/components/schemas/MemoryStoreSessionResource'
-        - $ref: '#/components/schemas/GitRepositorySessionResource'
-      discriminator:
-        propertyName: type
-    GitRepositorySessionResource:
-      type: object
-      additionalProperties: false
-      required: [id, created_at, type, url, checkout, resolved_commit, mount_path, updated_at]
-      properties:
-        id:
-          type: string
-          pattern: '^sesrsc_'
-        created_at:
-          type: string
-          format: date-time
-        type:
-          type: string
-          const: git_repository
-        url:
-          type: string
-          format: uri
-        checkout:
-          oneOf:
-            - $ref: '#/components/schemas/GitRepositoryCheckout'
-            - type: 'null'
-          description: Requested checkout, or null when the remote default branch was used.
-        resolved_commit:
-          type: string
-          pattern: '^[0-9a-f]{40}$'
-          description: Exact commit frozen into the Session snapshot.
-        mount_path:
-          type: string
-          pattern: '^/workspace/'
-        updated_at:
-          type: string
-          format: date-time
-    SessionResourceDeleted:
-      type: object
-      additionalProperties: false
-      required: [id, type]
-      properties:
-        id:
-          type: string
-          pattern: '^sesrsc_'
-        type:
-          type: string
-          const: session_resource_deleted
-    SessionResourceList:
-      type: object
-      additionalProperties: false
-      required: [data, has_more, next_page]
-      properties:
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/SessionResource'
-        has_more:
-          type: boolean
-        next_page:
-          $ref: '#/components/schemas/Cursor'
+      $ref: '#/components/schemas/MemoryStoreSessionResource'
     SessionStats:
       type: object
       additionalProperties: false

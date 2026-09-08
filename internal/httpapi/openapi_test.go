@@ -268,8 +268,8 @@ func TestOpenAPIFullManagedAgentsOperationInventory(t *testing.T) {
 			count++
 		}
 	}
-	if count != 96 {
-		t.Fatalf("Mango operation count = %d, want 96", count)
+	if count != 92 {
+		t.Fatalf("Mango operation count = %d, want 92", count)
 	}
 }
 
@@ -536,18 +536,17 @@ func TestOpenAPIDeploymentContract(t *testing.T) {
 		t.Fatalf("Deployment operation count = %d, want 10", count)
 	}
 	schemas := openAPIMap(t, openAPIMap(t, doc["components"], "components")["schemas"], "schemas")
-	resourceInput := openAPIMap(t, schemas["DeploymentResourceInput"], "DeploymentResourceInput")
-	variants, ok := resourceInput["oneOf"].([]any)
-	if !ok || len(variants) != 3 {
-		t.Fatalf("Deployment Resource input variants = %#v, want 3", resourceInput["oneOf"])
-	}
-	assertOpenAPIRef(t, variants[2], "#/components/schemas/GitRepositorySessionResourceInput")
+	assertOpenAPIRef(
+		t,
+		schemas["DeploymentResourceInput"],
+		"#/components/schemas/MemoryStoreSessionResourceInput",
+	)
 	resource := openAPIMap(t, schemas["DeploymentResource"], "DeploymentResource")
-	variants, ok = resource["oneOf"].([]any)
-	if !ok || len(variants) != 3 {
-		t.Fatalf("Deployment Resource variants = %#v, want 3", resource["oneOf"])
+	properties := openAPIMap(t, resource["properties"], "Deployment Resource properties")
+	resourceType := openAPIMap(t, properties["type"], "Deployment Resource type")
+	if resourceType["const"] != "memory_store" {
+		t.Fatalf("Deployment Resource type = %#v, want memory_store", resourceType["const"])
 	}
-	assertOpenAPIRef(t, variants[2], "#/components/schemas/GitRepositoryDeploymentResource")
 	validateOpenAPIRefs(t, doc, doc)
 }
 
@@ -614,26 +613,12 @@ func TestOpenAPIVaultContract(t *testing.T) {
 	validateOpenAPIRefs(t, doc, doc)
 }
 
-func TestOpenAPISessionResourcesContract(t *testing.T) {
+func TestOpenAPISelfHostedSessionResourcesContract(t *testing.T) {
 	doc := parseOpenAPIDocument(t)
 	paths := openAPIMap(t, doc["paths"], "paths")
-	operations := map[string][]string{
-		"/v1/sessions/{session_id}/resources":               {"get", "post"},
-		"/v1/sessions/{session_id}/resources/{resource_id}": {"delete", "get"},
-	}
-	count := 0
-	for path, methods := range operations {
-		pathItem := openAPIMap(t, paths[path], "path "+path)
-		for _, method := range methods {
-			operation := openAPIMap(t, pathItem[method], method+" "+path)
-			if id, _ := operation["operationId"].(string); id == "" {
-				t.Fatalf("%s %s has no operationId", method, path)
-			}
-			count++
-		}
-	}
-	if count != 4 {
-		t.Fatalf("Session Resources operation count = %d, want 4", count)
+	if paths["/v1/sessions/{session_id}/resources"] != nil ||
+		paths["/v1/sessions/{session_id}/resources/{resource_id}"] != nil {
+		t.Fatal("self-hosted API must not expose cloud-only Session Resource mutation routes")
 	}
 	schemas := openAPIMap(
 		t,
@@ -655,26 +640,11 @@ func TestOpenAPISessionResourcesContract(t *testing.T) {
 	)
 	assertOpenAPIRef(t, openAPIMap(t, createResources["items"], "Session resource input items"),
 		"#/components/schemas/SessionResourceInput")
-	for name, want := range map[string][]string{
-		"SessionResourceInput": {
-			"#/components/schemas/FileSessionResourceInput",
-			"#/components/schemas/MemoryStoreSessionResourceInput",
-			"#/components/schemas/GitRepositorySessionResourceInput",
-		},
-		"SessionResource": {
-			"#/components/schemas/FileSessionResource",
-			"#/components/schemas/MemoryStoreSessionResource",
-			"#/components/schemas/GitRepositorySessionResource",
-		},
+	for name, want := range map[string]string{
+		"SessionResourceInput": "#/components/schemas/MemoryStoreSessionResourceInput",
+		"SessionResource":      "#/components/schemas/MemoryStoreSessionResource",
 	} {
-		union := openAPIMap(t, schemas[name], name)
-		variants, ok := union["oneOf"].([]any)
-		if !ok || len(variants) != len(want) {
-			t.Fatalf("%s variants = %#v, want %v", name, union["oneOf"], want)
-		}
-		for index, ref := range want {
-			assertOpenAPIRef(t, variants[index], ref)
-		}
+		assertOpenAPIRef(t, schemas[name], want)
 	}
 	validateOpenAPIRefs(t, doc, doc)
 }

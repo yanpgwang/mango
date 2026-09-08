@@ -27,55 +27,8 @@ func envToJSON(e domain.Environment) map[string]any {
 	return out
 }
 
-// environmentConfigToJSON resolves documented response defaults without
-// mutating the stored, enforcement-facing configuration.
 func environmentConfigToJSON(e domain.Environment) map[string]any {
-	if e.ConfigType == "self_hosted" {
-		return map[string]any{"type": "self_hosted"}
-	}
-	config := make(map[string]any, len(e.Config)+2)
-	for key, value := range e.Config {
-		config[key] = value
-	}
-	config["type"] = "cloud"
-	config["networking"] = environmentNetworkingToJSON(config["networking"])
-	config["packages"] = environmentPackagesToJSON(config["packages"])
-	return config
-}
-
-func environmentNetworkingToJSON(raw any) map[string]any {
-	configured, _ := raw.(map[string]any)
-	if configured["type"] != "limited" {
-		return map[string]any{"type": "unrestricted"}
-	}
-	networking := map[string]any{
-		"type":                   "limited",
-		"allow_mcp_servers":      false,
-		"allow_package_managers": false,
-		"allowed_hosts":          []any{},
-	}
-	for _, field := range []string{
-		"allow_mcp_servers", "allow_package_managers", "allowed_hosts",
-	} {
-		if value, present := configured[field]; present {
-			networking[field] = value
-		}
-	}
-	return networking
-}
-
-func environmentPackagesToJSON(raw any) map[string]any {
-	packages := map[string]any{
-		"type": "packages", "apt": []any{}, "cargo": []any{}, "gem": []any{},
-		"go": []any{}, "npm": []any{}, "pip": []any{},
-	}
-	configured, _ := raw.(map[string]any)
-	for _, manager := range []string{"apt", "cargo", "gem", "go", "npm", "pip"} {
-		if values, present := configured[manager]; present {
-			packages[manager] = values
-		}
-	}
-	return packages
+	return map[string]any{"type": "self_hosted"}
 }
 
 func (s *Server) createEnvironment(w http.ResponseWriter, r *http.Request) {

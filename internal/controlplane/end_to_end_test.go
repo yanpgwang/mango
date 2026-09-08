@@ -18,7 +18,6 @@ import (
 	"github.com/yanpgwang/mango/internal/live"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 	enumspb "go.temporal.io/api/enums/v1"
 )
@@ -51,7 +50,6 @@ func TestHTTPPostgresTemporalNATSEndToEnd(t *testing.T) {
 		TemporalClient:   temporalClient,
 		Store:            fixture.store,
 		ModelClient:      modelClient,
-		SandboxProvider:  sandboxtest.NoProvision(t),
 		IDGenerator:      fixture.ids,
 		RelayConfig:      temporalpkg.RelayConfig{PollInterval: 20 * time.Millisecond},
 		TaskQueue:        "mango-test-" + domain.NewRandomIDGen().NewID(""),
@@ -98,7 +96,7 @@ func TestHTTPPostgresTemporalNATSEndToEnd(t *testing.T) {
 	agentID := createResource(t, handler, "/v1/agents",
 		`{"name":"coder","model":"claude-test"}`)
 	environmentID := createResource(t, handler, "/v1/environments",
-		`{"name":"cloud","config":{"type":"cloud"}}`)
+		`{"name":"self-hosted","config":{"type":"self_hosted"}}`)
 	sessionID := createResource(t, handler, "/v1/sessions",
 		`{"agent":"`+agentID+`","environment_id":"`+environmentID+`"}`)
 	defer func() {
@@ -122,7 +120,11 @@ func TestHTTPPostgresTemporalNATSEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open event stream: %v", err)
 	}
-	defer streamResponse.Body.Close()
+	defer func() {
+		if err := streamResponse.Body.Close(); err != nil {
+			t.Errorf("close event stream: %v", err)
+		}
+	}()
 	if streamResponse.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(streamResponse.Body)
 		t.Fatalf("stream status = %d: %s", streamResponse.StatusCode, body)

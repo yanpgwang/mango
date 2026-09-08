@@ -50,7 +50,7 @@ func run() (result error) {
 	}()
 	environment, err := client.Environments.New(ctx, mango.EnvironmentCreateRequest{
 		Name:   "go-sdk-conformance",
-		Config: mango.Some(mango.EnvironmentConfigInput{CloudEnvironmentConfigInput: &mango.CloudEnvironmentConfigInput{Type: "cloud"}}),
+		Config: mango.Some(mango.EnvironmentConfigInput{Type: "self_hosted"}),
 	})
 	if err != nil {
 		return err

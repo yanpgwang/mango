@@ -18,7 +18,6 @@ import (
 	"github.com/yanpgwang/mango/internal/httpapi"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 	"go.temporal.io/sdk/client"
 )
@@ -116,8 +115,7 @@ func TestVerticalSlice_SelfHostedWebTranscriptSurvivesWorkerRestart(t *testing.T
 	})
 	require.NoError(t, err)
 	ids := domain.NewRandomIDGen()
-	cfg := temporalpkg.RuntimeConfig{TemporalClient: tc, Store: store, ModelClient: modelClient,
-		SandboxProvider: sandboxtest.NoProvision(t), IDGenerator: ids,
+	cfg := temporalpkg.RuntimeConfig{TemporalClient: tc, Store: store, ModelClient: modelClient, IDGenerator: ids,
 		TaskQueue:   "self-hosted-web-" + ids.NewID(""),
 		RelayConfig: temporalpkg.RelayConfig{PollInterval: 20 * time.Millisecond}}
 	runtime := temporalpkg.NewRuntime(cfg)

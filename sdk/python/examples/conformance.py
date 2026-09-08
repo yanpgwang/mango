@@ -21,7 +21,7 @@ def main() -> None:
     with Mango(base_url=url, api_key=key) as client:
         client.system.health()
         try:
-            environment = client.environments.create(name="python-sdk-conformance", config={"type": "cloud"})
+            environment = client.environments.create(name="python-sdk-conformance", config={"type": "self_hosted"})
             environment_id = environment["id"]
             for suffix in ("one", "two"):
                 agent = client.agents.create(name="python-sdk-" + suffix, model="sdk-conformance", tools=[{

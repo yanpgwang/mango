@@ -35,10 +35,6 @@ func (s *Server) registerSessionRoutes() {
 	s.mux.HandleFunc("POST /v1/sessions/{id}/threads/{thread_id}/archive", s.archiveSessionThread)
 	s.mux.HandleFunc("GET /v1/sessions/{id}/threads/{thread_id}/events", s.listSessionThreadEvents)
 	s.mux.HandleFunc("GET /v1/sessions/{id}/threads/{thread_id}/stream", s.streamSessionThreadEvents)
-	s.mux.HandleFunc("POST /v1/sessions/{id}/resources", s.addSessionResource)
-	s.mux.HandleFunc("GET /v1/sessions/{id}/resources", s.listSessionResources)
-	s.mux.HandleFunc("GET /v1/sessions/{id}/resources/{resource_id}", s.getSessionResource)
-	s.mux.HandleFunc("DELETE /v1/sessions/{id}/resources/{resource_id}", s.deleteSessionResource)
 }
 
 func sessionToJSON(s domain.Session) map[string]any {
@@ -223,7 +219,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	resourceInputs, memoryResourceInputs, repositoryResourceInputs, err := parseSessionResourceInputs(resources)
+	memoryResourceInputs, err := parseSessionResourceInputs(resources)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -273,11 +269,8 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	sess, err := s.deps.Sessions.Create(r.Context(), app.CreateSessionInput{
 		AgentID: ref.ID, AgentVersion: ref.Version, Overrides: ref.Overrides,
 		EnvironmentID: in.EnvironmentID, Title: sessionTitle, Metadata: sessionMetadata,
-		InitialEvents: drafts, Resources: resourceInputs,
-		MemoryResources:     memoryResourceInputs,
-		RepositoryResources: repositoryResourceInputs,
-		VaultIDs:            sessionVaultIDs,
-		Budget:              budget,
+		InitialEvents: drafts, MemoryResources: memoryResourceInputs,
+		VaultIDs: sessionVaultIDs, Budget: budget,
 	})
 	if err != nil {
 		writeError(w, err)

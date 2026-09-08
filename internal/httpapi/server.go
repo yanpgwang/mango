@@ -158,28 +158,20 @@ type DeploymentService interface {
 	ListRuns(context.Context, app.DeploymentRunListQuery) (app.DeploymentRunListPage, error)
 }
 
-type SessionResourceService interface {
-	Add(context.Context, string, app.FileSessionResourceInput) (domain.SessionResource, error)
-	Get(context.Context, string, string) (domain.SessionResource, error)
-	List(context.Context, string, app.SessionResourceListQuery) (app.SessionResourceListPage, error)
-	Delete(context.Context, string, string) (domain.SessionResource, error)
-}
-
 type Deps struct {
-	Agents           AgentService
-	Envs             EnvironmentService
-	Sessions         SessionService
-	Threads          SessionThreadService
-	Events           EventService
-	Stream           EventSubscriber
-	Files            FileService
-	Skills           SkillService
-	Memory           MemoryService
-	Vaults           VaultService
-	Webhooks         WebhookService
-	Deployments      DeploymentService
-	EnvironmentWork  EnvironmentWorkService
-	SessionResources SessionResourceService
+	Agents          AgentService
+	Envs            EnvironmentService
+	Sessions        SessionService
+	Threads         SessionThreadService
+	Events          EventService
+	Stream          EventSubscriber
+	Files           FileService
+	Skills          SkillService
+	Memory          MemoryService
+	Vaults          VaultService
+	Webhooks        WebhookService
+	Deployments     DeploymentService
+	EnvironmentWork EnvironmentWorkService
 }
 
 type Server struct {

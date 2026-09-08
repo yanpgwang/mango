@@ -22,7 +22,7 @@ func TestAgents_CreateGetVersionArchive(t *testing.T) {
 		t.Fatalf("create status %d: %s", rec.Code, rec.Body)
 	}
 	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
+	decodeTestJSON(t, rec.Body.Bytes(), &created)
 	if created["version"].(float64) != 1 || created["type"] != "agent" {
 		t.Fatalf("bad create body: %v", created)
 	}
@@ -30,14 +30,14 @@ func TestAgents_CreateGetVersionArchive(t *testing.T) {
 	// update -> version 2
 	rec = do(srv, "POST", "/v1/agents/"+id, `{"name":"SRE v2"}`)
 	var up map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &up)
+	decodeTestJSON(t, rec.Body.Bytes(), &up)
 	if up["version"].(float64) != 2 {
 		t.Fatalf("expected v2, got %v", up["version"])
 	}
 	// versions list has 2
 	rec = do(srv, "GET", "/v1/agents/"+id+"/versions", "")
 	var vs map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &vs)
+	decodeTestJSON(t, rec.Body.Bytes(), &vs)
 	if len(vs["data"].([]any)) != 2 {
 		t.Fatalf("expected 2 versions, got %v", vs["data"])
 	}
@@ -47,12 +47,12 @@ func TestAgents_CreateGetVersionArchive(t *testing.T) {
 		t.Fatalf("archive status %d", rec.Code)
 	}
 	var archived map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &archived)
+	decodeTestJSON(t, rec.Body.Bytes(), &archived)
 	if archived["version"].(float64) != 2 {
 		t.Fatalf("archive created a configuration version: %v", archived["version"])
 	}
 	rec = do(srv, "GET", "/v1/agents/"+id+"/versions", "")
-	json.Unmarshal(rec.Body.Bytes(), &vs)
+	decodeTestJSON(t, rec.Body.Bytes(), &vs)
 	if len(vs["data"].([]any)) != 2 {
 		t.Fatalf("archive appended version history: %v", vs["data"])
 	}
@@ -115,7 +115,7 @@ func TestAgents_ClearSystemWithNull(t *testing.T) {
 		t.Fatalf("create status %d: %s", rec.Code, rec.Body)
 	}
 	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
+	decodeTestJSON(t, rec.Body.Bytes(), &created)
 	id := created["id"].(string)
 
 	// update with explicit null -> should clear system
@@ -124,7 +124,7 @@ func TestAgents_ClearSystemWithNull(t *testing.T) {
 		t.Fatalf("update (null system) status %d: %s", rec.Code, rec.Body)
 	}
 	var up1 map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &up1)
+	decodeTestJSON(t, rec.Body.Bytes(), &up1)
 	if up1["version"].(float64) != 2 {
 		t.Fatalf("expected version 2 after clearing system, got %v", up1["version"])
 	}
@@ -135,7 +135,7 @@ func TestAgents_ClearSystemWithNull(t *testing.T) {
 	// GET to confirm persisted state
 	rec = do(srv, "GET", "/v1/agents/"+id, "")
 	var got map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &got)
+	decodeTestJSON(t, rec.Body.Bytes(), &got)
 	if got["system"] != nil {
 		t.Fatalf("GET: expected system=null, got %v", got["system"])
 	}
@@ -146,7 +146,7 @@ func TestAgents_ClearSystemWithNull(t *testing.T) {
 		t.Fatalf("name-only update status %d: %s", rec.Code, rec.Body)
 	}
 	var up2 map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &up2)
+	decodeTestJSON(t, rec.Body.Bytes(), &up2)
 	if up2["system"] != nil {
 		t.Fatalf("absent system key resurrected system field; got %v", up2["system"])
 	}
@@ -163,7 +163,7 @@ func TestAgents_UpdateModelNullRejected(t *testing.T) {
 		t.Fatalf("create status %d: %s", rec.Code, rec.Body)
 	}
 	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
+	decodeTestJSON(t, rec.Body.Bytes(), &created)
 	id := created["id"].(string)
 
 	// update with model:null must be rejected
@@ -185,7 +185,7 @@ func TestAgents_UpdateArrayNullClears(t *testing.T) {
 		t.Fatalf("create: %d: %s", rec.Code, rec.Body)
 	}
 	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
+	decodeTestJSON(t, rec.Body.Bytes(), &created)
 	id := created["id"].(string)
 
 	rec = do(srv, "POST", "/v1/agents/"+id,
@@ -194,7 +194,7 @@ func TestAgents_UpdateArrayNullClears(t *testing.T) {
 		t.Fatalf("clear: %d: %s", rec.Code, rec.Body)
 	}
 	var updated map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &updated)
+	decodeTestJSON(t, rec.Body.Bytes(), &updated)
 	for _, field := range []string{"tools", "mcp_servers", "skills"} {
 		values, ok := updated[field].([]any)
 		if !ok || len(values) != 0 {
@@ -304,7 +304,7 @@ func TestAgents_MultiagentObjectPersistsAndReplaces(t *testing.T) {
 		t.Fatalf("create status %d: %s", rec.Code, rec.Body)
 	}
 	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
+	decodeTestJSON(t, rec.Body.Bytes(), &created)
 	id := created["id"].(string)
 	multiagent, ok := created["multiagent"].(map[string]any)
 	if !ok || multiagent["type"] != "coordinator" {
@@ -321,7 +321,7 @@ func TestAgents_MultiagentObjectPersistsAndReplaces(t *testing.T) {
 		t.Fatalf("update status %d: %s", rec.Code, rec.Body)
 	}
 	var updated map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &updated)
+	decodeTestJSON(t, rec.Body.Bytes(), &updated)
 	updatedMultiagent := updated["multiagent"].(map[string]any)
 	agents := updatedMultiagent["agents"].([]any)
 	if len(agents) != 1 {
@@ -338,7 +338,7 @@ func TestAgents_MultiagentObjectPersistsAndReplaces(t *testing.T) {
 	}
 	rec = do(srv, "GET", "/v1/agents/"+id, "")
 	var got map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &got)
+	decodeTestJSON(t, rec.Body.Bytes(), &got)
 	gotAgents := got["multiagent"].(map[string]any)["agents"].([]any)
 	if len(gotAgents) != 1 {
 		t.Fatalf("omitted multiagent did not preserve stored value: %#v", got["multiagent"])
@@ -353,12 +353,12 @@ func TestAgents_MultiagentObjectPersistsAndReplaces(t *testing.T) {
 		t.Fatalf("clear status %d: %s", rec.Code, rec.Body)
 	}
 	var cleared map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &cleared)
+	decodeTestJSON(t, rec.Body.Bytes(), &cleared)
 	if cleared["multiagent"] != nil {
 		t.Fatalf("explicit null did not clear multiagent: %#v", cleared["multiagent"])
 	}
 	rec = do(srv, "GET", "/v1/agents/"+id, "")
-	json.Unmarshal(rec.Body.Bytes(), &got)
+	decodeTestJSON(t, rec.Body.Bytes(), &got)
 	if got["multiagent"] != nil {
 		t.Fatalf("cleared multiagent was not persisted: %#v", got["multiagent"])
 	}
@@ -393,7 +393,7 @@ func TestAgents_MultiagentNullAndInvalidShapes(t *testing.T) {
 		t.Fatalf("create null status = %d, want 200: %s", rec.Code, rec.Body)
 	}
 	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
+	decodeTestJSON(t, rec.Body.Bytes(), &created)
 	if created["multiagent"] != nil {
 		t.Fatalf("create null should leave multiagent unset: %#v", created["multiagent"])
 	}
@@ -474,7 +474,7 @@ func TestAgents_MetadataValidationUsesResultingBag(t *testing.T) {
 		t.Fatalf("create at metadata limit status %d: %s", rec.Code, rec.Body)
 	}
 	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
+	decodeTestJSON(t, rec.Body.Bytes(), &created)
 	id := created["id"].(string)
 
 	rec = do(srv, "POST", "/v1/agents/"+id, `{"metadata":{"overflow":"v"}}`)
@@ -486,7 +486,7 @@ func TestAgents_MetadataValidationUsesResultingBag(t *testing.T) {
 		t.Fatalf("delete-and-add patch status %d: %s", rec.Code, rec.Body)
 	}
 	var updated map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &updated)
+	decodeTestJSON(t, rec.Body.Bytes(), &updated)
 	gotMetadata := updated["metadata"].(map[string]any)
 	if len(gotMetadata) != 16 || gotMetadata["replacement"] != "v" {
 		t.Fatalf("metadata patch result = %#v", gotMetadata)

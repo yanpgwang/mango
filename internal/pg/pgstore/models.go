@@ -126,8 +126,6 @@ type File struct {
 	ChecksumSha256 string
 	State          string
 	WorkspaceID    string
-	OutputPath     *string
-	InternalUse    bool
 }
 
 type McpDiscoverySnapshot struct {
@@ -223,15 +221,6 @@ type ProviderTranscriptTurn struct {
 	CreatedAt           pgtype.Timestamptz
 }
 
-type SandboxProvisioningIntent struct {
-	SessionID string
-	Provider  string
-	Spec      []byte
-	SpecHash  string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-}
-
 type Session struct {
 	ID            string
 	Status        string
@@ -248,33 +237,18 @@ type Session struct {
 }
 
 type SessionResource struct {
-	ID                       string
-	SessionID                string
-	ResourceType             string
-	SourceFileID             *string
-	FileID                   *string
-	MountPath                string
-	State                    string
-	CreatedAt                pgtype.Timestamptz
-	UpdatedAt                pgtype.Timestamptz
-	MemoryStoreID            *string
-	MemoryAccess             *string
-	MemoryInstructions       *string
-	MemoryStoreName          *string
-	MemoryStoreDescription   *string
-	RepositoryUrl            *string
-	RepositoryCheckoutType   *string
-	RepositoryCheckoutValue  *string
-	RepositoryResolvedCommit *string
-}
-
-type SessionSandbox struct {
-	SessionID  string
-	Provider   string
-	ExternalID string
-	SpecHash   string
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
+	ID                     string
+	SessionID              string
+	ResourceType           string
+	MemoryStoreID          string
+	MemoryAccess           string
+	MemoryInstructions     string
+	MemoryStoreName        string
+	MemoryStoreDescription string
+	MountPath              string
+	State                  string
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
 }
 
 type SessionSkillVersion struct {

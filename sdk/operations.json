@@ -40,36 +40,6 @@
       "public": false
     },
     {
-      "id": "addSessionResource",
-      "method": "POST",
-      "path": "/v1/sessions/{session_id}/resources",
-      "tag": "Session Resources",
-      "sdk_resource": "sessions.resources",
-      "sdk_method": "create",
-      "parameters": [
-        {
-          "in": "path",
-          "name": "session_id",
-          "required": true,
-          "schema": {
-            "minLength": 1,
-            "type": "string"
-          }
-        }
-      ],
-      "request_content_type": "application/json",
-      "request_schema": {
-        "$ref": "#/components/schemas/FileSessionResourceInput"
-      },
-      "request_required": true,
-      "response_content_type": "application/json",
-      "response_schema": {
-        "$ref": "#/components/schemas/SessionResource"
-      },
-      "response_status": 200,
-      "public": false
-    },
-    {
       "id": "archiveAgent",
       "method": "POST",
       "path": "/v1/agents/{agent_id}/archive",
@@ -731,43 +701,6 @@
       "public": false
     },
     {
-      "id": "deleteSessionResource",
-      "method": "DELETE",
-      "path": "/v1/sessions/{session_id}/resources/{resource_id}",
-      "tag": "Session Resources",
-      "sdk_resource": "sessions.resources",
-      "sdk_method": "delete",
-      "parameters": [
-        {
-          "in": "path",
-          "name": "session_id",
-          "required": true,
-          "schema": {
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        {
-          "in": "path",
-          "name": "resource_id",
-          "required": true,
-          "schema": {
-            "pattern": "^sesrsc_",
-            "type": "string"
-          }
-        }
-      ],
-      "request_content_type": "",
-      "request_schema": null,
-      "request_required": false,
-      "response_content_type": "application/json",
-      "response_schema": {
-        "$ref": "#/components/schemas/SessionResourceDeleted"
-      },
-      "response_status": 200,
-      "public": false
-    },
-    {
       "id": "deleteSkill",
       "method": "DELETE",
       "path": "/v1/skills/{skill_id}",
@@ -1384,43 +1317,6 @@
       "response_content_type": "application/json",
       "response_schema": {
         "$ref": "#/components/schemas/Session"
-      },
-      "response_status": 200,
-      "public": false
-    },
-    {
-      "id": "getSessionResource",
-      "method": "GET",
-      "path": "/v1/sessions/{session_id}/resources/{resource_id}",
-      "tag": "Session Resources",
-      "sdk_resource": "sessions.resources",
-      "sdk_method": "retrieve",
-      "parameters": [
-        {
-          "in": "path",
-          "name": "session_id",
-          "required": true,
-          "schema": {
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        {
-          "in": "path",
-          "name": "resource_id",
-          "required": true,
-          "schema": {
-            "pattern": "^sesrsc_",
-            "type": "string"
-          }
-        }
-      ],
-      "request_content_type": "",
-      "request_schema": null,
-      "request_required": false,
-      "response_content_type": "application/json",
-      "response_schema": {
-        "$ref": "#/components/schemas/SessionResource"
       },
       "response_status": 200,
       "public": false
@@ -2478,53 +2374,6 @@
       "response_content_type": "application/json",
       "response_schema": {
         "$ref": "#/components/schemas/SessionEventList"
-      },
-      "response_status": 200,
-      "public": false
-    },
-    {
-      "id": "listSessionResources",
-      "method": "GET",
-      "path": "/v1/sessions/{session_id}/resources",
-      "tag": "Session Resources",
-      "sdk_resource": "sessions.resources",
-      "sdk_method": "list",
-      "parameters": [
-        {
-          "in": "path",
-          "name": "session_id",
-          "required": true,
-          "schema": {
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        {
-          "description": "Maximum resources per page. Omit to return all Session Resources.",
-          "in": "query",
-          "name": "limit",
-          "schema": {
-            "maximum": 1000,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        {
-          "description": "Opaque cursor returned by a previous list response.",
-          "in": "query",
-          "name": "page",
-          "schema": {
-            "minLength": 1,
-            "type": "string"
-          }
-        }
-      ],
-      "request_content_type": "",
-      "request_schema": null,
-      "request_required": false,
-      "response_content_type": "application/json",
-      "response_schema": {
-        "$ref": "#/components/schemas/SessionResourceList"
       },
       "response_status": 200,
       "public": false

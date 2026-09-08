@@ -11,7 +11,7 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 )
 
-// resourceCursor is shared only by the two forward-only resource lists. Kind
+// resourceCursor is shared by forward-only resource lists. Kind
 // prevents a cursor from one endpoint being replayed against the other, while
 // Filter binds it to the normalized filters that produced it.
 type resourceCursor struct {
@@ -33,7 +33,6 @@ const (
 	agentListCursorKind           = "agent_list"
 	agentVersionCursorKind        = "agent_version_list"
 	environmentListCursorKind     = "environment_list"
-	sessionResourceListCursorKind = "session_resource_list"
 	skillListCursorKind           = "skill_list"
 	skillVersionListCursorKind    = "skill_version_list"
 	memoryStoreListCursorKind     = "memory_store_list"
@@ -151,20 +150,12 @@ func (filter environmentWorkCursorFilter) fingerprint() string {
 	return resourceFilterFingerprint(filter)
 }
 
-type sessionResourceCursorFilter struct {
-	SessionID string `json:"session_id"`
-}
-
 type skillCursorFilter struct {
 	Source string `json:"source,omitempty"`
 }
 
 type skillVersionCursorFilter struct {
 	SkillID string `json:"skill_id"`
-}
-
-func (filter sessionResourceCursorFilter) fingerprint() string {
-	return resourceFilterFingerprint(filter)
 }
 
 func (filter skillCursorFilter) fingerprint() string {

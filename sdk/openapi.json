@@ -526,25 +526,6 @@
           "type": "integer"
         }
       },
-      "SessionResourceID": {
-        "in": "path",
-        "name": "resource_id",
-        "required": true,
-        "schema": {
-          "pattern": "^sesrsc_",
-          "type": "string"
-        }
-      },
-      "SessionResourceListLimit": {
-        "description": "Maximum resources per page. Omit to return all Session Resources.",
-        "in": "query",
-        "name": "limit",
-        "schema": {
-          "maximum": 1000,
-          "minimum": 1,
-          "type": "integer"
-        }
-      },
       "SessionThreadID": {
         "in": "path",
         "name": "thread_id",
@@ -1244,51 +1225,6 @@
           }
         },
         "description": "Session page",
-        "headers": {
-          "request-id": {
-            "$ref": "#/components/headers/RequestID"
-          }
-        }
-      },
-      "SessionResourceDeletedResponse": {
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/SessionResourceDeleted"
-            }
-          }
-        },
-        "description": "Session Resource deletion confirmation",
-        "headers": {
-          "request-id": {
-            "$ref": "#/components/headers/RequestID"
-          }
-        }
-      },
-      "SessionResourceListResponse": {
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/SessionResourceList"
-            }
-          }
-        },
-        "description": "Session Resource page",
-        "headers": {
-          "request-id": {
-            "$ref": "#/components/headers/RequestID"
-          }
-        }
-      },
-      "SessionResourceResponse": {
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/SessionResource"
-            }
-          }
-        },
-        "description": "File- or Memory-backed Session Resource",
         "headers": {
           "request-id": {
             "$ref": "#/components/headers/RequestID"
@@ -2436,7 +2372,7 @@
       },
       "BuiltinToolset": {
         "additionalProperties": false,
-        "description": "Shell and file tools execute in the Environment's sandbox. Web Search and Web Fetch execute through the configured model endpoint in both cloud and self_hosted Environments, require native Web-tool support and always_allow permission, and never request a worker user.tool_result.",
+        "description": "Shell and file tools execute in the Environment's sandbox. Web Search and Web Fetch execute through the configured model endpoint, require native Web-tool support and always_allow permission, and never request a worker user.tool_result.",
         "properties": {
           "configs": {
             "items": {
@@ -2534,46 +2470,6 @@
             "$ref": "#/components/schemas/SystemMessageEventInput"
           }
         ]
-      },
-      "CloudEnvironmentConfig": {
-        "additionalProperties": false,
-        "properties": {
-          "networking": {
-            "$ref": "#/components/schemas/NetworkPolicy"
-          },
-          "packages": {
-            "$ref": "#/components/schemas/Packages"
-          },
-          "type": {
-            "const": "cloud",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "networking",
-          "packages"
-        ],
-        "type": "object"
-      },
-      "CloudEnvironmentConfigInput": {
-        "additionalProperties": false,
-        "properties": {
-          "networking": {
-            "$ref": "#/components/schemas/NetworkPolicyInput"
-          },
-          "packages": {
-            "$ref": "#/components/schemas/PackagesInput"
-          },
-          "type": {
-            "const": "cloud",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type"
-        ],
-        "type": "object"
       },
       "CoreSessionEventType": {
         "enum": [
@@ -2975,92 +2871,45 @@
         "type": "object"
       },
       "DeploymentResource": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "additionalProperties": false,
-            "properties": {
-              "file_id": {
-                "type": "string"
-              },
-              "mount_path": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "type": {
-                "const": "file",
-                "type": "string"
-              }
-            },
-            "required": [
-              "type",
-              "file_id",
-              "mount_path"
+        "additionalProperties": false,
+        "properties": {
+          "access": {
+            "enum": [
+              "read_write",
+              "read_only",
+              null
             ],
-            "type": "object"
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "access": {
-                "enum": [
-                  "read_write",
-                  "read_only",
-                  null
-                ],
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "instructions": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "memory_store_id": {
-                "pattern": "^memstore_",
-                "type": "string"
-              },
-              "type": {
-                "const": "memory_store",
-                "type": "string"
-              }
-            },
-            "required": [
-              "type",
-              "memory_store_id",
-              "access",
-              "instructions"
-            ],
-            "type": "object"
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          {
-            "$ref": "#/components/schemas/GitRepositoryDeploymentResource"
+          "memory_store_id": {
+            "pattern": "^memstore_",
+            "type": "string"
+          },
+          "type": {
+            "const": "memory_store",
+            "type": "string"
           }
-        ]
+        },
+        "required": [
+          "type",
+          "memory_store_id",
+          "access",
+          "instructions"
+        ],
+        "type": "object"
       },
       "DeploymentResourceInput": {
-        "description": "Resource templates copied into each Run's Session. Git branch and default checkouts are resolved separately for every Run.",
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/FileSessionResourceInput"
-          },
-          {
-            "$ref": "#/components/schemas/MemoryStoreSessionResourceInput"
-          },
-          {
-            "$ref": "#/components/schemas/GitRepositorySessionResourceInput"
-          }
-        ]
+        "$ref": "#/components/schemas/MemoryStoreSessionResourceInput",
+        "description": "Memory Store template attached to each Run's Session."
       },
       "DeploymentRun": {
         "additionalProperties": false,
@@ -3448,30 +3297,10 @@
         "type": "object"
       },
       "EnvironmentConfig": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/CloudEnvironmentConfig"
-          },
-          {
-            "$ref": "#/components/schemas/SelfHostedEnvironmentConfig"
-          }
-        ]
+        "$ref": "#/components/schemas/SelfHostedEnvironmentConfig"
       },
       "EnvironmentConfigInput": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/CloudEnvironmentConfigInput"
-          },
-          {
-            "$ref": "#/components/schemas/SelfHostedEnvironmentConfig"
-          }
-        ]
+        "$ref": "#/components/schemas/SelfHostedEnvironmentConfig"
       },
       "EnvironmentCreateRequest": {
         "additionalProperties": false,
@@ -4240,67 +4069,6 @@
         ],
         "type": "object"
       },
-      "FileSessionResource": {
-        "additionalProperties": false,
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "file_id": {
-            "description": "Independent downloadable Session-scoped File copy.",
-            "pattern": "^file_",
-            "type": "string"
-          },
-          "id": {
-            "pattern": "^sesrsc_",
-            "type": "string"
-          },
-          "mount_path": {
-            "type": "string"
-          },
-          "type": {
-            "const": "file",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "created_at",
-          "file_id",
-          "mount_path",
-          "type",
-          "updated_at"
-        ],
-        "type": "object"
-      },
-      "FileSessionResourceInput": {
-        "additionalProperties": false,
-        "properties": {
-          "file_id": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "mount_path": {
-            "description": "Absolute path normalized beneath /mnt/session/uploads.",
-            "minLength": 1,
-            "type": "string"
-          },
-          "type": {
-            "const": "file",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "file_id"
-        ],
-        "type": "object"
-      },
       "FileUploadRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4311,181 +4079,6 @@
         },
         "required": [
           "file"
-        ],
-        "type": "object"
-      },
-      "GitRepositoryBranchCheckout": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "type": {
-            "const": "branch",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "name"
-        ],
-        "type": "object"
-      },
-      "GitRepositoryCheckout": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/GitRepositoryBranchCheckout"
-          },
-          {
-            "$ref": "#/components/schemas/GitRepositoryCommitCheckout"
-          }
-        ]
-      },
-      "GitRepositoryCommitCheckout": {
-        "additionalProperties": false,
-        "properties": {
-          "sha": {
-            "pattern": "^[0-9a-fA-F]{40}$",
-            "type": "string"
-          },
-          "type": {
-            "const": "commit",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "sha"
-        ],
-        "type": "object"
-      },
-      "GitRepositoryDeploymentResource": {
-        "additionalProperties": false,
-        "properties": {
-          "checkout": {
-            "description": "Requested branch or commit, or null to resolve the remote default branch on each Run.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/GitRepositoryCheckout"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "mount_path": {
-            "description": "Requested path, or null to derive /workspace/\u003crepository\u003e independently for each Run.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "type": {
-            "const": "git_repository",
-            "type": "string"
-          },
-          "url": {
-            "description": "Anonymous public HTTPS Git remote retained as a Deployment template.",
-            "format": "uri",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "url",
-          "checkout",
-          "mount_path"
-        ],
-        "type": "object"
-      },
-      "GitRepositorySessionResource": {
-        "additionalProperties": false,
-        "properties": {
-          "checkout": {
-            "description": "Requested checkout, or null when the remote default branch was used.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/GitRepositoryCheckout"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "pattern": "^sesrsc_",
-            "type": "string"
-          },
-          "mount_path": {
-            "pattern": "^/workspace/",
-            "type": "string"
-          },
-          "resolved_commit": {
-            "description": "Exact commit frozen into the Session snapshot.",
-            "pattern": "^[0-9a-f]{40}$",
-            "type": "string"
-          },
-          "type": {
-            "const": "git_repository",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "url": {
-            "format": "uri",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "created_at",
-          "type",
-          "url",
-          "checkout",
-          "resolved_commit",
-          "mount_path",
-          "updated_at"
-        ],
-        "type": "object"
-      },
-      "GitRepositorySessionResourceInput": {
-        "additionalProperties": false,
-        "properties": {
-          "checkout": {
-            "$ref": "#/components/schemas/GitRepositoryCheckout"
-          },
-          "mount_path": {
-            "description": "Absolute child of /workspace that does not overlap /workspace/skills.",
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "type": {
-            "const": "git_repository",
-            "type": "string"
-          },
-          "url": {
-            "description": "Anonymous public HTTPS Git remote. Credentials, query strings, and fragments are rejected.",
-            "format": "uri",
-            "maxLength": 2048,
-            "pattern": "^https://",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "url"
         ],
         "type": "object"
       },
@@ -4545,51 +4138,6 @@
         "not": {
           "$ref": "#/components/schemas/ResolvedSkillReference"
         }
-      },
-      "LimitedNetwork": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/LimitedNetworkInput"
-          },
-          {
-            "required": [
-              "type",
-              "allowed_hosts",
-              "allow_mcp_servers",
-              "allow_package_managers"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "LimitedNetworkInput": {
-        "additionalProperties": false,
-        "description": "Deny-by-default sandbox egress. Admission returns 422 when the selected deployment backend cannot enforce host-level policy.",
-        "properties": {
-          "allow_mcp_servers": {
-            "default": false,
-            "type": "boolean"
-          },
-          "allow_package_managers": {
-            "default": false,
-            "type": "boolean"
-          },
-          "allowed_hosts": {
-            "description": "Bare hostnames or leading-star wildcard hostnames; schemes, ports, paths, and embedded wildcards are invalid.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "type": {
-            "const": "limited",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type"
-        ],
-        "type": "object"
       },
       "MCPOAuthCredentialAuth": {
         "additionalProperties": false,
@@ -5692,32 +5240,6 @@
         ],
         "type": "object"
       },
-      "NetworkPolicy": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/UnrestrictedNetwork"
-          },
-          {
-            "$ref": "#/components/schemas/LimitedNetwork"
-          }
-        ]
-      },
-      "NetworkPolicyInput": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/UnrestrictedNetwork"
-          },
-          {
-            "$ref": "#/components/schemas/LimitedNetworkInput"
-          }
-        ]
-      },
       "NullableSessionBudget": {
         "anyOf": [
           {
@@ -5978,72 +5500,6 @@
             "$ref": "#/components/schemas/FileRubric"
           }
         ]
-      },
-      "Packages": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/PackagesInput"
-          },
-          {
-            "required": [
-              "type",
-              "apt",
-              "cargo",
-              "gem",
-              "go",
-              "npm",
-              "pip"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "PackagesInput": {
-        "additionalProperties": false,
-        "description": "Packages to install before a Session sandbox becomes available to tool execution. Non-empty lists require an isolated package-capable deployment backend.",
-        "properties": {
-          "apt": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "cargo": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "gem": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "go": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "npm": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "pip": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "type": {
-            "const": "packages",
-            "type": "string"
-          }
-        },
-        "type": "object"
       },
       "PermissionPolicy": {
         "additionalProperties": false,
@@ -7055,77 +6511,10 @@
         "type": "object"
       },
       "SessionResource": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/FileSessionResource"
-          },
-          {
-            "$ref": "#/components/schemas/MemoryStoreSessionResource"
-          },
-          {
-            "$ref": "#/components/schemas/GitRepositorySessionResource"
-          }
-        ]
-      },
-      "SessionResourceDeleted": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "pattern": "^sesrsc_",
-            "type": "string"
-          },
-          "type": {
-            "const": "session_resource_deleted",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "type"
-        ],
-        "type": "object"
+        "$ref": "#/components/schemas/MemoryStoreSessionResource"
       },
       "SessionResourceInput": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/FileSessionResourceInput"
-          },
-          {
-            "$ref": "#/components/schemas/MemoryStoreSessionResourceInput"
-          },
-          {
-            "$ref": "#/components/schemas/GitRepositorySessionResourceInput"
-          }
-        ]
-      },
-      "SessionResourceList": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "items": {
-              "$ref": "#/components/schemas/SessionResource"
-            },
-            "type": "array"
-          },
-          "has_more": {
-            "type": "boolean"
-          },
-          "next_page": {
-            "$ref": "#/components/schemas/Cursor"
-          }
-        },
-        "required": [
-          "data",
-          "has_more",
-          "next_page"
-        ],
-        "type": "object"
+        "$ref": "#/components/schemas/MemoryStoreSessionResourceInput"
       },
       "SessionRetriesExhausted": {
         "additionalProperties": false,
@@ -8387,19 +7776,6 @@
         ],
         "type": "object"
       },
-      "UnrestrictedNetwork": {
-        "additionalProperties": false,
-        "properties": {
-          "type": {
-            "const": "unrestricted",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type"
-        ],
-        "type": "object"
-      },
       "UserCustomToolResultEventInput": {
         "additionalProperties": false,
         "properties": {
@@ -9299,7 +8675,7 @@
     }
   },
   "info": {
-    "description": "Mango's current HTTP API for durable Sessions, Deployments, self-hosted Environment Work, conditional Files and Memory APIs, Vaults, Webhooks, and File- and Memory-backed Session Resources. Mango is an independent, self-hosted runtime licensed under Apache-2.0.",
+    "description": "Mango's current HTTP API for durable Sessions, Deployments, self-hosted Environment Work, conditional Files and Memory APIs, Vaults, Webhooks, and Memory-backed Session Resources. Mango is an independent, self-hosted runtime licensed under Apache-2.0.",
     "license": {
       "identifier": "Apache-2.0",
       "name": "Apache-2.0"
@@ -11084,7 +10460,7 @@
     },
     "/v1/sessions/{session_id}": {
       "delete": {
-        "description": "Performs sandbox cleanup and removes Session-owned Files as well as persisted history. Download outputs that must be retained first.",
+        "description": "Removes persisted Session history and attached Memory Store state. Operator-owned worker workspaces have an independent lifecycle.",
         "operationId": "deleteSession",
         "responses": {
           "200": {
@@ -11170,7 +10546,7 @@
         }
       ],
       "post": {
-        "description": "Prevents further input and retains history and Session Files. Archive does not release the sandbox; automatic idle or archive-based sandbox reclamation is not implemented.",
+        "description": "Prevents further input and retains history. Archive does not delete an operator-owned worker workspace.",
         "operationId": "archiveSession",
         "responses": {
           "200": {
@@ -11338,136 +10714,6 @@
       "parameters": [
         {
           "$ref": "#/components/parameters/SessionID"
-        }
-      ]
-    },
-    "/v1/sessions/{session_id}/resources": {
-      "get": {
-        "operationId": "listSessionResources",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/SessionResourceListLimit"
-          },
-          {
-            "$ref": "#/components/parameters/Page"
-          }
-        ],
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/SessionResourceListResponse"
-          },
-          "400": {
-            "$ref": "#/components/responses/InvalidRequest"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "422": {
-            "$ref": "#/components/responses/UnsupportedRequest"
-          }
-        },
-        "summary": "List Session Resources",
-        "tags": [
-          "Session Resources"
-        ],
-        "x-sdk-method": "list",
-        "x-sdk-resource": "sessions.resources"
-      },
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/SessionID"
-        }
-      ],
-      "post": {
-        "operationId": "addSessionResource",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FileSessionResourceInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/SessionResourceResponse"
-          },
-          "400": {
-            "$ref": "#/components/responses/InvalidRequest"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "409": {
-            "$ref": "#/components/responses/Conflict"
-          },
-          "413": {
-            "$ref": "#/components/responses/RequestTooLarge"
-          },
-          "422": {
-            "$ref": "#/components/responses/UnsupportedRequest"
-          }
-        },
-        "summary": "Attach a File copy to a Session",
-        "tags": [
-          "Session Resources"
-        ],
-        "x-sdk-method": "create",
-        "x-sdk-resource": "sessions.resources"
-      }
-    },
-    "/v1/sessions/{session_id}/resources/{resource_id}": {
-      "delete": {
-        "operationId": "deleteSessionResource",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/SessionResourceDeletedResponse"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "409": {
-            "$ref": "#/components/responses/Conflict"
-          },
-          "422": {
-            "$ref": "#/components/responses/UnsupportedRequest"
-          }
-        },
-        "summary": "Detach a File Resource from a Session",
-        "tags": [
-          "Session Resources"
-        ],
-        "x-sdk-method": "delete",
-        "x-sdk-resource": "sessions.resources"
-      },
-      "get": {
-        "operationId": "getSessionResource",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/SessionResourceResponse"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "422": {
-            "$ref": "#/components/responses/UnsupportedRequest"
-          }
-        },
-        "summary": "Get a Session Resource",
-        "tags": [
-          "Session Resources"
-        ],
-        "x-sdk-method": "retrieve",
-        "x-sdk-resource": "sessions.resources"
-      },
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/SessionID"
-        },
-        {
-          "$ref": "#/components/parameters/SessionResourceID"
         }
       ]
     },
@@ -12539,15 +11785,11 @@
       "name": "Session Threads"
     },
     {
-      "description": "File copies and Memory Stores attached to durable Sessions.",
-      "name": "Session Resources"
-    },
-    {
       "description": "Durable file metadata and S3-compatible byte storage.",
       "name": "Files"
     },
     {
-      "description": "Custom filesystem Skills with immutable archived Versions and provider-capability-gated Session materialization. Self-hosted Sessions with custom Skills are rejected at creation; external worker Skill activation is not implemented.",
+      "description": "Custom filesystem Skills with immutable archived Versions and self-hosted worker preparation.",
       "name": "Skills"
     },
     {

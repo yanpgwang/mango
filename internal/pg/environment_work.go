@@ -120,25 +120,6 @@ WHERE session_id = $1`, scope.SessionID)
 		return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token skills: %w", err)
 	}
 	rows.Close()
-	fileRows, err := s.pool.Query(ctx, `
-SELECT file_id
-FROM session_resources
-WHERE session_id = $1 AND resource_type = 'file' AND state = 'active'`, scope.SessionID)
-	if err != nil {
-		return "", workspace.SessionScope{}, fmt.Errorf("pg: load session token files: %w", err)
-	}
-	defer fileRows.Close()
-	for fileRows.Next() {
-		var fileID string
-		if err := fileRows.Scan(&fileID); err != nil {
-			return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token file: %w", err)
-		}
-		scope.Files[fileID] = struct{}{}
-	}
-	if err := fileRows.Err(); err != nil {
-		return "", workspace.SessionScope{}, fmt.Errorf("pg: scan session token files: %w", err)
-	}
-	fileRows.Close()
 	memoryRows, err := s.pool.Query(ctx, `
 SELECT memory_store_id, memory_access
 FROM session_resources

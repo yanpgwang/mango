@@ -38,22 +38,9 @@ start an operator-owned Environment worker. To execute shell or file tools in a
 default `self_hosted` Environment, separately start the
 [Docker self-hosted worker](../self-hosted/docker/README.md) for that Environment.
 
-The Compose orchestration worker temporarily retains Mango's legacy Docker
-runtime for an explicitly configured `cloud` Environment. On that path it
-creates sibling Session containers on the host daemon; tools do not run in the
-worker container. Files, Skills, Memory mounts, and Session Outputs use this
-provider. The sandbox image defaults to `python:3.12-alpine`; set
-`MANGO_SANDBOX_IMAGE` to choose another image.
-
-For that transitional `cloud` path, the trusted orchestration worker runs as
-root and mounts the Docker socket. The API remains non-root and has no socket.
-The resource directory defaults to
-`$HOME/mango-resources`, mounted at the same absolute path inside the worker.
-Set `MANGO_SANDBOX_RESOURCE_DIR` to an absolute host path when needed, and
-`MANGO_DOCKER_SOCKET` for a non-default host Unix socket. A remote Docker context
-must have those paths on its daemon host; this bundle is intended for a local
-daemon. See [Docker worker configuration](../../docs/deployment.md#docker-worker-configuration)
-for trust, retention, and upgrade boundaries.
+The Compose orchestration worker does not mount the Docker socket and does not
+own Session compute. The separately launched Environment worker owns its Docker
+credentials, workspace volumes, and container lifecycle.
 
 The API bootstraps `sk-mango-local-development` for the default Workspace.
 Override it with `MANGO_API_KEY` before `make local-up`; never reuse the
@@ -112,10 +99,8 @@ make test-service
 This is the same suite run by CI. It covers real PostgreSQL migrations and
 transactions, Temporal workflows and Activities, NATS reconciliation and
 previews, the Files lifecycle through real MinIO, the HTTP-to-service vertical
-slice, a Docker sandbox tool step, and an offline coding-agent scenario that
-observes failing assertions, fixes a mounted fixture, and publishes the verified
-source through Session Outputs. Each database test uses an isolated schema;
-workflow, object, and sandbox cleanup is part of the assertions.
+slice, and a Docker Environment-worker tool step. Each database test uses an
+isolated schema; workflow, object, and worker cleanup is part of the assertions.
 
 ## Health checks
 

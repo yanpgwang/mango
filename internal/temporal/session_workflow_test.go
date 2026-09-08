@@ -239,7 +239,7 @@ func registerCurrentTurnActivities(
 	source *fakeSource,
 	disposition func(triggerEventID string) TurnDisposition,
 ) *turnRecorder {
-	acts := NewActivities(nil, source, nil, nil, &testIDGen{})
+	acts := NewActivities(nil, source, nil, &testIDGen{})
 	recorder := &turnRecorder{}
 	registerBudgetTestActivities(env)
 	env.RegisterActivityWithOptions(

@@ -70,7 +70,6 @@ transport and credentials; getting a service does not issue an HTTP request.
 | Environments and queued Work | `environments`, `environments.work` | `Environments`, `Environments.Work` |
 | Sessions and events | `sessions`, `sessions.events` | `Sessions`, `Sessions.Events` |
 | Child Threads and their events | `sessions.threads.events` | `Sessions.Threads.Events` |
-| Session attachments | `sessions.resources` | `Sessions.Resources` |
 | Files and Skills | `files`, `skills.versions` | `Files`, `Skills.Versions` |
 | Memory | `memory_stores` / `memoryStores`, with `memories` and `versions` | `MemoryStores.Memories`, `MemoryStores.Versions` |
 | Credentials | `vaults.credentials` | `Vaults.Credentials` |

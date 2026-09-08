@@ -2,13 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 
 	"github.com/yanpgwang/mango/internal/app"
@@ -18,351 +15,8 @@ import (
 	"github.com/yanpgwang/mango/internal/httpegress"
 	"github.com/yanpgwang/mango/internal/live"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 )
-
-type unavailableSessionResourceReconciler struct {
-	store  *pg.Store
-	cause  error
-	memory *app.SessionMemoryMaterializer
-}
-
-type retryingSessionResourceReconciler struct {
-	store   *pg.Store
-	resolve func(context.Context) (*resolvedFiles, error)
-
-	mu             sync.Mutex
-	materializer   *app.SessionRuntimeMaterializer
-	memory         *app.SessionMemoryMaterializer
-	sessionOutputs bool
-}
-
-func (r *retryingSessionResourceReconciler) resolveMaterializer(
-	ctx context.Context,
-) (*app.SessionRuntimeMaterializer, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.materializer != nil {
-		return r.materializer, nil
-	}
-	runtime, err := r.resolve(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if runtime == nil {
-		return nil, sandbox.Permanent(errors.New(
-			fileS3BucketEnv + " is not configured",
-		))
-	}
-	r.materializer = app.NewSessionRuntimeMaterializer(
-		app.NewSessionResourceMaterializer(
-			r.store, runtime.repository, runtime.blobs,
-		),
-		app.NewSessionSkillMaterializer(r.store, runtime.blobs),
-		r.memory,
-	).WithSessionOutputPublisher(runtime.outputs)
-	return r.materializer, nil
-}
-
-func (r *retryingSessionResourceReconciler) SupportsSessionOutputs() bool {
-	return r.sessionOutputs
-}
-
-func (r *retryingSessionResourceReconciler) LoadSkillInstructions(
-	ctx context.Context,
-	version domain.SkillVersion,
-) ([]byte, error) {
-	materializer, err := r.resolveMaterializer(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return materializer.LoadSkillInstructions(ctx, version)
-}
-
-func (r *retryingSessionResourceReconciler) PublishSessionOutputs(
-	ctx context.Context,
-	sessionID string,
-	box sandbox.Sandbox,
-) error {
-	if !r.sessionOutputs {
-		return sandbox.Permanent(errors.New("session output publication is disabled"))
-	}
-	materializer, err := r.resolveMaterializer(ctx)
-	if err != nil {
-		return err
-	}
-	return materializer.PublishSessionOutputs(ctx, sessionID, box)
-}
-
-func (r *retryingSessionResourceReconciler) Reconcile(
-	ctx context.Context,
-	sessionID string,
-	box sandbox.Sandbox,
-) error {
-	resources, err := r.store.SessionResourcesForReconcile(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	skills, err := r.store.SessionSkillsForRuntime(ctx, sessionID)
-	if err != nil || len(resources) == 0 && len(skills) == 0 {
-		return err
-	}
-	needsObjectStore := len(skills) > 0
-	for _, resource := range resources {
-		if resource.Type() != domain.SessionResourceTypeMemoryStore {
-			needsObjectStore = true
-			break
-		}
-	}
-	if !needsObjectStore {
-		if r.memory == nil {
-			return nil
-		}
-		return r.memory.Reconcile(ctx, sessionID, box)
-	}
-	materializer, err := r.resolveMaterializer(ctx)
-	if err != nil {
-		return err
-	}
-	return materializer.Reconcile(ctx, sessionID, box)
-}
-
-func (r *retryingSessionResourceReconciler) ReconcileThread(
-	ctx context.Context,
-	sessionID string,
-	threadID string,
-	box sandbox.Sandbox,
-) error {
-	resources, err := r.store.SessionResourcesForReconcile(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	runtime, err := r.store.SessionThreadSkillRuntime(ctx, sessionID, threadID)
-	if err != nil || len(resources) == 0 && len(runtime.Versions) == 0 {
-		return err
-	}
-	needsObjectStore := len(runtime.Versions) > 0
-	for _, resource := range resources {
-		if resource.Type() != domain.SessionResourceTypeMemoryStore {
-			needsObjectStore = true
-			break
-		}
-	}
-	if !needsObjectStore {
-		if r.memory == nil {
-			return nil
-		}
-		return r.memory.Reconcile(ctx, sessionID, box)
-	}
-	materializer, err := r.resolveMaterializer(ctx)
-	if err != nil {
-		return err
-	}
-	return materializer.ReconcileThread(ctx, sessionID, threadID, box)
-}
-
-func (r *retryingSessionResourceReconciler) Writeback(
-	ctx context.Context,
-	sessionID string,
-	box sandbox.Sandbox,
-) error {
-	if r.memory == nil {
-		return nil
-	}
-	return r.memory.Writeback(ctx, sessionID, box)
-}
-
-func (r *retryingSessionResourceReconciler) WritebackForRelease(
-	ctx context.Context,
-	sessionID string,
-	box sandbox.Sandbox,
-) error {
-	if r.memory == nil {
-		return nil
-	}
-	return r.memory.WritebackForRelease(ctx, sessionID, box)
-}
-
-func (r *retryingSessionResourceReconciler) MemoryStoreMountsForRelease(
-	ctx context.Context,
-	sessionID string,
-) ([]sandbox.MemoryStoreMount, error) {
-	if r.memory == nil {
-		return nil, nil
-	}
-	return r.memory.MemoryStoreMountsForRelease(ctx, sessionID)
-}
-
-func (r *retryingSessionResourceReconciler) CleanupSession(
-	ctx context.Context,
-	sessionID string,
-) error {
-	resources, err := r.store.SessionResourcesForReconcile(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	hasOutputs, err := r.store.SessionOutputFilesExist(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	needsObjectStore := hasOutputs
-	for _, resource := range resources {
-		if resource.Type() != domain.SessionResourceTypeMemoryStore {
-			needsObjectStore = true
-			break
-		}
-	}
-	if !needsObjectStore {
-		if r.memory == nil {
-			return nil
-		}
-		return r.memory.CleanupSession(ctx, sessionID)
-	}
-	materializer, err := r.resolveMaterializer(ctx)
-	if err != nil {
-		return err
-	}
-	return materializer.CleanupSession(ctx, sessionID)
-}
-
-func (r unavailableSessionResourceReconciler) Reconcile(
-	ctx context.Context,
-	sessionID string,
-	box sandbox.Sandbox,
-) error {
-	resources, err := r.store.SessionResourcesForReconcile(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	skills, err := r.store.SessionSkillsForRuntime(ctx, sessionID)
-	if err != nil || len(resources) == 0 && len(skills) == 0 {
-		return err
-	}
-	if r.memory != nil {
-		if err := r.memory.Reconcile(ctx, sessionID, box); err != nil {
-			return err
-		}
-	}
-	needsObjectStore := len(skills) > 0
-	for _, resource := range resources {
-		if resource.Type() != domain.SessionResourceTypeMemoryStore {
-			needsObjectStore = true
-			break
-		}
-	}
-	if !needsObjectStore {
-		return nil
-	}
-	return sandbox.Permanent(fmt.Errorf(
-		"session File/Git Resources or custom Skills are unavailable on this worker: %w",
-		r.cause,
-	))
-}
-
-func (r unavailableSessionResourceReconciler) ReconcileThread(
-	ctx context.Context,
-	sessionID string,
-	threadID string,
-	box sandbox.Sandbox,
-) error {
-	resources, err := r.store.SessionResourcesForReconcile(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	runtime, err := r.store.SessionThreadSkillRuntime(ctx, sessionID, threadID)
-	if err != nil || len(resources) == 0 && len(runtime.Versions) == 0 {
-		return err
-	}
-	if r.memory != nil {
-		if err := r.memory.Reconcile(ctx, sessionID, box); err != nil {
-			return err
-		}
-	}
-	needsObjectStore := len(runtime.Versions) > 0
-	for _, resource := range resources {
-		if resource.Type() != domain.SessionResourceTypeMemoryStore {
-			needsObjectStore = true
-			break
-		}
-	}
-	if !needsObjectStore {
-		return nil
-	}
-	return sandbox.Permanent(fmt.Errorf(
-		"session File/Git Resources or custom Skills are unavailable on this worker: %w",
-		r.cause,
-	))
-}
-
-func (r unavailableSessionResourceReconciler) Writeback(
-	ctx context.Context,
-	sessionID string,
-	box sandbox.Sandbox,
-) error {
-	if r.memory == nil {
-		return nil
-	}
-	return r.memory.Writeback(ctx, sessionID, box)
-}
-
-func (r unavailableSessionResourceReconciler) WritebackForRelease(
-	ctx context.Context,
-	sessionID string,
-	box sandbox.Sandbox,
-) error {
-	if r.memory == nil {
-		return nil
-	}
-	return r.memory.WritebackForRelease(ctx, sessionID, box)
-}
-
-func (r unavailableSessionResourceReconciler) MemoryStoreMountsForRelease(
-	ctx context.Context,
-	sessionID string,
-) ([]sandbox.MemoryStoreMount, error) {
-	if r.memory == nil {
-		return nil, nil
-	}
-	return r.memory.MemoryStoreMountsForRelease(ctx, sessionID)
-}
-
-func (r unavailableSessionResourceReconciler) CleanupSession(
-	ctx context.Context,
-	sessionID string,
-) error {
-	resources, err := r.store.SessionResourcesForReconcile(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	hasOutputs, err := r.store.SessionOutputFilesExist(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	if len(resources) == 0 && !hasOutputs {
-		return nil
-	}
-	if r.memory != nil {
-		if err := r.memory.CleanupSession(ctx, sessionID); err != nil {
-			return err
-		}
-	}
-	if hasOutputs {
-		return fmt.Errorf(
-			"session output Files are unavailable on this worker: %w",
-			r.cause,
-		)
-	}
-	for _, resource := range resources {
-		if resource.Type() != domain.SessionResourceTypeMemoryStore {
-			return fmt.Errorf(
-				"session File/Git Resources are unavailable on this worker: %w",
-				r.cause,
-			)
-		}
-	}
-	return nil
-}
 
 // Environment variables shared by the PostgreSQL HTTP control plane and the
 // Temporal execution worker.
@@ -412,7 +66,6 @@ func runOrchestrate() {
 		log.Printf("orchestrate: Vault-backed MCP authentication enabled")
 	}
 	memory := app.NewMemoryService(pg.NewMemoryRepository(store), ids, realClock{})
-	memoryMaterializer := app.NewSessionMemoryMaterializer(store, memory)
 	broker, err := live.Connect(os.Getenv(envNATSURL))
 	if err != nil {
 		log.Fatalf("orchestrate: nats: %v", err)
@@ -427,48 +80,14 @@ func runOrchestrate() {
 	if err != nil {
 		log.Fatalf("orchestrate: runtime: %v", err)
 	}
-	provider, err := resolveSandboxProvider()
-	if err != nil {
-		log.Fatalf("orchestrate: sandbox: %v", err)
-	}
-	providerRegistry, err := sandboxProviderRegistry()
-	if err != nil {
-		log.Fatalf("orchestrate: sandbox registry: %v", err)
-	}
-	providerCapabilities, err := providerRegistry.Capabilities(configuredSandboxProviderName())
-	if err != nil {
-		log.Fatalf("orchestrate: sandbox capabilities: %v", err)
-	}
 	fileRuntime, err := resolveFiles(ctx, store, ids, realClock{}, false)
-	var resourceReconciler temporalpkg.SandboxResourceReconciler
-	switch {
-	case err != nil:
-		log.Printf("orchestrate: object store unavailable; File/Skill turns will retry connection: %v", err)
-		resourceReconciler = &retryingSessionResourceReconciler{
-			store:          store,
-			memory:         memoryMaterializer,
-			sessionOutputs: providerCapabilities.SessionOutputs,
-			resolve: func(resolveCtx context.Context) (*resolvedFiles, error) {
-				return resolveFiles(resolveCtx, store, ids, realClock{}, false)
-			},
-		}
-	case fileRuntime == nil:
-		cause := errors.New(fileS3BucketEnv + " is not configured")
-		resourceReconciler = unavailableSessionResourceReconciler{
-			store: store, cause: cause, memory: memoryMaterializer,
-		}
-		log.Printf("orchestrate: Session File Resources and custom Skill runtime disabled: %v", cause)
-	default:
-		materializer := app.NewSessionRuntimeMaterializer(
-			app.NewSessionResourceMaterializer(
-				store, fileRuntime.repository, fileRuntime.blobs,
-			),
-			app.NewSessionSkillMaterializer(store, fileRuntime.blobs),
-			memoryMaterializer,
-		)
-		materializer.WithSessionOutputPublisher(fileRuntime.outputs)
-		resourceReconciler = materializer
-		log.Printf("orchestrate: Session File Resource, output, and custom Skill materializers enabled")
+	if err != nil {
+		log.Printf("orchestrate: Files and custom Skills disabled: %v", err)
+		fileRuntime = nil
+	}
+	var skillInstructions temporalpkg.SkillInstructionLoader
+	if fileRuntime != nil {
+		skillInstructions = app.NewSessionSkillMaterializer(store, fileRuntime.blobs)
 	}
 
 	client, err := temporalpkg.Dial(temporalpkg.ClientConfig{
@@ -482,55 +101,42 @@ func runOrchestrate() {
 	log.Printf("orchestrate: temporal connected")
 
 	runtime := temporalpkg.NewRuntime(temporalpkg.RuntimeConfig{
-		TemporalClient:   client,
-		Store:            store,
-		ModelClient:      modelClient,
-		SandboxProvider:  provider,
-		IDGenerator:      ids,
-		RelayConfig:      temporalpkg.RelayConfig{},
-		Resources:        resourceReconciler,
-		MCPAuth:          mcpAuth,
-		PreviewPublisher: broker,
+		TemporalClient:    client,
+		Store:             store,
+		ModelClient:       modelClient,
+		IDGenerator:       ids,
+		RelayConfig:       temporalpkg.RelayConfig{},
+		SkillInstructions: skillInstructions,
+		MCPAuth:           mcpAuth,
+		PreviewPublisher:  broker,
 	})
 
 	agentsRepo := pg.NewAgentRepository(store)
 	environmentsRepo := pg.NewEnvironmentRepository(store)
 	var skillResolver app.SkillReferenceResolver
-	var sessionResources *controlplane.SessionResourceService
 	if fileRuntime != nil {
 		skills := app.NewSkillService(
 			pg.NewSkillRepository(store), fileRuntime.blobs, ids, realClock{},
 		)
 		skillResolver = skills
-		sessionResources = controlplane.NewSessionResourceService(
-			store, fileRuntime.repository, fileRuntime.blobs, ids, realClock{},
-			providerCapabilities.FileResources,
-		)
 	}
 	deploymentSessions := controlplane.NewSessionService(
 		store, agentsRepo, environmentsRepo, runtime.Orchestrator(), ids,
-		realClock{}, skillResolver, sessionResources,
+		realClock{}, skillResolver,
 	)
 	if fileRuntime != nil {
 		deploymentSessions.EnableFileOutcomeRubrics(fileRuntime.service)
 		deploymentSessions.EnableFileMessageContent(fileRuntime.service)
 	}
-	deploymentSessions.ConfigureCloudSkillBundles(providerCapabilities.SkillBundles)
 	deploymentSessions.EnableMemoryStoreResources(memory)
-	deploymentSessions.ConfigureCloudMemoryStores(providerCapabilities.MemoryStores)
 	if vaults != nil {
 		deploymentSessions.EnableVaults()
-	}
-	var deploymentFiles app.DeploymentFileReader
-	if fileRuntime != nil && providerCapabilities.FileResources {
-		deploymentFiles = fileRuntime.service
 	}
 	deployments := app.NewDeploymentService(app.DeploymentServiceConfig{
 		Repository: pg.NewDeploymentRepository(store),
 		Agents:     agentsRepo, Environments: environmentsRepo, Sessions: deploymentSessions,
-		Files: deploymentFiles, Memory: memory, Vaults: vaults,
-		CloudMemoryStores: providerCapabilities.MemoryStores,
-		IDGenerator:       ids, Clock: realClock{},
+		Memory: memory, Vaults: vaults,
+		IDGenerator: ids, Clock: realClock{},
 	})
 	deploymentReconciler := app.NewDeploymentReconciler(deployments)
 	var webhookDispatcher *app.WebhookDispatcher
@@ -557,7 +163,7 @@ func runOrchestrate() {
 	log.Printf("orchestrate: outbox relay running")
 	lifecycleErr := make(chan error, 1)
 	go func() { lifecycleErr <- runtime.Lifecycle.Run(ctx) }()
-	log.Printf("orchestrate: sandbox and deletion lifecycle reconciler running")
+	log.Printf("orchestrate: deletion lifecycle reconciler running")
 	deploymentErr := make(chan error, 1)
 	go func() { deploymentErr <- deploymentReconciler.Run(ctx) }()
 	log.Printf("orchestrate: scheduled Deployment reconciler running")

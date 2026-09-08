@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -15,7 +14,6 @@ import (
 	"unicode/utf8"
 
 	"go.temporal.io/sdk/activity"
-	temporalsdk "go.temporal.io/sdk/temporal"
 
 	"github.com/yanpgwang/mango/internal/agentruntime"
 	"github.com/yanpgwang/mango/internal/agentruntime/tools"
@@ -23,31 +21,26 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/mcpclient"
 	"github.com/yanpgwang/mango/internal/model"
-	"github.com/yanpgwang/mango/internal/sandbox"
 	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 // Registered activity names. Referenced by the workflow through the exported
 // symbols; named explicitly so a rename cannot silently break replay.
 const (
-	ActivityLoadEvents            = "LoadEvents"
-	ActivityLoadInterrupt         = "LoadInterrupt"
-	ActivityLoadPendingActions    = "LoadPendingActions"
-	ActivityPrepareTurn           = "PrepareTurn"
-	ActivityAdmitModelRequest     = "AdmitModelRequest"
-	ActivityStartModelRequest     = "StartModelRequest"
-	ActivityAppendWorkflowEvents  = "AppendWorkflowEvents"
-	ActivityRecordModelRetry      = "RecordModelRetry"
-	ActivityResumeModelRetry      = "ResumeModelRetry"
-	ActivityCallModel             = "CallModel"
-	ActivityAccountModelRequest   = "AccountModelRequest"
-	ActivityEvaluateOutcome       = "EvaluateOutcome"
-	ActivityExecuteTool           = "ExecuteTool"
-	ActivityPublishSessionOutputs = "PublishSessionOutputs"
-	ActivityCompleteWorkflowTurn  = "CompleteWorkflowTurn"
-	ActivityReleaseSandbox        = "ReleaseSandbox"
-
-	sandboxPermanentErrorType = "SandboxPermanentError"
+	ActivityLoadEvents           = "LoadEvents"
+	ActivityLoadInterrupt        = "LoadInterrupt"
+	ActivityLoadPendingActions   = "LoadPendingActions"
+	ActivityPrepareTurn          = "PrepareTurn"
+	ActivityAdmitModelRequest    = "AdmitModelRequest"
+	ActivityStartModelRequest    = "StartModelRequest"
+	ActivityAppendWorkflowEvents = "AppendWorkflowEvents"
+	ActivityRecordModelRetry     = "RecordModelRetry"
+	ActivityResumeModelRetry     = "ResumeModelRetry"
+	ActivityCallModel            = "CallModel"
+	ActivityAccountModelRequest  = "AccountModelRequest"
+	ActivityEvaluateOutcome      = "EvaluateOutcome"
+	ActivityExecuteTool          = "ExecuteTool"
+	ActivityCompleteWorkflowTurn = "CompleteWorkflowTurn"
 )
 
 // EventSource is the read side of the PostgreSQL ledger the Activities depend
@@ -321,55 +314,12 @@ type JournalStore interface {
 	MarkToolStepAmbiguous(ctx context.Context, stepID string) error
 }
 
-// SandboxLease provisions the session-scoped sandbox a built-in tool executes
-// in. *sandbox.SessionManager implements it. The sandbox outlives a single turn:
-// it is keyed by session so a later turn reuses the filesystem an earlier turn
-// left behind.
-type SandboxLease interface {
-	Acquire(ctx context.Context, sessionID string, spec sandbox.Spec) (sandbox.Sandbox, error)
-	Release(ctx context.Context, sessionID string) error
-}
-
-type ExistingSandboxLease interface {
-	AcquireExisting(
-		ctx context.Context,
-		sessionID string,
-		spec sandbox.Spec,
-	) (sandbox.Sandbox, bool, error)
-}
-
-type SandboxResourceReconciler interface {
-	Reconcile(context.Context, string, sandbox.Sandbox) error
-}
-
-type ThreadSandboxResourceReconciler interface {
-	ReconcileThread(context.Context, string, string, sandbox.Sandbox) error
-}
-
-type SandboxResourceWriteback interface {
-	Writeback(context.Context, string, sandbox.Sandbox) error
-}
-
-type SandboxResourceReleaseReconciler interface {
-	MemoryStoreMountsForRelease(context.Context, string) ([]sandbox.MemoryStoreMount, error)
-	WritebackForRelease(context.Context, string, sandbox.Sandbox) error
-}
-
-type SkillRuntimeReconciler interface {
-	SupportsSkillRuntime() bool
-}
-
 // SkillInstructionLoader reads the immutable instruction entry owned by the
 // control plane. The Agent loop uses the same canonical source for every
 // execution environment; self-hosted workers independently receive the pinned
 // bundle for supporting-file access, without reverse filesystem access.
 type SkillInstructionLoader interface {
 	LoadSkillInstructions(context.Context, domain.SkillVersion) ([]byte, error)
-}
-
-type SessionOutputPublisher interface {
-	SupportsSessionOutputs() bool
-	PublishSessionOutputs(context.Context, string, sandbox.Sandbox) error
 }
 
 type SessionSkillSource interface {
@@ -414,52 +364,37 @@ type TurnCompletionResult struct {
 // and applied after projection.
 const historyScanLimit = 10000
 
-// sandboxTurnTimeout bounds a built-in tool execution within a turn.
-const sandboxTurnTimeout = 120 * time.Second
-
-// An explicit cloud Environment resolves omitted networking to unrestricted.
-// Provider defaults remain deny-by-default for direct sandbox consumers; the
-// Mango execution path opts into provider egress explicitly.
-const defaultCloudSandboxNetwork = "bridge"
-
 // toolResultWriteAttempts gives a known in-memory tool result a brief chance to
 // cross a transient PostgreSQL outage before the Activity returns an error. A
 // later Activity retry must conservatively classify a still-started step as
 // ambiguous, so this bounded write-only retry belongs before that boundary.
 const toolResultWriteAttempts = 3
 
-// Activities holds the I/O dependencies of the session Activities: the model
-// client, PostgreSQL event source, durable tool journal, and session-scoped
-// sandbox lease. All non-deterministic work (SQL, model calls, tool side effects)
-// lives here, never in the workflow. journal and sandboxes may be nil for a
-// deployment that never routes tool-using turns.
+// Activities holds the I/O dependencies of the session Activities. Self-hosted
+// built-ins execute through Environment Work; only control-plane tools such as
+// MCP, coordinator, Advisor, and Skill activation execute here.
 type Activities struct {
-	modelClient           model.Client
-	source                EventSource
-	journal               JournalStore
-	sandboxes             SandboxLease
-	resources             SandboxResourceReconciler
-	outputs               SessionOutputPublisher
-	ids                   domain.IDGenerator
-	previews              PreviewPublisher
-	mcp                   mcpclient.Client
-	mcpAuth               mcpclient.AuthSource
-	contextTokenBudget    int
-	skillRuntimeSupported bool
-	skillInstructions     SkillInstructionLoader
+	modelClient        model.Client
+	source             EventSource
+	journal            JournalStore
+	ids                domain.IDGenerator
+	previews           PreviewPublisher
+	mcp                mcpclient.Client
+	mcpAuth            mcpclient.AuthSource
+	contextTokenBudget int
+	skillInstructions  SkillInstructionLoader
 }
 
 func NewActivities(
 	modelClient model.Client,
 	source EventSource,
 	journal JournalStore,
-	sandboxes SandboxLease,
 	ids domain.IDGenerator,
 	previewPublisher ...PreviewPublisher,
 ) *Activities {
 	activities := &Activities{
 		modelClient: modelClient, source: source,
-		journal: journal, sandboxes: sandboxes, ids: ids,
+		journal: journal, ids: ids,
 		mcp: mcpclient.NewRemote(nil),
 	}
 	if len(previewPublisher) > 0 {
@@ -484,28 +419,6 @@ func (a *Activities) WithMCPClient(client mcpclient.Client) *Activities {
 
 func (a *Activities) WithMCPAuthSource(source mcpclient.AuthSource) *Activities {
 	a.mcpAuth = source
-	return a
-}
-
-func (a *Activities) WithSandboxResourceReconciler(
-	reconciler SandboxResourceReconciler,
-) *Activities {
-	a.resources = reconciler
-	return a
-}
-
-func (a *Activities) WithSessionOutputPublisher(
-	publisher SessionOutputPublisher,
-) *Activities {
-	a.outputs = publisher
-	return a
-}
-
-// WithSkillRuntimeSupported records that the configured sandbox provider can
-// expose the read-only custom Skill tree. It prevents a model from being told
-// about paths that a local or unsupported adapter cannot serve.
-func (a *Activities) WithSkillRuntimeSupported(supported bool) *Activities {
-	a.skillRuntimeSupported = supported
 	return a
 }
 
@@ -852,17 +765,11 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 			FatalError: "invalid Skill tool configuration: " + err.Error(),
 		}, nil
 	}
-	selfHosted := session.EnvironmentType == "self_hosted"
 	if err := agentruntime.ValidateToolCapabilities(toolSet); err != nil {
 		return PrepareTurnResult{FatalError: "unsupported tool capability: " + err.Error()}, nil
 	}
 	runtimeSkills := domain.SkillRuntime{Root: domain.SessionSkillsRoot}
 	if len(executionAgent.Skills) > 0 {
-		if !selfHosted && !a.skillRuntimeSupported {
-			return PrepareTurnResult{
-				FatalError: "custom Skills are unavailable on the configured sandbox provider",
-			}, nil
-		}
 		if a.skillInstructions == nil {
 			return PrepareTurnResult{
 				FatalError: "custom Skill instruction loading is unavailable",
@@ -882,14 +789,12 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 		if err != nil {
 			return PrepareTurnResult{}, err
 		}
-		if selfHosted {
-			var valid bool
-			runtimeSkills, valid = selfHostedSkillRuntime(runtimeSkills)
-			if !valid {
-				return PrepareTurnResult{
-					FatalError: "custom Skill runtime path is outside the Skill root",
-				}, nil
-			}
+		var valid bool
+		runtimeSkills, valid = selfHostedSkillRuntime(runtimeSkills)
+		if !valid {
+			return PrepareTurnResult{
+				FatalError: "custom Skill runtime path is outside the Skill root",
+			}, nil
 		}
 		if validationErr := validateRuntimeSkillPins(
 			executionAgent.Skills, runtimeSkills.Versions,
@@ -909,10 +814,7 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 		runtimeSkills,
 		a.contextTokenBudget/100,
 	)
-	toolSchemas := agentruntime.EnabledToolSchemas(toolSet)
-	if selfHosted {
-		toolSchemas = agentruntime.EnabledSelfHostedToolSchemas(toolSet)
-	}
+	toolSchemas := agentruntime.EnabledSelfHostedToolSchemas(toolSet)
 	if len(runtimeSkills.Versions) > 0 {
 		toolSchemas = append(toolSchemas, agentruntime.RuntimeSkillToolSchema())
 	}
@@ -927,8 +829,6 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 			Tools:  toolSchemas,
 		},
 	}
-	result.SessionOutputsEnabled = !selfHosted && !result.IsChild &&
-		a.outputs != nil && a.outputs.SupportsSessionOutputs()
 	if executionAgent.Multiagent.HasCallableAgents() && !result.IsChild {
 		result.Request.System = agentruntime.ProjectCoordinatorSystemContext(
 			result.Request.System,
@@ -1083,12 +983,8 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 		}
 		enabled, policy := toolSet.BuiltinEnabled(name)
 		if enabled {
-			kind := TurnToolBuiltin
-			if selfHosted {
-				kind = TurnToolSelfHosted
-			}
 			result.Tools = append(result.Tools, TurnTool{
-				Name: name, Kind: kind, Permission: policy,
+				Name: name, Kind: TurnToolSelfHosted, Permission: policy,
 			})
 		}
 	}
@@ -2068,87 +1964,23 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 		}
 		return a.executeRuntimeSkill(
 			workspace.WithScope(ctx, session.WorkspaceID), in, step.ID,
-			retrySafeStarted, session.EnvironmentType == "self_hosted",
+			retrySafeStarted,
 		)
 	}
-	if a.sandboxes == nil {
-		return ExecuteToolResult{}, fmt.Errorf(
-			"temporal: sandbox tool execution requires a sandbox",
-		)
-	}
-	var executor tools.Executor
-	switch kind {
-	case TurnToolBuiltin:
-		var ok bool
-		executor, ok = tools.Registry()[in.ToolName]
-		if !ok {
-			out.FatalError = "built-in tool is not registered: " + in.ToolName
-			return out, nil
-		}
-	case TurnToolMCP:
-		if a.mcp == nil || in.MCPServer.Name == "" ||
-			in.MCPServer.URL == "" || in.MCPToolName == "" {
-			out.FatalError = "MCP tool execution is missing its pinned server definition"
-			return out, nil
-		}
-	default:
+	if kind != TurnToolMCP {
 		out.FatalError = "tool execution owner is not server-executable: " + string(kind)
 		return out, nil
 	}
-	// Provisioning happens before Start: a transient sandbox failure cannot turn
-	// a never-executed tool into an ambiguous side effect. MCP also uses the
-	// Session sandbox to materialize binary and oversized results.
+	if a.mcp == nil || in.MCPServer.Name == "" ||
+		in.MCPServer.URL == "" || in.MCPToolName == "" {
+		out.FatalError = "MCP tool execution is missing its pinned server definition"
+		return out, nil
+	}
 	session, err := a.source.GetSession(ctx, in.SessionID)
 	if err != nil {
 		return ExecuteToolResult{}, err
 	}
 	ctx = workspace.WithScope(ctx, session.WorkspaceID)
-	spec, err := sandboxSpecForSession(session)
-	if err != nil {
-		return ExecuteToolResult{}, err
-	}
-	box, err := a.sandboxes.Acquire(ctx, in.SessionID, spec)
-	if err != nil {
-		if sandbox.IsPermanent(err) {
-			out.FatalError = err.Error()
-			return out, nil
-		}
-		return ExecuteToolResult{}, err
-	}
-	if a.resources != nil {
-		var reconcileErr error
-		if scoped, ok := a.resources.(ThreadSandboxResourceReconciler); ok &&
-			in.ThreadID != "" {
-			reconcileErr = scoped.ReconcileThread(
-				ctx, in.SessionID, in.ThreadID, box,
-			)
-		} else {
-			reconcileErr = a.resources.Reconcile(ctx, in.SessionID, box)
-		}
-		if reconcileErr != nil {
-			if sandbox.IsPermanent(reconcileErr) {
-				out.FatalError = reconcileErr.Error()
-				return out, nil
-			}
-			return ExecuteToolResult{}, reconcileErr
-		}
-	}
-	var unlockResourceOperation func()
-	if locker, ok := box.(sandbox.ResourceSynchronizationSandbox); ok {
-		unlockResourceOperation, err = locker.LockResourceOperation(ctx)
-		if err != nil {
-			if sandbox.IsPermanent(err) {
-				out.FatalError = err.Error()
-				return out, nil
-			}
-			return ExecuteToolResult{}, err
-		}
-		defer func() {
-			if unlockResourceOperation != nil {
-				unlockResourceOperation()
-			}
-		}()
-	}
 	if !retrySafeStarted {
 		dctx, cancel := durableCtx(ctx)
 		err = a.journal.StartToolStep(dctx, step.ID)
@@ -2158,69 +1990,38 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 		}
 	}
 
-	if kind == TurnToolMCP {
-		// Crossing StartToolStep is the side-effect uncertainty boundary. A
-		// transport failure after this point may have happened after the remote
-		// server executed the tool, so the Activity error intentionally becomes
-		// ambiguous on retry rather than blindly calling the MCP tool again.
-		var called mcpclient.Result
-		var err error
-		if authenticated, ok := a.mcp.(mcpclient.AuthenticatedClient); ok {
-			called, err = authenticated.CallAuthenticated(
-				ctx, in.SessionID, in.MCPServer, in.MCPToolName, in.Input, a.mcpAuth,
-			)
-		} else {
-			called, err = a.mcp.Call(ctx, in.MCPServer, in.MCPToolName, in.Input)
-		}
-		if err != nil {
-			if mcpclient.IsAuthenticationError(err) {
-				out.Events = append(out.Events, mcpAuthenticationFailureEvent(in.MCPServer))
-				out.Result = domain.ToolStepResult{
-					Content: []any{map[string]any{
-						"type": "text",
-						"text": "Authentication failed for MCP server " + in.MCPServer.Name + ".",
-					}},
-					IsError: true,
-				}
-			} else {
-				return ExecuteToolResult{}, err
-			}
-		} else {
-			executed, raw, rawPath, projectErr := tools.ProjectMCPResult(
-				context.WithoutCancel(ctx),
-				box,
-				in.ToolUseEventID,
-				called,
-			)
-			if projectErr != nil {
-				executed = tools.Result{
-					Content: []any{map[string]any{
-						"type": "text",
-						"text": projectErr.Error(),
-					}},
-					IsError: true,
-				}
-			}
+	// Crossing StartToolStep is the side-effect uncertainty boundary. A
+	// transport failure after this point may have happened after the remote
+	// server executed the tool, so the Activity error intentionally becomes
+	// ambiguous on retry rather than blindly calling the MCP tool again.
+	var called mcpclient.Result
+	if authenticated, ok := a.mcp.(mcpclient.AuthenticatedClient); ok {
+		called, err = authenticated.CallAuthenticated(
+			ctx, in.SessionID, in.MCPServer, in.MCPToolName, in.Input, a.mcpAuth,
+		)
+	} else {
+		called, err = a.mcp.Call(ctx, in.MCPServer, in.MCPToolName, in.Input)
+	}
+	if err != nil {
+		if mcpclient.IsAuthenticationError(err) {
+			out.Events = append(out.Events, mcpAuthenticationFailureEvent(in.MCPServer))
 			out.Result = domain.ToolStepResult{
-				Content: executed.Content,
-				IsError: executed.IsError,
-				Raw:     raw,
-				RawPath: rawPath,
+				Content: []any{map[string]any{
+					"type": "text",
+					"text": "Authentication failed for MCP server " + in.MCPServer.Name + ".",
+				}},
+				IsError: true,
 			}
+		} else {
+			return ExecuteToolResult{}, err
 		}
 	} else {
-		executed := executor(ctx, box, in.Input)
-		executed, materializeErr := tools.MaterializeLargeResult(
-			context.WithoutCancel(ctx),
-			box,
-			in.ToolUseEventID,
-			executed,
-		)
-		if materializeErr != nil {
+		executed, raw, projectErr := tools.ProjectMCPResult(called)
+		if projectErr != nil {
 			executed = tools.Result{
 				Content: []any{map[string]any{
 					"type": "text",
-					"text": materializeErr.Error(),
+					"text": projectErr.Error(),
 				}},
 				IsError: true,
 			}
@@ -2228,22 +2029,7 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 		out.Result = domain.ToolStepResult{
 			Content: executed.Content,
 			IsError: executed.IsError,
-		}
-	}
-	if unlockResourceOperation != nil {
-		unlockResourceOperation()
-		unlockResourceOperation = nil
-	}
-	if writer, ok := a.resources.(SandboxResourceWriteback); ok {
-		writebackCtx, cancel := durableCtx(ctx)
-		writebackErr := writer.Writeback(writebackCtx, in.SessionID, box)
-		cancel()
-		if writebackErr != nil {
-			out.Result.Content = append(out.Result.Content, map[string]any{
-				"type": "text",
-				"text": "Memory Store writeback failed: " + writebackErr.Error(),
-			})
-			out.Result.IsError = true
+			Raw:     raw,
 		}
 	}
 	if len(out.Events) > 0 {
@@ -2261,7 +2047,6 @@ func (a *Activities) executeRuntimeSkill(
 	in ExecuteToolInput,
 	stepID string,
 	retrySafeStarted bool,
-	selfHosted bool,
 ) (ExecuteToolResult, error) {
 	out := ExecuteToolResult{}
 	if a.skillInstructions == nil {
@@ -2310,13 +2095,11 @@ func (a *Activities) executeRuntimeSkill(
 		if err != nil {
 			return ExecuteToolResult{}, err
 		}
-		if selfHosted {
-			var valid bool
-			runtime, valid = selfHostedSkillRuntime(runtime)
-			if !valid {
-				out.FatalError = "custom Skill runtime path is outside the Skill root"
-				return out, nil
-			}
+		var valid bool
+		runtime, valid = selfHostedSkillRuntime(runtime)
+		if !valid {
+			out.FatalError = "custom Skill runtime path is outside the Skill root"
+			return out, nil
 		}
 		if in.SkillRuntimeRoot != "" && in.SkillRuntimeRoot != runtime.Root {
 			out.FatalError = "custom Skill runtime scope changed after turn preparation"
@@ -2338,17 +2121,15 @@ func (a *Activities) executeRuntimeSkill(
 			}
 		} else {
 			runtimePath := runtime.SkillPath(name)
-			expectedRoot := domain.SessionSkillsRoot
-			if selfHosted {
-				expectedRoot = domain.SessionSkillsRelativeRoot
-			}
+			expectedRoot := domain.SessionSkillsRelativeRoot
 			if !strings.HasPrefix(runtimePath, expectedRoot+"/") {
 				out.FatalError = "custom Skill runtime path is outside the Skill root"
 				return out, nil
 			}
 			body, err := a.skillInstructions.LoadSkillInstructions(ctx, *selected)
 			if err != nil {
-				if sandbox.IsPermanent(err) {
+				var domainErr *domain.DomainError
+				if errors.As(err, &domainErr) && domainErr.Kind == domain.KindValidation {
 					out.FatalError = err.Error()
 					return out, nil
 				}
@@ -2381,7 +2162,7 @@ func (a *Activities) executeRuntimeSkill(
 }
 
 func selfHostedSkillRuntime(runtime domain.SkillRuntime) (domain.SkillRuntime, bool) {
-	prefix := domain.SessionRepositoryRoot + "/"
+	prefix := domain.SessionWorkspaceRoot + "/"
 	relative, ok := strings.CutPrefix(runtime.Root, prefix)
 	if !ok || (relative != domain.SessionSkillsRelativeRoot &&
 		!strings.HasPrefix(relative, domain.SessionSkillsRelativeRoot+"/.agents/")) {
@@ -2510,214 +2291,6 @@ func advisorErrorResult(message string) domain.ToolStepResult {
 	}
 }
 
-func sandboxSpecForSession(session domain.Session) (sandbox.Spec, error) {
-	spec := sandbox.Spec{
-		Timeout: sandboxTurnTimeout,
-		Network: defaultCloudSandboxNetwork,
-	}
-	for _, resource := range session.Resources {
-		if resource.State != domain.SessionResourceActive ||
-			resource.Type() != domain.SessionResourceTypeMemoryStore {
-			continue
-		}
-		spec.MemoryStores = append(spec.MemoryStores, sandbox.MemoryStoreMount{
-			Identity:    resource.ID,
-			StoreID:     resource.MemoryStoreID,
-			RuntimePath: resource.MountPath,
-			Access:      resource.MemoryAccess,
-		})
-	}
-	if rawPackages, present := session.EnvironmentConfig["packages"]; present {
-		packages, ok := rawPackages.(map[string]any)
-		if !ok || packages == nil {
-			return sandbox.Spec{}, domain.Validation("session environment packages must be an object")
-		}
-		managers := []struct {
-			name        string
-			destination *[]string
-		}{
-			{name: "apt", destination: &spec.Packages.Apt},
-			{name: "cargo", destination: &spec.Packages.Cargo},
-			{name: "gem", destination: &spec.Packages.Gem},
-			{name: "go", destination: &spec.Packages.Go},
-			{name: "npm", destination: &spec.Packages.NPM},
-			{name: "pip", destination: &spec.Packages.Pip},
-		}
-		for _, manager := range managers {
-			values, err := environmentPackageList(packages[manager.name], manager.name)
-			if err != nil {
-				return sandbox.Spec{}, err
-			}
-			*manager.destination = values
-		}
-	}
-
-	rawNetworking, present := session.EnvironmentConfig["networking"]
-	if !present {
-		return spec, nil
-	}
-	networking, ok := rawNetworking.(map[string]any)
-	if !ok || networking == nil {
-		return sandbox.Spec{}, domain.Validation("session environment networking must be an object")
-	}
-	networkType, ok := networking["type"].(string)
-	if !ok {
-		return sandbox.Spec{}, domain.Validation(
-			"session environment networking.type must be unrestricted or limited",
-		)
-	}
-	if networkType == "unrestricted" {
-		return spec, nil
-	}
-	if networkType != "limited" {
-		return sandbox.Spec{}, domain.Validation(
-			"session environment networking.type must be unrestricted or limited",
-		)
-	}
-
-	allowedHosts, err := environmentNetworkHostList(networking["allowed_hosts"])
-	if err != nil {
-		return sandbox.Spec{}, err
-	}
-	allowMCPServers, err := environmentNetworkBool(
-		networking["allow_mcp_servers"],
-		"allow_mcp_servers",
-	)
-	if err != nil {
-		return sandbox.Spec{}, err
-	}
-	allowPackageManagers, err := environmentNetworkBool(
-		networking["allow_package_managers"],
-		"allow_package_managers",
-	)
-	if err != nil {
-		return sandbox.Spec{}, err
-	}
-	if allowMCPServers {
-		servers, parseErr := domain.ParseMCPServers(session.AgentSnapshot.MCPServers)
-		if parseErr != nil {
-			return sandbox.Spec{}, domain.Validation(
-				"session agent MCP servers cannot be added to the network policy: " + parseErr.Error(),
-			)
-		}
-		for _, server := range servers {
-			parsed, parseErr := url.Parse(server.URL)
-			if parseErr != nil || parsed.Hostname() == "" {
-				return sandbox.Spec{}, domain.Validation(
-					"session agent MCP server has an invalid URL",
-				)
-			}
-			allowedHosts = append(allowedHosts, parsed.Hostname())
-		}
-	}
-	if allowPackageManagers {
-		allowedHosts = append(allowedHosts, publicPackageRegistryHosts...)
-	}
-	spec.Network = "limited"
-	spec.NetworkAllowedHosts = normalizedNetworkHosts(allowedHosts)
-	if !spec.Packages.Empty() {
-		setupHosts := append([]string(nil), spec.NetworkAllowedHosts...)
-		setupHosts = append(setupHosts, publicPackageRegistryHosts...)
-		spec.SetupNetworkAllowedHosts = normalizedNetworkHosts(setupHosts)
-	}
-	return spec, nil
-}
-
-var publicPackageRegistryHosts = []string{
-	"api.rubygems.org",
-	"archive.ubuntu.com",
-	"crates.io",
-	"deb.debian.org",
-	"files.pythonhosted.org",
-	"index.crates.io",
-	"index.rubygems.org",
-	"ports.ubuntu.com",
-	"proxy.golang.org",
-	"pypi.org",
-	"registry.npmjs.org",
-	"rubygems.org",
-	"security.debian.org",
-	"security.ubuntu.com",
-	"snapshot.debian.org",
-	"static.crates.io",
-	"storage.googleapis.com",
-	"sum.golang.org",
-}
-
-func environmentNetworkHostList(raw any) ([]string, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	switch values := raw.(type) {
-	case []string:
-		return append([]string(nil), values...), nil
-	case []any:
-		result := make([]string, len(values))
-		for index, value := range values {
-			text, ok := value.(string)
-			if !ok {
-				return nil, domain.Validation(
-					"session environment networking.allowed_hosts must contain strings",
-				)
-			}
-			result[index] = text
-		}
-		return result, nil
-	default:
-		return nil, domain.Validation(
-			"session environment networking.allowed_hosts must be an array",
-		)
-	}
-}
-
-func environmentNetworkBool(raw any, field string) (bool, error) {
-	if raw == nil {
-		return false, nil
-	}
-	value, ok := raw.(bool)
-	if !ok {
-		return false, domain.Validation(
-			"session environment networking." + field + " must be a boolean",
-		)
-	}
-	return value, nil
-}
-
-func normalizedNetworkHosts(hosts []string) []string {
-	unique := make(map[string]struct{}, len(hosts))
-	for _, host := range hosts {
-		unique[strings.ToLower(host)] = struct{}{}
-	}
-	normalized := make([]string, 0, len(unique))
-	for host := range unique {
-		normalized = append(normalized, host)
-	}
-	sort.Strings(normalized)
-	return normalized
-}
-
-func environmentPackageList(raw any, manager string) ([]string, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	switch values := raw.(type) {
-	case []string:
-		return append([]string(nil), values...), nil
-	case []any:
-		result := make([]string, len(values))
-		for index, value := range values {
-			text, ok := value.(string)
-			if !ok {
-				return nil, domain.Validation("session environment packages." + manager + " must contain strings")
-			}
-			result[index] = text
-		}
-		return result, nil
-	default:
-		return nil, domain.Validation("session environment packages." + manager + " must be an array")
-	}
-}
-
 // workflowToolResult is the bounded model/public projection returned through
 // Temporal. Executor-native Raw/RawPath stay in the PostgreSQL journal and do
 // not need to inflate Workflow history.
@@ -2726,116 +2299,6 @@ func workflowToolResult(result domain.ToolStepResult) domain.ToolStepResult {
 	result.RawPath = ""
 	result.Events = nil
 	return result
-}
-
-// PublishSessionOutputs snapshots an already-provisioned Session sandbox. It
-// deliberately never provisions one just because a text-only turn became idle.
-func (a *Activities) PublishSessionOutputs(
-	ctx context.Context,
-	in PublishSessionOutputsInput,
-) (PublishSessionOutputsResult, error) {
-	if a.outputs == nil || !a.outputs.SupportsSessionOutputs() {
-		return PublishSessionOutputsResult{FatalError: "session output publication is unavailable"}, nil
-	}
-	lease, ok := a.sandboxes.(ExistingSandboxLease)
-	if !ok {
-		return PublishSessionOutputsResult{FatalError: "sandbox manager cannot attach existing Session outputs"}, nil
-	}
-	session, err := a.source.GetSession(ctx, in.SessionID)
-	if err != nil {
-		return PublishSessionOutputsResult{}, err
-	}
-	ctx = workspace.WithScope(ctx, session.WorkspaceID)
-	spec, err := sandboxSpecForSession(session)
-	if err != nil {
-		return PublishSessionOutputsResult{}, err
-	}
-	box, found, err := lease.AcquireExisting(ctx, in.SessionID, spec)
-	if err != nil {
-		if sandbox.IsPermanent(err) {
-			return PublishSessionOutputsResult{FatalError: err.Error()}, nil
-		}
-		return PublishSessionOutputsResult{}, err
-	}
-	if !found {
-		return PublishSessionOutputsResult{}, nil
-	}
-	stopHeartbeat := heartbeatActivity(ctx)
-	defer stopHeartbeat()
-	locker, ok := box.(sandbox.ResourceSynchronizationSandbox)
-	if !ok {
-		return PublishSessionOutputsResult{
-			FatalError: "sandbox does not provide the resource lock required for Session outputs",
-		}, nil
-	}
-	unlock, err := locker.LockResourceOperation(ctx)
-	if err != nil {
-		if sandbox.IsPermanent(err) {
-			return PublishSessionOutputsResult{FatalError: err.Error()}, nil
-		}
-		return PublishSessionOutputsResult{}, err
-	}
-	defer unlock()
-	if err := a.outputs.PublishSessionOutputs(ctx, in.SessionID, box); err != nil {
-		var domainErr *domain.DomainError
-		if sandbox.IsPermanent(err) ||
-			(errors.As(err, &domainErr) &&
-				(domainErr.Kind == domain.KindValidation || domainErr.Kind == domain.KindTooLarge)) {
-			return PublishSessionOutputsResult{FatalError: err.Error()}, nil
-		}
-		return PublishSessionOutputsResult{}, err
-	}
-	return PublishSessionOutputsResult{}, nil
-}
-
-// ReleaseSandbox completes the provider side of session deletion. It is a
-// standalone Activity so Temporal durably retries provider or PostgreSQL
-// outages without making the HTTP control plane own sandbox credentials.
-func (a *Activities) ReleaseSandbox(ctx context.Context, in ReleaseSandboxInput) error {
-	if a.sandboxes == nil {
-		return temporalsdk.NewNonRetryableApplicationError(
-			"temporal: sandbox manager is not configured",
-			sandboxPermanentErrorType,
-			nil,
-		)
-	}
-	stopHeartbeat := heartbeatActivity(ctx)
-	defer stopHeartbeat()
-	if release, ok := a.resources.(SandboxResourceReleaseReconciler); ok && a.source != nil {
-		mounts, mountsErr := release.MemoryStoreMountsForRelease(ctx, in.SessionID)
-		if mountsErr != nil {
-			return mountsErr
-		}
-		if len(mounts) > 0 {
-			session, sessionErr := a.source.GetSession(ctx, in.SessionID)
-			if sessionErr != nil {
-				return sessionErr
-			}
-			spec, specErr := sandboxSpecForSession(session)
-			if specErr != nil {
-				return specErr
-			}
-			spec.MemoryStores = mounts
-			box, acquireErr := a.sandboxes.Acquire(ctx, in.SessionID, spec)
-			if acquireErr != nil {
-				return acquireErr
-			}
-			if writebackErr := release.WritebackForRelease(
-				ctx, in.SessionID, box,
-			); writebackErr != nil {
-				return writebackErr
-			}
-		}
-	}
-	err := a.sandboxes.Release(ctx, in.SessionID)
-	if sandbox.IsPermanent(err) {
-		return temporalsdk.NewNonRetryableApplicationError(
-			err.Error(),
-			sandboxPermanentErrorType,
-			err,
-		)
-	}
-	return err
 }
 
 func completeToolResultDurably(

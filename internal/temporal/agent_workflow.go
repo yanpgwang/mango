@@ -95,24 +95,6 @@ const (
 	providerResponseContinueOutput
 )
 
-// runWorkflowTurn owns the plan-act-observe loop in deterministic Workflow
-// code. Every model call and every tool call is an Activity, so each completed
-// response/result is independently recorded in Temporal history and replay
-// resumes at the next unfinished step.
-func runWorkflowTurn(
-	actx workflow.Context,
-	sessionID string,
-	triggerEventID string,
-) (RunTurnResult, error) {
-	return runWorkflowTurnInternal(
-		actx,
-		sessionID,
-		triggerEventID,
-		nil,
-		nil,
-	)
-}
-
 func runWorkflowTurnWithResolutions(
 	actx workflow.Context,
 	sessionID string,
@@ -235,7 +217,6 @@ func runWorkflowTurnInternal(
 		),
 		loadedSkills:              agentruntime.LoadedRuntimeSkills(prepared.Request.Messages),
 		perRequestUsageAccounting: modelRequestAccounting,
-		sessionOutputsEnabled:     prepared.SessionOutputsEnabled,
 	}
 	if prepared.FatalError != "" {
 		return turn.terminate(failTurn(prepared.FatalError))

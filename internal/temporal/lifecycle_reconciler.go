@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"log"
 	"time"
-
-	"github.com/yanpgwang/mango/internal/domain"
-	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 const lifecycleDrainDelay = 100 * time.Millisecond
@@ -18,7 +15,7 @@ const lifecycleDrainDelay = 100 * time.Millisecond
 // cleanup and finalization that a crashed API process may have left unfinished.
 type DeletionStore interface {
 	ListDeletingSessionIDs(ctx context.Context, limit int) ([]string, error)
-	GetSession(ctx context.Context, sessionID string) (domain.Session, error)
+	FinalizeSessionMemoryResources(ctx context.Context, sessionID string) error
 	FinalizeSessionDeletion(ctx context.Context, sessionID string) error
 }
 
@@ -26,19 +23,11 @@ type SessionTerminator interface {
 	TerminateSession(ctx context.Context, sessionID string) error
 }
 
-type SandboxProvisioningReconciler interface {
-	ReconcileProvisioning(ctx context.Context, limit int) (int, error)
-}
-
-type SessionResourceDeletionReconciler interface {
-	CleanupSession(context.Context, string) error
-}
-
 type LifecycleReconcilerConfig struct {
 	// PollInterval is the idle delay between scans. A scan that completes work
 	// immediately repeats so a backlog drains without one interval per batch.
 	PollInterval time.Duration
-	// BatchSize bounds both provisioning-intent and deleting-session scans.
+	// BatchSize bounds deleting-session scans.
 	BatchSize int
 	// AttemptTimeout prevents one unavailable provider from starving the rest of
 	// the batch. The deterministic cleanup Workflow continues after this local
@@ -61,48 +50,31 @@ func (c LifecycleReconcilerConfig) withDefaults() LifecycleReconcilerConfig {
 
 // LifecycleReconcileResult reports successfully discharged durable obligations.
 type LifecycleReconcileResult struct {
-	Provisioning int
-	Deletions    int
+	Deletions int
 }
 
 func (r LifecycleReconcileResult) total() int {
-	return r.Provisioning + r.Deletions
+	return r.Deletions
 }
 
-// LifecycleReconciler closes two process-crash windows:
-//
-//   - provider resource creation after a durable provisioning intent but before
-//     the session_sandboxes binding commit;
-//   - Session deletion after the PostgreSQL fence but before cleanup/finalize.
-//
-// Multiple workers may run it. Provider session identity, insert-if-absent
-// bindings, deterministic Temporal Workflow IDs, and idempotent finalization
-// make duplicate attempts safe.
+// LifecycleReconciler closes the process-crash window between a durable
+// Session deletion fence and Workflow termination/finalization.
 type LifecycleReconciler struct {
 	store      DeletionStore
 	terminator SessionTerminator
-	sandboxes  SandboxProvisioningReconciler
-	resources  SessionResourceDeletionReconciler
 	cfg        LifecycleReconcilerConfig
 }
 
 func NewLifecycleReconciler(
 	store DeletionStore,
 	terminator SessionTerminator,
-	sandboxes SandboxProvisioningReconciler,
 	cfg LifecycleReconcilerConfig,
-	resourceReconcilers ...SessionResourceDeletionReconciler,
 ) *LifecycleReconciler {
-	reconciler := &LifecycleReconciler{
+	return &LifecycleReconciler{
 		store:      store,
 		terminator: terminator,
-		sandboxes:  sandboxes,
 		cfg:        cfg.withDefaults(),
 	}
-	if len(resourceReconcilers) > 0 {
-		reconciler.resources = resourceReconcilers[0]
-	}
-	return reconciler
 }
 
 func (r *LifecycleReconciler) Run(ctx context.Context) error {
@@ -143,19 +115,6 @@ func (r *LifecycleReconciler) RunOnce(
 		errs   []error
 	)
 
-	if r.sandboxes != nil {
-		attemptCtx, cancel := context.WithTimeout(ctx, r.cfg.AttemptTimeout)
-		completed, err := r.sandboxes.ReconcileProvisioning(
-			attemptCtx,
-			r.cfg.BatchSize,
-		)
-		cancel()
-		result.Provisioning = completed
-		if err != nil && ctx.Err() == nil {
-			errs = append(errs, fmt.Errorf("reconcile sandbox provisioning: %w", err))
-		}
-	}
-
 	if r.store == nil || r.terminator == nil {
 		return result, errors.Join(errs...)
 	}
@@ -179,27 +138,14 @@ func (r *LifecycleReconciler) RunOnce(
 			))
 			continue
 		}
-		if r.resources != nil {
-			cleanupCtx, cancel := context.WithTimeout(ctx, r.cfg.AttemptTimeout)
-			session, loadErr := r.store.GetSession(cleanupCtx, sessionID)
-			if loadErr != nil {
-				cancel()
-				errs = append(errs, fmt.Errorf(
-					"load deleting session %s: %w", sessionID, loadErr,
-				))
-				continue
-			}
-			cleanupCtx = workspace.WithScope(cleanupCtx, session.WorkspaceID)
-			err = r.resources.CleanupSession(cleanupCtx, sessionID)
-			cancel()
-			if err != nil {
-				errs = append(errs, fmt.Errorf(
-					"cleanup File Resources for session %s: %w",
-					sessionID,
-					err,
-				))
-				continue
-			}
+		cleanupCtx, cleanupCancel := context.WithTimeout(ctx, r.cfg.AttemptTimeout)
+		err = r.store.FinalizeSessionMemoryResources(cleanupCtx, sessionID)
+		cleanupCancel()
+		if err != nil {
+			errs = append(errs, fmt.Errorf(
+				"finalize Memory resources for session %s: %w", sessionID, err,
+			))
+			continue
 		}
 
 		finalizeCtx, cancel := context.WithTimeout(ctx, r.cfg.AttemptTimeout)

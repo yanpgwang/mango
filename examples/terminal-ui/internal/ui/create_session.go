@@ -662,7 +662,7 @@ func (m Model) renderCreationDialog(width int) (string, string) {
 			m.theme.dim.Render(m.dialogHint(
 				"type filter  ↑↓ choose  enter select  esc back", "↑↓ choose  enter select  esc"))
 	case createAgentTools:
-		description := "Sandbox tools let this Agent inspect and change its cloud workspace."
+		description := "Worker tools let this Agent inspect and change its self-hosted workspace."
 		content = m.theme.dim.Render("Create Agent  ›  Runtime  ›  Team  ›  MCP") + "\n\n" +
 			m.theme.title.Render("Built-in sandbox tools") + "\n" + m.theme.dim.Render(description) + "\n\n" +
 			choice(m.theme, "Enabled", m.creation.agentTools, false) + "  " +

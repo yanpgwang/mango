@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { Mango, APIError, operations } from 'mango-sdk';
 
-assert.equal(Object.keys(operations).length, 99);
+assert.equal(Object.keys(operations).length, 95);
 assert.equal(typeof APIError, 'function');
 let calls = 0;
 const client = new Mango({
@@ -20,4 +20,4 @@ const client = new Mango({
 });
 assert.equal((await client.agents.create({ name: 'test', model: 'test' })).id, 'agent_package_test');
 assert.equal(calls, 1);
-console.log('Installed mango-sdk: public import, 99 operations, and authenticated request verified');
+console.log('Installed mango-sdk: public import, 95 operations, and authenticated request verified');

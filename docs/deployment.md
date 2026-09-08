@@ -75,10 +75,10 @@ empty keeps the rest of the API available and makes Files requests return
 `422`. Failure to initialize or reconcile the configured object store also
 disables only Files so the Mango core remains available. The API
 process uses these settings for uploads and File-message admission. A worker
-that starts Deployment Runs containing File messages or File outcome rubrics,
-materializes Session File Resources, or publishes `/mnt/session/outputs` must
-use the same bucket, endpoint, region, and credentials (it does not run startup
-intent reconciliation):
+that resolves File message content or File-backed outcome rubrics must use the
+same bucket, endpoint, region, and credentials (it does not run startup intent
+reconciliation). Session workspace staging and output retrieval remain
+operator-owned self-hosted concerns:
 
 | Variable | Meaning |
 | --- | --- |
@@ -92,82 +92,33 @@ intent reconciliation):
 
 The first Files slice assumes one Files-enabled API process during startup
 reconciliation. It also needs temporary disk capacity up to 500 MB per
-concurrent upload, Session Resource copy, or Session output publication. These
-are explicit limits until distributed intent leasing and direct multipart
-object-store operations are implemented.
+concurrent upload. These are explicit limits until distributed intent leasing
+and direct multipart object-store operations are implemented.
 
-On the transitional `cloud` path, File-backed Session Resources require
-`MANGO_SANDBOX=docker`, `e2b`, `cube`,
-`opensandbox`, or `daytona`; the remote providers currently expose writable
-sandbox-local copies. Automatic Session output publication supports the same
-providers. Every remote image must provide `/bin/sh` and `tar`; output archives
-are removed after each snapshot. OpenSandbox and Daytona stream file transfers,
-while E2B and Cube buffer each File Resource and output archive in worker
-memory, so operators must provision memory for the largest accepted transfer.
-A Docker worker must run where the selected Docker
-Engine API is reachable; the provider uses the Moby Go client directly and does
-not require a `docker` CLI binary. Configure a non-default daemon with
-`DOCKER_HOST` and the standard Docker TLS environment variables. The daemon
-must be able to bind the worker's provider-owned staging directory. Set
-`MANGO_SANDBOX_RESOURCE_DIR` to place that directory on a dedicated
-host volume; the default is `mango-resources` beneath the process
-user's home directory. The API and every worker
-on the task queue must agree on the sandbox provider and object-store
-configuration. Host-process execution is not a selectable runtime backend.
+The API and Temporal orchestration worker do not need Docker credentials. Run
+the standalone Environment worker where its selected Docker Engine is
+reachable. Configure a non-default daemon with `DOCKER_HOST` and standard
+Docker TLS variables on that worker only. Host-process execution is not a
+selectable runtime backend.
 
 ## Memory storage
 
 Memory API contents and immutable Versions live entirely in PostgreSQL and do
-not require S3-compatible storage. On the transitional Mango-managed `cloud`
-path, Memory-backed Session Resources require `MANGO_SANDBOX=docker`: the API
-snapshots each attachment, and the worker bind-mounts it beneath `/mnt/memory`,
-then synchronizes tool changes back to PostgreSQL. API and worker processes must
-select the same provider. The standalone self-hosted Docker worker instead
-downloads and reconciles the same Stores through Mango's public Memory API with
-its per-Work Session credential; its `/mnt/memory` tree is a bounded tmpfs.
-Provider-specific self-hosted launcher examples remain future work.
+not require S3-compatible storage. The self-hosted Docker worker downloads and
+reconciles attached Stores through scoped Session APIs; its `/mnt/memory` tree
+is a bounded tmpfs. Provider-specific launcher examples remain future work.
 
-## Docker worker configuration
+## Docker Environment worker
 
-This subsection describes the transitional Mango-managed `cloud` adapter still
-present in native `orchestrate` processes and the local Compose stack. It is not
-the default Environment type and not the standalone self-hosted Docker worker.
-An unreachable daemon fails orchestration-worker startup;
-`MANGO_SANDBOX=local` is rejected and the former unsafe-local override has no
-effect. API startup reads the Docker capability declaration without needing
-daemon access. A healthy API alone does not establish worker or sandbox
-readiness.
+The standalone supervisor is a trusted Docker daemon controller. Session
+containers never receive the daemon socket, Workspace credential, or model
+credential. They share the host kernel and are not a hardened hostile
+multi-tenant boundary.
 
-The Compose worker is a trusted daemon controller. It runs as root and mounts
-`/var/run/docker.sock`, or the host Unix socket selected by `MANGO_DOCKER_SOCKET`.
-This grants substantial host authority; do not expose the socket to untrusted
-users. The API has no socket. Session containers receive their own input,
-output, Skill, and Memory mounts, never the daemon socket or model credentials.
-They share the host kernel and are not a hardened hostile multi-tenant boundary.
-
-For a native Linux worker using a rootful Docker daemon, use the same trusted
-root-worker deployment model. Docker socket group membership alone does not
-grant host filesystem access to container-created bind-mount files. Mango does
-not remap image users or repair arbitrary ownership and permissions: an
-unprivileged native worker can fail to synchronize Memory or clean up nested
-outputs. Docker Desktop's host-file ownership mapping can hide this limitation.
-The API does not need elevated privileges.
-
-`MANGO_SANDBOX_RESOURCE_DIR` defaults to `$HOME/mango-resources` in Compose.
-Its bind source and target are the same absolute path so the worker and host
-daemon resolve generated mount paths identically. A custom value must be an
-absolute directory visible to the daemon; Docker Desktop must share that path.
-Mounting only the socket is insufficient. The default image is
-`python:3.12-alpine`; choose `MANGO_SANDBOX_IMAGE` when other runtimes or package
-managers are required. Alpine does not include `apt-get`.
-
-Restart retains the Session container and reattaches through its persisted
-binding. Missing containers fail explicitly instead of creating empty
-replacement workspaces. Session deletion releases its container and staged
-resources. `make local-down` stops Compose services but deliberately retains
-Session containers and their host directory; it is not Session deletion.
-Delete Sessions through Mango before discarding deployment data. Even
-`VOLUMES=1` does not remove sibling Session containers or host bind directories.
+The launcher owns named workspace volumes and their retention. Deleting or
+archiving a Mango Session fences control-plane work but does not claim to erase
+operator-owned storage. Follow the [worker guide](guides/self-hosted-worker.md)
+for configuration and cleanup.
 
 ## Vault and Webhook encryption
 
@@ -233,8 +184,8 @@ A supported Docker or Kubernetes bundle requires:
 1. explicit, versioned schema migration;
 2. dependency-aware API and worker readiness;
 3. graceful API shutdown and worker draining;
-4. repeatable live conformance for remote sandbox adapters;
-5. real PostgreSQL, Temporal, NATS, S3-compatible storage, and sandbox
+4. repeatable live conformance for supported Environment launchers;
+5. real PostgreSQL, Temporal, NATS, S3-compatible storage, and worker
    integration tests in CI;
 6. distributed Files reconciliation and documented temporary-disk sizing;
 7. versioned images with upgrade and rollback documentation.

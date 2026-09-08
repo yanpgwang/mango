@@ -422,7 +422,7 @@ type raceOutbox struct {
 
 func (r *raceOutbox) DeleteWakeupIfUnchanged(ctx context.Context, sessionID string, maxSeq int64) (bool, error) {
 	if r.bumpTo > 0 {
-		r.fakeOutbox.enqueue(sessionID, r.bumpTo)
+		r.enqueue(sessionID, r.bumpTo)
 	}
 	return r.fakeOutbox.DeleteWakeupIfUnchanged(ctx, sessionID, maxSeq)
 }

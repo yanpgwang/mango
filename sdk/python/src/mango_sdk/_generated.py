@@ -20,13 +20,6 @@ OPERATIONS: dict[str, dict[str, Any]] = {'acknowledge_environment_work': {'id': 
                                   'public': False,
                                   'accept': 'application/json',
                                   'request': 'json'},
- 'add_session_resource': {'id': 'addSessionResource',
-                          'method': 'POST',
-                          'path': '/v1/sessions/{session_id}/resources',
-                          'mode': 'json',
-                          'public': False,
-                          'accept': 'application/json',
-                          'request': 'json'},
  'archive_agent': {'id': 'archiveAgent',
                    'method': 'POST',
                    'path': '/v1/agents/{agent_id}/archive',
@@ -195,13 +188,6 @@ OPERATIONS: dict[str, dict[str, Any]] = {'acknowledge_environment_work': {'id': 
                     'public': False,
                     'accept': 'application/json',
                     'request': 'json'},
- 'delete_session_resource': {'id': 'deleteSessionResource',
-                             'method': 'DELETE',
-                             'path': '/v1/sessions/{session_id}/resources/{resource_id}',
-                             'mode': 'json',
-                             'public': False,
-                             'accept': 'application/json',
-                             'request': 'json'},
  'delete_skill': {'id': 'deleteSkill',
                   'method': 'DELETE',
                   'path': '/v1/skills/{skill_id}',
@@ -335,13 +321,6 @@ OPERATIONS: dict[str, dict[str, Any]] = {'acknowledge_environment_work': {'id': 
                  'public': False,
                  'accept': 'application/json',
                  'request': 'json'},
- 'get_session_resource': {'id': 'getSessionResource',
-                          'method': 'GET',
-                          'path': '/v1/sessions/{session_id}/resources/{resource_id}',
-                          'mode': 'json',
-                          'public': False,
-                          'accept': 'application/json',
-                          'request': 'json'},
  'get_session_thread': {'id': 'getSessionThread',
                         'method': 'GET',
                         'path': '/v1/sessions/{session_id}/threads/{thread_id}',
@@ -475,13 +454,6 @@ OPERATIONS: dict[str, dict[str, Any]] = {'acknowledge_environment_work': {'id': 
                          'public': False,
                          'accept': 'application/json',
                          'request': 'json'},
- 'list_session_resources': {'id': 'listSessionResources',
-                            'method': 'GET',
-                            'path': '/v1/sessions/{session_id}/resources',
-                            'mode': 'json',
-                            'public': False,
-                            'accept': 'application/json',
-                            'request': 'json'},
  'list_session_thread_events': {'id': 'listSessionThreadEvents',
                                 'method': 'GET',
                                 'path': '/v1/sessions/{session_id}/threads/{thread_id}/events',
@@ -1450,10 +1422,6 @@ class SessionsResource:
         return SessionsEventsResource(self._client)
 
     @cached_property
-    def resources(self) -> SessionsResourcesResource:
-        return SessionsResourcesResource(self._client)
-
-    @cached_property
     def threads(self) -> SessionsThreadsResource:
         return SessionsThreadsResource(self._client)
 
@@ -1599,57 +1567,6 @@ class SessionsEventsResource:
     ) -> SSEStream:
         """GET /v1/sessions/{session_id}/events/stream."""
         return self._client._stream(OPERATIONS['stream_session_events'], {'session_id': session_id}, {'event_deltas[]': event_deltas})
-
-class SessionsResourcesResource:
-    def __init__(self, client: BaseClient) -> None:
-        self._client = client
-
-    def create(
-        self,
-        session_id: str,
-        *,
-        file_id: str,
-        type: Literal['file'],
-        mount_path: str | NotGiven = NOT_GIVEN,
-    ) -> models.SessionResource:
-        """POST /v1/sessions/{session_id}/resources."""
-        return cast(models.SessionResource, self._client._request(OPERATIONS['add_session_resource'], {'session_id': session_id}, {}, {'file_id': file_id, 'type': type, 'mount_path': mount_path}))
-
-    def delete(
-        self,
-        session_id: str,
-        resource_id: str,
-    ) -> models.SessionResourceDeleted:
-        """DELETE /v1/sessions/{session_id}/resources/{resource_id}."""
-        return cast(models.SessionResourceDeleted, self._client._request(OPERATIONS['delete_session_resource'], {'session_id': session_id, 'resource_id': resource_id}, {}))
-
-    def retrieve(
-        self,
-        session_id: str,
-        resource_id: str,
-    ) -> models.SessionResource:
-        """GET /v1/sessions/{session_id}/resources/{resource_id}."""
-        return cast(models.SessionResource, self._client._request(OPERATIONS['get_session_resource'], {'session_id': session_id, 'resource_id': resource_id}, {}))
-
-    def list(
-        self,
-        session_id: str,
-        *,
-        limit: int | NotGiven = NOT_GIVEN,
-        page: str | NotGiven = NOT_GIVEN,
-    ) -> models.SessionResourceList:
-        """GET /v1/sessions/{session_id}/resources."""
-        return cast(models.SessionResourceList, self._client._request(OPERATIONS['list_session_resources'], {'session_id': session_id}, {'limit': limit, 'page': page}))
-
-    def iter(
-        self,
-        session_id: str,
-        *,
-        limit: int | NotGiven = NOT_GIVEN,
-        page: str | NotGiven = NOT_GIVEN,
-    ) -> Iterator[models.SessionResource]:
-        """GET /v1/sessions/{session_id}/resources; iterate every page."""
-        return cast(Iterator[models.SessionResource], self._client._paginate(OPERATIONS['list_session_resources'], {'session_id': session_id}, {'limit': limit, 'page': page}))
 
 class SessionsThreadsResource:
     def __init__(self, client: BaseClient) -> None:
@@ -2815,10 +2732,6 @@ class AsyncSessionsResource:
         return AsyncSessionsEventsResource(self._client)
 
     @cached_property
-    def resources(self) -> AsyncSessionsResourcesResource:
-        return AsyncSessionsResourcesResource(self._client)
-
-    @cached_property
     def threads(self) -> AsyncSessionsThreadsResource:
         return AsyncSessionsThreadsResource(self._client)
 
@@ -2964,57 +2877,6 @@ class AsyncSessionsEventsResource:
     ) -> AsyncSSEStream:
         """GET /v1/sessions/{session_id}/events/stream."""
         return self._client._stream(OPERATIONS['stream_session_events'], {'session_id': session_id}, {'event_deltas[]': event_deltas})
-
-class AsyncSessionsResourcesResource:
-    def __init__(self, client: AsyncBaseClient) -> None:
-        self._client = client
-
-    async def create(
-        self,
-        session_id: str,
-        *,
-        file_id: str,
-        type: Literal['file'],
-        mount_path: str | NotGiven = NOT_GIVEN,
-    ) -> models.SessionResource:
-        """POST /v1/sessions/{session_id}/resources."""
-        return cast(models.SessionResource, await self._client._request(OPERATIONS['add_session_resource'], {'session_id': session_id}, {}, {'file_id': file_id, 'type': type, 'mount_path': mount_path}))
-
-    async def delete(
-        self,
-        session_id: str,
-        resource_id: str,
-    ) -> models.SessionResourceDeleted:
-        """DELETE /v1/sessions/{session_id}/resources/{resource_id}."""
-        return cast(models.SessionResourceDeleted, await self._client._request(OPERATIONS['delete_session_resource'], {'session_id': session_id, 'resource_id': resource_id}, {}))
-
-    async def retrieve(
-        self,
-        session_id: str,
-        resource_id: str,
-    ) -> models.SessionResource:
-        """GET /v1/sessions/{session_id}/resources/{resource_id}."""
-        return cast(models.SessionResource, await self._client._request(OPERATIONS['get_session_resource'], {'session_id': session_id, 'resource_id': resource_id}, {}))
-
-    async def list(
-        self,
-        session_id: str,
-        *,
-        limit: int | NotGiven = NOT_GIVEN,
-        page: str | NotGiven = NOT_GIVEN,
-    ) -> models.SessionResourceList:
-        """GET /v1/sessions/{session_id}/resources."""
-        return cast(models.SessionResourceList, await self._client._request(OPERATIONS['list_session_resources'], {'session_id': session_id}, {'limit': limit, 'page': page}))
-
-    def iter(
-        self,
-        session_id: str,
-        *,
-        limit: int | NotGiven = NOT_GIVEN,
-        page: str | NotGiven = NOT_GIVEN,
-    ) -> AsyncIterator[models.SessionResource]:
-        """GET /v1/sessions/{session_id}/resources; iterate every page."""
-        return cast(AsyncIterator[models.SessionResource], self._client._paginate(OPERATIONS['list_session_resources'], {'session_id': session_id}, {'limit': limit, 'page': page}))
 
 class AsyncSessionsThreadsResource:
     def __init__(self, client: AsyncBaseClient) -> None:

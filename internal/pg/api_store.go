@@ -602,21 +602,6 @@ func (s *Store) PrepareSessionDeletion(ctx context.Context, sessionID string) er
 			return err
 		}
 		if _, err := tx.Exec(ctx, `
-UPDATE files
-SET state = 'deleting', updated_at = $2
-WHERE state = 'ready' AND id IN (
-    SELECT file_id FROM session_resources WHERE session_id = $1
-)`, sessionID, now); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `
-UPDATE files
-SET state = 'deleting', updated_at = $2
-WHERE state = 'ready' AND scope_type = 'session' AND scope_id = $1
-  AND output_path IS NOT NULL`, sessionID, now); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `
 UPDATE session_resources
 SET state = 'deleting', updated_at = $2
 WHERE session_id = $1 AND state = 'active'`, sessionID, now); err != nil {
@@ -653,18 +638,6 @@ func (s *Store) FinalizeSessionDeletion(ctx context.Context, sessionID string) e
 		if !row.DeletingAt.Valid {
 			return domain.Conflict("session deletion was not prepared")
 		}
-		var outputsRemain bool
-		if err := tx.QueryRow(ctx, `
-SELECT EXISTS (
-    SELECT 1 FROM files
-    WHERE scope_type = 'session' AND scope_id = $1
-      AND output_path IS NOT NULL AND workspace_id = $2
-)`, sessionID, row.WorkspaceID).Scan(&outputsRemain); err != nil {
-			return err
-		}
-		if outputsRemain {
-			return domain.Conflict("session output cleanup is incomplete")
-		}
 		now := s.clock.Now().UTC()
 		if err := s.enqueueWebhookEvent(
 			ctx, q, row.WorkspaceID, domain.WebhookEventSessionDeleted,
@@ -675,7 +648,7 @@ SELECT EXISTS (
 		affected, err := q.DeleteMarkedSession(ctx, sessionID)
 		if err != nil {
 			if isForeignKeyViolation(err) {
-				return domain.Conflict("session sandbox or File Resource cleanup is incomplete")
+				return domain.Conflict("session resource cleanup is incomplete")
 			}
 			return err
 		}
@@ -692,19 +665,6 @@ SELECT EXISTS (
 		s.notifySession(ctx, sessionID)
 	}
 	return nil
-}
-
-// SessionOutputFilesExist lets lifecycle reconciliation avoid requiring the
-// object store for Sessions that never produced a deliverable.
-func (s *Store) SessionOutputFilesExist(ctx context.Context, sessionID string) (bool, error) {
-	var exists bool
-	err := s.pool.QueryRow(ctx, `
-SELECT EXISTS (
-    SELECT 1 FROM files
-    WHERE scope_type = 'session' AND scope_id = $1
-      AND output_path IS NOT NULL
-)`, sessionID).Scan(&exists)
-	return exists, err
 }
 
 // ListDeletingSessionIDs returns fenced sessions in stable oldest-first order

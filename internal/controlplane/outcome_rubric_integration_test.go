@@ -43,7 +43,7 @@ func TestPostgresFileOutcomeRubricSnapshotsAcrossAdmissionPaths(t *testing.T) {
 	agentID := createResource(t, handler, "/v1/agents",
 		`{"name":"coder","model":"claude-test"}`)
 	environmentID := createResource(t, handler, "/v1/environments",
-		`{"name":"cloud","config":{"type":"cloud"}}`)
+		`{"name":"self-hosted","config":{"type":"self_hosted"}}`)
 	emptyFile := uploadOutcomeRubric(t, files, "")
 	before, err := fixture.store.ListSessions(ctx, app.ListPage{Limit: 100})
 	if err != nil {
@@ -89,7 +89,7 @@ func TestPostgresFileOutcomeRubricSnapshotsAcrossAdmissionPaths(t *testing.T) {
 		t.Fatalf("delete admitted source rubric: %v", err)
 	}
 	prepared, err := temporalpkg.NewActivities(
-		nil, temporalpkg.NewStoreSource(fixture.store), nil, nil, fixture.ids,
+		nil, temporalpkg.NewStoreSource(fixture.store), nil, fixture.ids,
 	).PrepareTurn(ctx, temporalpkg.PrepareTurnInput{
 		SessionID: created.ID, TriggerEventID: initialEvent.ID,
 	})

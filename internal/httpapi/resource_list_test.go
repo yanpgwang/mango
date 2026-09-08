@@ -79,7 +79,7 @@ func createListEnvironments(t *testing.T, handler http.Handler, count int) []str
 	ids := make([]string, 0, count)
 	for index := range count {
 		recorder := do(handler, http.MethodPost, "/v1/environments", fmt.Sprintf(
-			`{"name":"environment %d","config":{"type":"cloud"}}`, index,
+			`{"name":"environment %d","config":{"type":"self_hosted"}}`, index,
 		))
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("create environment %d = %d: %s", index, recorder.Code, recorder.Body)

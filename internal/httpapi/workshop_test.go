@@ -17,7 +17,7 @@ func TestWorkshop_CustomToolHandoff(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents",
 		`{"name":"SRE Agent","model":"claude-opus-4-8","tools":[{"type":"custom","name":"get_metrics","description":"d","input_schema":{"type":"object"}}]}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	sess := createID(t, h, "POST", "/v1/sessions", `{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 
 	// Send a message that triggers the tool.
@@ -101,7 +101,7 @@ func TestWorkshop_CustomToolHandoff(t *testing.T) {
 func TestWorkshop_ReconnectNoGapNoDup(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	sess := createID(t, h, "POST", "/v1/sessions", `{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 
 	ts := httptest.NewServer(h)
@@ -115,7 +115,7 @@ func TestWorkshop_ReconnectNoGapNoDup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer closeTestResource(t, resp.Body)
 
 	streamIDs := make(chan string, 64)
 	framingErrors := make(chan string, 1)
@@ -210,7 +210,7 @@ func TestWorkshop_ReconnectNoGapNoDup(t *testing.T) {
 func TestStreamEvents_DeleteTerminalAndEOF(t *testing.T) {
 	h := NewTestHandler(t)
 	ag := createID(t, h, "POST", "/v1/agents", `{"name":"a","model":"claude-opus-4-8"}`)
-	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"cloud"}}`)
+	env := createID(t, h, "POST", "/v1/environments", `{"name":"e","config":{"type":"self_hosted"}}`)
 	sess := createID(t, h, "POST", "/v1/sessions", `{"agent":"`+ag+`","environment_id":"`+env+`"}`)
 
 	ts := httptest.NewServer(h)
@@ -219,7 +219,7 @@ func TestStreamEvents_DeleteTerminalAndEOF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer closeTestResource(t, resp.Body)
 
 	if rec := do(h, "DELETE", "/v1/sessions/"+sess, ""); rec.Code != http.StatusOK {
 		t.Fatalf("delete: %d: %s", rec.Code, rec.Body)

@@ -49,7 +49,7 @@ func TestPrepareTurnCompactsRequestButKeepsLosslessTranscriptDelta(t *testing.T)
 	}
 
 	prepared, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).WithContextTokenBudget(500).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID: "sess_context", TriggerEventID: "sevt_current",
 	})
@@ -213,8 +213,8 @@ func TestPrepareTurn_ProjectsPinnedSkillDiscoveryMetadata(t *testing.T) {
 		}},
 	}
 	prepared, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
-	).WithSkillRuntimeSupported(true).
+		nil, source, nil, &testIDGen{},
+	).
 		WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte("body")}).
 		PrepareTurn(
 			context.Background(),
@@ -224,7 +224,7 @@ func TestPrepareTurn_ProjectsPinnedSkillDiscoveryMetadata(t *testing.T) {
 	require.Empty(t, prepared.FatalError)
 	require.Contains(t, prepared.Request.System, "<available_skills>")
 	require.Contains(t, prepared.Request.System, `"name":"report-tools"`)
-	require.Contains(t, prepared.Request.System, "/workspace/skills/report-tools/SKILL.md")
+	require.Contains(t, prepared.Request.System, "skills/report-tools/SKILL.md")
 	require.Contains(t, summarizeModelTools(prepared.Request.Tools), modelToolSummary{
 		Name: agentruntime.RuntimeSkillToolName,
 	})
@@ -234,30 +234,8 @@ func TestPrepareTurn_ProjectsPinnedSkillDiscoveryMetadata(t *testing.T) {
 		Permission: domain.PermissionPolicy{Type: "always_allow"},
 	})
 
-	unsupported, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
-	).PrepareTurn(
-		context.Background(),
-		PrepareTurnInput{SessionID: "sess_skill", TriggerEventID: "sevt_skill"},
-	)
-	require.NoError(t, err)
-	require.Contains(t, unsupported.FatalError, "configured sandbox provider")
-
-	source.session.EnvironmentType = "self_hosted"
-	selfHosted, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
-	).WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte("body")}).
-		PrepareTurn(
-			context.Background(),
-			PrepareTurnInput{SessionID: "sess_skill", TriggerEventID: "sevt_skill"},
-		)
-	require.NoError(t, err)
-	require.Empty(t, selfHosted.FatalError)
-	require.Contains(t, summarizeModelTools(selfHosted.Request.Tools), modelToolSummary{
-		Name: agentruntime.RuntimeSkillToolName,
-	})
-	require.Equal(t, domain.SessionSkillsRelativeRoot, selfHosted.SkillRuntimeRoot)
-	require.Contains(t, selfHosted.Request.System,
+	require.Equal(t, domain.SessionSkillsRelativeRoot, prepared.SkillRuntimeRoot)
+	require.Contains(t, prepared.Request.System,
 		`"skill_md":"skills/report-tools/SKILL.md"`)
 }
 
@@ -304,8 +282,8 @@ func TestPrepareTurn_SelectsThreadAgentRuntimeConfiguration(t *testing.T) {
 		},
 	}
 	prepared, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
-	).WithSkillRuntimeSupported(true).
+		nil, source, nil, &testIDGen{},
+	).
 		WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte("body")}).
 		PrepareTurn(
 			context.Background(),
@@ -316,11 +294,12 @@ func TestPrepareTurn_SelectsThreadAgentRuntimeConfiguration(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, prepared.FatalError)
 	require.Equal(t, "sthr_child", prepared.ThreadID)
-	require.Equal(t, root, prepared.SkillRuntimeRoot)
+	relativeRoot := domain.SessionSkillsRelativeRoot + "/.agents/0123456789abcdef01234567"
+	require.Equal(t, relativeRoot, prepared.SkillRuntimeRoot)
 	require.Equal(t, "child-model", prepared.Request.Model)
 	require.Contains(t, prepared.Request.System, childSystem)
 	require.Contains(
-		t, prepared.Request.System, root+"/child-review/SKILL.md",
+		t, prepared.Request.System, relativeRoot+"/child-review/SKILL.md",
 	)
 	require.True(t, prepared.IsChild)
 	require.NotContains(t, prepared.Request.System, "<mango-coordinator>")
@@ -391,7 +370,7 @@ func TestPrepareTurn_ChildCompactionRestoresFirstDurableSnapshot(t *testing.T) {
 	}
 
 	first, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).WithContextTokenBudget(12_000).PrepareTurn(
 		context.Background(),
 		PrepareTurnInput{SessionID: sessionID, TriggerEventID: currentID},
@@ -404,7 +383,7 @@ func TestPrepareTurn_ChildCompactionRestoresFirstDurableSnapshot(t *testing.T) {
 		source.snapshot.TranscriptTriggerEventIDs)
 
 	second, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).WithContextTokenBudget(1_000_000).PrepareTurn(
 		context.Background(),
 		PrepareTurnInput{SessionID: sessionID, TriggerEventID: currentID},
@@ -474,7 +453,7 @@ func TestPrepareTurn_PrimaryCompactionRestoresFirstDurableSnapshot(t *testing.T)
 	}
 
 	first, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).WithContextTokenBudget(12_000).PrepareTurn(
 		context.Background(),
 		PrepareTurnInput{SessionID: sessionID, TriggerEventID: currentID},
@@ -488,7 +467,7 @@ func TestPrepareTurn_PrimaryCompactionRestoresFirstDurableSnapshot(t *testing.T)
 		source.snapshot.TranscriptTriggerEventIDs)
 
 	second, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).WithContextTokenBudget(1_000_000).PrepareTurn(
 		context.Background(),
 		PrepareTurnInput{SessionID: sessionID, TriggerEventID: currentID},
@@ -526,7 +505,7 @@ func TestPrepareTurn_AttachesPrivateCoordinatorToolsOnlyToPrimary(t *testing.T) 
 		},
 	}
 	prepared, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID: "sess_coordinate", TriggerEventID: "sevt_coordinate",
 	})
@@ -566,7 +545,7 @@ func TestPrepareTurn_AttachesAdvisorOnlyToPrimary(t *testing.T) {
 		},
 	}
 	prepared, err := NewActivities(
-		nil, primarySource, nil, nil, &testIDGen{},
+		nil, primarySource, nil, &testIDGen{},
 	).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID: "sess_advisor", TriggerEventID: "sevt_advisor",
 	})
@@ -609,7 +588,7 @@ func TestPrepareTurn_AttachesAdvisorOnlyToPrimary(t *testing.T) {
 		},
 	}
 	childPrepared, err := NewActivities(
-		nil, childSource, nil, nil, &testIDGen{},
+		nil, childSource, nil, &testIDGen{},
 	).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID: "sess_advisor", TriggerEventID: "sevt_child_advisor",
 	})
@@ -689,7 +668,7 @@ func TestPrepareTurn_LedgerFallbackPreservesSentThreadMessages(t *testing.T) {
 	}
 
 	prepared, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
+		nil, source, nil, &testIDGen{},
 	).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID: "sess_fallback", TriggerEventID: "sevt_report",
 	})
@@ -772,8 +751,8 @@ func TestPrepareTurn_ReattachesInvokedSkillFromTranscriptAfterWorkerRestart(t *t
 		}},
 	}
 	prepared, err := NewActivities(
-		nil, source, nil, nil, &testIDGen{},
-	).WithSkillRuntimeSupported(true).
+		nil, source, nil, &testIDGen{},
+	).
 		WithSkillInstructionLoader(staticSkillInstructionLoader{body: []byte("body")}).
 		WithContextTokenBudget(9000).PrepareTurn(
 		context.Background(),
@@ -840,7 +819,7 @@ func TestPrepareTurn_ProcessedOnReceiptCustomResultStillResumesPendingBarrier(t 
 			Status: domain.StatusRunning,
 		},
 	}
-	activities := NewActivities(nil, source, nil, nil, &testIDGen{})
+	activities := NewActivities(nil, source, nil, &testIDGen{})
 
 	selector, err := activities.LoadPendingActions(context.Background(), LoadPendingActionsInput{
 		SessionID: "sess_resume", ThreadID: threadID,
@@ -954,7 +933,7 @@ func TestPrepareTurn_UsesLosslessTranscriptAndMapsResumeToProviderID(t *testing.
 			}},
 		},
 	}
-	activities := NewActivities(nil, source, nil, nil, &testIDGen{})
+	activities := NewActivities(nil, source, nil, &testIDGen{})
 	prepared, err := activities.PrepareTurn(
 		context.Background(),
 		PrepareTurnInput{
@@ -1089,7 +1068,7 @@ func TestPrepareTurn_MultiActionResumeKeepsLosslessTranscript(t *testing.T) {
 		nil,
 		source,
 		nil,
-		nil,
+
 		&testIDGen{},
 	).PrepareTurn(context.Background(), PrepareTurnInput{
 		SessionID:          "sess_multi",

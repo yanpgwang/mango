@@ -23,7 +23,7 @@ func updatableFixture(t *testing.T) (http.Handler, *testSessionService, string, 
 	agent := createID(t, handler, "POST", "/v1/agents",
 		`{"name":"a","model":"claude-opus-4-8","tools":[{"type":"agent_toolset_20260401"}]}`)
 	env := createID(t, handler, "POST", "/v1/environments",
-		`{"name":"e","config":{"type":"cloud"}}`)
+		`{"name":"e","config":{"type":"self_hosted"}}`)
 	session := createID(t, handler, "POST", "/v1/sessions",
 		`{"agent":"`+agent+`","environment_id":"`+env+`","title":"t",`+
 			`"metadata":{"keep":"yes","drop":"later"}}`)
@@ -210,7 +210,7 @@ func TestCreateSession_AcceptsAndEchoesVaultIDs(t *testing.T) {
 	agent := createID(t, h, "POST", "/v1/agents",
 		`{"name":"a","model":"claude-opus-4-8"}`)
 	environment := createID(t, h, "POST", "/v1/environments",
-		`{"name":"e","config":{"type":"cloud"}}`)
+		`{"name":"e","config":{"type":"self_hosted"}}`)
 	rec := do(h, "POST", "/v1/sessions", `{"agent":"`+agent+`",`+
 		`"environment_id":"`+environment+`","vault_ids":["vlt_1"]}`)
 	if rec.Code != http.StatusOK {

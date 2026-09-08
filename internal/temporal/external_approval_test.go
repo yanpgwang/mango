@@ -39,7 +39,7 @@ func TestPrepareResumeActions_ExternalApprovalEvidence(t *testing.T) {
 			case "server_owned":
 				delete(action.Payload, domain.InternalToolExecutionOwner)
 			}
-			activities := NewActivities(nil, newFakeSource([]domain.Event{action, approval, result}), nil, nil, &testIDGen{})
+			activities := NewActivities(nil, newFakeSource([]domain.Event{action, approval, result}), nil, &testIDGen{})
 			got, err := activities.prepareResumeActions(context.Background(), "sesn_test", result.ID,
 				[]string{result.ID}, []domain.PendingAction{row})
 			if scenario != "valid" {

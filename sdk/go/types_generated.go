@@ -277,18 +277,6 @@ func (value *ClientSessionEventInput) UnmarshalJSON(data []byte) error {
 	)
 }
 
-type CloudEnvironmentConfig struct {
-	Networking NetworkPolicy `json:"networking"`
-	Packages   Packages      `json:"packages"`
-	Type       string        `json:"type"`
-}
-
-type CloudEnvironmentConfigInput struct {
-	Networking Optional[NetworkPolicyInput] `json:"networking,omitzero"`
-	Packages   Optional[PackagesInput]      `json:"packages,omitzero"`
-	Type       string                       `json:"type"`
-}
-
 type CoreSessionEventType string
 
 const (
@@ -462,59 +450,18 @@ type DeploymentPausedReasonError struct {
 	Type string `json:"type"`
 }
 
-// DeploymentResource is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
 type DeploymentResource struct {
-	Raw                             json.RawMessage                  `json:"-"`
-	File                            *DeploymentResourceFile          `json:"-"`
-	MemoryStore                     *DeploymentResourceMemoryStore   `json:"-"`
-	GitRepositoryDeploymentResource *GitRepositoryDeploymentResource `json:"-"`
-}
-
-func (value DeploymentResource) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.File, value.MemoryStore, value.GitRepositoryDeploymentResource)
-}
-func (value *DeploymentResource) UnmarshalJSON(data []byte) error {
-	*value = DeploymentResource{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.File, kind: "object", required: []string{"type", "file_id", "mount_path"}, constants: map[string]string{"type": "\"file\""}},
-		unionChoice{target: &value.MemoryStore, kind: "object", required: []string{"type", "memory_store_id", "access", "instructions"}, constants: map[string]string{"type": "\"memory_store\""}},
-		unionChoice{target: &value.GitRepositoryDeploymentResource, kind: "object", required: []string{"type", "url", "checkout", "mount_path"}, constants: map[string]string{"type": "\"git_repository\""}},
-	)
-}
-
-type DeploymentResourceFile struct {
-	FileID    string  `json:"file_id"`
-	MountPath *string `json:"mount_path"`
-	Type      string  `json:"type"`
-}
-
-// DeploymentResourceInput is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
-type DeploymentResourceInput struct {
-	Raw                               json.RawMessage                    `json:"-"`
-	FileSessionResourceInput          *FileSessionResourceInput          `json:"-"`
-	MemoryStoreSessionResourceInput   *MemoryStoreSessionResourceInput   `json:"-"`
-	GitRepositorySessionResourceInput *GitRepositorySessionResourceInput `json:"-"`
-}
-
-func (value DeploymentResourceInput) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.FileSessionResourceInput, value.MemoryStoreSessionResourceInput, value.GitRepositorySessionResourceInput)
-}
-func (value *DeploymentResourceInput) UnmarshalJSON(data []byte) error {
-	*value = DeploymentResourceInput{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.FileSessionResourceInput, kind: "object", required: []string{"type", "file_id"}, constants: map[string]string{"type": "\"file\""}},
-		unionChoice{target: &value.MemoryStoreSessionResourceInput, kind: "object", required: []string{"type", "memory_store_id"}, constants: map[string]string{"type": "\"memory_store\""}},
-		unionChoice{target: &value.GitRepositorySessionResourceInput, kind: "object", required: []string{"type", "url"}, constants: map[string]string{"type": "\"git_repository\""}},
-	)
-}
-
-type DeploymentResourceMemoryStore struct {
 	Access        *string `json:"access"`
 	Instructions  *string `json:"instructions"`
 	MemoryStoreID string  `json:"memory_store_id"`
 	Type          string  `json:"type"`
+}
+
+type DeploymentResourceInput struct {
+	Access        Optional[string] `json:"access,omitzero"`
+	Instructions  Optional[string] `json:"instructions,omitzero"`
+	MemoryStoreID string           `json:"memory_store_id"`
+	Type          string           `json:"type"`
 }
 
 type DeploymentRun struct {
@@ -636,42 +583,12 @@ type Environment struct {
 	UpdatedAt   string            `json:"updated_at"`
 }
 
-// EnvironmentConfig is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
 type EnvironmentConfig struct {
-	Raw                         json.RawMessage              `json:"-"`
-	CloudEnvironmentConfig      *CloudEnvironmentConfig      `json:"-"`
-	SelfHostedEnvironmentConfig *SelfHostedEnvironmentConfig `json:"-"`
+	Type string `json:"type"`
 }
 
-func (value EnvironmentConfig) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.CloudEnvironmentConfig, value.SelfHostedEnvironmentConfig)
-}
-func (value *EnvironmentConfig) UnmarshalJSON(data []byte) error {
-	*value = EnvironmentConfig{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.CloudEnvironmentConfig, kind: "object", required: []string{"type", "networking", "packages"}, constants: map[string]string{"type": "\"cloud\""}},
-		unionChoice{target: &value.SelfHostedEnvironmentConfig, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"self_hosted\""}},
-	)
-}
-
-// EnvironmentConfigInput is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
 type EnvironmentConfigInput struct {
-	Raw                         json.RawMessage              `json:"-"`
-	CloudEnvironmentConfigInput *CloudEnvironmentConfigInput `json:"-"`
-	SelfHostedEnvironmentConfig *SelfHostedEnvironmentConfig `json:"-"`
-}
-
-func (value EnvironmentConfigInput) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.CloudEnvironmentConfigInput, value.SelfHostedEnvironmentConfig)
-}
-func (value *EnvironmentConfigInput) UnmarshalJSON(data []byte) error {
-	*value = EnvironmentConfigInput{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.CloudEnvironmentConfigInput, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"cloud\""}},
-		unionChoice{target: &value.SelfHostedEnvironmentConfig, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"self_hosted\""}},
-	)
+	Type string `json:"type"`
 }
 
 type EnvironmentCreateRequest struct {
@@ -956,21 +873,6 @@ type FileScope struct {
 	Type string `json:"type"`
 }
 
-type FileSessionResource struct {
-	CreatedAt string `json:"created_at"`
-	FileID    string `json:"file_id"`
-	ID        string `json:"id"`
-	MountPath string `json:"mount_path"`
-	Type      string `json:"type"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-type FileSessionResourceInput struct {
-	FileID    string           `json:"file_id"`
-	MountPath Optional[string] `json:"mount_path,omitzero"`
-	Type      string           `json:"type"`
-}
-
 type FileUploadRequest struct {
 	File Upload `json:"file"`
 }
@@ -981,60 +883,6 @@ type GetMemoryParams struct {
 
 type GetMemoryVersionParams struct {
 	View Optional[string] `json:"view,omitzero"`
-}
-
-type GitRepositoryBranchCheckout struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-
-// GitRepositoryCheckout is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
-type GitRepositoryCheckout struct {
-	Raw                         json.RawMessage              `json:"-"`
-	GitRepositoryBranchCheckout *GitRepositoryBranchCheckout `json:"-"`
-	GitRepositoryCommitCheckout *GitRepositoryCommitCheckout `json:"-"`
-}
-
-func (value GitRepositoryCheckout) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.GitRepositoryBranchCheckout, value.GitRepositoryCommitCheckout)
-}
-func (value *GitRepositoryCheckout) UnmarshalJSON(data []byte) error {
-	*value = GitRepositoryCheckout{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.GitRepositoryBranchCheckout, kind: "object", required: []string{"type", "name"}, constants: map[string]string{"type": "\"branch\""}},
-		unionChoice{target: &value.GitRepositoryCommitCheckout, kind: "object", required: []string{"type", "sha"}, constants: map[string]string{"type": "\"commit\""}},
-	)
-}
-
-type GitRepositoryCommitCheckout struct {
-	Sha  string `json:"sha"`
-	Type string `json:"type"`
-}
-
-type GitRepositoryDeploymentResource struct {
-	Checkout  *GitRepositoryCheckout `json:"checkout"`
-	MountPath *string                `json:"mount_path"`
-	Type      string                 `json:"type"`
-	URL       string                 `json:"url"`
-}
-
-type GitRepositorySessionResource struct {
-	Checkout       *GitRepositoryCheckout `json:"checkout"`
-	CreatedAt      string                 `json:"created_at"`
-	ID             string                 `json:"id"`
-	MountPath      string                 `json:"mount_path"`
-	ResolvedCommit string                 `json:"resolved_commit"`
-	Type           string                 `json:"type"`
-	UpdatedAt      string                 `json:"updated_at"`
-	URL            string                 `json:"url"`
-}
-
-type GitRepositorySessionResourceInput struct {
-	Checkout  Optional[GitRepositoryCheckout] `json:"checkout,omitzero"`
-	MountPath Optional[string]                `json:"mount_path,omitzero"`
-	Type      string                          `json:"type"`
-	URL       string                          `json:"url"`
 }
 
 type HeartbeatEnvironmentWorkParams struct {
@@ -1090,20 +938,6 @@ func (value *InitialEvent) UnmarshalJSON(data []byte) error {
 type LegacyMultiagent map[string]json.RawMessage
 
 type LegacySkillReference json.RawMessage
-
-type LimitedNetwork struct {
-	AllowMCPServers      bool     `json:"allow_mcp_servers"`
-	AllowPackageManagers bool     `json:"allow_package_managers"`
-	AllowedHosts         []string `json:"allowed_hosts"`
-	Type                 string   `json:"type"`
-}
-
-type LimitedNetworkInput struct {
-	AllowMCPServers      Optional[bool]     `json:"allow_mcp_servers,omitzero"`
-	AllowPackageManagers Optional[bool]     `json:"allow_package_managers,omitzero"`
-	AllowedHosts         Optional[[]string] `json:"allowed_hosts,omitzero"`
-	Type                 string             `json:"type"`
-}
 
 type ListAgentVersionsParams struct {
 	Limit Optional[int64]  `json:"limit,omitzero"`
@@ -1195,11 +1029,6 @@ type ListSessionEventsParams struct {
 	Order        Optional[string]                 `json:"order,omitzero"`
 	Page         Optional[string]                 `json:"page,omitzero"`
 	Types        Optional[[]CoreSessionEventType] `json:"types[],omitzero"`
-}
-
-type ListSessionResourcesParams struct {
-	Limit Optional[int64]  `json:"limit,omitzero"`
-	Page  Optional[string] `json:"page,omitzero"`
 }
 
 type ListSessionThreadEventsParams struct {
@@ -1645,44 +1474,6 @@ type MultiagentSelfReferenceInput struct {
 	Type string `json:"type"`
 }
 
-// NetworkPolicy is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
-type NetworkPolicy struct {
-	Raw                 json.RawMessage      `json:"-"`
-	UnrestrictedNetwork *UnrestrictedNetwork `json:"-"`
-	LimitedNetwork      *LimitedNetwork      `json:"-"`
-}
-
-func (value NetworkPolicy) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.UnrestrictedNetwork, value.LimitedNetwork)
-}
-func (value *NetworkPolicy) UnmarshalJSON(data []byte) error {
-	*value = NetworkPolicy{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.UnrestrictedNetwork, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"unrestricted\""}},
-		unionChoice{target: &value.LimitedNetwork, kind: "object", required: []string{"type", "allowed_hosts", "allow_mcp_servers", "allow_package_managers"}, constants: map[string]string{"type": "\"limited\""}},
-	)
-}
-
-// NetworkPolicyInput is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
-type NetworkPolicyInput struct {
-	Raw                 json.RawMessage      `json:"-"`
-	UnrestrictedNetwork *UnrestrictedNetwork `json:"-"`
-	LimitedNetworkInput *LimitedNetworkInput `json:"-"`
-}
-
-func (value NetworkPolicyInput) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.UnrestrictedNetwork, value.LimitedNetworkInput)
-}
-func (value *NetworkPolicyInput) UnmarshalJSON(data []byte) error {
-	*value = NetworkPolicyInput{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.UnrestrictedNetwork, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"unrestricted\""}},
-		unionChoice{target: &value.LimitedNetworkInput, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"limited\""}},
-	)
-}
-
 type NullableSessionBudget = *SessionBudgetLimit
 
 type NullableTimestamp = *string
@@ -1774,26 +1565,6 @@ func (value *OutcomeRubric) UnmarshalJSON(data []byte) error {
 		unionChoice{target: &value.TextRubric, kind: "object", required: []string{"type", "content"}, constants: map[string]string{"type": "\"text\""}},
 		unionChoice{target: &value.FileRubric, kind: "object", required: []string{"type", "file_id"}, constants: map[string]string{"type": "\"file\""}},
 	)
-}
-
-type Packages struct {
-	Apt   []string `json:"apt"`
-	Cargo []string `json:"cargo"`
-	Gem   []string `json:"gem"`
-	Go    []string `json:"go"`
-	Npm   []string `json:"npm"`
-	Pip   []string `json:"pip"`
-	Type  string   `json:"type"`
-}
-
-type PackagesInput struct {
-	Apt   Optional[[]string] `json:"apt,omitzero"`
-	Cargo Optional[[]string] `json:"cargo,omitzero"`
-	Gem   Optional[[]string] `json:"gem,omitzero"`
-	Go    Optional[[]string] `json:"go,omitzero"`
-	Npm   Optional[[]string] `json:"npm,omitzero"`
-	Pip   Optional[[]string] `json:"pip,omitzero"`
-	Type  Optional[string]   `json:"type,omitzero"`
 }
 
 type PermissionPolicy struct {
@@ -2205,57 +1976,21 @@ type SessionResolvedMultiagent struct {
 	Type   string               `json:"type"`
 }
 
-// SessionResource is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
 type SessionResource struct {
-	Raw                          json.RawMessage               `json:"-"`
-	FileSessionResource          *FileSessionResource          `json:"-"`
-	MemoryStoreSessionResource   *MemoryStoreSessionResource   `json:"-"`
-	GitRepositorySessionResource *GitRepositorySessionResource `json:"-"`
+	Access        string  `json:"access"`
+	Description   string  `json:"description"`
+	Instructions  *string `json:"instructions"`
+	MemoryStoreID string  `json:"memory_store_id"`
+	MountPath     string  `json:"mount_path"`
+	Name          string  `json:"name"`
+	Type          string  `json:"type"`
 }
 
-func (value SessionResource) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.FileSessionResource, value.MemoryStoreSessionResource, value.GitRepositorySessionResource)
-}
-func (value *SessionResource) UnmarshalJSON(data []byte) error {
-	*value = SessionResource{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.FileSessionResource, kind: "object", required: []string{"id", "created_at", "file_id", "mount_path", "type", "updated_at"}, constants: map[string]string{"type": "\"file\""}},
-		unionChoice{target: &value.MemoryStoreSessionResource, kind: "object", required: []string{"memory_store_id", "type", "access", "description", "instructions", "mount_path", "name"}, constants: map[string]string{"type": "\"memory_store\""}},
-		unionChoice{target: &value.GitRepositorySessionResource, kind: "object", required: []string{"id", "created_at", "type", "url", "checkout", "resolved_commit", "mount_path", "updated_at"}, constants: map[string]string{"type": "\"git_repository\""}},
-	)
-}
-
-type SessionResourceDeleted struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
-}
-
-// SessionResourceInput is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
 type SessionResourceInput struct {
-	Raw                               json.RawMessage                    `json:"-"`
-	FileSessionResourceInput          *FileSessionResourceInput          `json:"-"`
-	MemoryStoreSessionResourceInput   *MemoryStoreSessionResourceInput   `json:"-"`
-	GitRepositorySessionResourceInput *GitRepositorySessionResourceInput `json:"-"`
-}
-
-func (value SessionResourceInput) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.FileSessionResourceInput, value.MemoryStoreSessionResourceInput, value.GitRepositorySessionResourceInput)
-}
-func (value *SessionResourceInput) UnmarshalJSON(data []byte) error {
-	*value = SessionResourceInput{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.FileSessionResourceInput, kind: "object", required: []string{"type", "file_id"}, constants: map[string]string{"type": "\"file\""}},
-		unionChoice{target: &value.MemoryStoreSessionResourceInput, kind: "object", required: []string{"type", "memory_store_id"}, constants: map[string]string{"type": "\"memory_store\""}},
-		unionChoice{target: &value.GitRepositorySessionResourceInput, kind: "object", required: []string{"type", "url"}, constants: map[string]string{"type": "\"git_repository\""}},
-	)
-}
-
-type SessionResourceList struct {
-	Data     []SessionResource `json:"data"`
-	HasMore  bool              `json:"has_more"`
-	NextPage Cursor            `json:"next_page"`
+	Access        Optional[string] `json:"access,omitzero"`
+	Instructions  Optional[string] `json:"instructions,omitzero"`
+	MemoryStoreID string           `json:"memory_store_id"`
+	Type          string           `json:"type"`
 }
 
 type SessionRetriesExhausted struct {
@@ -2682,10 +2417,6 @@ type URLDocumentSourceInput struct {
 type URLImageSourceInput struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
-}
-
-type UnrestrictedNetwork struct {
-	Type string `json:"type"`
 }
 
 type UpdateMemoryParams struct {

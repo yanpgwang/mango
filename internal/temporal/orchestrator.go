@@ -10,7 +10,6 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 )
@@ -162,7 +161,6 @@ type Runtime struct {
 	Lifecycle *LifecycleReconciler
 	Store     *pg.Store
 	Signal    *Signaler
-	Sandbox   *sandbox.SessionManager
 }
 
 // RuntimeConfig declares the execution-plane dependencies and optional
@@ -170,56 +168,36 @@ type Runtime struct {
 // empty; the remaining optional interfaces may be nil when their capability is
 // disabled.
 type RuntimeConfig struct {
-	TemporalClient   client.Client
-	Store            *pg.Store
-	ModelClient      model.Client
-	SandboxProvider  sandbox.Provider
-	IDGenerator      domain.IDGenerator
-	RelayConfig      RelayConfig
-	TaskQueue        string
-	Resources        SandboxResourceReconciler
-	MCPAuth          credentialruntime.AuthSource
-	PreviewPublisher PreviewPublisher
+	TemporalClient    client.Client
+	Store             *pg.Store
+	ModelClient       model.Client
+	IDGenerator       domain.IDGenerator
+	RelayConfig       RelayConfig
+	TaskQueue         string
+	SkillInstructions SkillInstructionLoader
+	MCPAuth           credentialruntime.AuthSource
+	PreviewPublisher  PreviewPublisher
 }
 
 // NewRuntime wires the full Temporal execution plane. The store is both the
-// event source and durable tool-execution journal; the sandbox provider is
-// wrapped in a session-scoped manager so filesystem state persists across
-// turns. The returned Worker, Relay, and Lifecycle must be started by the
-// caller.
+// event source and durable tool-execution journal. Self-hosted workers own
+// their execution environments through the Environment Work protocol.
 func NewRuntime(config RuntimeConfig) *Runtime {
 	taskQueue := config.TaskQueue
 	if taskQueue == "" {
 		taskQueue = TaskQueue
 	}
-	sandboxes := sandbox.NewSessionManager(config.SandboxProvider, config.Store)
 	src := storeSource{store: config.Store} // satisfies both EventSource and JournalStore
 	acts := NewActivities(
 		config.ModelClient,
 		src,
 		src,
-		sandboxes,
 		config.IDGenerator,
 		config.PreviewPublisher,
 	)
 	acts.WithMCPAuthSource(config.MCPAuth)
-	skillCapability, hasSkillCapability := config.SandboxProvider.(sandbox.SkillBundleProvider)
-	skillResources, hasSkillResources := config.Resources.(SkillRuntimeReconciler)
-	acts.WithSkillRuntimeSupported(
-		hasSkillCapability && skillCapability.SupportsSkillBundles() &&
-			hasSkillResources && skillResources.SupportsSkillRuntime(),
-	)
-	if loader, ok := config.Resources.(SkillInstructionLoader); ok {
-		acts.WithSkillInstructionLoader(loader)
-	}
-	outputCapability, hasOutputCapability := config.SandboxProvider.(sandbox.SessionOutputProvider)
-	outputPublisher, hasOutputPublisher := config.Resources.(SessionOutputPublisher)
-	if hasOutputCapability && outputCapability.SupportsSessionOutputs() &&
-		hasOutputPublisher && outputPublisher.SupportsSessionOutputs() {
-		acts.WithSessionOutputPublisher(outputPublisher)
-	}
-	if config.Resources != nil {
-		acts.WithSandboxResourceReconciler(config.Resources)
+	if config.SkillInstructions != nil {
+		acts.WithSkillInstructionLoader(config.SkillInstructions)
 	}
 	w := NewWorkerOnTaskQueue(config.TemporalClient, acts, taskQueue)
 	signaler := NewSignalerOnTaskQueue(config.TemporalClient, taskQueue)
@@ -228,24 +206,12 @@ func NewRuntime(config RuntimeConfig) *Runtime {
 	lifecycle := NewLifecycleReconciler(
 		config.Store,
 		terminator,
-		sandboxes,
 		LifecycleReconcilerConfig{},
-		resourceDeletionReconciler(config.Resources),
 	)
 	return &Runtime{
 		Client: config.TemporalClient, Worker: w, Relay: relay, Lifecycle: lifecycle,
-		Store: config.Store, Signal: signaler, Sandbox: sandboxes,
+		Store: config.Store, Signal: signaler,
 	}
-}
-
-func resourceDeletionReconciler(
-	resources SandboxResourceReconciler,
-) SessionResourceDeletionReconciler {
-	if resources == nil {
-		return nil
-	}
-	reconciler, _ := resources.(SessionResourceDeletionReconciler)
-	return reconciler
 }
 
 // Orchestrator returns an admission orchestrator sharing this runtime's store

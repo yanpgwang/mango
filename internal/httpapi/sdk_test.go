@@ -46,113 +46,6 @@ func sdkClientServerAndSessions(
 	return client, ts, sessions
 }
 
-func TestSDK_SessionFileResourceLifecycle(t *testing.T) {
-	client, ts, _ := sdkClientServerAndSessions(t)
-	ctx := context.Background()
-	agent := mustAgent(t, client, "opus", "sys")
-	environmentID := mustEnv(t, ts.URL)
-
-	session, err := client.Beta.Sessions.New(ctx, anthropic.BetaSessionNewParams{
-		Agent:         anthropic.BetaSessionNewParamsAgentUnion{OfString: anthropic.String(agent.ID)},
-		EnvironmentID: environmentID,
-		Resources: []anthropic.BetaSessionNewParamsResourceUnion{{
-			OfFile: &anthropic.BetaManagedAgentsFileResourceParams{
-				FileID: "file_create_source",
-				Type:   anthropic.BetaManagedAgentsFileResourceParamsTypeFile,
-			},
-		}},
-	})
-	if err != nil {
-		t.Fatalf("create session with resource: %v", err)
-	}
-	if len(session.Resources) != 1 {
-		t.Fatalf("create-time resources = %d, want 1", len(session.Resources))
-	}
-	created := session.Resources[0].AsFile()
-	assertRawObjectHasFields(
-		t, created.RawJSON(), "id", "created_at", "file_id", "mount_path", "type", "updated_at",
-	)
-	if created.MountPath != "/mnt/session/uploads/file_create_source" ||
-		created.FileID == "file_create_source" {
-		t.Fatalf("create-time resource = %s", created.RawJSON())
-	}
-
-	added, err := client.Beta.Sessions.Resources.Add(
-		ctx,
-		session.ID,
-		anthropic.BetaSessionResourceAddParams{
-			BetaManagedAgentsFileResourceParams: anthropic.BetaManagedAgentsFileResourceParams{
-				FileID:    "file_runtime_source",
-				Type:      anthropic.BetaManagedAgentsFileResourceParamsTypeFile,
-				MountPath: anthropic.String("/reports/receipt.pdf"),
-			},
-		},
-	)
-	if err != nil {
-		t.Fatalf("add resource: %v", err)
-	}
-	if added.MountPath != "/mnt/session/uploads/reports/receipt.pdf" ||
-		added.Type != anthropic.BetaManagedAgentsFileResourceTypeFile {
-		t.Fatalf("added resource = %s", added.RawJSON())
-	}
-
-	got, err := client.Beta.Sessions.Resources.Get(
-		ctx,
-		added.ID,
-		anthropic.BetaSessionResourceGetParams{SessionID: session.ID},
-	)
-	if err != nil {
-		t.Fatalf("get resource: %v", err)
-	}
-	if file := got.AsFile(); file.ID != added.ID || file.FileID != added.FileID {
-		t.Fatalf("get resource = %s", got.RawJSON())
-	}
-
-	firstPage, err := client.Beta.Sessions.Resources.List(
-		ctx,
-		session.ID,
-		anthropic.BetaSessionResourceListParams{Limit: anthropic.Int(1)},
-	)
-	if err != nil {
-		t.Fatalf("list first page: %v", err)
-	}
-	if len(firstPage.Data) != 1 || firstPage.NextPage == "" {
-		t.Fatalf("first resource page = %#v", firstPage)
-	}
-	secondPage, err := client.Beta.Sessions.Resources.List(
-		ctx,
-		session.ID,
-		anthropic.BetaSessionResourceListParams{
-			Limit: anthropic.Int(1), Page: anthropic.String(firstPage.NextPage),
-		},
-	)
-	if err != nil || len(secondPage.Data) != 1 || secondPage.Data[0].AsFile().ID != added.ID {
-		t.Fatalf("list second page = %#v, err=%v", secondPage, err)
-	}
-
-	_, err = client.Beta.Sessions.Resources.Update(
-		ctx,
-		added.ID,
-		anthropic.BetaSessionResourceUpdateParams{
-			SessionID: session.ID, AuthorizationToken: "not-applicable",
-		},
-	)
-	assertAPIStatus(t, err, http.StatusNotFound)
-
-	deleted, err := client.Beta.Sessions.Resources.Delete(
-		ctx,
-		added.ID,
-		anthropic.BetaSessionResourceDeleteParams{SessionID: session.ID},
-	)
-	if err != nil {
-		t.Fatalf("delete resource: %v", err)
-	}
-	if deleted.ID != added.ID ||
-		deleted.Type != anthropic.BetaManagedAgentsDeleteSessionResourceTypeSessionResourceDeleted {
-		t.Fatalf("delete response = %s", deleted.RawJSON())
-	}
-}
-
 func TestSDK_FileBackedOutcomeRubricShape(t *testing.T) {
 	client, ts, _ := sdkClientServerAndSessions(t)
 	ctx := context.Background()
@@ -1399,7 +1292,11 @@ func TestSDK_EventStream(t *testing.T) {
 	stream := client.Beta.Sessions.Events.StreamEvents(
 		ctx, session.ID, anthropic.BetaSessionEventStreamParams{},
 	)
-	defer stream.Close()
+	defer func() {
+		if err := stream.Close(); err != nil {
+			t.Errorf("close Session event stream: %v", err)
+		}
+	}()
 
 	sent, err := client.Beta.Sessions.Events.Send(ctx, session.ID, anthropic.BetaSessionEventSendParams{
 		Events: []anthropic.BetaManagedAgentsEventParamsUnion{{
@@ -1595,14 +1492,14 @@ func TestSDK_AgentVersionListParamsAndPaging(t *testing.T) {
 func TestSDK_EnvironmentLifecycle(t *testing.T) {
 	client, _ := sdkClientAndServer(t)
 	ctx := context.Background()
-	cloud := anthropic.BetaCloudConfigParams{}
+	selfHosted := anthropic.NewBetaSelfHostedConfigParams()
 
 	environment, err := client.Beta.Environments.New(ctx, anthropic.BetaEnvironmentNewParams{
 		Name:        "SDK environment",
 		Description: anthropic.String("created through the official SDK"),
 		Metadata:    map[string]string{"team": "platform"},
 		Config: anthropic.BetaEnvironmentNewParamsConfigUnion{
-			OfCloud: &cloud,
+			OfSelfHosted: &selfHosted,
 		},
 	})
 	if err != nil {
@@ -1611,22 +1508,19 @@ func TestSDK_EnvironmentLifecycle(t *testing.T) {
 	if environment.ID == "" || environment.Type != "environment" ||
 		environment.Name != "SDK environment" ||
 		environment.Description != "created through the official SDK" ||
-		environment.Metadata["team"] != "platform" ||
-		environment.Config.Type != "cloud" || environment.Config.Networking.Type != "unrestricted" {
+		environment.Metadata["team"] != "platform" || environment.Config.Type != "self_hosted" {
 		t.Fatalf("created environment = %#v", environment)
 	}
 	assertRawObjectHasFields(t, environment.RawJSON(),
 		"id", "archived_at", "config", "created_at", "description", "metadata", "name", "type", "updated_at")
-	assertRawObjectHasFields(t, environment.Config.RawJSON(), "type", "networking", "packages")
-	assertRawObjectHasFields(t, environment.Config.Packages.RawJSON(),
-		"type", "apt", "cargo", "gem", "go", "npm", "pip")
+	assertRawObjectHasFields(t, environment.Config.RawJSON(), "type")
 
 	got, err := client.Beta.Environments.Get(ctx, environment.ID, anthropic.BetaEnvironmentGetParams{})
 	if err != nil {
 		t.Fatalf("get environment: %v", err)
 	}
 	if got.ID != environment.ID || got.Description != environment.Description ||
-		got.Metadata["team"] != "platform" || got.Config.Networking.Type != "unrestricted" {
+		got.Metadata["team"] != "platform" || got.Config.Type != "self_hosted" {
 		t.Fatalf("retrieved environment = %#v", got)
 	}
 
@@ -1650,128 +1544,6 @@ func TestSDK_EnvironmentLifecycle(t *testing.T) {
 	if deleted.ID != environment.ID ||
 		deleted.Type != anthropic.BetaEnvironmentDeleteResponseTypeEnvironmentDeleted {
 		t.Fatalf("delete response = %#v", deleted)
-	}
-}
-
-func TestSDK_EnvironmentExplicitCloudDefaults(t *testing.T) {
-	client, _ := sdkClientAndServer(t)
-	ctx := context.Background()
-	networking := anthropic.NewBetaUnrestrictedNetworkParam()
-	cloud := anthropic.BetaCloudConfigParams{
-		Networking: anthropic.BetaCloudConfigParamsNetworkingUnion{
-			OfUnrestricted: &networking,
-		},
-		Packages: anthropic.BetaPackagesParams{
-			Type: anthropic.BetaPackagesParamsTypePackages,
-		},
-	}
-
-	environment, err := client.Beta.Environments.New(ctx, anthropic.BetaEnvironmentNewParams{
-		Name: "Explicit cloud defaults",
-		Config: anthropic.BetaEnvironmentNewParamsConfigUnion{
-			OfCloud: &cloud,
-		},
-	})
-	if err != nil {
-		t.Fatalf("create environment with explicit defaults: %v", err)
-	}
-	if environment.Config.Networking.Type != "unrestricted" ||
-		len(environment.Config.Packages.Pip) != 0 {
-		t.Fatalf("created environment config = %#v", environment.Config)
-	}
-
-	updated, err := client.Beta.Environments.Update(
-		ctx,
-		environment.ID,
-		anthropic.BetaEnvironmentUpdateParams{
-			Config: anthropic.BetaEnvironmentUpdateParamsConfigUnion{
-				OfCloud: &cloud,
-			},
-		},
-	)
-	if err != nil {
-		t.Fatalf("update environment with explicit defaults: %v", err)
-	}
-	if updated.Config.Networking.Type != "unrestricted" ||
-		len(updated.Config.Packages.Pip) != 0 {
-		t.Fatalf("updated environment config = %#v", updated.Config)
-	}
-}
-
-func TestSDK_EnvironmentPackagesRoundTrip(t *testing.T) {
-	client, _ := sdkClientAndServer(t)
-	ctx := context.Background()
-	cloud := anthropic.BetaCloudConfigParams{
-		Packages: anthropic.BetaPackagesParams{
-			Apt:  []string{"git"},
-			Npm:  []string{"typescript@5.9.2"},
-			Pip:  []string{"httpx==0.28.1"},
-			Type: anthropic.BetaPackagesParamsTypePackages,
-		},
-	}
-
-	environment, err := client.Beta.Environments.New(ctx, anthropic.BetaEnvironmentNewParams{
-		Name: "SDK package environment",
-		Config: anthropic.BetaEnvironmentNewParamsConfigUnion{
-			OfCloud: &cloud,
-		},
-	})
-	if err != nil {
-		t.Fatalf("create package environment: %v", err)
-	}
-	if len(environment.Config.Packages.Apt) != 1 || environment.Config.Packages.Apt[0] != "git" ||
-		len(environment.Config.Packages.Npm) != 1 || environment.Config.Packages.Npm[0] != "typescript@5.9.2" ||
-		len(environment.Config.Packages.Pip) != 1 || environment.Config.Packages.Pip[0] != "httpx==0.28.1" {
-		t.Fatalf("created packages = %#v", environment.Config.Packages)
-	}
-}
-
-func TestSDK_EnvironmentLimitedNetworkingRoundTrip(t *testing.T) {
-	client, _ := sdkClientAndServer(t)
-	ctx := context.Background()
-	limited := anthropic.BetaLimitedNetworkParams{
-		AllowMCPServers:      anthropic.Bool(true),
-		AllowPackageManagers: anthropic.Bool(false),
-		AllowedHosts:         []string{"api.example.com", "*.assets.example.com"},
-	}
-	cloud := anthropic.BetaCloudConfigParams{
-		Networking: anthropic.BetaCloudConfigParamsNetworkingUnion{OfLimited: &limited},
-	}
-
-	environment, err := client.Beta.Environments.New(ctx, anthropic.BetaEnvironmentNewParams{
-		Name: "SDK limited network environment",
-		Config: anthropic.BetaEnvironmentNewParamsConfigUnion{
-			OfCloud: &cloud,
-		},
-	})
-	if err != nil {
-		t.Fatalf("create limited network environment: %v", err)
-	}
-	networking := environment.Config.Networking.AsLimited()
-	if networking.Type != "limited" || !networking.AllowMCPServers ||
-		networking.AllowPackageManagers || len(networking.AllowedHosts) != 2 ||
-		networking.AllowedHosts[0] != "api.example.com" {
-		t.Fatalf("created limited networking = %#v", networking)
-	}
-	assertRawObjectHasFields(t, networking.RawJSON(),
-		"type", "allow_mcp_servers", "allow_package_managers", "allowed_hosts")
-
-	patch := anthropic.BetaLimitedNetworkParams{AllowedHosts: []string{"next.example.com"}}
-	cloud.Networking = anthropic.BetaCloudConfigParamsNetworkingUnion{OfLimited: &patch}
-	updated, err := client.Beta.Environments.Update(
-		ctx,
-		environment.ID,
-		anthropic.BetaEnvironmentUpdateParams{
-			Config: anthropic.BetaEnvironmentUpdateParamsConfigUnion{OfCloud: &cloud},
-		},
-	)
-	if err != nil {
-		t.Fatalf("update limited network environment: %v", err)
-	}
-	networking = updated.Config.Networking.AsLimited()
-	if !networking.AllowMCPServers || len(networking.AllowedHosts) != 1 ||
-		networking.AllowedHosts[0] != "next.example.com" {
-		t.Fatalf("updated limited networking = %#v", networking)
 	}
 }
 

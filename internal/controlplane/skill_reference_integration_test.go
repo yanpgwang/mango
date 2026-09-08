@@ -58,10 +58,9 @@ func TestPostgresAgentAndSessionSkillVersionResolution(t *testing.T) {
 		fixture.environmentRepo,
 		fixture.ids,
 		fixture.clock,
-		app.EnvironmentCapabilities{PackageSetup: true, LimitedNetwork: true},
 	)
 	environment, err := environments.Create(ctx, domain.Environment{
-		Name: "cloud", ConfigType: "cloud", Config: map[string]any{"type": "cloud"},
+		Name: "self hosted", Config: map[string]any{"type": "self_hosted"},
 	})
 	if err != nil {
 		t.Fatalf("create Environment: %v", err)
@@ -98,14 +97,6 @@ func TestPostgresAgentAndSessionSkillVersionResolution(t *testing.T) {
 		t.Fatalf("overridden Session pin = %+v", overridden.AgentSnapshot.Skills)
 	}
 
-	// Cloud bundle materialization is adapter-gated. External worker Skill
-	// activation is not implemented and must fail before Session admission.
-	sessions.ConfigureCloudSkillBundles(false)
-	if _, err := sessions.Create(ctx, app.CreateSessionInput{
-		AgentID: agent.ID, EnvironmentID: environment.ID,
-	}); err == nil {
-		t.Fatal("cloud Session accepted Skills without adapter capability")
-	}
 	selfHosted, err := environments.Create(ctx, domain.Environment{
 		Name: "self hosted", ConfigType: "self_hosted",
 		Config: map[string]any{"type": "self_hosted"}, Scope: "account",

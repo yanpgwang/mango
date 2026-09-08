@@ -618,13 +618,18 @@ func TestAnthropic_CreateMessageStream_DecodesSSE(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		// minimal canned Messages API stream: one text content block in two deltas
-		io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\"}\n\n")
-		io.WriteString(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
-		io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}\n\n")
-		io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"lo\"}}\n\n")
-		io.WriteString(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
-		io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n")
-		io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+		writeEvent := func(event string) {
+			if _, err := io.WriteString(w, event); err != nil {
+				t.Errorf("write stream event: %v", err)
+			}
+		}
+		writeEvent("event: message_start\ndata: {\"type\":\"message_start\"}\n\n")
+		writeEvent("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+		writeEvent("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}\n\n")
+		writeEvent("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"lo\"}}\n\n")
+		writeEvent("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+		writeEvent("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n")
+		writeEvent("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
 	}))
 	defer srv.Close()
 	c, _ := NewAnthropic(AnthropicConfig{BaseURL: srv.URL, APIKey: "sk-test", Model: "m", HTTPClient: srv.Client()})

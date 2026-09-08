@@ -14,7 +14,6 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/model"
 	"github.com/yanpgwang/mango/internal/pg"
-	"github.com/yanpgwang/mango/internal/sandbox/sandboxtest"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 	"go.temporal.io/sdk/client"
 )
@@ -47,13 +46,12 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 	probe := &gateProbeModel{}
 	taskQueue := "mango-hitl-gate-" + ids.NewID("")
 	runtimeConfig := temporalpkg.RuntimeConfig{
-		TemporalClient:  temporalClient,
-		Store:           store,
-		ModelClient:     probe,
-		SandboxProvider: sandboxtest.NoProvision(t),
-		IDGenerator:     ids,
-		RelayConfig:     temporalpkg.RelayConfig{PollInterval: 50 * time.Millisecond},
-		TaskQueue:       taskQueue,
+		TemporalClient: temporalClient,
+		Store:          store,
+		ModelClient:    probe,
+		IDGenerator:    ids,
+		RelayConfig:    temporalpkg.RelayConfig{PollInterval: 50 * time.Millisecond},
+		TaskQueue:      taskQueue,
 	}
 
 	runtimeOne := temporalpkg.NewRuntime(runtimeConfig)
@@ -66,13 +64,22 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 	}()
 
 	system := "Classify every submitted expense exactly once. Use decide for clear cases and escalate when a human judgment is required."
+	now := time.Now().UTC()
+	environment := domain.Environment{
+		ID: "env_hitl_gate", Name: "HITL gate", ConfigType: "self_hosted",
+		Config: map[string]any{"type": "self_hosted"}, Metadata: map[string]any{},
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := pg.NewEnvironmentRepository(store).Put(ctx, environment); err != nil {
+		t.Fatalf("create HITL gate Environment: %v", err)
+	}
 	session := domain.Session{
 		ID:                "sesn_hitl_gate_" + ids.NewID(""),
 		AgentID:           "agent_hitl_gate",
 		AgentVersion:      1,
 		EnvironmentID:     "env_hitl_gate",
-		EnvironmentType:   "cloud",
-		EnvironmentConfig: map[string]any{"type": "cloud"},
+		EnvironmentType:   "self_hosted",
+		EnvironmentConfig: map[string]any{"type": "self_hosted"},
 		Status:            domain.StatusIdle,
 		Metadata:          map[string]any{},
 		AgentSnapshot: domain.Agent{
@@ -80,8 +87,8 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 			Model: domain.Model{ID: "gate-probe"}, System: &system,
 			Tools: gateCustomTools(),
 		},
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	orchestrator := runtimeOne.Orchestrator()
 	if _, _, err := orchestrator.CreateSession(ctx, session, nil); err != nil {

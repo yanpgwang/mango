@@ -66,7 +66,7 @@ func TestBudgetedSessionRejectsUnknownModelWithoutHidingZeroCost(t *testing.T) {
 	agentID := createID(t, handler, "POST", "/v1/agents",
 		`{"name":"router alias","model":"router/claude"}`)
 	environmentID := createID(t, handler, "POST", "/v1/environments",
-		`{"name":"cloud","config":{"type":"cloud"}}`)
+		`{"name":"cloud","config":{"type":"self_hosted"}}`)
 
 	withoutBudget := do(handler, "POST", "/v1/sessions",
 		`{"agent":"`+agentID+`","environment_id":"`+environmentID+`"}`)

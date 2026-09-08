@@ -16,25 +16,23 @@ behavior, not a promise that every combination is production-ready.
 
 ## Choose an execution path
 
-New Environments default to `self_hosted`. The first-party launcher runs on
-Docker; other self-hosted launchers are not yet provided. The explicit `cloud`
-Environment remains a transitional, operator-deployed managed-sandbox path.
+All Environments are `self_hosted`. The first-party launcher runs on Docker;
+other launchers are not yet provided.
 
-| Capability | Self-hosted Docker worker | Transitional managed path |
-| --- | --- | --- |
-| Text-only model turns and application-owned custom tools | Available without an Environment worker. | Available. |
-| Shell and file tools | Six core tools; Bash preserves process state within one Work activation. | Six core tools; Bash is a one-shot shell. |
-| Custom Skills | Immutable pins are downloaded, verified, and prepared before execution. | Materialized by the configured adapter. |
-| Memory Store attachments | Downloaded and synchronized through the Memory API. | Supported by the Docker adapter. |
-| File and public Git inputs | Automatic preparation not implemented. | Supported by Docker, E2B, Cube, OpenSandbox, and Daytona. |
-| Automatic output publication | Not implemented; workspace files stay with the operator. | Supported under `/mnt/session/outputs`. |
-| Web Search / Web Fetch | Run at a supporting model endpoint, with `always_allow`. | Same model-endpoint behavior. |
-| Remote MCP | Runs through the orchestration runtime. | Same orchestration-runtime behavior. |
+| Capability | Current behavior |
+| --- | --- |
+| Text-only model turns and application-owned custom tools | Available without an Environment worker. |
+| Shell and file tools | Six core tools; Bash preserves process state within one Work activation. |
+| Custom Skills | Immutable pins are downloaded, verified, and prepared before execution. |
+| Memory Store attachments | Downloaded and synchronized through scoped Session APIs. |
+| File and public Git inputs | Operator stages them in the worker workspace; no automatic control-plane mount. |
+| Automatic output publication | Not implemented; workspace files stay with the operator. |
+| Web Search / Web Fetch | Run at a supporting model endpoint, with `always_allow`. |
+| Remote MCP | Runs through the orchestration runtime. |
 
 The Docker worker's workspace volume persists between activations, but its Bash
 process does not. File tools reject writes to read-only Memory roots; Bash
-access still depends on the sandbox boundary. Remote managed adapters have
-additional image, transfer, and isolation constraints in [Sandbox backends](sandboxes.md).
+access still depends on the sandbox boundary.
 
 ## Capability summary
 
@@ -49,14 +47,14 @@ additional image, transfer, and isolation constraints in [Sandbox backends](sand
 | [Model and context](architecture/storage-context-and-tools.md) | Limited | Durable transcripts, model-window profiles, usage-based estimates, request admission, and compaction. Exact provider token counts, complete request audit records, and equivalent Outcome/Advisor overflow recovery remain open. |
 | [Shell and file tools](guides/self-hosted-worker.md) | Limited | `bash`, `read`, `write`, `edit`, `glob`, and `grep`; `read` is capped at 64 KiB. No host-process fallback. See the execution-path table above. |
 | [MCP](architecture/storage-context-and-tools.md#mcp) | Limited | Streamable HTTP, permissions, journaled calls, and Vault bearer/OAuth authentication. Private-network connectivity, deprecated SSE, MCP resources, and prompts are unsupported. |
-| [Files](api/files.md) | Limited | S3-compatible immutable uploads, lifecycle recovery, and supported Session outputs. Client uploads are intentionally not downloadable. File-sourced images/PDFs and distributed reconciliation remain open. |
-| [Session Resources](api/session-resources.md) | Limited | File copies, create-time Memory attachments, and public HTTPS Git snapshots. Private Git credentials, submodules, LFS, and runtime Git attach/detach are unsupported. |
+| [Files](api/files.md) | Limited | S3-compatible immutable uploads and lifecycle recovery. Client uploads are intentionally not downloadable. File-sourced images/PDFs and distributed reconciliation remain open. |
+| [Session Resources](api/session-resources.md) | Limited | Create-time Memory Store attachments. File/Git staging is operator-owned. |
 | [Skills](api/skills.md) | Limited | Validated bundles, immutable Versions, Agent-scoped pins, and instruction loading. External catalogs and repository discovery are not implemented. |
 | [Memory](api/memory.md) | Limited | Versioned UTF-8 files, optimistic preconditions, and attached-Store synchronization. Automatic retention and non-Docker self-hosted launchers are not implemented. |
 | [Vaults](api/vaults.md) | Limited | Encrypted credentials, Session attachment, OAuth validation/refresh, and rotation. Environment-variable secret egress and refresh-failure notifications are not implemented. |
 | [Webhooks](api/webhooks.md) | Limited | Signed Session and Deployment Run lifecycle delivery, with three at-least-once attempts. No delivery-log API or configurable sustained-failure threshold. |
-| [Deployments](api/deployments.md) | Limited | Pinned templates, manual and cron runs, resources, budgets, leases, and Run records. Agent-archive propagation remains open. |
-| [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, and permanent-input failure. Environment-scoped polling keys, health-check Work, and File/Git preparation remain open. |
+| [Deployments](api/deployments.md) | Limited | Pinned templates, manual and cron runs, Memory Store templates, budgets, leases, and Run records. Agent-archive propagation remains open. |
+| [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, and permanent-input failure. Environment-scoped polling keys and health-check Work remain open. |
 | [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. |
 
 ## Product and operational boundaries
@@ -72,9 +70,9 @@ additional image, transfer, and isolation constraints in [Sandbox backends](sand
 - **Scaling and recovery:** API and orchestration roles can scale independently.
   Worker Versioning, heterogeneous-worker routing, distributed Files
   reconciliation, backup, audit, and observability still need work.
-- **Managed Docker ownership:** native Linux workers with rootful Docker need
-  appropriate host-file authority for bind-mount synchronization and cleanup.
-  Docker socket group membership alone is insufficient; see [Deployment](deployment.md#docker-worker-configuration).
+- **Docker ownership:** the operator-run supervisor has Docker daemon authority;
+  keep it outside untrusted Session containers and apply ordinary Docker host
+  hardening.
 
 Mango owns its API and does not promise drop-in use with a hosted agent service
 or third-party SDK. [Product direction](product.md) describes the release and

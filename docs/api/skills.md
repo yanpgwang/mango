@@ -43,7 +43,7 @@ archive that is still executable.
 
 ## Runtime behavior
 
-Docker, E2B, CubeSandbox, OpenSandbox, and Daytona Sessions initially expose
+Self-hosted worker Sessions initially expose
 only Skill name, description, and instruction path metadata. A private `Skill`
 dispatcher selects the immutable bundle, returns `Launching skill: <name>`,
 and injects the complete main instruction file on demand. Supporting files and
@@ -67,11 +67,8 @@ other than `/workspace`. Permanent validation failures durably terminate the
 Session; temporary retrieval failures remain eligible for Work lease reclaim.
 
 External managed catalogs and repository auto-loading are not implemented.
-Cloud Session creation still returns `422` when its transitional sandbox
-adapter cannot execute custom Skills. Session overrides are applied before
-this check; Skills storage and Agent definitions do not depend on the
-configured sandbox capability.
+Session overrides are applied before Skill admission; Skills storage and Agent
+definitions do not depend on the operator's launcher implementation.
 
 See [Environment Work](environment-work.md) for the external worker boundary
-and [Sandbox backends](../sandboxes.md#custom-skill-mounts) for the remote-copy
-limitation.
+and [Sandboxes](../sandboxes.md#tool-ownership) for worker-owned preparation.

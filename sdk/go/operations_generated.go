@@ -14,7 +14,6 @@ type Operation struct{ ID, Method, Path, Resource, Name string }
 // Operations contains every public operation in the checked-in OpenAPI document.
 var Operations = []Operation{
 	{"acknowledgeEnvironmentWork", "POST", "/v1/environments/{environment_id}/work/{work_id}/ack", "Environments.Work", "Ack"},
-	{"addSessionResource", "POST", "/v1/sessions/{session_id}/resources", "Sessions.Resources", "New"},
 	{"archiveAgent", "POST", "/v1/agents/{agent_id}/archive", "Agents", "Archive"},
 	{"archiveDeployment", "POST", "/v1/deployments/{deployment_id}/archive", "Deployments", "Archive"},
 	{"archiveEnvironment", "POST", "/v1/environments/{environment_id}/archive", "Environments", "Archive"},
@@ -39,7 +38,6 @@ var Operations = []Operation{
 	{"deleteMemory", "DELETE", "/v1/memory_stores/{store_id}/memories/{memory_id}", "MemoryStores.Memories", "Delete"},
 	{"deleteMemoryStore", "DELETE", "/v1/memory_stores/{store_id}", "MemoryStores", "Delete"},
 	{"deleteSession", "DELETE", "/v1/sessions/{session_id}", "Sessions", "Delete"},
-	{"deleteSessionResource", "DELETE", "/v1/sessions/{session_id}/resources/{resource_id}", "Sessions.Resources", "Delete"},
 	{"deleteSkill", "DELETE", "/v1/skills/{skill_id}", "Skills", "Delete"},
 	{"deleteSkillVersion", "DELETE", "/v1/skills/{skill_id}/versions/{version}", "Skills.Versions", "Delete"},
 	{"deleteVault", "DELETE", "/v1/vaults/{vault_id}", "Vaults", "Delete"},
@@ -59,7 +57,6 @@ var Operations = []Operation{
 	{"getMemoryStore", "GET", "/v1/memory_stores/{store_id}", "MemoryStores", "Get"},
 	{"getMemoryVersion", "GET", "/v1/memory_stores/{store_id}/memory_versions/{version_id}", "MemoryStores.Versions", "Get"},
 	{"getSession", "GET", "/v1/sessions/{session_id}", "Sessions", "Get"},
-	{"getSessionResource", "GET", "/v1/sessions/{session_id}/resources/{resource_id}", "Sessions.Resources", "Get"},
 	{"getSessionThread", "GET", "/v1/sessions/{session_id}/threads/{thread_id}", "Sessions.Threads", "Get"},
 	{"getSkill", "GET", "/v1/skills/{skill_id}", "Skills", "Get"},
 	{"getSkillVersion", "GET", "/v1/skills/{skill_id}/versions/{version}", "Skills.Versions", "Get"},
@@ -79,7 +76,6 @@ var Operations = []Operation{
 	{"listMemoryStores", "GET", "/v1/memory_stores", "MemoryStores", "List"},
 	{"listMemoryVersions", "GET", "/v1/memory_stores/{store_id}/memory_versions", "MemoryStores.Versions", "List"},
 	{"listSessionEvents", "GET", "/v1/sessions/{session_id}/events", "Sessions.Events", "List"},
-	{"listSessionResources", "GET", "/v1/sessions/{session_id}/resources", "Sessions.Resources", "List"},
 	{"listSessionThreadEvents", "GET", "/v1/sessions/{session_id}/threads/{thread_id}/events", "Sessions.Threads.Events", "List"},
 	{"listSessionThreads", "GET", "/v1/sessions/{session_id}/threads", "Sessions.Threads", "List"},
 	{"listSessions", "GET", "/v1/sessions", "Sessions", "List"},
@@ -120,15 +116,6 @@ func (c *EnvironmentsWorkService) Ack(ctx context.Context, environment_id string
 	path := "/v1/environments/" + escapePath(environment_id) + "/work/" + escapePath(work_id) + "/ack"
 	var result EnvironmentWork
 	err := c.client.doJSON(ctx, "POST", path, query, nil, &result, true)
-	return result, err
-}
-
-// New Attach a File copy to a Session (POST /v1/sessions/{session_id}/resources).
-func (c *SessionsResourcesService) New(ctx context.Context, session_id string, body FileSessionResourceInput) (SessionResource, error) {
-	query := make(url.Values)
-	path := "/v1/sessions/" + escapePath(session_id) + "/resources"
-	var result SessionResource
-	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }
 
@@ -361,15 +348,6 @@ func (c *SessionsService) Delete(ctx context.Context, session_id string) (Sessio
 	return result, err
 }
 
-// Delete Detach a File Resource from a Session (DELETE /v1/sessions/{session_id}/resources/{resource_id}).
-func (c *SessionsResourcesService) Delete(ctx context.Context, session_id string, resource_id string) (SessionResourceDeleted, error) {
-	query := make(url.Values)
-	path := "/v1/sessions/" + escapePath(session_id) + "/resources/" + escapePath(resource_id) + ""
-	var result SessionResourceDeleted
-	err := c.client.doJSON(ctx, "DELETE", path, query, nil, &result, true)
-	return result, err
-}
-
 // Delete Delete a Skill after all of its Versions have been deleted (DELETE /v1/skills/{skill_id}).
 func (c *SkillsService) Delete(ctx context.Context, skill_id string) (SkillDeleted, error) {
 	query := make(url.Values)
@@ -533,15 +511,6 @@ func (c *SessionsService) Get(ctx context.Context, session_id string) (Session, 
 	query := make(url.Values)
 	path := "/v1/sessions/" + escapePath(session_id) + ""
 	var result Session
-	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
-	return result, err
-}
-
-// Get Get a Session Resource (GET /v1/sessions/{session_id}/resources/{resource_id}).
-func (c *SessionsResourcesService) Get(ctx context.Context, session_id string, resource_id string) (SessionResource, error) {
-	query := make(url.Values)
-	path := "/v1/sessions/" + escapePath(session_id) + "/resources/" + escapePath(resource_id) + ""
-	var result SessionResource
 	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
 	return result, err
 }
@@ -997,36 +966,6 @@ func (c *SessionsEventsService) ListAutoPaging(ctx context.Context, session_id s
 			next = *result.NextPage
 		}
 		return Page[SessionEvent]{Data: result.Data, Next: next}, nil
-	})
-}
-
-// List List Session Resources (GET /v1/sessions/{session_id}/resources).
-func (c *SessionsResourcesService) List(ctx context.Context, session_id string, params ListSessionResourcesParams) (SessionResourceList, error) {
-	query := make(url.Values)
-	addQuery(query, "limit", params.Limit)
-	addQuery(query, "page", params.Page)
-	path := "/v1/sessions/" + escapePath(session_id) + "/resources"
-	var result SessionResourceList
-	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)
-	return result, err
-}
-
-// ListAutoPaging iterates every result, preserving the initial filters.
-func (c *SessionsResourcesService) ListAutoPaging(ctx context.Context, session_id string, params ListSessionResourcesParams) *PageIterator[SessionResource] {
-	first, _ := params.Page.Get()
-	return NewPageIterator(ctx, first, func(ctx context.Context, cursor string) (Page[SessionResource], error) {
-		if cursor != "" {
-			params.Page = Some(cursor)
-		}
-		result, err := c.List(ctx, session_id, params)
-		if err != nil {
-			return Page[SessionResource]{}, err
-		}
-		next := ""
-		if result.NextPage != nil {
-			next = *result.NextPage
-		}
-		return Page[SessionResource]{Data: result.Data, Next: next}, nil
 	})
 }
 

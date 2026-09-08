@@ -15,8 +15,8 @@ construction boilerplate.
 ## Acceptance criteria
 
 - All three clients expose every current operation through resource services:
-  Agents and Versions; Environments and Work; Sessions, Threads, Events and
-  Resources; Files; Skills and Versions; Memory Stores; Vaults; Deployments;
+  Agents and Versions; Environments and Work; Sessions, Threads and Events;
+  Files; Skills and Versions; Memory Stores; Vaults; Deployments;
   Webhooks; and System diagnostics. No parallel legacy client surface remains.
 - Python accepts typed keyword arguments; TypeScript accepts request fields
   directly. Path identifiers are positional in HTTP hierarchy order across all
@@ -77,11 +77,10 @@ Validated on 2026-09-07 against main `5ee63a8` (self-hosted Environment default)
   its own resources. The optional Advisor was covered by contract tests rather
   than enabled in these three manual runs.
 
-Independent subagent review found and fixed unresolved Python forward references
+Independent review found and fixed unresolved Python forward references
 when inspecting resource methods with `typing.get_type_hints`; a regression test
 covers synchronous and asynchronous resource signatures. Caller review also
-migrated the coding-agent application and added it to mypy's checked files.
-That application subsequently completed a real-model repair, downloaded its
-result, verified the original checks in Docker, and cleaned up its resources.
+migrated the then-current coding-agent application. That historical application
+was later retired with the legacy managed-sandbox runtime.
 
 The packages remain unpublished development candidates.

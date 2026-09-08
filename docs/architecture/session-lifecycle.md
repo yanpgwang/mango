@@ -161,11 +161,14 @@ one event per submitted input rather than exposing the internal fan-out copies.
 ## Session deletion
 
 Deletion first fences the Session against new admission, terminates its
-long-lived Workflow, and starts a short Temporal cleanup Workflow on the
-execution worker. Cleanup destroys the provider resource and removes its
-persisted binding before the Session projection can be deleted. Repeating the
-operation safely joins or repeats idempotent cleanup.
+long-lived Workflow, finalizes its Memory Store bindings, and then removes the
+Session projection. Repeating the operation safely repeats the fenced
+termination/finalization sequence.
 
-Local workspaces can reattach on the same host and Docker containers can
-reattach through the same daemon. Cross-host workers require a remote provider
-or shared execution substrate.
+Sandbox and workspace lifecycle is outside the control plane. A self-hosted
+launcher must stop active execution when Work is cancelled or its lease is
+lost, and owns retention or deletion of its Session workspace. The Docker
+reference launcher removes each Work container and retains its named Session
+volume for reattachment; operators must apply their own retention cleanup.
+Cross-host workers require operator-provided shared storage or another
+execution substrate behind the same Environment Work protocol.

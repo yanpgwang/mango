@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 func TestDeploymentServicePinsAgentAndCreatesDeploymentSession(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	repositoryMount := "/workspace/audit"
 	repo := newMemoryDeploymentRepository()
 	sessions := &deploymentSessionCreatorFake{}
 	service := newTestDeploymentService(t, repo, sessions, now)
@@ -22,12 +20,6 @@ func TestDeploymentServicePinsAgentAndCreatesDeploymentSession(t *testing.T) {
 	item, err := service.Create(context.Background(), DeploymentCreateInput{
 		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Hourly audit",
 		Budget: &domain.SessionBudget{MaxListCostCents: 500},
-		Resources: []domain.DeploymentResource{{
-			Type:                    domain.SessionResourceTypeGitRepository,
-			RepositoryURL:           "https://github.com/acme/widgets.git",
-			RepositoryCheckoutType:  domain.GitRepositoryCheckoutBranch,
-			RepositoryCheckoutValue: "main", MountPath: &repositoryMount,
-		}},
 		InitialEvents: []domain.EventDraft{{
 			Type: domain.EvUserMessage,
 			Payload: map[string]any{"content": []any{map[string]any{
@@ -90,56 +82,9 @@ func TestDeploymentServicePinsAgentAndCreatesDeploymentSession(t *testing.T) {
 		sessions.last.Budget.MaxListCostCents != 500 {
 		t.Fatalf("Session create input = %+v", sessions.last)
 	}
-	if len(sessions.last.RepositoryResources) != 1 ||
-		sessions.last.RepositoryResources[0].URL != "https://github.com/acme/widgets.git" ||
-		sessions.last.RepositoryResources[0].Checkout == nil ||
-		sessions.last.RepositoryResources[0].Checkout.Type != domain.GitRepositoryCheckoutBranch ||
-		sessions.last.RepositoryResources[0].Checkout.Value != "main" ||
-		sessions.last.RepositoryResources[0].MountPath == nil ||
-		*sessions.last.RepositoryResources[0].MountPath != repositoryMount {
-		t.Fatalf("Session repository resources = %+v", sessions.last.RepositoryResources)
-	}
 }
 
-func TestDeploymentServiceNormalizesAndValidatesGitRepositoryTemplates(t *testing.T) {
-	t.Parallel()
-	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	service := newTestDeploymentService(
-		t, newMemoryDeploymentRepository(), &deploymentSessionCreatorFake{}, now,
-	)
-	uppercaseCommit := "0123456789ABCDEF0123456789ABCDEF01234567"
-	item, err := service.Create(context.Background(), DeploymentCreateInput{
-		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Pinned repository",
-		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
-		Resources: []domain.DeploymentResource{{
-			Type:                    domain.SessionResourceTypeGitRepository,
-			RepositoryURL:           "https://github.com/acme/widgets.git",
-			RepositoryCheckoutType:  domain.GitRepositoryCheckoutCommit,
-			RepositoryCheckoutValue: uppercaseCommit,
-		}},
-	})
-	if err != nil {
-		t.Fatalf("create Deployment: %v", err)
-	}
-	if got := item.Resources[0].RepositoryCheckoutValue; got != "0123456789abcdef0123456789abcdef01234567" {
-		t.Fatalf("normalized commit = %q", got)
-	}
-
-	left, right := "/workspace/project", "/workspace/project/generated"
-	_, err = service.Create(context.Background(), DeploymentCreateInput{
-		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Overlapping repositories",
-		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
-		Resources: []domain.DeploymentResource{
-			{Type: domain.SessionResourceTypeGitRepository, RepositoryURL: "https://github.com/acme/one.git", MountPath: &left},
-			{Type: domain.SessionResourceTypeGitRepository, RepositoryURL: "https://github.com/acme/two.git", MountPath: &right},
-		},
-	})
-	if err == nil || !strings.Contains(err.Error(), "must not overlap") {
-		t.Fatalf("overlapping repository mounts = %v", err)
-	}
-}
-
-func TestDeploymentServiceGatesMemoryByEnvironmentType(t *testing.T) {
+func TestDeploymentServiceAcceptsMemoryForSelfHostedEnvironment(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
 	service := newTestDeploymentService(
@@ -153,25 +98,11 @@ func TestDeploymentServiceGatesMemoryByEnvironmentType(t *testing.T) {
 		Access: domain.MemoryAccessReadWrite,
 	}
 	_, err := service.Create(context.Background(), DeploymentCreateInput{
-		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Cloud memory",
+		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Self-hosted memory",
 		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
 		Resources:     []domain.DeploymentResource{resource},
 	})
-	if err == nil || !strings.Contains(err.Error(), "configured cloud sandbox provider") {
-		t.Fatalf("cloud deployment Memory error = %v", err)
-	}
-	environments := service.environments.(*memoryEnvironmentRepository)
-	if err := environments.Put(context.Background(), domain.Environment{
-		ID: "env_self_hosted", Name: "Self-hosted", ConfigType: "self_hosted",
-		Config: map[string]any{"type": "self_hosted"}, CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.Create(context.Background(), DeploymentCreateInput{
-		AgentID: "agent_test", EnvironmentID: "env_self_hosted", Name: "Self-hosted memory",
-		InitialEvents: []domain.EventDraft{{Type: domain.EvUserMessage}},
-		Resources:     []domain.DeploymentResource{resource},
-	}); err != nil {
+	if err != nil {
 		t.Fatalf("self-hosted deployment Memory: %v", err)
 	}
 }
@@ -185,20 +116,10 @@ func (r staticDeploymentMemoryReader) GetStore(_ context.Context, id string) (do
 	return r.store, nil
 }
 
-func TestClassifyDeploymentRunGitRepositoryFailure(t *testing.T) {
-	t.Parallel()
-	errorType, _ := classifyDeploymentRunError(
-		SessionResourceNotFoundError("public Git repository could not be cloned or read"),
-	)
-	if errorType != "session_resource_not_found_error" {
-		t.Fatalf("Git repository error type = %q", errorType)
-	}
-}
-
 func TestClassifyDeploymentRunUnsupportedCapabilityIsPermanent(t *testing.T) {
 	t.Parallel()
 	for _, message := range []string{
-		"custom Skills are unavailable for the configured cloud sandbox provider",
+		"custom Skills are unavailable for the configured worker",
 	} {
 		errorType, detail := classifyDeploymentRunError(domain.Unsupported(message))
 		if errorType != "session_creation_rejected_error" || detail != message || !shouldPauseDeployment(errorType) {
@@ -255,7 +176,7 @@ func TestDeploymentServiceDoesNotPauseAfterManualRunFailure(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 	repo := newMemoryDeploymentRepository()
 	service := newTestDeploymentService(t, repo, &deploymentSessionCreatorFake{
-		err: SessionResourceNotFoundError("repository no longer exists"),
+		err: domain.Validation("memory store is missing"),
 	}, now)
 	item, err := service.Create(context.Background(), DeploymentCreateInput{
 		AgentID: "agent_test", EnvironmentID: "env_test", Name: "Manual test",
@@ -265,7 +186,7 @@ func TestDeploymentServiceDoesNotPauseAfterManualRunFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	run, err := service.Run(context.Background(), item.ID)
-	if err != nil || run.ErrorType != "session_resource_not_found_error" {
+	if err != nil || run.ErrorType != "session_creation_rejected_error" {
 		t.Fatalf("manual failed Run = %+v, %v", run, err)
 	}
 	stored, err := service.Get(context.Background(), item.ID)
@@ -353,8 +274,8 @@ func newTestDeploymentService(
 	}
 	environments := newMemoryEnvironmentRepository()
 	if err := environments.Put(context.Background(), domain.Environment{
-		ID: "env_test", Name: "Environment", ConfigType: "cloud",
-		Config: map[string]any{"type": "cloud"}, CreatedAt: now, UpdatedAt: now,
+		ID: "env_test", Name: "Environment", ConfigType: "self_hosted",
+		Config: map[string]any{"type": "self_hosted"}, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -18,7 +18,7 @@ func TestCallModelPublishesCorrelatedPreviewFrames(t *testing.T) {
 		model.NewFake(),
 		nil,
 		nil,
-		nil,
+
 		domain.NewSeqIDGen(),
 		publisher,
 	)
@@ -75,7 +75,7 @@ func TestCallModelPermanentAPIErrorBecomesFatalResult(t *testing.T) {
 		Message:    "invalid messages",
 	})
 	activities := NewActivities(
-		client, nil, nil, nil, domain.NewSeqIDGen(),
+		client, nil, nil, domain.NewSeqIDGen(),
 	)
 
 	result, err := activities.CallModel(context.Background(), CallModelInput{
@@ -101,7 +101,7 @@ func TestCallModelRequestTooLargeBecomesContextRecoveryResult(t *testing.T) {
 		Type:       "request_too_large",
 		Message:    "request exceeds context window",
 	})
-	activities := NewActivities(client, nil, nil, nil, domain.NewSeqIDGen())
+	activities := NewActivities(client, nil, nil, domain.NewSeqIDGen())
 
 	result, err := activities.CallModel(context.Background(), CallModelInput{
 		SessionID: "sesn_context_overflow",
@@ -129,7 +129,7 @@ func TestCallModelBillingErrorUsesDocumentedVariant(t *testing.T) {
 		Type:       "billing_error",
 		Message:    "credits exhausted",
 	})
-	activities := NewActivities(client, nil, nil, nil, domain.NewSeqIDGen())
+	activities := NewActivities(client, nil, nil, domain.NewSeqIDGen())
 	result, err := activities.CallModel(context.Background(), CallModelInput{
 		SessionID: "sesn_billing", Request: model.Request{Model: "test-model"},
 	})
@@ -150,7 +150,7 @@ func TestCallModelAllocatesPublicThinkingEventWithoutExposingContent(t *testing.
 		StopReason: "end_turn",
 	}}
 	publisher := &previewRecorder{}
-	activities := NewActivities(client, nil, nil, nil, domain.NewSeqIDGen(), publisher)
+	activities := NewActivities(client, nil, nil, domain.NewSeqIDGen(), publisher)
 	result, err := activities.CallModel(context.Background(), CallModelInput{
 		SessionID: "sesn_thinking", Request: model.Request{Model: "test-model"},
 	})
@@ -192,7 +192,7 @@ func TestCallModelTransientAPIErrorRemainsActivityError(t *testing.T) {
 	}
 	client.SetError(want)
 	activities := NewActivities(
-		client, nil, nil, nil, domain.NewSeqIDGen(),
+		client, nil, nil, domain.NewSeqIDGen(),
 	)
 
 	result, err := activities.CallModel(context.Background(), CallModelInput{
@@ -221,7 +221,7 @@ func TestCallModelTransientAPIErrorBecomesRetryResultWhenOptedIn(t *testing.T) {
 		RetryAfter: 2500 * time.Millisecond,
 	})
 	activities := NewActivities(
-		client, nil, nil, nil, domain.NewSeqIDGen(),
+		client, nil, nil, domain.NewSeqIDGen(),
 	)
 
 	result, err := activities.CallModel(context.Background(), CallModelInput{
@@ -252,7 +252,7 @@ func TestCompleteWorkflowTurnForwardsPendingBarrierIDs(t *testing.T) {
 		nil,
 		source,
 		nil,
-		nil,
+
 		domain.NewSeqIDGen(),
 	)
 	wantPending := []string{"sevt_action_1", "sevt_action_2"}
@@ -302,7 +302,7 @@ func TestCompleteWorkflowTurnForwardsPendingBarrierIDs(t *testing.T) {
 		nil,
 		source,
 		nil,
-		nil,
+
 		domain.NewSeqIDGen(),
 	)
 	result, err = activities.CompleteWorkflowTurn(

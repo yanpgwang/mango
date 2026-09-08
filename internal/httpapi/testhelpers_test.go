@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -12,6 +14,20 @@ import (
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
 )
+
+func decodeTestJSON(t *testing.T, raw []byte, target any) {
+	t.Helper()
+	if err := json.Unmarshal(raw, target); err != nil {
+		t.Fatalf("decode JSON response: %v: %s", err, raw)
+	}
+}
+
+func closeTestResource(t *testing.T, resource io.Closer) {
+	t.Helper()
+	if err := resource.Close(); err != nil {
+		t.Errorf("close test resource: %v", err)
+	}
+}
 
 // The HTTP suite uses test-only fakes to exercise wire behavior. Durable
 // behavior belongs to the PostgreSQL/Temporal integration suite; keeping these
@@ -49,7 +65,6 @@ func newTestHandlerWithSessions(
 	agents := app.NewAgentService(agentsRepo, ids, clock, skillResolver)
 	environments := app.NewEnvironmentService(
 		environmentsRepo, ids, clock,
-		app.EnvironmentCapabilities{PackageSetup: true, LimitedNetwork: true},
 	)
 	hub := app.NewHub(256)
 	sessions := newTestSessionService(
@@ -61,10 +76,9 @@ func newTestHandlerWithSessions(
 		previews,
 		skillResolver,
 	)
-	resources := &testSessionResourceService{sessions: sessions, ids: ids, clock: clock}
 	return NewServer(Deps{
 		Agents: agents, Envs: environments, Sessions: sessions,
-		Events: sessions, Stream: hub, SessionResources: resources,
+		Events: sessions, Stream: hub,
 	}, cfg).Handler(), sessions
 }
 
@@ -468,20 +482,6 @@ func (s *testSessionService) Create(
 		VaultIDs: append([]string(nil), input.VaultIDs...), ListCostKnown: true,
 		Budget: input.Budget,
 	}
-	for _, inputResource := range input.Resources {
-		mountPath, err := domain.NormalizeSessionFileMountPath(
-			inputResource.FileID, inputResource.MountPath,
-		)
-		if err != nil {
-			return domain.Session{}, err
-		}
-		session.Resources = append(session.Resources, domain.SessionResource{
-			ID: s.ids.NewID(domain.PrefixSessionResource), SessionID: session.ID,
-			SourceFileID: inputResource.FileID, FileID: s.ids.NewID(domain.PrefixFile),
-			MountPath: mountPath, CreatedAt: now, UpdatedAt: now,
-			State: domain.SessionResourceActive,
-		})
-	}
 	for _, inputResource := range input.MemoryResources {
 		name := "Project Memory"
 		mountPath, err := domain.NormalizeSessionMemoryStoreMountPath(name)
@@ -562,120 +562,6 @@ func (s *testSessionService) setLatestSkillVersion(skillID, version string) {
 	if resolver, ok := s.skillRef.(*testSkillResolver); ok {
 		resolver.setLatest(skillID, version)
 	}
-}
-
-type testSessionResourceService struct {
-	sessions *testSessionService
-	ids      domain.IDGenerator
-	clock    domain.Clock
-}
-
-func (s *testSessionResourceService) Add(
-	_ context.Context,
-	sessionID string,
-	input app.FileSessionResourceInput,
-) (domain.SessionResource, error) {
-	s.sessions.mu.Lock()
-	defer s.sessions.mu.Unlock()
-	session, ok := s.sessions.sessions[sessionID]
-	if !ok {
-		return domain.SessionResource{}, domain.NotFound("session not found")
-	}
-	mountPath, err := domain.NormalizeSessionFileMountPath(input.FileID, input.MountPath)
-	if err != nil {
-		return domain.SessionResource{}, err
-	}
-	for _, existing := range session.Resources {
-		if existing.MountPath == mountPath {
-			return domain.SessionResource{}, domain.Conflict("mount_path is already in use")
-		}
-	}
-	now := s.clock.Now().UTC()
-	resource := domain.SessionResource{
-		ID: s.ids.NewID(domain.PrefixSessionResource), SessionID: sessionID,
-		SourceFileID: input.FileID, FileID: s.ids.NewID(domain.PrefixFile),
-		MountPath: mountPath, CreatedAt: now, UpdatedAt: now,
-		State: domain.SessionResourceActive,
-	}
-	session.Resources = append(session.Resources, resource)
-	s.sessions.sessions[sessionID] = session
-	return resource, nil
-}
-
-func (s *testSessionResourceService) Get(
-	_ context.Context,
-	sessionID string,
-	resourceID string,
-) (domain.SessionResource, error) {
-	s.sessions.mu.Lock()
-	defer s.sessions.mu.Unlock()
-	session, ok := s.sessions.sessions[sessionID]
-	if !ok {
-		return domain.SessionResource{}, domain.NotFound("session not found")
-	}
-	for _, resource := range session.Resources {
-		if resource.ID == resourceID {
-			return resource, nil
-		}
-	}
-	return domain.SessionResource{}, domain.NotFound("session resource not found")
-}
-
-func (s *testSessionResourceService) List(
-	_ context.Context,
-	sessionID string,
-	query app.SessionResourceListQuery,
-) (app.SessionResourceListPage, error) {
-	s.sessions.mu.Lock()
-	defer s.sessions.mu.Unlock()
-	session, ok := s.sessions.sessions[sessionID]
-	if !ok {
-		return app.SessionResourceListPage{}, domain.NotFound("session not found")
-	}
-	start := 0
-	if query.Boundary != nil {
-		for index, resource := range session.Resources {
-			if resource.ID == query.Boundary.ID {
-				start = index + 1
-				break
-			}
-		}
-	}
-	limit := query.Limit
-	if limit == 0 {
-		limit = len(session.Resources)
-	}
-	end := start + limit
-	if end > len(session.Resources) {
-		end = len(session.Resources)
-	}
-	page := app.SessionResourceListPage{
-		Resources: append([]domain.SessionResource(nil), session.Resources[start:end]...),
-	}
-	page.HasMore = end < len(session.Resources)
-	return page, nil
-}
-
-func (s *testSessionResourceService) Delete(
-	_ context.Context,
-	sessionID string,
-	resourceID string,
-) (domain.SessionResource, error) {
-	s.sessions.mu.Lock()
-	defer s.sessions.mu.Unlock()
-	session, ok := s.sessions.sessions[sessionID]
-	if !ok {
-		return domain.SessionResource{}, domain.NotFound("session not found")
-	}
-	for index, resource := range session.Resources {
-		if resource.ID != resourceID {
-			continue
-		}
-		session.Resources = append(session.Resources[:index], session.Resources[index+1:]...)
-		s.sessions.sessions[sessionID] = session
-		return resource, nil
-	}
-	return domain.SessionResource{}, domain.NotFound("session resource not found")
 }
 
 func (s *testSessionService) Get(
