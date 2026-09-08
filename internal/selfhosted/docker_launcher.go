@@ -404,28 +404,15 @@ func (l *DockerLauncher) clearPreviousAttempt(ctx context.Context, name string, 
 	if err := validateWorkContainer(inspect, name, work); err != nil {
 		return err
 	}
-	var stopErr error
-	if inspect.Container.State != nil && inspect.Container.State.Running {
-		stopCtx, cancel := context.WithTimeout(ctx, defaultContainerStopGrace+defaultWorkerStopTimeout)
-		timeoutSeconds := int(defaultContainerStopGrace / time.Second)
-		_, stopErr = l.engine.ContainerStop(stopCtx, inspect.Container.ID, client.ContainerStopOptions{Timeout: &timeoutSeconds})
-		cancel()
-		if errdefs.IsNotFound(stopErr) {
-			stopErr = nil
-		}
-	}
+	// Poll/Ack has already replaced the expired claim and rotated its token.
+	// The old process can no longer flush Memory through Mango. Reap it before
+	// starting its replacement; ordinary shutdown's long grace would consume
+	// the new starting lease before that worker can send its first heartbeat.
 	removeCtx, cancel := context.WithTimeout(ctx, defaultWorkerStopTimeout)
 	_, err = l.engine.ContainerRemove(removeCtx, inspect.Container.ID, client.ContainerRemoveOptions{Force: true})
 	cancel()
 	if err != nil && !errdefs.IsNotFound(err) {
-		removeErr := fmt.Errorf("selfhosted: remove previous Work container: %w", err)
-		if stopErr != nil {
-			stopErr = fmt.Errorf("selfhosted: stop previous Work container: %w", stopErr)
-		}
-		return errors.Join(stopErr, removeErr)
-	}
-	if stopErr != nil {
-		l.log.Warn("force-removed previous Work container after graceful stop failed", "container_id", shortContainerID(inspect.Container.ID), "error", stopErr)
+		return fmt.Errorf("selfhosted: remove previous Work container: %w", err)
 	}
 	return nil
 }

@@ -137,6 +137,11 @@ an ordinary `docker stop`; allow the supervisor at least 150 seconds if another
 process manager controls its shutdown. A forced kill or failed/timed-out Memory
 upload can still lose unsynchronized edits; uploaded Memory remains durable.
 
+Recovery uses a different path: once an expired Work claim is reclaimed, its
+previous container has no valid Memory write credential and is force-removed
+before the replacement starts. The normal 120-second shutdown grace does not
+apply to that expired attempt or consume the replacement's starting lease.
+
 Inspect any active Session before
 sending more work. Stopping the supervisor does not delete your Environment,
 Session history, or retained workspace volumes. Manage Session deletion through

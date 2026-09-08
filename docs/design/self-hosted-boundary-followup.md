@@ -15,6 +15,9 @@ the control-plane sandbox path was removed.
 - The Docker reference allows the worker's result delivery, Memory teardown,
   and final Work Stop to finish before a hard kill. Ordinary cancellation keeps
   the lease renewable through teardown; lease loss still fences the worker.
+- Replacing a reclaimed attempt must not spend the new claim's starting lease
+  waiting for an expired worker to shut down. Validate the old container's
+  identity, force-remove it, and start the new worker only after removal succeeds.
 - An authenticated application can upload, list, retrieve, download, and delete
   an immutable File in its Workspace. Another Workspace cannot read its bytes.
   File metadata and queries do not retain unused Session scope or download
@@ -26,6 +29,9 @@ the control-plane sandbox path was removed.
 - No development or CI test uses the official Anthropic SDK as a Mango client.
   Keep independent HTTP and first-party SDK coverage and preserve persistence,
   recovery, and service assertions when replacing old research tests.
+- Independent HTTP tests retain successful Session budget creation, increases,
+  removal, and rejected additions; Mango SDK tests verify budget and usage
+  amounts in Session and event responses.
 
 ## Design and non-goals
 

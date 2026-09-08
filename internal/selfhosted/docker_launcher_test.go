@@ -122,29 +122,29 @@ func TestDockerLauncherReplacesMatchingPreviousAttempt(t *testing.T) {
 	if err := launcher.runItem(context.Background(), work); err != nil {
 		t.Fatal(err)
 	}
-	if engine.stopCalls != 1 || engine.removeCalls != 2 {
-		t.Fatalf("stop calls=%d remove calls=%d, want 1 and 2", engine.stopCalls, engine.removeCalls)
+	if engine.stopCalls != 0 || engine.removeCalls != 2 {
+		t.Fatalf("stop calls=%d remove calls=%d, want 0 and 2", engine.stopCalls, engine.removeCalls)
 	}
 }
 
-func TestDockerLauncherForceRemovesPreviousAttemptWhenStopFails(t *testing.T) {
+func TestDockerLauncherDoesNotStartBeforePreviousAttemptIsRemoved(t *testing.T) {
 	client, _ := mango.New(mango.Config{BaseURL: "http://mango.invalid", APIKey: "workspace"})
 	work := acknowledgedWork()
 	engine := newFakeDockerEngine()
 	engine.inspectErr = nil
 	engine.inspectResult = inspectResultForWork("previous", work, true)
-	engine.stopErr = errors.New("graceful stop failed")
+	engine.removeErr = errors.New("remove failed")
 	launcher, err := NewDockerLauncher(engine, DockerLauncherOptions{
 		Client: client, EnvironmentID: "env_test", SandboxBaseURL: "http://mango.invalid",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := launcher.runItem(context.Background(), work); err != nil {
-		t.Fatal(err)
+	if err := launcher.runItem(context.Background(), work); err == nil || !strings.Contains(err.Error(), "remove previous Work container") {
+		t.Fatalf("runItem error = %v", err)
 	}
-	if engine.stopCalls != 1 || engine.removeCalls != 2 || len(engine.created) != 1 {
-		t.Fatalf("stops=%d removes=%d created=%d, want 1, 2, 1", engine.stopCalls, engine.removeCalls, len(engine.created))
+	if engine.stopCalls != 0 || engine.removeCalls != 1 || len(engine.created) != 0 {
+		t.Fatalf("stops=%d removes=%d created=%d, want 0, 1, 0", engine.stopCalls, engine.removeCalls, len(engine.created))
 	}
 }
 

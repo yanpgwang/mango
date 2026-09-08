@@ -36,6 +36,10 @@ release is never an automatic roadmap.
   Memory teardown, and separate queue/Session credentials. Mango keeps the Work
   lease renewing during cancellation teardown and gives its reference Docker
   container 120 seconds, with a longer Engine request deadline.
+  That grace applies to ordinary shutdown of the current worker. After reclaim,
+  the old attempt has lost its credential and is force-removed within a separate
+  Engine request budget before its replacement starts. Waiting for the old
+  attempt's Memory teardown would consume the new claim's starting lease.
 - Changed: Mango has only immutable Workspace Files and no producer of hosted
   Session-scoped copies. Every ready File is downloadable by that Workspace's
   authenticated application. `downloadable`, `scope`, and `scope_id` are removed
@@ -147,10 +151,9 @@ release is never an automatic roadmap.
   retains the generic `request-id` response header, and exposes optional worker
   correlation as the `worker_id` query parameter. It does not expose provider
   rollout headers on its inbound API.
-- The Anthropic Messages adapter continues to send the provider headers its
-  outbound endpoint requires. Tests that exercise Mango through an Anthropic
-  SDK are optional research evidence; raw HTTP and OpenAPI tests define Mango's
-  transport contract.
+- The Messages adapter continues to send the headers its configured outbound
+  endpoint requires. Public SDK source is research input only; independent raw
+  HTTP, OpenAPI, and Mango SDK tests verify Mango's transport contract.
 - Claude Managed Agents' agent-level `inference_geo` and the public
   [Claude data-residency design](https://platform.claude.com/docs/en/manage-claude/data-residency)
   prompted a focused review on 2026-08-27. Mango rejected request-time
