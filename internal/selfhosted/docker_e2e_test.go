@@ -19,11 +19,12 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
-func TestDockerLauncherRealItemLifecycle(t *testing.T) {
+func TestDockerLauncherRealItemLifecycleReclaimsPreviousAttempt(t *testing.T) {
 	testDockerItemLifecycle(t, false)
 }
 
@@ -273,6 +274,32 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 	cancelProbe()
 	if err != nil {
 		t.Fatalf("Docker Engine is required: %v", err)
+	}
+	if !cancelDuringFlush {
+		// Model a reclaimed worker whose process does not exit on Docker Stop.
+		// SIGCONT deliberately leaves sleep running, without a readiness race
+		// between installing a shell signal handler and starting the launcher.
+		previous, err := engine.ContainerCreate(ctx, client.ContainerCreateOptions{
+			Name: dockerWorkName(work.ID),
+			Config: &container.Config{
+				Image: image, Entrypoint: []string{"sleep", "300"}, StopSignal: "SIGCONT",
+				Labels: inspectResultForWork("previous", work, true).Container.Config.Labels,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, err := engine.ContainerRemove(cleanupCtx, previous.ID, client.ContainerRemoveOptions{Force: true})
+			if err != nil && !errdefs.IsNotFound(err) {
+				t.Errorf("clean up previous container: %v", err)
+			}
+		}()
+		if _, err := engine.ContainerStart(ctx, previous.ID, client.ContainerStartOptions{}); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	volume := dockerSessionVolume(work.Data.ID)
