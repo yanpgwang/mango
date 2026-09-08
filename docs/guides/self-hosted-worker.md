@@ -8,7 +8,7 @@ description: Run shell and file tools in containers on your infrastructure.
 The first-party Docker launcher connects an operator-run worker to a
 `self_hosted` Environment. A trusted supervisor claims Work from Mango and
 starts a container for each activation. The Session's workspace persists in a
-named Docker volume between activations.
+named Docker volume between activations, or in an operator-selected directory.
 
 This worker is separate from `mango orchestrate`, which runs the model loop.
 See [Environments and workers](../concepts.md#environments-and-workers) for the
@@ -116,7 +116,7 @@ same Environment and that its container can reach Mango. Use
 
 | Location or resource | Behavior |
 | --- | --- |
-| `/workspace` | A named volume reused by later activations of the same Session. |
+| `/workspace` | A named volume by default, or `<workspace-root>/<session-id>` with `--workspace-root`; reused by later activations. |
 | Bash process | Preserves cwd, environment, and background jobs within one activation; a new activation starts a new shell. |
 | Custom Skills | Downloaded from the Session's immutable pins and verified before tool execution. |
 | `/mnt/memory` | Attached Memory Stores are prepared and synchronized; file tools enforce attachment access for writes and edits. |
@@ -124,8 +124,27 @@ same Environment and that its container can reach Mango. Use
 
 Automatic File/Git preparation and Session output publication are not yet
 implemented by this worker. Read-write Memory has its own durable synchronization;
-ordinary workspace files stay in the Docker volume. Avoid assuming that a
+ordinary workspace files stay in the operator workspace. Avoid assuming that a
 workspace file is already a downloadable Mango File.
+
+## Stage inputs and retrieve outputs
+
+To work directly with files on the Docker host, pass an absolute
+`--workspace-root /path/to/workspaces` (or `MANGO_WORKSPACE_ROOT`). Before sending
+Session input, create `/path/to/workspaces/<session-id>` and put its files there.
+The launcher binds that one directory at `/workspace`; it does not mount the
+parent or create/chown missing directories. Give the container user write access,
+for example by selecting `--user "$(id -u):$(id -g)"` for a directory owned by
+your non-root user. Docker Desktop maps local shared directories into its VM.
+
+The path refers to the Docker daemon host. For remote or multiple supervisors,
+arrange the same storage and permissions on each host. Operator-selected symlinks
+and their targets are trusted. Archive/delete does not remove this directory;
+retain or remove it after all workers have stopped.
+
+Your application can download Files into the directory, then upload selected
+results through the Files API after the worker stops. The
+[coding agent example](../examples/coding-agent.md) performs this whole flow.
 
 ## Stop the worker
 

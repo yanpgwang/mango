@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/client"
 	mango "github.com/yanpgwang/mango/sdk/go"
 )
@@ -536,3 +538,48 @@ func inspectResultForWork(id string, work mango.EnvironmentWork, running bool) c
 }
 
 var _ dockerEngine = (*fakeDockerEngine)(nil)
+
+func TestDockerLauncherWorkspaceRoot(t *testing.T) {
+	supervisor, _ := mango.New(mango.Config{BaseURL: "http://mango.invalid", APIKey: "workspace"})
+	root := t.TempDir()
+	engine := newFakeDockerEngine()
+	launcher, err := NewDockerLauncher(engine, DockerLauncherOptions{
+		Client: supervisor, EnvironmentID: "env_test", SandboxBaseURL: "http://mango.invalid", WorkspaceRoot: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := acknowledgedWork()
+	if err := launcher.runItem(context.Background(), work); err != nil {
+		t.Fatal(err)
+	}
+	work.ID += "_next"
+	if err := launcher.runItem(context.Background(), work); err != nil {
+		t.Fatal(err)
+	}
+	work.Data.ID += "_other"
+	if err := launcher.runItem(context.Background(), work); err != nil {
+		t.Fatal(err)
+	}
+	for i, created := range engine.created {
+		wantSession := "sesn_test"
+		if i == 2 {
+			wantSession += "_other"
+		}
+		mounts := created.HostConfig.Mounts
+		if len(mounts) != 1 || mounts[0].Type != mount.TypeBind || mounts[0].Source != filepath.Join(root, wantSession) || mounts[0].Target != "/workspace" {
+			t.Fatalf("activation %d mounts = %+v", i, mounts)
+		}
+	}
+	for _, invalid := range []string{"", "..", "../other", "/absolute", "nested/id", "nested\\id"} {
+		if _, err := launcher.workspaceMount(invalid); err == nil {
+			t.Errorf("accepted Session ID %q", invalid)
+		}
+	}
+	_, err = NewDockerLauncher(engine, DockerLauncherOptions{
+		Client: supervisor, EnvironmentID: "env_test", SandboxBaseURL: "http://mango.invalid", WorkspaceRoot: "relative",
+	})
+	if err == nil {
+		t.Fatal("accepted a relative workspace root")
+	}
+}

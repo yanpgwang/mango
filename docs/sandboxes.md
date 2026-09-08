@@ -32,6 +32,7 @@ permission decisions, Work lease fencing, result correlation, retries, and
 recovery.
 
 The first-party Docker launcher creates a named workspace volume per Session
+by default, or binds an operator-owned directory selected with `--workspace-root`,
 and runs each activation in a container. The control-plane API and Temporal
 worker do not mount the Docker socket.
 
