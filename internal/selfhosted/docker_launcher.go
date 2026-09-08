@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -53,6 +54,9 @@ type DockerLauncherOptions struct {
 	RunnerPath     string
 	NetworkMode    string
 	User           string
+	// WorkspaceRoot optionally binds <root>/<session-id> at /workspace. The
+	// operator prepares and owns these directories on the Docker daemon host.
+	WorkspaceRoot  string
 	Drain          bool
 	BlockMs        mango.Optional[int64]
 	ReclaimAfterMs mango.Optional[int64]
@@ -76,8 +80,8 @@ type dockerEngine interface {
 }
 
 // DockerLauncher polls one self-hosted Environment and runs each acknowledged
-// item in a hardened, per-Work Docker container. A named volume is reused by
-// all Work items for the same Session.
+// item in a hardened, per-Work Docker container. A workspace is reused by
+// all Work items for the same Session, using a named volume by default.
 type DockerLauncher struct {
 	engine dockerEngine
 	opts   DockerLauncherOptions
@@ -103,6 +107,9 @@ func NewDockerLauncher(engine dockerEngine, opts DockerLauncherOptions) (*Docker
 	}
 	if opts.MaxIdle < 0 || opts.MemoryBytes < 0 || opts.NanoCPUs < 0 || opts.PidsLimit < 0 {
 		return nil, errors.New("selfhosted: durations and resource limits must be non-negative")
+	}
+	if opts.WorkspaceRoot != "" && !filepath.IsAbs(opts.WorkspaceRoot) {
+		return nil, errors.New("selfhosted: workspace root must be an absolute Docker host path")
 	}
 	if opts.Image == "" {
 		opts.Image = DefaultWorkerImage
@@ -182,6 +189,10 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 	if work.EnvironmentID != l.opts.EnvironmentID {
 		return fmt.Errorf("selfhosted: Work environment %q does not match launcher environment %q", work.EnvironmentID, l.opts.EnvironmentID)
 	}
+	workspace, err := l.workspaceMount(work.Data.ID)
+	if err != nil {
+		return err
+	}
 	name := dockerWorkName(work.ID)
 	if err := l.clearPreviousAttempt(ctx, name, work); err != nil {
 		return err
@@ -214,10 +225,7 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 				"/tmp":        "rw,nosuid,nodev,size=64m",
 				"/mnt/memory": "rw,nosuid,nodev,noexec,size=512m,mode=1777",
 			},
-			Mounts: []mount.Mount{{
-				Type: mount.TypeVolume, Source: dockerSessionVolume(work.Data.ID),
-				Target: defaultSandboxWorkdir,
-			}},
+			Mounts: []mount.Mount{workspace},
 			Resources: container.Resources{
 				Memory: l.opts.MemoryBytes, NanoCPUs: l.opts.NanoCPUs,
 				PidsLimit: &l.opts.PidsLimit,
@@ -447,4 +455,23 @@ func shortContainerID(value string) string {
 		return value[:12]
 	}
 	return value
+}
+
+// Session IDs are opaque path components, never relative paths. Resolve only
+// their lexical location; the operator owns the daemon-side filesystem.
+func (l *DockerLauncher) workspaceMount(sessionID string) (mount.Mount, error) {
+	if l.opts.WorkspaceRoot == "" {
+		return mount.Mount{Type: mount.TypeVolume, Source: dockerSessionVolume(sessionID), Target: defaultSandboxWorkdir}, nil
+	}
+	if sessionID == "" || strings.IndexFunc(sessionID, func(r rune) bool {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
+			return false
+		default:
+			return true
+		}
+	}) >= 0 {
+		return mount.Mount{}, errors.New("selfhosted: invalid Session ID for workspace directory")
+	}
+	return mount.Mount{Type: mount.TypeBind, Source: filepath.Join(l.opts.WorkspaceRoot, sessionID), Target: defaultSandboxWorkdir}, nil
 }

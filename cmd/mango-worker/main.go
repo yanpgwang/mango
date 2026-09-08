@@ -58,6 +58,7 @@ func runDocker(ctx context.Context, arguments []string) error {
 	image := flags.String("image", envOr("MANGO_WORKER_IMAGE", selfhosted.DefaultWorkerImage), "worker sandbox image")
 	network := flags.String("network", envOr("MANGO_WORKER_NETWORK", "bridge"), "Docker network mode or network name")
 	user := flags.String("user", envOr("MANGO_WORKER_USER", "65532:65532"), "sandbox uid:gid")
+	workspaceRoot := flags.String("workspace-root", os.Getenv("MANGO_WORKSPACE_ROOT"), "bind existing <root>/<session-id> directories from the Docker host at /workspace")
 	drain := flags.Bool("drain", false, "exit once the queue is empty")
 	maxIdle := flags.Duration("max-idle", envDuration("MANGO_WORKER_MAX_IDLE", time.Minute), "idle time after end_turn")
 	memoryBytes := flags.Int64("memory-bytes", envInt64("MANGO_WORKER_MEMORY_BYTES", 1<<30), "per-sandbox memory limit")
@@ -91,7 +92,7 @@ func runDocker(ctx context.Context, arguments []string) error {
 	launcher, err := selfhosted.NewDockerLauncher(engine, selfhosted.DockerLauncherOptions{
 		Client: supervisor, EnvironmentID: *environmentID, WorkerID: *workerID,
 		Image: *image, SandboxBaseURL: *sandboxBaseURL, NetworkMode: *network,
-		User: *user, Drain: *drain, MaxIdle: *maxIdle,
+		User: *user, WorkspaceRoot: *workspaceRoot, Drain: *drain, MaxIdle: *maxIdle,
 		MemoryBytes: *memoryBytes, NanoCPUs: *nanoCPUs, PidsLimit: *pidsLimit,
 	})
 	if err != nil {

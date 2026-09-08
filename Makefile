@@ -51,7 +51,7 @@ endif
 .PHONY: help build lint test test-race test-service test-service-core \
 	worker-test-image test-self-hosted-docker test-model-live test-self-hosted-live test-platform-live \
 	test-hitl-gate demo-hitl-gate \
-	demo-multi-agent-team \
+	demo-multi-agent-team demo-coding-agent \
 	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
 	terminal-ui-build terminal-ui-verify security docs-check image image-smoke dev-env-init \
 	local-config local-up local-down local-health local-ps local-logs
@@ -71,6 +71,7 @@ help:
 	@echo "  make test-self-hosted-live  run one real-model turn through a self-hosted Docker worker"
 	@echo "  make test-platform-live  alias for the self-hosted live smoke"
 	@echo "  make test-hitl-gate      run the durable custom-tool HITL scenario"
+	@echo "  make demo-coding-agent  run the coding agent example with a local Docker worker"
 	@echo "  make demo-hitl-gate      run the interactive HITL example over public HTTP"
 	@echo "  make demo-multi-agent-team  run the interactive multi-agent example over public HTTP"
 	@echo "  make vet            run go vet"
@@ -159,6 +160,14 @@ test-hitl-gate:
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
 	$(GO) test ./internal/temporal \
 		-run '^TestVerticalSlice_HITLGateSurvivesWorkerRestart$$' -count=1
+
+demo-coding-agent:
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -trimpath -o $(BIN_DIR)/mango-worker ./cmd/mango-worker
+	MANGO_EXAMPLE_MODEL_ID='$(MANGO_EXAMPLE_MODEL_ID)' \
+	MANGO_EXAMPLE_WORKER='$(abspath $(BIN_DIR)/mango-worker)' \
+	env -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
+		$(GO) run ./examples/coding-agent
 
 demo-hitl-gate:
 	MANGO_EXAMPLE_MODEL_ID='$(MANGO_EXAMPLE_MODEL_ID)' \

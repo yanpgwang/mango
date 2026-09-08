@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,14 +26,18 @@ import (
 )
 
 func TestDockerLauncherRealItemLifecycleReclaimsPreviousAttempt(t *testing.T) {
-	testDockerItemLifecycle(t, false)
+	testDockerItemLifecycle(t, false, false)
 }
 
 func TestDockerLauncherShutdownAllowsSlowMemoryFlush(t *testing.T) {
-	testDockerItemLifecycle(t, true)
+	testDockerItemLifecycle(t, true, false)
 }
 
-func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
+func TestDockerLauncherOperatorWorkspaceSurvivesReplacement(t *testing.T) {
+	testDockerItemLifecycle(t, false, true)
+}
+
+func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool) {
 	t.Helper()
 	if os.Getenv("MANGO_TEST_DOCKER") != "1" {
 		t.Skip("set MANGO_TEST_DOCKER=1 to require Docker worker E2E")
@@ -51,6 +56,20 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 	second := work
 	second.ID += "_resume"
 	works := []mango.EnvironmentWork{work, second}
+	workspaceRoot := ""
+	if bindWorkspace {
+		workspaceRoot = t.TempDir()
+		workspace := filepath.Join(workspaceRoot, work.Data.ID)
+		if err := os.Mkdir(workspace, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(workspace, 0777); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(workspace, "operator-input.txt"), []byte("operator-staged\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	skillArchive := dockerSkillArchive(t)
 	var memoryMu sync.Mutex
 	memoryContent := "memory-initial"
@@ -198,6 +217,13 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 					{ID: "tool_e2e_memory_write", Input: map[string]any{"command": "printf memory-updated > /mnt/memory/docker-memory/notes.txt && cat /mnt/memory/docker-memory/notes.txt"}},
 				}
 			}
+			if bindWorkspace && activation == 1 {
+				for i := range calls {
+					if calls[i].ID == "tool_e2e_file" {
+						calls[i].Input["command"] = "cat operator-input.txt; printf docker-e2e > proof.txt && cat proof.txt"
+					}
+				}
+			}
 			for _, call := range calls {
 				if err := writeDockerBashEvent(w, call); err != nil {
 					t.Errorf("write tool event: %v", err)
@@ -233,6 +259,9 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 				"tool_e2e_memory_read":         "memory-initial",
 				"tool_e2e_memory_write":        "memory-updated",
 				"tool_e2e_memory_resume":       "memory-updated",
+			}
+			if bindWorkspace {
+				expected["tool_e2e_file"] = "operator-staged\\ndocker-e2e"
 			}
 			matched := false
 			for toolUseID, text := range expected {
@@ -317,6 +346,7 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 		Client: supervisor, EnvironmentID: "env_test", Image: image, Drain: true,
 		SandboxBaseURL: "http://host.docker.internal:" + strconv.Itoa(port),
 		MaxIdle:        750 * time.Millisecond,
+		WorkspaceRoot:  workspaceRoot,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -326,6 +356,12 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 	}
 	assertContainerRemoved(t, engine, dockerWorkName(work.ID))
 	assertContainerRemoved(t, engine, dockerWorkName(second.ID))
+	if bindWorkspace {
+		proof, err := os.ReadFile(filepath.Join(workspaceRoot, work.Data.ID, "proof.txt"))
+		if err != nil || string(proof) != "docker-e2e" {
+			t.Fatalf("operator output = %q, %v", proof, err)
+		}
+	}
 	memoryMu.Lock()
 	finalMemory := memoryContent
 	memoryMu.Unlock()

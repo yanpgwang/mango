@@ -20,6 +20,28 @@ and self-hosted. Public surface definitions may be design inputs, but external
 implementation code and non-public types must not be copied, and an external
 release is never an automatic roadmap.
 
+## Coding agent workflow (2026-09-08)
+
+- Reviewed the locally downloaded cookbook at
+  `a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5`: `CMA_iterate_fix_failing_tests.ipynb`
+  and the Docker self-hosted launcher, alongside official Go SDK v1.71.0
+  (`de6914c544629b14a67c0695ce147edae6a291e0`) Session, Agent, Environment,
+  Files and event-stream resource methods and the Environment worker helper.
+- Adopted: create Agent/Environment/Session; upload inputs; observe tool calls
+  through an open-before-send stream; continue a second turn; verify results;
+  archive resources. Mango's Go client maps the same resource hierarchy to its
+  own HTTP contract. The fixture and application are independently authored.
+- Adapted: the application downloads Files into an operator-owned directory,
+  binds it through `mango-worker docker --workspace-root`, and explicitly uploads
+  the selected deliverable. A replacement worker uses the same Session directory.
+  A fresh container runs pristine tests independently of the agent's claims.
+- Rejected for this self-hosted tutorial: cloud provisioning, managed File
+  mounts, automatic output publication, hosted credentials, beta headers and
+  executing an official SDK as a Mango client. No public API or storage change
+  is needed. Acceptance criteria are in the
+  [demo design](design/coding-agent-demo.md); runnable instructions are in the
+  [coding agent example](examples/coding-agent.md).
+
 ## Self-hosted boundary follow-up (2026-09-08)
 
 - User/operator rationale and acceptance criteria are recorded in the

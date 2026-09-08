@@ -25,12 +25,12 @@ other launchers are not yet provided.
 | Shell and file tools | Six core tools; Bash preserves process state within one Work activation. |
 | Custom Skills | Immutable pins are downloaded, verified, and prepared before execution. |
 | Memory Store attachments | Downloaded and synchronized through scoped Session APIs. |
-| File and public Git inputs | Operator stages them in the worker workspace; no automatic control-plane mount. |
+| File and public Git inputs | Operator stages them in the worker workspace; Docker supports `--workspace-root` for direct file access. No automatic control-plane mount. |
 | Automatic output publication | Not implemented; workspace files stay with the operator. |
 | Web Search / Web Fetch | Run at a supporting model endpoint, with `always_allow`. |
 | Remote MCP | Runs through the orchestration runtime. |
 
-The Docker worker's workspace volume persists between activations, but its Bash
+The Docker worker's workspace (named volume or `--workspace-root` directory) persists between activations, but its Bash
 process does not. File tools reject writes to read-only Memory roots; Bash
 access still depends on the sandbox boundary.
 

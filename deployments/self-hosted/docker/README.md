@@ -38,7 +38,11 @@ examples:
    renewal, Session event recovery, tool execution, result submission, and
    forced Stop;
 3. containers are removed on exit, while one named `/workspace` volume remains
-   per Session so later activations see the same working tree.
+   per Session so later activations see the same working tree. With
+   `--workspace-root /absolute/host/path`, the launcher instead binds the existing
+   `/absolute/host/path/<session-id>` directory. The operator prepares its contents
+   and permissions for `--user`; the directory survives worker and API cleanup.
+   See the [coding agent example](../../../docs/examples/coding-agent.md).
 
 Mango makes CMA's narrower per-Session credential path mandatory rather than
 retaining the SDK's Environment-key fallback or the Docker cookbook script's
