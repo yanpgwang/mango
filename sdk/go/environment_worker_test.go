@@ -376,8 +376,8 @@ func TestEnvironmentWorkerLeavesExhaustedToolSetupForLeaseReclaim(t *testing.T) 
 			ToolsFunc: func(EnvironmentWorkerToolContext) ([]SessionTool, error) {
 				toolSetups.Add(1)
 				return []SessionTool{&closeCountingSessionTool{
-				sessionToolFunc: sessionToolFunc{name: "partial"}, closes: &toolCloses,
-			}}, errors.New("local tool runtime unavailable")
+					sessionToolFunc: sessionToolFunc{name: "partial"}, closes: &toolCloses,
+				}}, errors.New("local tool runtime unavailable")
 			},
 		},
 	)
@@ -573,6 +573,82 @@ func TestEnvironmentWorkerBoundsNeverSuccessfulHeartbeatByLeaseTTL(t *testing.T)
 	}
 	if heartbeats.Load() < 1 || stops.Load() != 0 {
 		t.Fatalf("heartbeats=%d stops=%d", heartbeats.Load(), stops.Load())
+	}
+}
+
+func TestEnvironmentWorkerKeepsLeaseDuringCancelledMemoryFlush(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mount := filepath.Join(t.TempDir(), "memory")
+	fixture := &memorySyncServer{t: t, byID: map[string]Memory{}}
+	fixture.create("/notes.md", "original")
+	var flushing, flushed, stopped atomic.Bool
+	renewed := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/heartbeat"):
+			if flushing.Load() {
+				select {
+				case renewed <- struct{}{}:
+				default:
+				}
+			}
+			writeEnvironmentWorkerJSON(t, w, environmentHeartbeatFixture("2026-09-08T00:00:01Z", "active", true, 1))
+		case strings.HasPrefix(r.URL.Path, "/v1/memory_stores/"):
+			if r.Method == http.MethodPost {
+				flushing.Store(true)
+				select {
+				case <-renewed:
+				case <-time.After(time.Second):
+					t.Error("cancelled worker stopped renewing while Memory upload was pending")
+				}
+				fixture.serveHTTP(w, r)
+				flushed.Store(true)
+				return
+			}
+			fixture.serveHTTP(w, r)
+		case r.URL.Path == "/v1/sessions/session_cancel_memory":
+			writeEnvironmentWorkerJSON(t, w, map[string]any{
+				"id": "session_cancel_memory", "agent": map[string]any{"skills": []any{}},
+				"resources": []any{map[string]any{
+					"type": "memory_store", "memory_store_id": "store_test", "name": "Notes",
+					"description": "", "instructions": nil, "mount_path": mount, "access": "read_write",
+				}},
+			})
+		case strings.HasSuffix(r.URL.Path, "/stop"):
+			if !flushed.Load() {
+				t.Error("Work stopped before Memory upload completed")
+			}
+			stopped.Store(true)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	worker := NewEnvironmentWorker(newEnvironmentWorkerClient(t, server.URL, "workspace-key"), EnvironmentWorkerOptions{
+		Workdir: t.TempDir(),
+		ToolsFunc: func(EnvironmentWorkerToolContext) ([]SessionTool, error) {
+			if err := os.WriteFile(filepath.Join(mount, "notes.md"), []byte("saved during shutdown"), 0o600); err != nil {
+				return nil, err
+			}
+			cancel()
+			return nil, nil
+		},
+	})
+	worker.heartbeatFloor, worker.heartbeatCeiling = 5*time.Millisecond, 10*time.Millisecond
+	if err := worker.HandleItem(ctx, EnvironmentWorkerHandleItemOptions{
+		WorkID: "work_cancel_memory", EnvironmentID: "env_one", SessionID: "session_cancel_memory",
+		WorkSecret: encodeEnvironmentWorkSecret(t, "session-token"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if content, ok := fixture.content("/notes.md"); !ok || content != "saved during shutdown" || !stopped.Load() {
+		t.Fatalf("shutdown content=%q found=%v stopped=%v", content, ok, stopped.Load())
+	}
+	if _, err := os.Stat(mount); !os.IsNotExist(err) {
+		t.Fatalf("Memory mount survived shutdown: %v", err)
 	}
 }
 

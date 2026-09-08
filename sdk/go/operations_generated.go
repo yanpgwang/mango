@@ -393,7 +393,7 @@ func (c *WebhooksService) Delete(ctx context.Context, webhook_id string) (Webhoo
 	return result, err
 }
 
-// Download Download a File marked as downloadable (GET /v1/files/{file_id}/content).
+// Download Download an immutable File in the authenticated Workspace (GET /v1/files/{file_id}/content).
 func (c *FilesService) Download(ctx context.Context, file_id string) (*Download, error) {
 	query := make(url.Values)
 	path := "/v1/files/" + escapePath(file_id) + "/content"
@@ -789,7 +789,6 @@ func (c *FilesService) List(ctx context.Context, params ListFilesParams) (FileLi
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "after_id", params.AfterID)
 	addQuery(query, "before_id", params.BeforeID)
-	addQuery(query, "scope_id", params.ScopeID)
 	path := "/v1/files"
 	var result FileList
 	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)

@@ -45,8 +45,8 @@ obligation. In particular:
 - users are not required to use an Anthropic SDK;
 - Mango does not promise drop-in use with a hosted agent platform;
 - an external SDK release does not automatically create Mango work;
-- interoperability tests are development evidence, not obligations; they may
-  change or be removed with the surface they cover;
+- public contract comparisons are research evidence, not obligations; Mango's
+  independent HTTP, SDK, and runtime tests define its executable checks;
 - vendor-specific previews are considered only when they solve an independently
   selected Mango problem.
 

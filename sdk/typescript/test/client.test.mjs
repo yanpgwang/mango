@@ -294,9 +294,9 @@ test('page and Files cursor helpers are lazy, preserve filters, and reject loops
   assert.deepEqual(await collect(items), [{ id: 'agent1' }, { id: 'agent2' }]);
   assert.equal(urls[1].searchParams.get('page'), 'opaque+/=');
   assert.equal(urls[1].searchParams.get('include_archived'), 'false');
-  assert.deepEqual(await collect(client.files.listItems({ scope_id: 'sesn_1' })), [{ id: 'file1' }, { id: 'file2' }]);
+  assert.deepEqual(await collect(client.files.listItems({ limit: 2 })), [{ id: 'file1' }, { id: 'file2' }]);
   assert.equal(urls[3].searchParams.get('after_id'), 'file1');
-  assert.equal(urls[3].searchParams.get('scope_id'), 'sesn_1');
+  assert.equal(urls[3].searchParams.get('limit'), '2');
   const loop = new Mango({ baseURL: 'http://localhost', apiKey: 'test-only', fetch: async () => json({ data: [], next_page: 'same' }) });
   await assert.rejects(collect(loop.agents.listPages()), ProtocolError);
   let startingCalls = 0;

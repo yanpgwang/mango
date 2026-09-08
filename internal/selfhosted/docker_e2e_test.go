@@ -24,6 +24,15 @@ import (
 )
 
 func TestDockerLauncherRealItemLifecycle(t *testing.T) {
+	testDockerItemLifecycle(t, false)
+}
+
+func TestDockerLauncherShutdownAllowsSlowMemoryFlush(t *testing.T) {
+	testDockerItemLifecycle(t, true)
+}
+
+func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
+	t.Helper()
 	if os.Getenv("MANGO_TEST_DOCKER") != "1" {
 		t.Skip("set MANGO_TEST_DOCKER=1 to require Docker worker E2E")
 	}
@@ -31,6 +40,8 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	if image == "" {
 		t.Fatal("MANGO_TEST_WORKER_IMAGE is required when Docker tests are enabled")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
 
 	work := acknowledgedWork()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -43,6 +54,7 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	var memoryMu sync.Mutex
 	memoryContent := "memory-initial"
 	var polls, acknowledgements, firstHeartbeats, renewals, streams, results, stops atomic.Int32
+	var delayedFlush atomic.Bool
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/environments/env_test/work/poll":
@@ -128,6 +140,23 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 				t.Error("Memory update omitted content")
 				http.Error(w, "missing content", http.StatusBadRequest)
 				return
+			}
+			if cancelDuringFlush && delayedFlush.CompareAndSwap(false, true) {
+				// Exercise the real signal -> worker teardown -> Docker stop path.
+				// The previous 15-second grace killed this pending upload.
+				cancel()
+				before := renewals.Load()
+				timer := time.NewTimer(17 * time.Second)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+				case <-r.Context().Done():
+					t.Error("worker was killed before its slow Memory flush completed")
+					return
+				}
+				if renewals.Load() <= before {
+					t.Error("worker did not renew its lease during shutdown Memory flush")
+				}
 			}
 			memoryMu.Lock()
 			precondition, hasPrecondition := body.Precondition.Get()
@@ -265,8 +294,6 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 	if err := launcher.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +305,14 @@ func TestDockerLauncherRealItemLifecycle(t *testing.T) {
 	if finalMemory != "memory-updated" {
 		t.Fatalf("final Memory = %q", finalMemory)
 	}
-	if polls.Load() != 3 || acknowledgements.Load() != 2 || firstHeartbeats.Load() != 2 || renewals.Load() < 2 || streams.Load() != 2 || results.Load() != 11 || stops.Load() != 2 {
+	wantPolls, wantActivations, wantResults := int32(3), int32(2), int32(11)
+	if cancelDuringFlush {
+		wantPolls, wantActivations, wantResults = 1, 1, 8
+		if !delayedFlush.Load() {
+			t.Fatal("shutdown did not overlap a Memory upload")
+		}
+	}
+	if polls.Load() != wantPolls || acknowledgements.Load() != wantActivations || firstHeartbeats.Load() != wantActivations || renewals.Load() < 2 || streams.Load() != wantActivations || results.Load() != wantResults || stops.Load() != wantActivations {
 		t.Fatalf("polls=%d acknowledgements=%d first_heartbeats=%d renewals=%d streams=%d results=%d stops=%d", polls.Load(), acknowledgements.Load(), firstHeartbeats.Load(), renewals.Load(), streams.Load(), results.Load(), stops.Load())
 	}
 }

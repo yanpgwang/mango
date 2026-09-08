@@ -82,8 +82,8 @@ pull-request requirements.
   Mango user or operator rationale and acceptance criteria exist in the pull
   request, a design document, or an Issue.
 - Validate the result through Mango's own HTTP, persistence, workflow, recovery,
-  and service tests. Passing a third-party SDK test is optional research
-  evidence, never the definition of success.
+  and service tests. Comparisons with public third-party schemas are research
+  evidence; executable validation uses Mango HTTP and first-party SDK tests.
 
 ## Paired API and SDK design
 

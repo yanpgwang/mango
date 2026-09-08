@@ -734,7 +734,6 @@ paths:
         - $ref: '#/components/parameters/FileListLimit'
         - $ref: '#/components/parameters/AfterID'
         - $ref: '#/components/parameters/BeforeID'
-        - $ref: '#/components/parameters/ScopeID'
       responses:
         '200':
           $ref: '#/components/responses/FileListResponse'
@@ -781,7 +780,7 @@ paths:
       x-sdk-resource: files
       x-sdk-method: download
       tags: [Files]
-      summary: Download a File marked as downloadable
+      summary: Download an immutable File in the authenticated Workspace
       responses:
         '200':
           $ref: '#/components/responses/FileContentResponse'
@@ -2126,13 +2125,6 @@ components:
       schema:
         type: string
         minLength: 1
-    ScopeID:
-      name: scope_id
-      in: query
-      description: Filter Files by their producing Session ID.
-      schema:
-        type: string
-        minLength: 1
     EventOrder:
       name: order
       in: query
@@ -3364,17 +3356,6 @@ components:
         file:
           type: string
           format: binary
-    FileScope:
-      type: object
-      additionalProperties: false
-      required: [id, type]
-      properties:
-        id:
-          type: string
-          minLength: 1
-        type:
-          type: string
-          const: session
     File:
       type: object
       additionalProperties: false
@@ -3385,8 +3366,6 @@ components:
         - mime_type
         - size_bytes
         - type
-        - downloadable
-        - scope
       properties:
         id:
           type: string
@@ -3409,12 +3388,6 @@ components:
         type:
           type: string
           const: file
-        downloadable:
-          type: boolean
-        scope:
-          oneOf:
-            - $ref: '#/components/schemas/FileScope'
-            - type: 'null'
     FileList:
       type: object
       additionalProperties: false

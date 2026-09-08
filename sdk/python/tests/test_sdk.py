@@ -465,11 +465,11 @@ def test_cursor_and_files_pagination_keep_filters_and_direction() -> None:
 
     with Mango(transport=httpx.MockTransport(handle)) as client:
         assert [item["id"] for item in client.agents.iter(limit=1, include_archived=False)] == ["one", "two"]
-        assert [item["id"] for item in client.files.iter(scope_id="s")] == ["first", "boundary"]
+        assert [item["id"] for item in client.files.iter(limit=2)] == ["first", "boundary"]
         assert [item["id"] for item in client.files.iter(before_id="start")] == ["start", "boundary"]
     assert requests[1].url.params["limit"] == "1"
     assert requests[1].url.params["include_archived"] == "false"
-    assert requests[3].url.params["scope_id"] == "s"
+    assert requests[3].url.params["limit"] == "2"
     assert requests[3].url.params["after_id"] == "boundary"
     assert requests[5].url.params["before_id"] == "boundary"
     assert "after_id" not in requests[5].url.params

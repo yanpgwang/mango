@@ -13,10 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
 func TestSkillsSDK_AllNineCustomOperations(t *testing.T) {
@@ -25,76 +24,79 @@ func TestSkillsSDK_AllNineCustomOperations(t *testing.T) {
 		RequireAuth: true,
 	}).Handler())
 	defer server.Close()
-	client := anthropic.NewClient(option.WithBaseURL(server.URL), option.WithAuthToken("sk-test"))
+	client, err := mango.New(mango.Config{BaseURL: server.URL, APIKey: "sk-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	archive := sdkSkillZip(t, "reviewing-code")
 
-	created, err := client.Beta.Skills.New(ctx, anthropic.BetaSkillNewParams{
-		Files: []io.Reader{&sdkNamedSkillReader{
-			Reader: bytes.NewReader(archive), filename: "reviewing-code.zip",
+	created, err := client.Skills.New(ctx, mango.SkillUploadRequest{
+		Files: []mango.Upload{{
+			Reader: bytes.NewReader(archive), Filename: "reviewing-code.zip", ContentType: "application/zip",
 		}},
-		DisplayTitle: anthropic.String("Code Review"),
+		DisplayTitle: mango.Some("Code Review"),
 	})
 	if err != nil {
 		t.Fatalf("Create Skill: %v", err)
 	}
 	if created.ID != "skill_sdk" || created.DisplayTitle != "Code Review" ||
-		created.LatestVersion != "100" || created.Source != "custom" {
-		t.Fatalf("created = %s", created.RawJSON())
+		(created.LatestVersion == nil || *created.LatestVersion != "100") || created.Source != "custom" {
+		t.Fatalf("created = %+v", created)
 	}
 
-	got, err := client.Beta.Skills.Get(ctx, created.ID, anthropic.BetaSkillGetParams{})
+	got, err := client.Skills.Get(ctx, created.ID)
 	if err != nil || got.ID != created.ID {
 		t.Fatalf("Get Skill = %+v, %v", got, err)
 	}
-	listed, err := client.Beta.Skills.List(ctx, anthropic.BetaSkillListParams{
-		Source: anthropic.String("custom"), Limit: anthropic.Int(20),
+	listed, err := client.Skills.List(ctx, mango.ListSkillsParams{
+		Source: mango.Some("custom"), Limit: mango.Some[int64](20),
 	})
 	if err != nil || len(listed.Data) != 1 || listed.Data[0].ID != created.ID {
 		t.Fatalf("List Skills = %+v, %v", listed, err)
 	}
 
-	second, err := client.Beta.Skills.Versions.New(ctx, created.ID, anthropic.BetaSkillVersionNewParams{
-		Files: []io.Reader{&sdkNamedSkillReader{
-			Reader: bytes.NewReader(archive), filename: "reviewing-code.zip",
+	second, err := client.Skills.Versions.New(ctx, created.ID, mango.SkillVersionUploadRequest{
+		Files: []mango.Upload{{
+			Reader: bytes.NewReader(archive), Filename: "reviewing-code.zip", ContentType: "application/zip",
 		}},
 	})
 	if err != nil || second.Version != "200" || second.SkillID != created.ID {
 		t.Fatalf("Create Skill Version = %+v, %v", second, err)
 	}
-	version, err := client.Beta.Skills.Versions.Get(
-		ctx, second.Version, anthropic.BetaSkillVersionGetParams{SkillID: created.ID},
+	version, err := client.Skills.Versions.Get(
+		ctx, created.ID, second.Version,
 	)
 	if err != nil || version.Name != "reviewing-code" {
 		t.Fatalf("Get Skill Version = %+v, %v", version, err)
 	}
-	versions, err := client.Beta.Skills.Versions.List(
-		ctx, created.ID, anthropic.BetaSkillVersionListParams{Limit: anthropic.Int(20)},
+	versions, err := client.Skills.Versions.List(
+		ctx, created.ID, mango.ListSkillVersionsParams{Limit: mango.Some[int64](20)},
 	)
 	if err != nil || len(versions.Data) != 2 {
 		t.Fatalf("List Skill Versions = %+v, %v", versions, err)
 	}
-	download, err := client.Beta.Skills.Versions.Download(
-		ctx, second.Version, anthropic.BetaSkillVersionDownloadParams{SkillID: created.ID},
+	download, err := client.Skills.Versions.Download(
+		ctx, created.ID, second.Version,
 	)
 	if err != nil {
 		t.Fatalf("Download Skill Version: %v", err)
 	}
-	downloaded, readErr := io.ReadAll(download.Body)
-	closeErr := download.Body.Close()
+	downloaded, readErr := io.ReadAll(download)
+	closeErr := download.Close()
 	if readErr != nil || closeErr != nil || !bytes.Equal(downloaded, archive) {
 		t.Fatalf("download = %d bytes, read=%v close=%v", len(downloaded), readErr, closeErr)
 	}
 
 	for _, value := range []string{"100", "200"} {
-		deleted, err := client.Beta.Skills.Versions.Delete(
-			ctx, value, anthropic.BetaSkillVersionDeleteParams{SkillID: created.ID},
+		deleted, err := client.Skills.Versions.Delete(
+			ctx, created.ID, value,
 		)
 		if err != nil || deleted.ID != value || deleted.Type != "skill_version_deleted" {
 			t.Fatalf("Delete Skill Version %s = %+v, %v", value, deleted, err)
 		}
 	}
-	deleted, err := client.Beta.Skills.Delete(ctx, created.ID, anthropic.BetaSkillDeleteParams{})
+	deleted, err := client.Skills.Delete(ctx, created.ID)
 	if err != nil || deleted.ID != created.ID || deleted.Type != "skill_deleted" {
 		t.Fatalf("Delete Skill = %+v, %v", deleted, err)
 	}

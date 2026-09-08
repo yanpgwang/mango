@@ -7,175 +7,111 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
+	mango "github.com/yanpgwang/mango/sdk/go"
 
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
 )
 
-func TestMemoryService_PostgresOfficialSDKLifecycle(t *testing.T) {
+func TestMemoryService_PostgresMangoSDKLifecycle(t *testing.T) {
 	store := testStore(t)
-	ids := domain.NewSeqIDGen()
-	service := app.NewMemoryService(NewMemoryRepository(store), ids, fixedClock{})
-	server := httptest.NewServer(httpapi.NewServer(httpapi.Deps{Memory: service}, httpapi.Config{
-		RequireAuth: true,
-	}).Handler())
+	service := app.NewMemoryService(NewMemoryRepository(store), domain.NewSeqIDGen(), fixedClock{})
+	server := httptest.NewServer(httpapi.NewServer(httpapi.Deps{Memory: service}, httpapi.Config{RequireAuth: true}).Handler())
 	t.Cleanup(server.Close)
-	client := anthropic.NewClient(option.WithBaseURL(server.URL), option.WithAuthToken("sk-memory-test"))
+	client, err := mango.New(mango.Config{BaseURL: server.URL, APIKey: "memory-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
-
-	createdStore, err := client.Beta.MemoryStores.New(ctx, anthropic.BetaMemoryStoreNewParams{
-		Name: "Project Knowledge", Description: anthropic.String("Decisions and conventions."),
-		Metadata: map[string]string{"project": "mango"},
+	createdStore, err := client.MemoryStores.New(ctx, mango.MemoryStoreCreateRequest{
+		Name: "Project Knowledge", Description: mango.Some("Decisions and conventions."),
+		Metadata: mango.Some(mango.MemoryMetadata{"project": "mango"}),
 	})
-	if err != nil {
-		t.Fatalf("create store: %v", err)
+	if err != nil || createdStore.ID == "" || createdStore.Type != "memory_store" || createdStore.ArchivedAt != nil {
+		t.Fatalf("create: %+v, %v", createdStore, err)
 	}
-	if createdStore.ID == "" || createdStore.Type != "memory_store" || createdStore.ArchivedAt.Unix() != -62135596800 {
-		t.Fatalf("created store = %s", createdStore.RawJSON())
-	}
-
-	gotStore, err := client.Beta.MemoryStores.Get(ctx, createdStore.ID, anthropic.BetaMemoryStoreGetParams{})
+	gotStore, err := client.MemoryStores.Get(ctx, createdStore.ID)
 	if err != nil || gotStore.Metadata["project"] != "mango" {
-		t.Fatalf("get store = %+v, %v", gotStore, err)
+		t.Fatalf("get: %+v, %v", gotStore, err)
 	}
-	updatedStore, err := client.Beta.MemoryStores.Update(ctx, createdStore.ID, anthropic.BetaMemoryStoreUpdateParams{
-		Name: anthropic.String("Project Memory"), Metadata: map[string]string{"owner": "platform"},
-	})
-	if err != nil || updatedStore.Name != "Project Memory" || updatedStore.Metadata["owner"] != "platform" {
-		t.Fatalf("update store = %+v, %v", updatedStore, err)
+	owner := "platform"
+	updatedStore, err := client.MemoryStores.Update(ctx, createdStore.ID, mango.MemoryStoreUpdateRequest{Name: mango.Some("Project Memory"), Metadata: mango.Some(mango.MemoryMetadataPatch{"owner": &owner})})
+	if err != nil || updatedStore.Name != "Project Memory" || updatedStore.Metadata["owner"] != owner {
+		t.Fatalf("update store: %+v, %v", updatedStore, err)
 	}
-	stores, err := client.Beta.MemoryStores.List(ctx, anthropic.BetaMemoryStoreListParams{})
+	stores, err := client.MemoryStores.List(ctx, mango.ListMemoryStoresParams{})
 	if err != nil || len(stores.Data) != 1 || stores.Data[0].ID != createdStore.ID {
-		t.Fatalf("list stores = %+v, %v", stores, err)
+		t.Fatalf("list stores: %+v, %v", stores, err)
 	}
-
-	created, err := client.Beta.MemoryStores.Memories.New(ctx, createdStore.ID,
-		anthropic.BetaMemoryStoreMemoryNewParams{
-			Path: "/architecture/decisions.md", Content: anthropic.String("PostgreSQL is canonical."),
-			View: anthropic.BetaManagedAgentsMemoryViewFull,
-		})
-	if err != nil {
-		t.Fatalf("create memory: %v", err)
-	}
-	if created.Content != "PostgreSQL is canonical." || created.ContentSha256 == "" || created.MemoryVersionID == "" {
-		t.Fatalf("created memory = %s", created.RawJSON())
+	created, err := client.MemoryStores.Memories.New(ctx, createdStore.ID, mango.CreateMemoryParams{View: mango.Some("full")}, mango.MemoryCreateRequest{Path: "/architecture/decisions.md", Content: "PostgreSQL is canonical."})
+	if err != nil || created.Content == nil || *created.Content != "PostgreSQL is canonical." || created.ContentSHA256 == "" || created.MemoryVersionID == "" {
+		t.Fatalf("create memory: %+v, %v", created, err)
 	}
 	firstVersionID := created.MemoryVersionID
-
-	got, err := client.Beta.MemoryStores.Memories.Get(ctx, created.ID,
-		anthropic.BetaMemoryStoreMemoryGetParams{MemoryStoreID: createdStore.ID})
-	if err != nil || got.Content != created.Content {
-		t.Fatalf("get memory = %+v, %v", got, err)
+	got, err := client.MemoryStores.Memories.Get(ctx, createdStore.ID, created.ID, mango.GetMemoryParams{View: mango.Some("full")})
+	if err != nil || got.Content == nil || *got.Content != *created.Content {
+		t.Fatalf("get memory: %+v, %v", got, err)
 	}
-
-	updated, err := client.Beta.MemoryStores.Memories.Update(ctx, created.ID,
-		anthropic.BetaMemoryStoreMemoryUpdateParams{
-			MemoryStoreID: createdStore.ID,
-			Content:       anthropic.String("PostgreSQL is the canonical Memory source."),
-			Path:          anthropic.String("/architecture/storage.md"),
-			View:          anthropic.BetaManagedAgentsMemoryViewFull,
-			Precondition: anthropic.BetaManagedAgentsPreconditionParam{
-				Type:          anthropic.BetaManagedAgentsPreconditionTypeContentSha256,
-				ContentSha256: anthropic.String(created.ContentSha256),
-			},
-		})
+	update := mango.MemoryUpdateRequest{
+		Content: mango.Some("PostgreSQL is the canonical Memory source."), Path: mango.Some(mango.MemoryPath("/architecture/storage.md")),
+		Precondition: mango.Some(mango.MemoryPrecondition{Type: "content_sha256", ContentSHA256: created.ContentSHA256}),
+	}
+	updated, err := client.MemoryStores.Memories.Update(ctx, createdStore.ID, created.ID, mango.UpdateMemoryParams{View: mango.Some("full")}, update)
 	if err != nil || updated.MemoryVersionID == firstVersionID || updated.Path != "/architecture/storage.md" {
-		t.Fatalf("update memory = %+v, %v", updated, err)
+		t.Fatalf("update memory: %+v, %v", updated, err)
 	}
-
-	// A stale precondition is successful when the stored state already equals
-	// the requested state, and must not append a second no-op version.
-	idempotent, err := client.Beta.MemoryStores.Memories.Update(ctx, created.ID,
-		anthropic.BetaMemoryStoreMemoryUpdateParams{
-			MemoryStoreID: createdStore.ID,
-			Content:       anthropic.String(updated.Content),
-			Path:          anthropic.String(updated.Path),
-			Precondition: anthropic.BetaManagedAgentsPreconditionParam{
-				Type:          anthropic.BetaManagedAgentsPreconditionTypeContentSha256,
-				ContentSha256: anthropic.String(created.ContentSha256),
-			},
-		})
+	// A stale precondition may confirm already-committed state without another version.
+	idempotent, err := client.MemoryStores.Memories.Update(ctx, createdStore.ID, created.ID, mango.UpdateMemoryParams{}, update)
 	if err != nil || idempotent.MemoryVersionID != updated.MemoryVersionID {
-		t.Fatalf("idempotent stale update = %+v, %v", idempotent, err)
+		t.Fatalf("idempotent update: %+v, %v", idempotent, err)
 	}
-
-	_, err = client.Beta.MemoryStores.Memories.Update(ctx, created.ID,
-		anthropic.BetaMemoryStoreMemoryUpdateParams{
-			MemoryStoreID: createdStore.ID, Content: anthropic.String("conflicting write"),
-			Precondition: anthropic.BetaManagedAgentsPreconditionParam{
-				Type:          anthropic.BetaManagedAgentsPreconditionTypeContentSha256,
-				ContentSha256: anthropic.String(created.ContentSha256),
-			},
-		})
-	var apiErr *anthropic.Error
+	update.Content = mango.Some("conflicting write")
+	_, err = client.MemoryStores.Memories.Update(ctx, createdStore.ID, created.ID, mango.UpdateMemoryParams{}, update)
+	var apiErr *mango.APIError
 	if !errors.As(err, &apiErr) || apiErr.StatusCode != 409 {
-		t.Fatalf("stale update error = %v", err)
+		t.Fatalf("stale update: %v", err)
 	}
-
-	if _, err := client.Beta.MemoryStores.Memories.New(ctx, createdStore.ID,
-		anthropic.BetaMemoryStoreMemoryNewParams{
-			Path: "/architecture/nested/format.md", Content: anthropic.String("Markdown"),
-		}); err != nil {
-		t.Fatalf("create nested memory: %v", err)
+	if _, err := client.MemoryStores.Memories.New(ctx, createdStore.ID, mango.CreateMemoryParams{}, mango.MemoryCreateRequest{Path: "/architecture/nested/format.md", Content: "Markdown"}); err != nil {
+		t.Fatal(err)
 	}
-	listed, err := client.Beta.MemoryStores.Memories.List(ctx, createdStore.ID,
-		anthropic.BetaMemoryStoreMemoryListParams{
-			Depth: anthropic.Int(1), PathPrefix: anthropic.String("/architecture/"),
-		})
+	listed, err := client.MemoryStores.Memories.List(ctx, createdStore.ID, mango.ListMemoriesParams{Depth: mango.Some[int64](1), PathPrefix: mango.Some("/architecture/")})
 	if err != nil || len(listed.Data) != 2 {
-		t.Fatalf("list memories = %+v, %v", listed, err)
+		t.Fatalf("list memories: %+v, %v", listed, err)
 	}
-	if listed.Data[0].Type != "memory_prefix" && listed.Data[1].Type != "memory_prefix" {
-		t.Fatalf("list did not contain a rolled-up prefix: %+v", listed.Data)
+	if listed.Data[0].MemoryPrefix == nil && listed.Data[1].MemoryPrefix == nil {
+		t.Fatalf("no rolled-up prefix: %+v", listed.Data)
 	}
-
-	firstVersion, err := client.Beta.MemoryStores.MemoryVersions.Get(ctx, firstVersionID,
-		anthropic.BetaMemoryStoreMemoryVersionGetParams{
-			MemoryStoreID: createdStore.ID, View: anthropic.BetaManagedAgentsMemoryViewFull,
-		})
-	if err != nil || firstVersion.Operation != "created" || firstVersion.Content != created.Content {
-		t.Fatalf("get version = %+v, %v", firstVersion, err)
+	firstVersion, err := client.MemoryStores.Versions.Get(ctx, createdStore.ID, firstVersionID, mango.GetMemoryVersionParams{View: mango.Some("full")})
+	if err != nil || firstVersion.Operation != "created" || firstVersion.Content == nil || *firstVersion.Content != *created.Content {
+		t.Fatalf("first version: %+v, %v", firstVersion, err)
 	}
-	versions, err := client.Beta.MemoryStores.MemoryVersions.List(ctx, createdStore.ID,
-		anthropic.BetaMemoryStoreMemoryVersionListParams{
-			MemoryID: anthropic.String(created.ID), View: anthropic.BetaManagedAgentsMemoryViewFull,
-		})
+	versions, err := client.MemoryStores.Versions.List(ctx, createdStore.ID, mango.ListMemoryVersionsParams{MemoryID: mango.Some(created.ID), View: mango.Some("full")})
 	if err != nil || len(versions.Data) != 2 {
-		t.Fatalf("list versions = %+v, %v", versions, err)
+		t.Fatalf("versions: %+v, %v", versions, err)
 	}
-	redacted, err := client.Beta.MemoryStores.MemoryVersions.Redact(ctx, firstVersionID,
-		anthropic.BetaMemoryStoreMemoryVersionRedactParams{MemoryStoreID: createdStore.ID})
-	if err != nil || redacted.RedactedAt.IsZero() || redacted.JSON.Content.Raw() != "null" || redacted.JSON.Path.Raw() != "null" {
-		t.Fatalf("redact version = %s, %v", redacted.RawJSON(), err)
+	redacted, err := client.MemoryStores.Versions.Redact(ctx, createdStore.ID, firstVersionID)
+	if err != nil || redacted.RedactedAt == nil || redacted.Content != nil || redacted.Path != nil {
+		t.Fatalf("redacted: %+v, %v", redacted, err)
 	}
-
-	deleted, err := client.Beta.MemoryStores.Memories.Delete(ctx, created.ID,
-		anthropic.BetaMemoryStoreMemoryDeleteParams{
-			MemoryStoreID: createdStore.ID, ExpectedContentSha256: anthropic.String(updated.ContentSha256),
-		})
+	deleted, err := client.MemoryStores.Memories.Delete(ctx, createdStore.ID, created.ID, mango.DeleteMemoryParams{ExpectedContentSHA256: mango.Some(string(updated.ContentSHA256))})
 	if err != nil || deleted.ID != created.ID || deleted.Type != "memory_deleted" {
-		t.Fatalf("delete memory = %+v, %v", deleted, err)
+		t.Fatalf("delete memory: %+v, %v", deleted, err)
 	}
-	versions, err = client.Beta.MemoryStores.MemoryVersions.List(ctx, createdStore.ID,
-		anthropic.BetaMemoryStoreMemoryVersionListParams{MemoryID: anthropic.String(created.ID)})
+	versions, err = client.MemoryStores.Versions.List(ctx, createdStore.ID, mango.ListMemoryVersionsParams{MemoryID: mango.Some(created.ID)})
 	if err != nil || len(versions.Data) != 3 || versions.Data[0].Operation != "deleted" {
-		t.Fatalf("versions after delete = %+v, %v", versions, err)
+		t.Fatalf("deleted versions: %+v, %v", versions, err)
 	}
-
-	archived, err := client.Beta.MemoryStores.Archive(ctx, createdStore.ID, anthropic.BetaMemoryStoreArchiveParams{})
-	if err != nil || archived.ArchivedAt.IsZero() {
-		t.Fatalf("archive store = %+v, %v", archived, err)
+	archived, err := client.MemoryStores.Archive(ctx, createdStore.ID)
+	if err != nil || archived.ArchivedAt == nil {
+		t.Fatalf("archive store: %+v, %v", archived, err)
 	}
-	if _, err := client.Beta.MemoryStores.Memories.New(ctx, createdStore.ID,
-		anthropic.BetaMemoryStoreMemoryNewParams{Path: "/blocked.md", Content: anthropic.String("x")}); err == nil {
+	if _, err := client.MemoryStores.Memories.New(ctx, createdStore.ID, mango.CreateMemoryParams{}, mango.MemoryCreateRequest{Path: "/blocked.md", Content: "x"}); err == nil {
 		t.Fatal("created memory in archived store")
 	}
-	storeDeleted, err := client.Beta.MemoryStores.Delete(ctx, createdStore.ID, anthropic.BetaMemoryStoreDeleteParams{})
+	storeDeleted, err := client.MemoryStores.Delete(ctx, createdStore.ID)
 	if err != nil || storeDeleted.ID != createdStore.ID || storeDeleted.Type != "memory_store_deleted" {
-		t.Fatalf("delete store = %+v, %v", storeDeleted, err)
+		t.Fatalf("delete store: %+v, %v", storeDeleted, err)
 	}
 }
 

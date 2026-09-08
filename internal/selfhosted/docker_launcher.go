@@ -28,6 +28,10 @@ const (
 	defaultWorkerNanoCPUs    = int64(1_000_000_000)
 	defaultWorkerPidsLimit   = int64(256)
 	defaultWorkerStopTimeout = 15 * time.Second
+	// Cover both Memory teardown passes plus cancellation result delivery,
+	// tool cleanup and final Work Stop in the reference worker. Engine request
+	// deadlines add a separate margin so they do not race Docker's grace period.
+	defaultContainerStopGrace = 2*mango.MemoryFlushTimeout + time.Minute
 )
 
 const (
@@ -182,6 +186,7 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 	if err := l.clearPreviousAttempt(ctx, name, work); err != nil {
 		return err
 	}
+	stopSeconds := int(defaultContainerStopGrace / time.Second)
 	createOptions := client.ContainerCreateOptions{
 		Name: name,
 		Config: &container.Config{
@@ -193,6 +198,7 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 			AttachStdin: true,
 			OpenStdin:   true,
 			StdinOnce:   true,
+			StopTimeout: &stopSeconds,
 			Labels: map[string]string{
 				dockerManagedLabel: "true", dockerWorkIDLabel: work.ID,
 				dockerSessionIDLabel: work.Data.ID, dockerEnvironmentLabel: work.EnvironmentID,
@@ -248,8 +254,8 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 	wait := l.engine.ContainerWait(context.Background(), containerID, client.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	select {
 	case <-ctx.Done():
-		stopCtx, cancel := context.WithTimeout(context.Background(), defaultWorkerStopTimeout)
-		timeoutSeconds := int(defaultWorkerStopTimeout / time.Second)
+		stopCtx, cancel := context.WithTimeout(context.Background(), defaultContainerStopGrace+defaultWorkerStopTimeout)
+		timeoutSeconds := int(defaultContainerStopGrace / time.Second)
 		_, stopErr := l.engine.ContainerStop(stopCtx, containerID, client.ContainerStopOptions{Timeout: &timeoutSeconds})
 		cancel()
 		if stopErr != nil && !errdefs.IsNotFound(stopErr) && !errdefs.IsNotModified(stopErr) {
@@ -400,8 +406,8 @@ func (l *DockerLauncher) clearPreviousAttempt(ctx context.Context, name string, 
 	}
 	var stopErr error
 	if inspect.Container.State != nil && inspect.Container.State.Running {
-		stopCtx, cancel := context.WithTimeout(ctx, defaultWorkerStopTimeout)
-		timeoutSeconds := int(defaultWorkerStopTimeout / time.Second)
+		stopCtx, cancel := context.WithTimeout(ctx, defaultContainerStopGrace+defaultWorkerStopTimeout)
+		timeoutSeconds := int(defaultContainerStopGrace / time.Second)
 		_, stopErr = l.engine.ContainerStop(stopCtx, inspect.Container.ID, client.ContainerStopOptions{Timeout: &timeoutSeconds})
 		cancel()
 		if errdefs.IsNotFound(stopErr) {

@@ -20,6 +20,38 @@ and self-hosted. Public surface definitions may be design inputs, but external
 implementation code and non-public types must not be copied, and an external
 release is never an automatic roadmap.
 
+## Self-hosted boundary follow-up (2026-09-08)
+
+- User/operator rationale and acceptance criteria are recorded in the
+  [follow-up design](design/self-hosted-boundary-followup.md): preserve Memory
+  teardown during normal shutdown, provide an explicit artifact upload/download
+  workflow, and remove stale capability and test boundaries.
+- Reviewed the current [CMA self-hosted lifecycle](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes),
+  [Files workflow](https://platform.claude.com/docs/en/managed-agents/files), and
+  [tool result semantics](https://platform.claude.com/docs/en/managed-agents/tools),
+  alongside official Go v1.71.0 (`de6914c544629b14a67c0695ce147edae6a291e0`),
+  Python v1.4.0 (`62de60b27d04f0927a0ccf0f2610597fafcfab6a`), and TypeScript
+  sdk-v0.124.0 (`ba14b1f4fdf2e840a7b32297965342a099f6201d`) public source.
+- Adopted: operator-owned file staging and output transfer, SDK-owned bounded
+  Memory teardown, and separate queue/Session credentials. Mango keeps the Work
+  lease renewing during cancellation teardown and gives its reference Docker
+  container 120 seconds, with a longer Engine request deadline.
+- Changed: Mango has only immutable Workspace Files and no producer of hosted
+  Session-scoped copies. Every ready File is downloadable by that Workspace's
+  authenticated application. `downloadable`, `scope`, and `scope_id` are removed
+  from HTTP, persistence, and SDKs. The multipart upload, binary download,
+  bidirectional pagination, and caller-owned streaming body remain coherent.
+  The unused File-read grant is also removed from Work authorization. No worker
+  Files privilege or automatic output-publication mechanism is added.
+- Rejected: preserving the hosted upload/output eligibility distinction without
+  a Mango lifecycle that needs it; returning a sandbox path for control-plane
+  MCP bytes that the external worker cannot access. Full-result MCP transfer is
+  not implemented, and documentation now records truncation and binary limits.
+- Removed the old official SDK test dependency. Independent raw HTTP golden and
+  validation tests remain; first-party SDK resource and event mapping tests and
+  PostgreSQL/S3/Thread lifecycle tests replace executable third-party research.
+  No external SDK implementation is copied or executed as a Mango client.
+
 ## Self-hosted runtime boundary completion
 
 - Reviewed the current public CMA [self-hosted guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes),
@@ -215,40 +247,42 @@ release is never an automatic roadmap.
 - The [Files API guide](https://platform.claude.com/docs/en/build-with-claude/files)
   defines upload-once File resources, non-downloadable client uploads, and
   File references in message requests.
-- `github.com/anthropics/anthropic-sdk-go` at the version pinned in `go.mod`
-  supplied request and response examples during early development. It is not a
-  runtime dependency, compatibility baseline, or authority over Mango's API.
+- The public `anthropic-sdk-go` source supplied request and response examples
+  during early development. Its former executable test dependency was removed
+  in the 2026-09-08 boundary follow-up; public source remains a research input.
 
 Mango's bounded UTF-8 projection, private admission snapshot, S3-compatible
 storage, and explicit rejection of multimodal File sources are local design
 choices documented in [Files](api/files.md) and
 [capabilities and limits](capabilities.md).
 
-## File-backed Session Resources
+## File-backed Session Resources (retired)
+
+This records the earlier design. The self-hosted boundary completion removed
+these File Resources, provider dependencies, and automatic mounts. Applications
+now stage inputs and transfer outputs explicitly; see [Files](api/files.md).
 
 - The [Managed Agents Files guide](https://platform.claude.com/docs/en/managed-agents/files)
   defines independently copied File resources, their read-only presentation
   beneath `/mnt/session/uploads`, optional mount paths, and runtime add/delete.
-- `github.com/anthropics/anthropic-sdk-go` at the version pinned in `go.mod`
-  supplied Session Resource request and response examples during early
-  development. Existing tests using those types may change or be removed with
-  Mango's `/v1` design.
-- Remote File Resource behavior is implemented against pinned provider Go
+- The public `anthropic-sdk-go` types supplied Session Resource request and
+  response examples during early development. The former executable dependency
+  and the tests using it have been removed.
+- Remote File Resource behavior was implemented against pinned provider Go
   clients. The [OpenSandbox Go SDK](https://github.com/alibaba/OpenSandbox/blob/main/sdks/sandbox/go/README.md)
   and [Daytona filesystem guide](https://www.daytona.io/docs/file-system-operations/)
   define streaming upload/download, metadata and permission operations,
   directory management, and move/delete. The
   [CubeSandbox Go SDK](https://github.com/tencentcloud/CubeSandbox/tree/master/sdk/go)
   supplies the E2B/Cube-compatible whole-value file operations. These provider
-  APIs are implementation dependencies rather than definitions of Mango's
+  APIs were implementation dependencies rather than definitions of Mango's
   target contract.
 
-Mango's provider-owned marker format and retry algorithm are independent local
-design choices documented in [Sandbox backends](sandboxes.md). Remote adapters
-intentionally stop at writable sandbox-local copies in the current
-implementation. E2B and Cube additionally accept whole-file worker buffering
-until their pinned Go data plane exposes streaming operations. These limitations
-are documented as Mango behavior rather than inferred from provider APIs.
+Mango's former provider-owned marker format and retry algorithm were independent
+local choices. The adapters stopped at writable sandbox-local copies; E2B and
+Cube additionally buffered whole files. These implementation limitations were
+retired with that execution path. The [current sandbox boundary](sandboxes.md)
+uses operator-owned workers instead.
 
 ## Remote Session output export
 
@@ -958,8 +992,8 @@ API guides, together with official [Python v1.4.0 resource source](https://githu
 [TypeScript sdk-v0.124.0 resource source](https://github.com/anthropics/anthropic-sdk-typescript/tree/sdk-v0.124.0/src/resources/beta),
 and [Go v1.71.0 source](https://github.com/anthropics/anthropic-sdk-go/tree/v1.71.0).
 These are clean-room design references only; none is used to implement or run the
-Mango SDK. Existing unrelated third-party-client research tests are not the
-validation of this change.
+Mango SDK. The unrelated third-party-client research tests were subsequently
+removed in the self-hosted boundary follow-up above.
 
 - Adopted resource grouping, direct Python keyword and TypeScript object
   parameters, and language-idiomatic operations (Go New/Get; Python/TypeScript

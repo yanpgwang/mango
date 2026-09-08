@@ -34,8 +34,25 @@ func TestFilesHTTP_UploadShapeAndMultipartValidation(t *testing.T) {
 	}
 	assertJSONFields(t, rec.Body.Bytes(), map[string]any{
 		"type": "file", "filename": "report.txt", "mime_type": "text/plain",
-		"size_bytes": float64(5), "downloadable": false, "scope": nil,
+		"size_bytes": float64(5),
 	})
+	var uploaded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &uploaded); err != nil {
+		t.Fatal(err)
+	}
+	if len(uploaded) != 6 {
+		t.Fatalf("File metadata contains unexpected fields: %s", rec.Body.Bytes())
+	}
+	assertRawObjectHasFields(t, rec.Body.String(), "id", "type", "created_at", "filename", "mime_type", "size_bytes")
+	fileID, ok := uploaded["id"].(string)
+	if !ok || fileID == "" {
+		t.Fatal("File metadata omitted id")
+	}
+	download := httptest.NewRecorder()
+	handler.ServeHTTP(download, httptest.NewRequest(http.MethodGet, "/v1/files/"+fileID+"/content", nil))
+	if download.Code != http.StatusOK || download.Body.String() != "hello" {
+		t.Fatalf("uploaded bytes could not be downloaded: %d %s", download.Code, download.Body.String())
+	}
 
 	body, contentType = multipartUpload(t, "extra.txt", "text/plain", []byte("x"), true)
 	req = httptest.NewRequest(http.MethodPost, "/v1/files", body)
@@ -209,9 +226,7 @@ func (s *testFileService) List(_ context.Context, query app.FileListQuery) (app.
 	defer s.mu.Unlock()
 	files := make([]domain.File, 0, len(s.files))
 	for _, file := range s.files {
-		if query.ScopeID == "" || (file.Scope != nil && file.Scope.ID == query.ScopeID) {
-			files = append(files, file)
-		}
+		files = append(files, file)
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].CreatedAt.After(files[j].CreatedAt)
@@ -253,9 +268,6 @@ func (s *testFileService) Download(_ context.Context, id string) (app.FileDownlo
 	if !present {
 		return app.FileDownload{}, domain.NotFound("file not found")
 	}
-	if !file.Downloadable {
-		return app.FileDownload{}, domain.Validation("file is not downloadable")
-	}
 	return app.FileDownload{File: file, Body: io.NopCloser(bytes.NewReader(s.contents[id]))}, nil
 }
 
@@ -269,20 +281,4 @@ func (s *testFileService) Delete(_ context.Context, id string) (domain.File, err
 	delete(s.files, id)
 	delete(s.contents, id)
 	return file, nil
-}
-
-func (s *testFileService) seedDownloadable(filename, mimeType string, data []byte) domain.File {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.next++
-	id := "file_output_" + strconv.Itoa(s.next)
-	file := domain.File{
-		ID: id, CreatedAt: time.Date(2026, 8, 4, 1, 0, s.next, 0, time.UTC),
-		UpdatedAt: time.Date(2026, 8, 4, 1, 0, s.next, 0, time.UTC),
-		Filename:  filename, MimeType: mimeType, SizeBytes: int64(len(data)),
-		Downloadable: true, Scope: &domain.FileScope{ID: "sesn_test", Type: "session"},
-		BlobKey: "files/" + id, State: domain.FileStateReady,
-	}
-	s.files[id], s.contents[id] = file, append([]byte(nil), data...)
-	return file
 }

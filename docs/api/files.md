@@ -1,6 +1,6 @@
 ---
 title: Files
-description: Upload immutable files for application and text-message workflows.
+description: Upload and download immutable Workspace files.
 slug: /api/files
 ---
 
@@ -28,22 +28,31 @@ Upload one multipart part named `file`. The maximum file size is 500 MB.
 Uploads stream through bounded temporary storage rather than being buffered in
 Go memory.
 
-Lists currently use the `after_id` or `before_id` direction, an optional
-`scope_id`, and a `data`/`has_more` envelope. The two direction parameters
+Lists use the `after_id` or `before_id` direction, an optional `limit`,
+and a `data`/`has_more` envelope. The two direction parameters
 cannot be combined.
 
-Client uploads have `scope: null` and `downloadable: false`; their content
-endpoint is intentionally unavailable. Mango may read validated text uploads
-internally for supported message and outcome workflows.
+Every ready File can be downloaded with `GET /v1/files/{file_id}/content`
+using an API key for its Workspace. The response streams the immutable bytes
+with content type, length, `Content-Disposition: attachment`, and `nosniff`.
+There are no download-eligibility or Session-scope fields. Missing, deleting,
+and cross-Workspace Files return 404. Scoped Work credentials cannot use the
+Files API; the trusted application or operator performs explicit transfers.
+
+```sh
+curl "$MANGO_BASE_URL/v1/files/$FILE_ID/content" \
+  -H "Authorization: Bearer $MANGO_API_KEY" \
+  --output report.csv
+```
 
 ## Outcome rubrics
 
-A ready top-level client upload can be reused as an outcome rubric by sending
-`{"type":"file","file_id":"file_..."}` in `user.define_outcome`. This is an
-internal admission read and does not make the File publicly downloadable.
+A ready client upload can be reused as an outcome rubric by sending
+`{"type":"file","file_id":"file_..."}` in `user.define_outcome`. Admission
+validates the File as bounded text independently of its binary download endpoint.
 Mango reads at most the largest valid UTF-8 encoding of 262,144 characters,
 checks the stored byte count and SHA-256, rejects empty, invalid UTF-8,
-over-limit, deleting, missing, cross-Workspace, and Session-scoped Files, and
+over-limit, deleting, missing, and cross-Workspace Files, and
 durably snapshots the resulting text with the admitted event.
 
 The event returned to clients retains only the File reference. Deleting the
@@ -51,7 +60,7 @@ source after admission does not change the working-agent or grader input.
 
 ## Message content
 
-A ready top-level client upload can be referenced by a `user.message` document:
+A ready client upload can be referenced by a `user.message` document:
 
 ```json
 {
@@ -72,23 +81,25 @@ not change replay or later conversation turns.
 
 Each File and the aggregate resolved File content in one admission are limited
 to 262,144 characters. Empty, oversized, corrupt, non-UTF-8, non-text,
-Session-scoped, missing, deleting, and cross-Workspace Files fail before the
+missing, deleting, and cross-Workspace Files fail before the
 Session or event is committed. File-sourced images and File documents inside
 tool results remain unsupported.
 
 ## Worker files
 
 Files created in a self-hosted sandbox remain in the operator-owned workspace.
-Mango does not automatically publish a directory as Session-scoped Files.
-Applications that need downloadable artifacts should upload them explicitly or
-implement that transfer in their launcher under their own storage policy.
+The operator or application reads selected deliverables from that workspace
+and uploads them through `POST /v1/files`, then retains the returned File IDs.
+Those uploads can be downloaded through the authenticated content endpoint.
+The application owns any association between File IDs and Sessions. Mango does
+not automatically mount inputs or publish outputs from a workspace.
 
 ## Lifecycle and limits
 
 - Metadata becomes visible only after the object write completes.
 - Delete hides metadata before deleting bytes; startup reconciliation finishes
   interrupted operations.
-- Top-level Files are accepted as bounded UTF-8 outcome rubrics and text-only
+- Files are accepted as bounded UTF-8 outcome rubrics and text-only
   `user.message` document content.
 - Worker workspace files remain private to the operator unless an application
   uploads them explicitly.

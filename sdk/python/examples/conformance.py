@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 
-from mango_sdk import APIError, AsyncMango, Mango
+from mango_sdk import APIError, AsyncMango, Mango, Upload
 
 
 def main() -> None:
@@ -20,6 +20,15 @@ def main() -> None:
     }
     with Mango(base_url=url, api_key=key) as client:
         client.system.health()
+        payload = b"mango\x00\xff"
+        uploaded = client.files.upload(file=Upload("result.bin", payload, "application/octet-stream"))
+        try:
+            assert set(uploaded) == {"id", "type", "created_at", "filename", "mime_type", "size_bytes"}
+            assert uploaded["size_bytes"] == len(payload)
+            with client.files.download(uploaded["id"]) as stream:
+                assert b"".join(stream.iter_bytes()) == payload
+        finally:
+            client.files.delete(uploaded["id"])
         try:
             environment = client.environments.create(name="python-sdk-conformance", config={"type": "self_hosted"})
             environment_id = environment["id"]

@@ -3,7 +3,6 @@ package pg
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http/httptest"
@@ -12,12 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/blob"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
 func TestFileService_PostgresS3RestartReconciliation(t *testing.T) {
@@ -46,7 +44,7 @@ func TestFileService_PostgresS3RestartReconciliation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
-	if created.SizeBytes != 5 || created.Downloadable {
+	if created.SizeBytes != 5 {
 		t.Fatalf("created = %+v", created)
 	}
 	rubric, err := service.ReadOutcomeRubric(ctx, created.ID)
@@ -54,23 +52,10 @@ func TestFileService_PostgresS3RestartReconciliation(t *testing.T) {
 		t.Fatalf("ReadOutcomeRubric through PostgreSQL/S3 = %q, %v", rubric, err)
 	}
 
-	// Seed a downloadable Session-scoped fixture so reconciliation exercises
-	// both public and internal File intents. Runtime output publication is
-	// covered end to end by TestFileHTTP_PostgresS3SDKLifecycle below.
-	output := domain.File{
-		ID: "file_output_service", Filename: "output.txt", MimeType: "text/plain",
-		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-		Downloadable: true, Scope: &domain.FileScope{ID: "sesn_test", Type: "session"},
-		BlobKey: "files/file_output_service", State: domain.FileStateUploading,
-	}
-	if err := repo.BeginUpload(ctx, output); err != nil {
-		t.Fatal(err)
-	}
-	info, err := blobs.Put(ctx, output.BlobKey, output.MimeType, bytes.NewBufferString("output"), app.MaxFileBytes)
+	output, err := service.Upload(ctx, app.FileUploadInput{
+		Filename: "output.txt", MimeType: "text/plain", Body: bytes.NewBufferString("output"),
+	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.CompleteUpload(ctx, output.ID, info); err != nil {
 		t.Fatal(err)
 	}
 	download, err := service.Download(ctx, output.ID)
@@ -141,39 +126,43 @@ func TestFileHTTP_PostgresS3SDKLifecycle(t *testing.T) {
 		RequireAuth: true,
 	}).Handler())
 	defer server.Close()
-	client := anthropic.NewClient(option.WithBaseURL(server.URL), option.WithAuthToken("sk-test"))
+	client, err := mango.New(mango.Config{BaseURL: server.URL, APIKey: "sk-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 
-	uploaded, err := client.Beta.Files.Upload(ctx, anthropic.BetaFileUploadParams{
-		File: &serviceNamedReader{Reader: bytes.NewReader([]byte("service"))},
+	uploaded, err := client.Files.Upload(ctx, mango.FileUploadRequest{
+		File: mango.Upload{Filename: "service.txt", ContentType: "text/plain", Reader: bytes.NewReader([]byte("service"))},
 	})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
-	if uploaded.SizeBytes != 7 || uploaded.Downloadable || uploaded.Filename != "service.txt" {
-		t.Fatalf("uploaded = %s", uploaded.RawJSON())
+	if uploaded.SizeBytes != 7 || uploaded.Filename != "service.txt" {
+		t.Fatalf("uploaded = %+v", uploaded)
 	}
-	metadata, err := client.Beta.Files.GetMetadata(ctx, uploaded.ID, anthropic.BetaFileGetMetadataParams{})
+	metadata, err := client.Files.Get(ctx, uploaded.ID)
 	if err != nil || metadata.ID != uploaded.ID {
 		t.Fatalf("GetMetadata = %+v, %v", metadata, err)
 	}
-	page, err := client.Beta.Files.List(ctx, anthropic.BetaFileListParams{})
+	page, err := client.Files.List(ctx, mango.ListFilesParams{})
 	if err != nil || len(page.Data) != 1 || page.Data[0].ID != uploaded.ID {
 		t.Fatalf("List = %+v, %v", page, err)
 	}
-	if _, err := client.Beta.Files.Download(ctx, uploaded.ID, anthropic.BetaFileDownloadParams{}); err == nil {
-		t.Fatal("ordinary upload unexpectedly downloadable")
-	} else {
-		var apiErr *anthropic.Error
-		if !errors.As(err, &apiErr) || apiErr.StatusCode != 400 {
-			t.Fatalf("Download error = %T %v", err, err)
-		}
+	download, err := client.Files.Download(ctx, uploaded.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	deleted, err := client.Beta.Files.Delete(ctx, uploaded.ID, anthropic.BetaFileDeleteParams{})
+	data, err := io.ReadAll(download)
+	_ = download.Close()
+	if err != nil || string(data) != "service" {
+		t.Fatalf("download = %q, %v", data, err)
+	}
+	deleted, err := client.Files.Delete(ctx, uploaded.ID)
 	if err != nil || deleted.ID != uploaded.ID {
 		t.Fatalf("Delete = %+v, %v", deleted, err)
 	}
-	if _, err := client.Beta.Files.GetMetadata(ctx, uploaded.ID, anthropic.BetaFileGetMetadataParams{}); err == nil {
+	if _, err := client.Files.Get(ctx, uploaded.ID); err == nil {
 		t.Fatal("deleted File remains visible")
 	}
 }

@@ -11,14 +11,9 @@ CREATE TABLE files (
     filename        text        NOT NULL,
     mime_type       text        NOT NULL,
     size_bytes      bigint      NOT NULL DEFAULT 0 CHECK (size_bytes >= 0),
-    downloadable    boolean     NOT NULL DEFAULT false,
-    scope_id        text,
-    scope_type      text,
     blob_key        text        NOT NULL UNIQUE,
     checksum_sha256 text        NOT NULL DEFAULT '',
-    state           text        NOT NULL CHECK (state IN ('uploading', 'ready', 'deleting')),
-    CHECK ((scope_id IS NULL) = (scope_type IS NULL)),
-    CHECK (scope_type IS NULL OR scope_type = 'session')
+    state           text        NOT NULL CHECK (state IN ('uploading', 'ready', 'deleting'))
 );
 
 CREATE INDEX files_ready_list_idx

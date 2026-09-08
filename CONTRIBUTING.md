@@ -221,8 +221,10 @@ different. Once adopted, the result is Mango's wire contract and creates no
 compatibility or synchronization obligation to the source. Cite material
 influences and the adopted, changed, or rejected decisions in
 `docs/provenance.md` or the relevant design document. Do not copy external
-implementation code or non-public types. An existing third-party client test
-is optional research evidence, not by itself a reason to preserve an API shape.
+implementation code or non-public types. Official SDK source is a design
+reference only. Do not add it as a dependency or execute it as a Mango client.
+Verify wire behavior with independent HTTP
+tests and Mango SDK conformance, alongside the runtime and durability suites.
 
 When the user problem and lifecycle match, prefer an established CMA design or
 another widely used convention over inventing a Mango-only equivalent. Exact

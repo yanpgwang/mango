@@ -136,10 +136,6 @@ func sessionScopeAllows(r *http.Request, scope workspace.SessionScope) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
-	if len(parts) >= 3 && parts[1] == "files" {
-		_, allowed := scope.Files[parts[2]]
-		return allowed && (len(parts) == 3 || (len(parts) == 4 && parts[3] == "content"))
-	}
 	if len(parts) >= 3 && parts[1] == "skills" {
 		if len(parts) == 3 {
 			for skill := range scope.Skills {

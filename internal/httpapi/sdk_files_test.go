@@ -7,8 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
 func TestSDK_FilesLifecycleAndBidirectionalPaging(t *testing.T) {
@@ -18,35 +17,32 @@ func TestSDK_FilesLifecycleAndBidirectionalPaging(t *testing.T) {
 	}).Handler()
 	server := httptest.NewServer(handler)
 	defer server.Close()
-	client := anthropic.NewClient(option.WithBaseURL(server.URL), option.WithAuthToken("sk-test"))
+	client, err := mango.New(mango.Config{BaseURL: server.URL, APIKey: "sk-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 
-	created := make([]anthropic.FileMetadata, 0, 5)
+	created := make([]mango.File, 0, 5)
 	for index := 0; index < 5; index++ {
-		file, err := client.Beta.Files.Upload(ctx, anthropic.BetaFileUploadParams{
-			File: &namedFileReader{
-				Reader: bytes.NewReader([]byte{byte('a' + index)}),
-				name:   "file-" + string(rune('a'+index)) + ".txt", mimeType: "text/plain",
+		file, err := client.Files.Upload(ctx, mango.FileUploadRequest{
+			File: mango.Upload{
+				Reader:   bytes.NewReader([]byte{byte('a' + index)}),
+				Filename: "file-" + string(rune('a'+index)) + ".txt", ContentType: "text/plain",
 			},
 		})
 		if err != nil {
 			t.Fatalf("Upload %d: %v", index, err)
 		}
-		assertRawObjectHasFields(t, file.RawJSON(),
-			"id", "created_at", "filename", "mime_type", "size_bytes",
-			"type", "downloadable", "scope")
-		if file.Downloadable || file.Scope.JSON.ID.Valid() {
-			t.Fatalf("uploaded file visibility = %s", file.RawJSON())
-		}
-		created = append(created, *file)
+		created = append(created, file)
 	}
 
-	pager := client.Beta.Files.ListAutoPaging(ctx, anthropic.BetaFileListParams{
-		Limit: anthropic.Int(2),
+	pager := client.Files.ListAutoPaging(ctx, mango.ListFilesParams{
+		Limit: mango.Some[int64](2),
 	})
 	seen := map[string]bool{}
 	for pager.Next() {
-		seen[pager.Current().ID] = true
+		seen[pager.Value().ID] = true
 	}
 	if err := pager.Err(); err != nil {
 		t.Fatalf("ListAutoPaging: %v", err)
@@ -55,12 +51,12 @@ func TestSDK_FilesLifecycleAndBidirectionalPaging(t *testing.T) {
 		t.Fatalf("forward auto-pager saw %d files, want %d", len(seen), len(created))
 	}
 
-	beforePager := client.Beta.Files.ListAutoPaging(ctx, anthropic.BetaFileListParams{
-		BeforeID: anthropic.String(created[0].ID), Limit: anthropic.Int(2),
+	beforePager := client.Files.ListAutoPaging(ctx, mango.ListFilesParams{
+		BeforeID: mango.Some(created[0].ID), Limit: mango.Some[int64](2),
 	})
 	beforeSeen := map[string]bool{}
 	for beforePager.Next() {
-		beforeSeen[beforePager.Current().ID] = true
+		beforeSeen[beforePager.Value().ID] = true
 	}
 	if err := beforePager.Err(); err != nil {
 		t.Fatalf("before ListAutoPaging: %v", err)
@@ -69,18 +65,15 @@ func TestSDK_FilesLifecycleAndBidirectionalPaging(t *testing.T) {
 		t.Fatalf("backward auto-pager saw %d files, want %d", len(beforeSeen), len(created)-1)
 	}
 
-	metadata, err := client.Beta.Files.GetMetadata(ctx, created[2].ID, anthropic.BetaFileGetMetadataParams{})
+	metadata, err := client.Files.Get(ctx, created[2].ID)
 	if err != nil || metadata.ID != created[2].ID {
 		t.Fatalf("GetMetadata = %+v, %v", metadata, err)
 	}
-	if _, err := client.Beta.Files.Download(ctx, created[2].ID, anthropic.BetaFileDownloadParams{}); err == nil {
-		t.Fatal("ordinary uploaded file unexpectedly downloaded")
-	} else {
-		assertAPIStatus(t, err, 400)
+	output, err := client.Files.Upload(ctx, mango.FileUploadRequest{File: mango.Upload{Filename: "result.txt", ContentType: "text/plain", Reader: bytes.NewBufferString("result")}})
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	output := service.seedDownloadable("result.txt", "text/plain", []byte("result"))
-	response, err := client.Beta.Files.Download(ctx, output.ID, anthropic.BetaFileDownloadParams{})
+	response, err := client.Files.Download(ctx, output.ID)
 	if err != nil {
 		t.Fatalf("Download output: %v", err)
 	}
@@ -90,19 +83,19 @@ func TestSDK_FilesLifecycleAndBidirectionalPaging(t *testing.T) {
 	if got := response.Header.Get("Content-Disposition"); got != `attachment; filename=result.txt` {
 		t.Fatalf("download Content-Disposition = %q", got)
 	}
-	body, err := io.ReadAll(response.Body)
-	if closeErr := response.Body.Close(); err == nil {
+	body, err := io.ReadAll(response)
+	if closeErr := response.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil || string(body) != "result" {
 		t.Fatalf("download body = %q, %v", body, err)
 	}
 
-	deleted, err := client.Beta.Files.Delete(ctx, created[1].ID, anthropic.BetaFileDeleteParams{})
-	if err != nil || deleted.ID != created[1].ID || deleted.Type != anthropic.DeletedFileTypeFileDeleted {
+	deleted, err := client.Files.Delete(ctx, created[1].ID)
+	if err != nil || deleted.ID != created[1].ID || deleted.Type != "file_deleted" {
 		t.Fatalf("Delete = %+v, %v", deleted, err)
 	}
-	_, err = client.Beta.Files.GetMetadata(ctx, created[1].ID, anthropic.BetaFileGetMetadataParams{})
+	_, err = client.Files.Get(ctx, created[1].ID)
 	assertAPIStatus(t, err, 404)
 }
 

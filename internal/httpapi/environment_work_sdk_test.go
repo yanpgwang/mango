@@ -9,46 +9,32 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
-func TestAnthropicSDKResearch_EnvironmentWorkSurface(t *testing.T) {
+func TestMangoSDKEnvironmentWorkSurface(t *testing.T) {
 	t.Parallel()
 	service := newSDKEnvironmentWorkService()
 	server := httptest.NewServer(NewServer(Deps{EnvironmentWork: service}, Config{
 		RequireAuth: true,
 	}).Handler())
 	t.Cleanup(server.Close)
-	client := anthropic.NewClient(
-		option.WithBaseURL(server.URL+"/"), option.WithAuthToken("test-key"),
-	)
+	client, err := mango.New(mango.Config{BaseURL: server.URL, APIKey: "sk-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 
-	got, err := client.Beta.Environments.Work.Get(ctx, service.work.ID, anthropic.BetaEnvironmentWorkGetParams{
-		EnvironmentID: service.work.EnvironmentID,
-	})
+	got, err := client.Environments.Work.Get(ctx, service.work.EnvironmentID, service.work.ID)
 	if err != nil || got.ID != service.work.ID || got.Data.ID != service.work.SessionID ||
-		got.Type != "work" || got.Secret != "" {
+		got.Type != "work" || got.Secret != nil {
 		t.Fatalf("Get Work = %+v, err=%v", got, err)
 	}
-	assertRawObjectHasFields(t, got.RawJSON(),
-		"id", "acknowledged_at", "created_at", "data", "environment_id",
-		"latest_heartbeat_at", "metadata", "secret", "started_at", "state",
-		"stop_requested_at", "stopped_at", "type",
-	)
-
-	updated, err := client.Beta.Environments.Work.Update(ctx, service.work.ID, anthropic.BetaEnvironmentWorkUpdateParams{
-		EnvironmentID: service.work.EnvironmentID,
-		BetaSelfHostedWorkUpdateRequest: anthropic.BetaSelfHostedWorkUpdateRequestParam{
-			Metadata: map[string]string{"worker_pool": "gpu"},
-		},
-	})
+	updated, err := client.Environments.Work.Update(ctx, service.work.EnvironmentID, service.work.ID, sdkBody[mango.EnvironmentWorkUpdateRequest](t, `{"metadata":{"worker_pool":"gpu"}}`))
 	if err != nil || updated.Metadata["worker_pool"] != "gpu" {
-		t.Fatalf("Update Work = %+v, err=%v", updated, err)
+		t.Fatalf("Update Work = %+v, %v", updated, err)
 	}
 	nullPatch, _ := http.NewRequestWithContext(ctx, http.MethodPost,
 		server.URL+"/v1/environments/"+service.work.EnvironmentID+"/work/"+service.work.ID,
@@ -68,50 +54,38 @@ func TestAnthropicSDKResearch_EnvironmentWorkSurface(t *testing.T) {
 			nullResponse.StatusCode, metadataStillPresent)
 	}
 
-	page, err := client.Beta.Environments.Work.List(ctx, service.work.EnvironmentID, anthropic.BetaEnvironmentWorkListParams{
-		Limit: param.NewOpt(int64(20)),
+	page, err := client.Environments.Work.List(ctx, service.work.EnvironmentID, mango.ListEnvironmentWorkParams{
+		Limit: mango.Some(int64(20)),
 	})
 	if err != nil || len(page.Data) != 1 || page.Data[0].ID != service.work.ID {
 		t.Fatalf("List Work = %+v, err=%v", page, err)
 	}
 
-	polled, err := client.Beta.Environments.Work.Poll(ctx, service.work.EnvironmentID, anthropic.BetaEnvironmentWorkPollParams{
-		BlockMs: param.NewOpt(int64(1)),
+	polled, err := client.Environments.Work.Poll(ctx, service.work.EnvironmentID, mango.PollEnvironmentWorkParams{
+		BlockMs: mango.Some(int64(1)),
 	})
-	if err != nil || polled.ID != service.work.ID || polled.Secret != service.secret {
+	if err != nil || polled.EnvironmentWork == nil || polled.EnvironmentWork.ID != service.work.ID || polled.EnvironmentWork.Secret == nil || *polled.EnvironmentWork.Secret != service.secret {
 		t.Fatalf("Poll Work = %+v, err=%v", polled, err)
 	}
-	acked, err := client.Beta.Environments.Work.Ack(ctx, service.work.ID, anthropic.BetaEnvironmentWorkAckParams{
-		EnvironmentID: service.work.EnvironmentID,
-	})
-	if err != nil || acked.State != anthropic.BetaSelfHostedWorkStateStarting || acked.Secret != "" {
+	acked, err := client.Environments.Work.Ack(ctx, service.work.EnvironmentID, service.work.ID)
+	if err != nil || acked.State != "starting" || acked.Secret != nil {
 		t.Fatalf("Ack Work = %+v, err=%v", acked, err)
 	}
-	heartbeat, err := client.Beta.Environments.Work.Heartbeat(ctx, service.work.ID, anthropic.BetaEnvironmentWorkHeartbeatParams{
-		EnvironmentID: service.work.EnvironmentID, DesiredTTLSeconds: param.NewOpt(int64(30)),
-		ExpectedLastHeartbeat: param.NewOpt("NO_HEARTBEAT"),
+	heartbeat, err := client.Environments.Work.Heartbeat(ctx, service.work.EnvironmentID, service.work.ID, mango.HeartbeatEnvironmentWorkParams{DesiredTTLSeconds: mango.Some(int64(30)),
+		ExpectedLastHeartbeat: mango.Some("NO_HEARTBEAT"),
 	})
 	if err != nil || !heartbeat.LeaseExtended || heartbeat.TTLSeconds != 30 || heartbeat.Type != "work_heartbeat" {
 		t.Fatalf("Heartbeat Work = %+v, err=%v", heartbeat, err)
 	}
-	stats, err := client.Beta.Environments.Work.Stats(ctx, service.work.EnvironmentID, anthropic.BetaEnvironmentWorkStatsParams{})
+	stats, err := client.Environments.Work.Stats(ctx, service.work.EnvironmentID)
 	if err != nil || stats.Type != "work_queue_stats" || stats.WorkersPolling != 1 {
 		t.Fatalf("Stats Work = %+v, err=%v", stats, err)
 	}
 
-	// Anthropic's server returns 204 for Stop even though the generated method
-	// currently declares a Work JSON response. The official WorkPoller uses the
-	// same response-body bypass until that SDK spec discrepancy is corrected.
-	var raw *http.Response
-	_, err = client.Beta.Environments.Work.Stop(ctx, service.work.ID, anthropic.BetaEnvironmentWorkStopParams{
-		EnvironmentID: service.work.EnvironmentID,
-		BetaSelfHostedWorkStopRequest: anthropic.BetaSelfHostedWorkStopRequestParam{
-			Force: param.NewOpt(true),
-		},
-	}, option.WithResponseBodyInto(&raw))
-	if err != nil || raw == nil || raw.StatusCode != http.StatusNoContent {
-		t.Fatalf("Stop Work status=%v err=%v", raw, err)
+	if err := client.Environments.Work.Stop(ctx, service.work.EnvironmentID, service.work.ID, mango.EnvironmentWorkStopRequest{Force: mango.Some(true)}); err != nil {
+		t.Fatal(err)
 	}
+
 }
 
 func TestEnvironmentWorkPollUsesWorkerIDQuery(t *testing.T) {

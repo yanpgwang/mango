@@ -129,7 +129,15 @@ workspace file is already a downloadable Mango File.
 
 ## Stop the worker
 
-Press Ctrl-C in the supervisor terminal. Inspect any active Session before
+Press Ctrl-C in the supervisor terminal. SIGTERM/SIGINT cancels tools while
+heartbeats continue through Memory teardown. The Docker reference gives each
+container 120 seconds to finish result delivery, the bounded Memory sync/flush,
+and Work Stop before a hard kill. The container carries that same default for
+an ordinary `docker stop`; allow the supervisor at least 150 seconds if another
+process manager controls its shutdown. A forced kill or failed/timed-out Memory
+upload can still lose unsynchronized edits; uploaded Memory remains durable.
+
+Inspect any active Session before
 sending more work. Stopping the supervisor does not delete your Environment,
 Session history, or retained workspace volumes. Manage Session deletion through
 the API and remove a retained Docker volume only after its contents are no
