@@ -1,0 +1,14 @@
+name: mango-mongodb-example
+services:
+  mongodb:
+    image: mongo:8.0
+    volumes:
+      - ./seed.js:/docker-entrypoint-initdb.d/seed.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.getSiblingDB('mango_example').inventory.countDocuments({}) === 3 ? 0 : 1)"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+networks:
+  default:
+    name: mango-mongodb-example
