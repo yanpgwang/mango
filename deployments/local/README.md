@@ -9,7 +9,7 @@ infrastructure versions and health checks.
 | Temporal   | `temporalio/auto-setup:1.29.7` | `7233` (gRPC)               | Durable session/thread orchestration.                |
 | Temporal UI| `temporalio/ui:2.52.1`         | `8233` → container `8080`   | Workflow explorer at <http://localhost:8233>.        |
 | NATS Core  | `nats:2.11.17-alpine`          | `4222` (client), `8222` (monitoring) | Ephemeral previews and SSE wakeups; PostgreSQL cursor reads repair loss. |
-| MinIO      | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | `9000` | S3-compatible File bytes for development and service conformance. |
+| MinIO      | `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` | `9000` | S3-compatible File bytes for development and service conformance. |
 | API        | `mango:local`        | `8080`                      | PostgreSQL-backed Mango HTTP API. |
 | Worker     | `mango:local`        | —                           | Temporal worker and PostgreSQL outbox relay. |
 
