@@ -106,6 +106,31 @@ release is never an automatic roadmap.
   exception were retired together. Mango's existing `/v1` contract changed in
   place, as permitted before a supported release.
 
+## MongoDB query example
+
+- User problem: let a self-hosted agent query an operator's database using
+  ordinary container configuration. The example asks a replenishment question
+  against synthetic inventory in a real MongoDB container.
+- Reviewed CMA's public Docker self-hosted cookbook on 2026-09-10, alongside
+  the local cookbook snapshot at `a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5`
+  and Python SDK v1.4.0 at `62de60b27d04f0927a0ccf0f2610597fafcfab6a`.
+  The Docker example supplies `MONGO_URI` through its launcher; the public SDK
+  separates Work polling from per-item tool execution and lease management.
+- Mango adopts that division using its own Go SDK: the example launches Docker
+  and passes the business environment; `WorkPoller` owns Poll/Ack and
+  `EnvironmentWorker.HandleItem` owns tools, heartbeats, and Stop. Mango's scoped
+  Work payload travels through the example's stdin transport. The Workspace
+  key remains in the host application.
+- The example owns its input data, Docker image, and optional local database.
+  It queries through Bash and `pymongo`, without an application-side database
+  tool or a hosted runtime. It does not adopt Atlas search, the separate fraud
+  review workflow, CMA credentials, or the official client's implementation.
+- Acceptance: run the standalone application against a real model and a real
+  MongoDB, inspect the tool call and replenishment answer, and clean up the
+  resources it created. No API, SDK, core launcher, or runtime change is needed.
+  No system-test or CI harness invokes this example; durability and recovery
+  remain covered by Mango's independent runtime tests.
+
 ## Self-hosted default user path
 
 - User/operator problem: an OSS runtime should lead users through the execution
