@@ -36,7 +36,6 @@ MANGO_TEST_S3_ENDPOINT ?= http://localhost:9000
 MANGO_TEST_S3_BUCKET ?= mango-test
 MANGO_TEST_S3_ACCESS_KEY ?= minioadmin
 MANGO_TEST_S3_SECRET_KEY ?= minioadmin
-TERMINAL_UI_DIR ?= examples/terminal-ui
 PYTHON ?= python3
 UV ?= uv
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
@@ -50,10 +49,9 @@ endif
 
 .PHONY: help build lint test test-race test-service test-service-core \
 	worker-test-image test-self-hosted-docker test-model-live test-self-hosted-live test-platform-live \
-	test-hitl-gate demo-hitl-gate \
+	test-custom-tool-barrier demo-hitl-gate \
 	demo-multi-agent-team demo-coding-agent \
-	vet verify terminal-ui-test terminal-ui-test-race terminal-ui-vet \
-	terminal-ui-build terminal-ui-verify security docs-check image image-smoke dev-env-init \
+	vet verify security docs-check image image-smoke dev-env-init \
 	local-config local-up local-down local-health local-ps local-logs
 
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
@@ -70,13 +68,12 @@ help:
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"
 	@echo "  make test-self-hosted-live  run one real-model turn through a self-hosted Docker worker"
 	@echo "  make test-platform-live  alias for the self-hosted live smoke"
-	@echo "  make test-hitl-gate      run the durable custom-tool HITL scenario"
+	@echo "  make test-custom-tool-barrier  test custom-tool results across a worker restart"
 	@echo "  make demo-coding-agent  run the coding agent example with a local Docker worker"
 	@echo "  make demo-hitl-gate      run the interactive HITL example over public HTTP"
 	@echo "  make demo-multi-agent-team  run the interactive multi-agent example over public HTTP"
 	@echo "  make vet            run go vet"
 	@echo "  make verify         run the core Go checks"
-	@echo "  make terminal-ui-verify  verify the terminal UI example"
 	@echo "  make sdk-install    install isolated Python and TypeScript SDK dev dependencies"
 	@echo "  make sdk-generate   regenerate all SDK bindings from Mango OpenAPI"
 	@echo "  make sdk-check      reject stale SDK bindings or contract snapshots"
@@ -155,11 +152,11 @@ test-self-hosted-live: worker-test-image
 
 test-platform-live: test-self-hosted-live
 
-test-hitl-gate:
+test-custom-tool-barrier:
 	MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 	MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
 	$(GO) test ./internal/temporal \
-		-run '^TestVerticalSlice_HITLGateSurvivesWorkerRestart$$' -count=1
+		-run '^TestVerticalSlice_CustomToolBarrierSurvivesWorkerRestart$$' -count=1
 
 demo-coding-agent:
 	@mkdir -p $(BIN_DIR)
@@ -183,21 +180,7 @@ demo-multi-agent-team:
 vet:
 	$(GO) vet ./...
 
-terminal-ui-test:
-	cd $(TERMINAL_UI_DIR) && $(GO) test ./...
-
-terminal-ui-test-race:
-	cd $(TERMINAL_UI_DIR) && $(GO) test -race ./...
-
-terminal-ui-vet:
-	cd $(TERMINAL_UI_DIR) && $(GO) vet ./...
-
-terminal-ui-build:
-	cd $(TERMINAL_UI_DIR) && mkdir -p bin && $(GO) build -trimpath -o bin/mango-tui ./cmd/mango-tui
-
-terminal-ui-verify: terminal-ui-test terminal-ui-test-race terminal-ui-vet terminal-ui-build
-
-verify: lint test test-race vet terminal-ui-verify
+verify: lint test test-race vet
 
 sdk-install:
 	$(UV) sync --project sdk/python --frozen --group dev
@@ -226,7 +209,6 @@ sdk-conformance:
 
 security:
 	$(GOVULNCHECK) ./...
-	cd $(TERMINAL_UI_DIR) && $(GOVULNCHECK) ./...
 	node scripts/check-npm-audit.mjs
 
 docs-check:

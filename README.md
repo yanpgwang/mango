@@ -93,7 +93,6 @@ make local-down
 | Connect a model endpoint | [Model configuration](https://yanpgwang.github.io/mango/guides/model-configuration) |
 | Run sandboxed shell and file tools | [Docker worker guide](https://yanpgwang.github.io/mango/guides/self-hosted-worker) |
 | Add human input or coordinate a team | [Runnable examples](https://yanpgwang.github.io/mango/examples) |
-| Inspect Sessions in a terminal | [Terminal UI](https://yanpgwang.github.io/mango/examples/terminal-ui) |
 | Integrate an API operation | [API reference](https://yanpgwang.github.io/mango/api) |
 | Understand deployment and recovery | [Deployment](https://yanpgwang.github.io/mango/deployment) · [Architecture](https://yanpgwang.github.io/mango/architecture) |
 

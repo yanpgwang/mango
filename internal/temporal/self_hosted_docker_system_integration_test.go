@@ -187,7 +187,7 @@ func newDockerSystemFixture(
 		PreviewPublisher: broker,
 	}
 	runtime := temporalpkg.NewRuntime(fixture.runtimeConfig)
-	fixture.stopRuntime = startGateRuntime(t, ctx, runtime)
+	fixture.stopRuntime = startIntegrationRuntime(t, ctx, runtime)
 	t.Cleanup(func() { fixture.stopRuntime() })
 
 	agents := pg.NewAgentRepository(fixture.store)
@@ -288,7 +288,7 @@ func (f *dockerSystemFixture) restartRuntime() {
 	f.t.Helper()
 	f.stopRuntime()
 	runtime := temporalpkg.NewRuntime(f.runtimeConfig)
-	f.stopRuntime = startGateRuntime(f.t, context.Background(), runtime)
+	f.stopRuntime = startIntegrationRuntime(f.t, context.Background(), runtime)
 }
 
 func (f *dockerSystemFixture) stopLaunchers() {

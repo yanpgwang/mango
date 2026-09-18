@@ -18,19 +18,19 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
-const gateActionCount = 7
+const barrierActionCount = 7
 
-// TestVerticalSlice_HITLGateSurvivesWorkerRestart exercises Mango's durable
+// TestVerticalSlice_CustomToolBarrierSurvivesWorkerRestart exercises Mango's durable
 // client-action boundary over real PostgreSQL and Temporal. One model response
 // emits seven parallel custom-tool calls. Mango exposes the complete barrier,
 // accepts partial results without resuming early, atomically rejects a
 // duplicate, and resumes the whole result round after the execution worker is
 // replaced.
-func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
+func TestVerticalSlice_CustomToolBarrierSurvivesWorkerRestart(t *testing.T) {
 	databaseURL := os.Getenv("MANGO_TEST_DATABASE_URL")
 	temporalAddress := os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT")
 	if databaseURL == "" || temporalAddress == "" {
-		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the HITL gate scenario")
+		t.Skip("set MANGO_TEST_DATABASE_URL and MANGO_TEST_TEMPORAL_HOSTPORT to run the custom-tool barrier integration test")
 	}
 
 	ctx := context.Background()
@@ -43,8 +43,8 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 	defer temporalClient.Close()
 
 	ids := domain.NewRandomIDGen()
-	probe := &gateProbeModel{}
-	taskQueue := "mango-hitl-gate-" + ids.NewID("")
+	probe := &barrierProbeModel{}
+	taskQueue := "mango-custom-tool-barrier-" + ids.NewID("")
 	runtimeConfig := temporalpkg.RuntimeConfig{
 		TemporalClient: temporalClient,
 		Store:          store,
@@ -55,7 +55,7 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 	}
 
 	runtimeOne := temporalpkg.NewRuntime(runtimeConfig)
-	stopRuntimeOne := startGateRuntime(t, ctx, runtimeOne)
+	stopRuntimeOne := startIntegrationRuntime(t, ctx, runtimeOne)
 	runtimeOneStopped := false
 	defer func() {
 		if !runtimeOneStopped {
@@ -63,73 +63,73 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 		}
 	}()
 
-	system := "Classify every submitted expense exactly once. Use decide for clear cases and escalate when a human judgment is required."
+	system := "Call tool_a or tool_b once for each item and wait for every result."
 	now := time.Now().UTC()
 	environment := domain.Environment{
-		ID: "env_hitl_gate", Name: "HITL gate", ConfigType: "self_hosted",
+		ID: "env_custom_tool_barrier", Name: "custom-tool barrier", ConfigType: "self_hosted",
 		Config: map[string]any{"type": "self_hosted"}, Metadata: map[string]any{},
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := pg.NewEnvironmentRepository(store).Put(ctx, environment); err != nil {
-		t.Fatalf("create HITL gate Environment: %v", err)
+		t.Fatalf("create custom-tool barrier Environment: %v", err)
 	}
 	session := domain.Session{
-		ID:                "sesn_hitl_gate_" + ids.NewID(""),
-		AgentID:           "agent_hitl_gate",
+		ID:                "sesn_custom_tool_barrier_" + ids.NewID(""),
+		AgentID:           "agent_custom_tool_barrier",
 		AgentVersion:      1,
-		EnvironmentID:     "env_hitl_gate",
+		EnvironmentID:     "env_custom_tool_barrier",
 		EnvironmentType:   "self_hosted",
 		EnvironmentConfig: map[string]any{"type": "self_hosted"},
 		Status:            domain.StatusIdle,
 		Metadata:          map[string]any{},
 		AgentSnapshot: domain.Agent{
-			ID: "agent_hitl_gate", Version: 1, Name: "expense-gate",
-			Model: domain.Model{ID: "gate-probe"}, System: &system,
-			Tools: gateCustomTools(),
+			ID: "agent_custom_tool_barrier", Version: 1, Name: "custom-tool-barrier",
+			Model: domain.Model{ID: "barrier-probe"}, System: &system,
+			Tools: barrierCustomTools(),
 		},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 	orchestrator := runtimeOne.Orchestrator()
 	if _, _, err := orchestrator.CreateSession(ctx, session, nil); err != nil {
-		t.Fatalf("create HITL gate Session: %v", err)
+		t.Fatalf("create custom-tool barrier Session: %v", err)
 	}
 	defer terminateIntegrationWorkflow(t, temporalClient, session.ID)
 
 	if _, err := orchestrator.Admit(ctx, session.ID, []domain.EventDraft{{
 		Type: domain.EvUserMessage,
 		Payload: map[string]any{"content": []any{map[string]any{
-			"type": "text", "text": "Process expenses r01 through r07 and record one decision for each.",
+			"type": "text", "text": "Process items item_01 through item_07 with one tool call for each.",
 		}}},
 	}}); err != nil {
-		t.Fatalf("admit HITL gate task: %v", err)
+		t.Fatalf("admit custom-tool barrier task: %v", err)
 	}
 
-	_, actions, actionIDs := waitForGateBarrier(
-		t, store, session.ID, gateActionCount, 30*time.Second,
+	_, actions, actionIDs := waitForCustomToolBarrier(
+		t, store, session.ID, barrierActionCount, 30*time.Second,
 	)
 	if got := probe.callCount(); got != 1 {
 		t.Fatalf("model calls before resolution = %d, want 1", got)
 	}
-	assertGateActions(t, actions)
+	assertBarrierActions(t, actions)
 	assertStringSetEqual(t, actionIDs, eventIDs(actions), "requires_action event ids")
 
 	const partialCount = 3
-	partialDrafts := gateResolutionDrafts(actions[:partialCount])
+	partialDrafts := barrierResolutionDrafts(actions[:partialCount])
 	partialEvents, err := orchestrator.Admit(ctx, session.ID, partialDrafts)
 	if err != nil {
-		t.Fatalf("admit partial HITL results: %v", err)
+		t.Fatalf("admit partial custom-tool results: %v", err)
 	}
 	if len(partialEvents) != partialCount {
 		t.Fatalf("partial result events = %d, want %d", len(partialEvents), partialCount)
 	}
-	assertGatePendingState(t, store, session.ID, gateActionCount, partialCount)
+	assertBarrierPendingState(t, store, session.ID, barrierActionCount, partialCount)
 
 	beforeDuplicate, err := store.EventsAfter(ctx, session.ID, 0, 200)
 	if err != nil {
 		t.Fatalf("events before duplicate: %v", err)
 	}
-	_, err = orchestrator.Admit(ctx, session.ID, gateResolutionDrafts(actions[:1]))
+	_, err = orchestrator.Admit(ctx, session.ID, barrierResolutionDrafts(actions[:1]))
 	var domainErr *domain.DomainError
 	if !errors.As(err, &domainErr) || domainErr.Kind != domain.KindConflict {
 		t.Fatalf("duplicate result error = %#v, want conflict", err)
@@ -155,43 +155,43 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 	stopRuntimeOne()
 	runtimeOneStopped = true
 	runtimeTwo := temporalpkg.NewRuntime(runtimeConfig)
-	stopRuntimeTwo := startGateRuntime(t, ctx, runtimeTwo)
+	stopRuntimeTwo := startIntegrationRuntime(t, ctx, runtimeTwo)
 	defer stopRuntimeTwo()
 
-	rest := gateResolutionDrafts(actions[partialCount:])
+	rest := barrierResolutionDrafts(actions[partialCount:])
 	finalResolutionEvents, err := runtimeTwo.Orchestrator().Admit(ctx, session.ID, rest)
 	if err != nil {
-		t.Fatalf("admit remaining HITL results after worker restart: %v", err)
+		t.Fatalf("admit remaining custom-tool results after worker restart: %v", err)
 	}
-	if len(finalResolutionEvents) != gateActionCount-partialCount {
+	if len(finalResolutionEvents) != barrierActionCount-partialCount {
 		t.Fatalf(
 			"remaining result events = %d, want %d",
-			len(finalResolutionEvents), gateActionCount-partialCount,
+			len(finalResolutionEvents), barrierActionCount-partialCount,
 		)
 	}
 
-	events := waitForGateCompletion(t, store, session.ID, 30*time.Second)
+	events := waitForIntegrationCompletion(t, store, session.ID, 30*time.Second)
 	if got := probe.callCount(); got != 2 {
 		t.Fatalf("model calls after complete barrier = %d, want 2", got)
 	}
-	if got := len(eventsOfType(events, domain.EvAgentCustomToolUse)); got != gateActionCount {
-		t.Fatalf("custom tool uses = %d, want %d; events=%s", got, gateActionCount, typeList(events))
+	if got := len(eventsOfType(events, domain.EvAgentCustomToolUse)); got != barrierActionCount {
+		t.Fatalf("custom tool uses = %d, want %d; events=%s", got, barrierActionCount, typeList(events))
 	}
-	if got := len(eventsOfType(events, domain.EvUserCustomToolResult)); got != gateActionCount {
-		t.Fatalf("custom tool results = %d, want %d; events=%s", got, gateActionCount, typeList(events))
+	if got := len(eventsOfType(events, domain.EvUserCustomToolResult)); got != barrierActionCount {
+		t.Fatalf("custom tool results = %d, want %d; events=%s", got, barrierActionCount, typeList(events))
 	}
 	if got := len(eventsOfType(events, domain.EvSpanModelRequestStart)); got != 2 {
 		t.Fatalf("model request starts = %d, want 2; events=%s", got, typeList(events))
 	}
 	if failures := eventsOfType(events, domain.EvSessionError); len(failures) != 0 {
-		t.Fatalf("HITL gate emitted Session errors: %+v", failures)
+		t.Fatalf("custom-tool barrier emitted Session errors: %+v", failures)
 	}
 	pending, err := store.UnresolvedPendingActions(ctx, session.ID)
 	if err != nil {
 		t.Fatalf("list final pending actions: %v", err)
 	}
 	if len(pending) != 0 {
-		t.Fatalf("resolved gate retained pending actions: %+v", pending)
+		t.Fatalf("resolved barrier retained pending actions: %+v", pending)
 	}
 	for _, resolution := range append(partialEvents, finalResolutionEvents...) {
 		stored, getErr := store.GetEvent(ctx, session.ID, resolution.ID)
@@ -201,40 +201,11 @@ func TestVerticalSlice_HITLGateSurvivesWorkerRestart(t *testing.T) {
 	}
 	final, err := store.GetSession(ctx, session.ID)
 	if err != nil || final.Status != domain.StatusIdle {
-		t.Fatalf("completed HITL gate Session = %+v, err=%v", final, err)
+		t.Fatalf("completed custom-tool barrier Session = %+v, err=%v", final, err)
 	}
 }
 
-func startGateRuntime(
-	t *testing.T,
-	parent context.Context,
-	runtime *temporalpkg.Runtime,
-) func() {
-	t.Helper()
-	if err := runtime.Worker.Start(); err != nil {
-		t.Fatalf("start HITL gate worker: %v", err)
-	}
-	relayCtx, cancelRelay := context.WithCancel(parent)
-	relayDone := make(chan error, 1)
-	go func() { relayDone <- runtime.Relay.Run(relayCtx) }()
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			cancelRelay()
-			runtime.Worker.Stop()
-			select {
-			case err := <-relayDone:
-				if err != nil && !errors.Is(err, context.Canceled) {
-					t.Errorf("stop HITL gate relay: %v", err)
-				}
-			case <-time.After(5 * time.Second):
-				t.Error("HITL gate relay did not stop")
-			}
-		})
-	}
-}
-
-func waitForGateBarrier(
+func waitForCustomToolBarrier(
 	t *testing.T,
 	store *pg.Store,
 	sessionID string,
@@ -246,10 +217,10 @@ func waitForGateBarrier(
 	for time.Now().Before(deadline) {
 		events, err := store.EventsAfter(context.Background(), sessionID, 0, 200)
 		if err != nil {
-			t.Fatalf("list HITL gate events: %v", err)
+			t.Fatalf("list custom-tool barrier events: %v", err)
 		}
 		if failure, ok := firstFailureEvent(events); ok {
-			t.Fatalf("HITL gate failed with %s: %#v", failure.Type, failure.Payload)
+			t.Fatalf("custom-tool barrier failed with %s: %#v", failure.Type, failure.Payload)
 		}
 		actions := eventsOfType(events, domain.EvAgentCustomToolUse)
 		if len(actions) == wantActions {
@@ -260,34 +231,8 @@ func waitForGateBarrier(
 		time.Sleep(100 * time.Millisecond)
 	}
 	events, _ := store.EventsAfter(context.Background(), sessionID, 0, 200)
-	t.Fatalf("timed out waiting for HITL gate barrier; events=%s", typeList(events))
+	t.Fatalf("timed out waiting for custom-tool barrier; events=%s", typeList(events))
 	return nil, nil, nil
-}
-
-func waitForGateCompletion(
-	t *testing.T,
-	store *pg.Store,
-	sessionID string,
-	timeout time.Duration,
-) []domain.Event {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		events, err := store.EventsAfter(context.Background(), sessionID, 0, 300)
-		if err != nil {
-			t.Fatalf("list completed HITL gate events: %v", err)
-		}
-		if failure, ok := firstFailureEvent(events); ok {
-			t.Fatalf("HITL gate failed with %s: %#v", failure.Type, failure.Payload)
-		}
-		if hasType(events, domain.EvAgentMessage) && latestIdleReason(events) == "end_turn" {
-			return events
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	events, _ := store.EventsAfter(context.Background(), sessionID, 0, 300)
-	t.Fatalf("timed out waiting for HITL gate completion; events=%s", typeList(events))
-	return nil
 }
 
 func latestRequiresActionIDs(events []domain.Event) ([]string, bool) {
@@ -313,29 +258,17 @@ func latestRequiresActionIDs(events []domain.Event) ([]string, bool) {
 	return nil, false
 }
 
-func latestIdleReason(events []domain.Event) string {
-	for index := len(events) - 1; index >= 0; index-- {
-		if events[index].Type != domain.EvSessionStatusIdle {
-			continue
-		}
-		stopReason, _ := events[index].Payload["stop_reason"].(map[string]any)
-		reason, _ := stopReason["type"].(string)
-		return reason
-	}
-	return ""
-}
-
-func gateResolutionDrafts(actions []domain.Event) []domain.EventDraft {
+func barrierResolutionDrafts(actions []domain.Event) []domain.EventDraft {
 	drafts := make([]domain.EventDraft, 0, len(actions))
 	for _, action := range actions {
 		input, _ := action.Payload["input"].(map[string]any)
-		receiptID, _ := input["receipt_id"].(string)
+		itemID, _ := input["item_id"].(string)
 		drafts = append(drafts, domain.EventDraft{
 			Type: domain.EvUserCustomToolResult,
 			Payload: map[string]any{
 				"custom_tool_use_id": action.ID,
 				"content": []any{map[string]any{
-					"type": "text", "text": `{"recorded":true,"receipt_id":"` + receiptID + `"}`,
+					"type": "text", "text": `{"ok":true,"item_id":"` + itemID + `"}`,
 				}},
 			},
 		})
@@ -343,7 +276,7 @@ func gateResolutionDrafts(actions []domain.Event) []domain.EventDraft {
 	return drafts
 }
 
-func assertGatePendingState(
+func assertBarrierPendingState(
 	t *testing.T,
 	store *pg.Store,
 	sessionID string,
@@ -353,7 +286,7 @@ func assertGatePendingState(
 	t.Helper()
 	pending, err := store.UnresolvedPendingActions(context.Background(), sessionID)
 	if err != nil {
-		t.Fatalf("list HITL pending actions: %v", err)
+		t.Fatalf("list custom-tool pending actions: %v", err)
 	}
 	claimed := 0
 	for _, action := range pending {
@@ -369,30 +302,30 @@ func assertGatePendingState(
 	}
 }
 
-func assertGateActions(t *testing.T, actions []domain.Event) {
+func assertBarrierActions(t *testing.T, actions []domain.Event) {
 	t.Helper()
-	receipts := make([]string, 0, len(actions))
+	items := make([]string, 0, len(actions))
 	names := make(map[string]int)
 	for _, action := range actions {
 		name, _ := action.Payload["name"].(string)
 		input, _ := action.Payload["input"].(map[string]any)
-		receiptID, _ := input["receipt_id"].(string)
-		if (name != "decide" && name != "escalate") || receiptID == "" {
-			t.Fatalf("invalid HITL action: %+v", action)
+		itemID, _ := input["item_id"].(string)
+		if (name != "tool_a" && name != "tool_b") || itemID == "" {
+			t.Fatalf("invalid custom-tool action: %+v", action)
 		}
 		names[name]++
-		receipts = append(receipts, receiptID)
+		items = append(items, itemID)
 	}
-	sort.Strings(receipts)
-	wantReceipts := make([]string, 0, gateActionCount)
-	for index := 1; index <= gateActionCount; index++ {
-		wantReceipts = append(wantReceipts, fmt.Sprintf("r%02d", index))
+	sort.Strings(items)
+	wantItems := make([]string, 0, barrierActionCount)
+	for index := 1; index <= barrierActionCount; index++ {
+		wantItems = append(wantItems, fmt.Sprintf("item_%02d", index))
 	}
-	if strings.Join(receipts, ",") != strings.Join(wantReceipts, ",") {
-		t.Fatalf("HITL receipt ids = %v, want %v", receipts, wantReceipts)
+	if strings.Join(items, ",") != strings.Join(wantItems, ",") {
+		t.Fatalf("custom-tool item ids = %v, want %v", items, wantItems)
 	}
-	if names["decide"] == 0 || names["escalate"] == 0 {
-		t.Fatalf("HITL actions did not exercise both lanes: %v", names)
+	if names["tool_a"] == 0 || names["tool_b"] == 0 {
+		t.Fatalf("custom-tool actions did not exercise both tool names: %v", names)
 	}
 }
 
@@ -415,54 +348,42 @@ func assertStringSetEqual(t *testing.T, got []string, want []string, label strin
 	}
 }
 
-func gateCustomTools() []any {
-	return []any{
-		map[string]any{
-			"type": "custom", "name": "decide",
-			"description": "Record a final approve or reject decision for a clear expense.",
+func barrierCustomTools() []any {
+	tools := make([]any, 0, 2)
+	for _, name := range []string{"tool_a", "tool_b"} {
+		tools = append(tools, map[string]any{
+			"type": "custom", "name": name,
+			"description": "Return a result for the identified test item.",
 			"input_schema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"receipt_id": map[string]any{"type": "string"},
-					"action":     map[string]any{"type": "string", "enum": []any{"approve", "reject"}},
-					"reason":     map[string]any{"type": "string"},
+					"item_id": map[string]any{"type": "string"},
 				},
-				"required": []any{"receipt_id", "action", "reason"},
+				"required": []any{"item_id"},
 			},
-		},
-		map[string]any{
-			"type": "custom", "name": "escalate",
-			"description": "Request a human decision for an ambiguous expense.",
-			"input_schema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"receipt_id": map[string]any{"type": "string"},
-					"question":   map[string]any{"type": "string"},
-				},
-				"required": []any{"receipt_id", "question"},
-			},
-		},
+		})
 	}
+	return tools
 }
 
-// gateProbeModel derives its response from the durable provider transcript so
+// barrierProbeModel derives its response from the durable provider transcript so
 // a retried model Activity returns the same seven tool calls or final answer.
-type gateProbeModel struct {
+type barrierProbeModel struct {
 	mu    sync.Mutex
 	calls int
 }
 
-func (m *gateProbeModel) CreateMessage(
+func (m *barrierProbeModel) CreateMessage(
 	_ context.Context,
 	request model.Request,
 ) (model.Response, error) {
 	m.mu.Lock()
 	m.calls++
 	m.mu.Unlock()
-	if !requestHasTool(request, "decide") || !requestHasTool(request, "escalate") {
-		return model.Response{}, errors.New("HITL gate custom tools were not offered to the model")
+	if !requestHasTool(request, "tool_a") || !requestHasTool(request, "tool_b") {
+		return model.Response{}, errors.New("barrier tools were not offered to the model")
 	}
-	results := make([]domain.ContentBlock, 0, gateActionCount)
+	results := make([]domain.ContentBlock, 0, barrierActionCount)
 	for _, message := range request.Messages {
 		for _, block := range message.Content {
 			if block.Type == "tool_result" {
@@ -471,52 +392,46 @@ func (m *gateProbeModel) CreateMessage(
 		}
 	}
 	if len(results) == 0 {
-		content := make([]domain.ContentBlock, 0, gateActionCount)
-		for index := 1; index <= gateActionCount; index++ {
-			receiptID := fmt.Sprintf("r%02d", index)
+		content := make([]domain.ContentBlock, 0, barrierActionCount)
+		for index := 1; index <= barrierActionCount; index++ {
+			itemID := fmt.Sprintf("item_%02d", index)
 			block := domain.ContentBlock{
-				Type: "tool_use", ToolUseID: "gate_" + receiptID,
-				ToolName: "decide",
+				Type: "tool_use", ToolUseID: "barrier_" + itemID,
+				ToolName: "tool_a",
 				Input: map[string]any{
-					"receipt_id": receiptID,
-					"action":     "approve",
-					"reason":     "within policy",
+					"item_id": itemID,
 				},
 			}
 			if index > 5 {
-				block.ToolName = "escalate"
-				block.Input = map[string]any{
-					"receipt_id": receiptID,
-					"question":   "Does a reviewer approve this ambiguous expense?",
-				}
+				block.ToolName = "tool_b"
 			}
 			content = append(content, block)
 		}
 		return model.Response{Content: content, StopReason: "tool_use"}, nil
 	}
-	if len(results) != gateActionCount {
+	if len(results) != barrierActionCount {
 		return model.Response{}, fmt.Errorf(
-			"HITL gate resumed with %d tool results, want %d",
-			len(results), gateActionCount,
+			"custom-tool barrier resumed with %d tool results, want %d",
+			len(results), barrierActionCount,
 		)
 	}
-	seen := make(map[string]struct{}, gateActionCount)
+	seen := make(map[string]struct{}, barrierActionCount)
 	for _, result := range results {
-		if result.IsError || !strings.Contains(result.Text, `"recorded":true`) {
-			return model.Response{}, fmt.Errorf("invalid HITL result: %+v", result)
+		if result.IsError || !strings.Contains(result.Text, `"ok":true`) {
+			return model.Response{}, fmt.Errorf("invalid custom-tool result: %+v", result)
 		}
 		if result.ToolResultFor == "" {
-			return model.Response{}, errors.New("HITL result lost its provider tool-use correlation")
+			return model.Response{}, errors.New("custom-tool result lost its provider tool-use correlation")
 		}
 		if _, duplicate := seen[result.ToolResultFor]; duplicate {
-			return model.Response{}, errors.New("HITL result was duplicated in the provider transcript")
+			return model.Response{}, errors.New("custom-tool result was duplicated in the provider transcript")
 		}
 		seen[result.ToolResultFor] = struct{}{}
 	}
-	return textModelResponse("All seven expense decisions were recorded exactly once."), nil
+	return textModelResponse("All seven tool results were received exactly once."), nil
 }
 
-func (m *gateProbeModel) CreateMessageStream(
+func (m *barrierProbeModel) CreateMessageStream(
 	ctx context.Context,
 	request model.Request,
 	onDelta func(index int, text string),
@@ -533,7 +448,7 @@ func (m *gateProbeModel) CreateMessageStream(
 	return response, nil
 }
 
-func (m *gateProbeModel) callCount() int {
+func (m *barrierProbeModel) callCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.calls

@@ -349,6 +349,6 @@ actual OpenAPI document by `go run ./scripts/sdk-contract`. Changes to the API m
 regenerate both the shared contract and language bindings.
 
 The tests use deterministic local HTTP servers. Repository-level
-`make sdk-conformance` additionally runs `examples/conformance` against Mango's
+`make sdk-conformance` additionally runs `tests/conformance` against Mango's
 actual HTTP handlers with test repositories. Neither tier calls a real model or
 claims verification of a deployed service, storage provider, or paid model.
