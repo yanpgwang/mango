@@ -170,6 +170,6 @@ npm test
 Tests cover all operations' dispatch, types/nullability, query encoding,
 multipart/files, errors, cancellation/deadlines, SSE, and pagination. They use
 local fakes/loopback HTTP and do not require credentials or a model. The separate
-`examples/conformance.mjs` is run by the repository's cross-language test harness
+`test/conformance.mjs` is run by the repository's cross-language test harness
 against real Mango HTTP handlers with explicitly simulated backend dependencies;
 it is not a live-model verification.

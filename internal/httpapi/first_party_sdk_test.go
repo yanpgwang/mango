@@ -28,9 +28,9 @@ func TestFirstPartySDKHTTPConformance(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"go", []string{"go", "run", "./examples/conformance"}},
-		{"python", []string{filepath.Join(root, "sdk", "python", ".venv", "bin", "python"), "examples/conformance.py"}},
-		{"typescript", []string{"node", "examples/conformance.mjs"}},
+		{"go", []string{"go", "run", "./tests/conformance"}},
+		{"python", []string{filepath.Join(root, "sdk", "python", ".venv", "bin", "python"), "tests/conformance.py"}},
+		{"typescript", []string{"node", "test/conformance.mjs"}},
 	} {
 		t.Run(language.name, func(t *testing.T) {
 			handler := newTestHandler(t, Config{RequireAuth: true}, false)

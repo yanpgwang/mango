@@ -146,7 +146,7 @@ release is never an automatic roadmap.
   Environment queue, trusted poller, per-Session worker, operator-owned
   File/Git staging, workspace outputs, and SDK-owned Skill/Memory lifecycle.
 - Mango adopts that high-level lifecycle and maps it coherently across HTTP,
-  OpenAPI, the three SDK quickstarts, HTTP quickstart, terminal UI, and examples
+  OpenAPI, the three SDK quickstarts, HTTP quickstart, and examples
   that need no managed File/Git mounts. Unlike CMA's hosted-product default,
   omitting Mango's Environment config now resolves to `self_hosted`; this is an
   intentional OSS trust-boundary choice, not wire compatibility.
@@ -389,17 +389,18 @@ support, so they run the same credential-free and opt-in live conformance suites
 ## Coding-agent scenario fixtures
 
 This section records a retired pre-release experiment. The managed-sandbox
-system test, standalone tutorial, and fixtures were removed when Mango adopted
-the self-hosted-only boundary; they must not be read as current capabilities.
+system test and standalone tutorial were removed when Mango adopted the
+self-hosted-only boundary. The unused calculator fixture was removed during
+the subsequent example/test boundary cleanup. This experiment must not be read
+as a current capability.
 
 - Anthropic's public
   [`CMA_iterate_fix_failing_tests` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_iterate_fix_failing_tests.ipynb)
   supplied the MIT-licensed `calc.py` and `test_calc.py` fixture and the useful
-  do-observe-fix workflow. System tests own the fixture under
-  `internal/temporal/testdata/coding_agent_iterate`; the standalone example owns
-  separate inputs under `examples/coding-agent/fixtures`. Both retain the source
-  license. The example adapts the checks to standard-library `unittest` so it
-  needs no sandbox package installation; the original assertions are retained.
+  do-observe-fix workflow. The retired system test and standalone example owned
+  separate copies of the inputs, each retaining the source license. The example
+  adapted the checks to standard-library `unittest` so it needed no sandbox
+  package installation; the original assertions were retained.
 - Mango adopted the user problem and acceptance outcome: expose immutable input
   files, let a coding Agent iterate in a writable sandbox, independently verify
   the fix, and publish the final source as a durable Session output.
