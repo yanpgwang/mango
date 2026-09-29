@@ -75,3 +75,11 @@ Environment key is not passed into the Session container.
 For lifecycle and recovery details, see
 [Self-hosted workers](architecture/self-hosted-workers.md) and
 [Environment Work](api/environment-work.md).
+
+## Verify execution before starting a Session
+
+Create an [Environment healthcheck](api/environment-work.md#check-an-environments-execution-path)
+with a Workspace key, then let the ordinary supervisor claim it. The reference
+Docker worker executes a fixed, ten-second process/filesystem probe in an
+ephemeral workspace and records its result on Work. This requires no Agent,
+Session, or model credentials. Queue statistics alone only establish polling.

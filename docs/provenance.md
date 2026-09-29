@@ -1102,3 +1102,17 @@ order revocation against Poll/Ack; already-Acked execution retains its independe
 lease. These choices protect unrelated Workspace resources while retaining
 Mango's self-hosted operation and recovery model. No hosted credentials or
 external SDK implementation are required.
+
+## Bounded Environment healthchecks (2026-09-29)
+
+The [healthcheck design](design/environment-healthcheck.md) records paired official
+Work API, Go/Python/TypeScript SDK, and self-hosted cookbook references with
+reviewed revisions. Mango adopted the Work healthcheck variant and supervisor
+versus per-item responsibility split. It omitted a redundant healthcheck ID,
+hosted connectivity assumptions, and vendor authentication. Unlike the reviewed
+SDK helpers, which skip non-Session items, Mango's Docker worker executes a fixed
+local process/filesystem probe and commits a bounded, immutable result. This
+serves self-hosted operator verification without a model call or synthetic
+Session. The three native clients encode Mango's union and create/result
+operations; only the Go helper owns execution. Official implementations were
+neither copied nor used as clients or dependencies.

@@ -31,6 +31,10 @@ func environmentWorkToJSON(work domain.EnvironmentWork) map[string]any {
 		"data":  map[string]any{"type": "session", "id": work.SessionID},
 		"state": work.State, "metadata": metadata, "secret": secret,
 		"created_at": work.CreatedAt.Format(timeFmt),
+		"result":     work.Result,
+	}
+	if work.Type == "healthcheck" {
+		out["data"] = map[string]any{"type": "healthcheck"}
 	}
 	setWorkTime := func(name string, value *time.Time) {
 		if value == nil {
@@ -44,7 +48,50 @@ func environmentWorkToJSON(work domain.EnvironmentWork) map[string]any {
 	setWorkTime("latest_heartbeat_at", work.LatestHeartbeatAt)
 	setWorkTime("stop_requested_at", work.StopRequestedAt)
 	setWorkTime("stopped_at", work.StoppedAt)
+	setWorkTime("expires_at", work.ExpiresAt)
 	return out
+}
+
+func (s *Server) createEnvironmentHealthcheck(w http.ResponseWriter, r *http.Request) {
+	if !s.environmentWorkConfigured(w) {
+		return
+	}
+	var body struct {
+		Data struct {
+			Type string `json:"type"`
+		} `json:"data"`
+	}
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, err)
+		return
+	}
+	if body.Data.Type != "healthcheck" {
+		writeError(w, domain.Validation("data.type must be healthcheck"))
+		return
+	}
+	work, err := s.deps.EnvironmentWork.CreateHealthcheck(r.Context(), r.PathValue("environment_id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, environmentWorkToJSON(work))
+}
+
+func (s *Server) completeEnvironmentHealthcheck(w http.ResponseWriter, r *http.Request) {
+	if !s.environmentWorkConfigured(w) {
+		return
+	}
+	var body domain.EnvironmentWorkResult
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeError(w, err)
+		return
+	}
+	work, err := s.deps.EnvironmentWork.CompleteHealthcheck(r.Context(), r.PathValue("environment_id"), r.PathValue("work_id"), body)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, environmentWorkToJSON(work))
 }
 
 func (s *Server) getEnvironmentWork(w http.ResponseWriter, r *http.Request) {

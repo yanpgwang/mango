@@ -99,7 +99,7 @@ func (e *slowReclaimedContainerEngine) ContainerRemove(ctx context.Context, id s
 func (e *slowReclaimedContainerEngine) ContainerWait(ctx context.Context, _ string, _ client.ContainerWaitOptions) client.ContainerWaitResult {
 	worker := mango.NewEnvironmentWorker(e.sdkClient, mango.EnvironmentWorkerOptions{Workdir: e.workdir, MemorySyncInterval: -1})
 	e.itemErr = worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{
-		WorkID: e.work.ID, EnvironmentID: e.work.EnvironmentID, SessionID: e.work.Data.ID, WorkSecret: *e.work.Secret,
+		WorkID: e.work.ID, EnvironmentID: e.work.EnvironmentID, SessionID: e.work.Data.SessionWorkData.ID, WorkSecret: *e.work.Secret,
 	})
 	result := make(chan container.WaitResponse, 1)
 	status := int64(0)

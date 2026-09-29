@@ -130,9 +130,10 @@ func runItem(ctx context.Context, arguments []string) error {
 		return err
 	}
 	worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
-		ToolsFunc: selfhosted.SandboxToolsForSession,
-		MaxIdle:   maxIdle,
-		Workdir:   *workdir,
+		Healthcheck: selfhosted.SandboxHealthcheck,
+		ToolsFunc:   selfhosted.SandboxToolsForSession,
+		MaxIdle:     maxIdle,
+		Workdir:     *workdir,
 	})
 	return worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{WorkSecret: workSecret})
 }

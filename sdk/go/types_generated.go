@@ -671,24 +671,44 @@ type EnvironmentVariableCredentialUpdateInjectionLocation struct {
 }
 
 type EnvironmentWork struct {
-	AcknowledgedAt    NullableTimestamp    `json:"acknowledged_at"`
-	CreatedAt         string               `json:"created_at"`
-	Data              EnvironmentWorkData  `json:"data"`
-	EnvironmentID     string               `json:"environment_id"`
-	ID                string               `json:"id"`
-	LatestHeartbeatAt NullableTimestamp    `json:"latest_heartbeat_at"`
-	Metadata          map[string]string    `json:"metadata"`
-	Secret            *string              `json:"secret"`
-	StartedAt         NullableTimestamp    `json:"started_at"`
-	State             EnvironmentWorkState `json:"state"`
-	StopRequestedAt   NullableTimestamp    `json:"stop_requested_at"`
-	StoppedAt         NullableTimestamp    `json:"stopped_at"`
-	Type              string               `json:"type"`
+	AcknowledgedAt    NullableTimestamp      `json:"acknowledged_at"`
+	CreatedAt         string                 `json:"created_at"`
+	Data              EnvironmentWorkData    `json:"data"`
+	EnvironmentID     string                 `json:"environment_id"`
+	ExpiresAt         *string                `json:"expires_at"`
+	ID                string                 `json:"id"`
+	LatestHeartbeatAt NullableTimestamp      `json:"latest_heartbeat_at"`
+	Metadata          map[string]string      `json:"metadata"`
+	Result            *EnvironmentWorkResult `json:"result"`
+	Secret            *string                `json:"secret"`
+	StartedAt         NullableTimestamp      `json:"started_at"`
+	State             EnvironmentWorkState   `json:"state"`
+	StopRequestedAt   NullableTimestamp      `json:"stop_requested_at"`
+	StoppedAt         NullableTimestamp      `json:"stopped_at"`
+	Type              string                 `json:"type"`
 }
 
+type EnvironmentWorkCreateRequest struct {
+	Data HealthcheckWorkData `json:"data"`
+}
+
+// EnvironmentWorkData is a wire union. Set exactly one variant when constructing it.
+// Raw preserves an unknown variant received from the server.
 type EnvironmentWorkData struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
+	Raw                 json.RawMessage      `json:"-"`
+	SessionWorkData     *SessionWorkData     `json:"-"`
+	HealthcheckWorkData *HealthcheckWorkData `json:"-"`
+}
+
+func (value EnvironmentWorkData) MarshalJSON() ([]byte, error) {
+	return marshalUnion(value.Raw, value.SessionWorkData, value.HealthcheckWorkData)
+}
+func (value *EnvironmentWorkData) UnmarshalJSON(data []byte) error {
+	*value = EnvironmentWorkData{}
+	return unmarshalUnion(data, &value.Raw,
+		unionChoice{target: &value.SessionWorkData, kind: "object", required: []string{"id", "type"}, constants: map[string]string{"type": "\"session\""}},
+		unionChoice{target: &value.HealthcheckWorkData, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"healthcheck\""}},
+	)
 }
 
 type EnvironmentWorkFailureRequest struct {
@@ -714,6 +734,16 @@ type EnvironmentWorkQueueStats struct {
 	Pending        int64             `json:"pending"`
 	Type           string            `json:"type"`
 	WorkersPolling int64             `json:"workers_polling"`
+}
+
+type EnvironmentWorkResult struct {
+	Message string `json:"message"`
+	Status  string `json:"status"`
+}
+
+type EnvironmentWorkResultRequest struct {
+	Message string `json:"message"`
+	Status  string `json:"status"`
 }
 
 type EnvironmentWorkState string
@@ -876,6 +906,10 @@ type GetMemoryParams struct {
 
 type GetMemoryVersionParams struct {
 	View Optional[string] `json:"view,omitzero"`
+}
+
+type HealthcheckWorkData struct {
+	Type string `json:"type"`
 }
 
 type HeartbeatEnvironmentWorkParams struct {
@@ -1650,7 +1684,7 @@ func (value PollEnvironmentWorkResponse) MarshalJSON() ([]byte, error) {
 func (value *PollEnvironmentWorkResponse) UnmarshalJSON(data []byte) error {
 	*value = PollEnvironmentWorkResponse{}
 	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.EnvironmentWork, kind: "object", required: []string{"id", "acknowledged_at", "created_at", "data", "environment_id", "latest_heartbeat_at", "metadata", "secret", "started_at", "state", "stop_requested_at", "stopped_at", "type"}, constants: map[string]string{"type": "\"work\""}},
+		unionChoice{target: &value.EnvironmentWork, kind: "object", required: []string{"id", "expires_at", "result", "acknowledged_at", "created_at", "data", "environment_id", "latest_heartbeat_at", "metadata", "secret", "started_at", "state", "stop_requested_at", "stopped_at", "type"}, constants: map[string]string{"type": "\"work\""}},
 		unionChoice{target: &value.Object, kind: "object", required: []string{}, constants: map[string]string{}},
 	)
 }
@@ -2200,6 +2234,11 @@ type SessionUsageSnapshotCacheCreation struct {
 type SessionUsageSnapshotServerToolUse struct {
 	WebFetchRequests  int64 `json:"web_fetch_requests"`
 	WebSearchRequests int64 `json:"web_search_requests"`
+}
+
+type SessionWorkData struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
 }
 
 type SkillDeleted struct {

@@ -35,6 +35,8 @@ type EnvironmentWorkPollInput struct {
 }
 
 type EnvironmentWorkRepository interface {
+	CreateHealthcheck(context.Context, string) (domain.EnvironmentWork, error)
+	CompleteHealthcheck(context.Context, string, string, domain.EnvironmentWorkResult) (domain.EnvironmentWork, error)
 	GetWork(context.Context, string, string) (domain.EnvironmentWork, error)
 	UpdateWorkMetadata(context.Context, string, string, map[string]*string) (domain.EnvironmentWork, error)
 	ListWork(context.Context, string, EnvironmentWorkListQuery) (EnvironmentWorkListPage, error)
@@ -44,6 +46,26 @@ type EnvironmentWorkRepository interface {
 	FailWork(context.Context, string, string, string) error
 	StopWork(context.Context, string, string, bool) error
 	WorkStats(context.Context, string) (domain.EnvironmentWorkQueueStats, error)
+}
+
+func (s *EnvironmentWorkService) CreateHealthcheck(ctx context.Context, environmentID string) (domain.EnvironmentWork, error) {
+	if err := s.validateEnvironment(ctx, environmentID); err != nil {
+		return domain.EnvironmentWork{}, err
+	}
+	return s.repository.CreateHealthcheck(ctx, environmentID)
+}
+
+func (s *EnvironmentWorkService) CompleteHealthcheck(ctx context.Context, environmentID, workID string, result domain.EnvironmentWorkResult) (domain.EnvironmentWork, error) {
+	if err := s.validateEnvironment(ctx, environmentID); err != nil {
+		return domain.EnvironmentWork{}, err
+	}
+	if result.Status != "succeeded" && result.Status != "failed" {
+		return domain.EnvironmentWork{}, domain.Validation("status must be succeeded or failed")
+	}
+	if strings.TrimSpace(result.Message) == "" || !utf8.ValidString(result.Message) || utf8.RuneCountInString(result.Message) > 1024 {
+		return domain.EnvironmentWork{}, domain.Validation("message must contain 1 through 1024 valid UTF-8 characters")
+	}
+	return s.repository.CompleteHealthcheck(ctx, environmentID, workID, result)
 }
 
 // EnvironmentWorkService exposes Mango's self-hosted Environment worker

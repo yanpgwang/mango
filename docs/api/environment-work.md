@@ -1,6 +1,6 @@
 ---
 title: Environment Work
-description: Claim, renew, and stop leased Session activations for self-hosted workers.
+description: Claim leased Session activations and verify bounded healthchecks for self-hosted workers.
 slug: /api/environment-work
 ---
 
@@ -13,7 +13,7 @@ event stream, executes `agent_toolset_20260401` tools in customer-hosted
 infrastructure, and posts results through the existing `user.tool_result`
 or `user.custom_tool_result` event.
 
-Mango creates a Work item only when a self-hosted Session has runnable input.
+Mango creates Session Work when a self-hosted Session has runnable input.
 The Work insert, public event admission, Session projection update, and Temporal
 outbox wakeup commit in one PostgreSQL transaction. Further runnable input is
 coalesced while the Session has a live Work item; input received after Stop
@@ -56,7 +56,7 @@ Poll -> Ack -> Heartbeat(NO_HEARTBEAT) -> Heartbeat(previous timestamp) -> Stop
   records `stopped`. A Workspace API key retains operator authority to stop Work
   without possessing its Session credential.
 
-The API exposes Get, Update, List, Ack, Heartbeat, Fail, Poll, Stats, and Stop beneath:
+The API exposes Create, Get, Update, List, Ack, Heartbeat, Result, Fail, Poll, Stats, and Stop beneath:
 
 ```text
 /v1/environments/{environment_id}/work
@@ -66,6 +66,63 @@ Stop returns `204 No Content`, and an empty Poll returns an empty JSON object.
 Get, List, metadata Update, and Ack responses redact the Work secret as `null`;
 only Poll returns the raw payload. The Go WorkPoller preserves the polled value
 in memory when it returns the acknowledged item.
+
+## Check an Environment's execution path
+
+With a Workspace API key, create a healthcheck before sending a real Session:
+
+```sh
+curl -sS -X POST "$MANGO_BASE_URL/v1/environments/$MANGO_ENVIRONMENT_ID/work" \
+  -H "Authorization: Bearer $MANGO_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"data":{"type":"healthcheck"}}'
+```
+
+The `201` response has `data: {"type":"healthcheck"}`, `state: "queued"`,
+`result: null`, and `expires_at` fixed at 120 seconds after creation. Each POST
+creates a new check. The existing supervisor claims and Acks it with its
+Environment key; the Docker worker heartbeats with the per-Work token, then
+runs a fixed Bash process and verifies a small workspace file's contents. It
+uses an ephemeral workspace, permits no caller-provided command, and needs no
+Agent, Session, event stream, or model endpoint.
+
+Retrieve `GET /v1/environments/{environment_id}/work/{work_id}` with the
+operator's Workspace key. A terminal check has `state: "stopped"` and
+`result: {"status":"succeeded","message":"Sandbox process and workspace check passed"}`
+or a `failed`, `timed_out`, or `cancelled` result. List returns the same durable
+result. The message contains at most 1024 characters. Session Work retains
+`data: {"type":"session","id":"sesn_..."}` and has null expiry/result.
+
+Execution is limited to 10 seconds; the Docker launcher bounds the container
+attempt to 30 seconds and removes its container and tmpfs workspace. Docker
+reconciliation and cleanup have separate 15-second request bounds; after
+cancellation no Work secret is delivered and Stop uses zero container grace.
+An unavailable Docker daemon can prevent confirmed removal; the launcher reports
+that failure. A lost
+worker can be reclaimed with the same Work ID and a rotated token before the
+absolute deadline. Get, List, Poll, Ack, Heartbeat, Result, Stop, and Stats
+reconcile overdue checks to `timed_out`; without requests there is no promise
+that a background timer updates the stored state at the deadline. Stop records
+`cancelled` unless the check has already expired or finished.
+
+The worker submits `POST .../work/{work_id}/result` with `status` (`succeeded`
+or `failed`) and `message`. Only its current active lease may complete the
+check. Completion atomically commits the immutable result and stops Work.
+Identical result retries are accepted for 30 seconds; a conflicting retry gets
+`409`. During this short terminal window the token authorizes only result
+retry, never reads, heartbeat, Poll, or Session access. Workspace and Environment
+keys cannot fabricate a worker result. A stale or reclaimed token is rejected.
+
+All native SDKs expose creation, retrieval, pagination, and completion under
+`environments.work` (`Environments.Work` in Go). The Go `WorkPoller` dispatches
+both data variants and rejects unknown ones. The Go `EnvironmentWorker` calls
+an explicit provider-owned `Healthcheck` callback with a 10-second context;
+missing callbacks report failure. The first-party Docker worker configures the
+fixed sandbox probe. Python and TypeScript provide typed HTTP clients for the
+same contract and do not ship execution helpers.
+
+A successful result establishes the configured execution path at that moment;
+it does not test model credentials, every Session input, provider services, or
+arbitrary host diagnostics. See the [design and failure invariants](../design/environment-healthcheck.md).
 
 ## Session inputs and state
 
@@ -77,7 +134,7 @@ with conditional heartbeat, lease-loss cancellation, the scoped Work-secret
 handoff, and final forced Stop. `Run` owns Poll through Stop in one trusted
 process; `HandleItem` runs only an already-acknowledged item and can read its
 narrow identity from `MANGO_WORK_ID`, `MANGO_ENVIRONMENT_ID`,
-and `MANGO_SESSION_ID`. Its Work secret must be supplied through a protected
+`MANGO_WORK_TYPE`, and `MANGO_SESSION_ID` (Session Work only). Its Work secret must be supplied through a protected
 launcher transport whenever untrusted subprocesses share the sandbox.
 
 These SDK lifecycle helpers do not choose or create a sandbox. The composed Go

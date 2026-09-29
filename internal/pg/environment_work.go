@@ -19,14 +19,14 @@ import (
 )
 
 const environmentWorkColumns = `
-id, environment_id, session_id, state, metadata, created_at,
+id, environment_id, COALESCE(session_id,''), state, metadata, created_at,
 acknowledged_at, started_at, latest_heartbeat_at, ttl_seconds,
-stop_requested_at, stopped_at`
+stop_requested_at, stopped_at, work_type, expires_at, result`
 
 const environmentWorkTargetColumns = `
-work.id, work.environment_id, work.session_id, work.state, work.metadata, work.created_at,
+work.id, work.environment_id, COALESCE(work.session_id,''), work.state, work.metadata, work.created_at,
 work.acknowledged_at, work.started_at, work.latest_heartbeat_at, work.ttl_seconds,
-work.stop_requested_at, work.stopped_at`
+work.stop_requested_at, work.stopped_at, work.work_type, work.expires_at, work.result`
 
 type EnvironmentWorkRepository struct{ store *Store }
 
@@ -82,11 +82,13 @@ func (s *Store) AuthenticateSessionToken(
 	}
 	var workspaceID string
 	err := s.pool.QueryRow(ctx, `
-SELECT environment.workspace_id, work.environment_id, work.id, work.session_id
+SELECT environment.workspace_id, work.environment_id, work.id, COALESCE(work.session_id,''), work.state = 'stopped'
 FROM environment_work AS work
 JOIN environments AS environment ON environment.id = work.environment_id
 WHERE work.sessions_token_hash = $1
+  AND (work.expires_at IS NULL OR work.expires_at > $2 OR (work.state = 'stopped' AND work.result->>'status' IN ('succeeded','failed')))
   AND (
+      (work.work_type = 'healthcheck' AND work.state = 'stopped' AND work.result->>'status' IN ('succeeded','failed') AND work.stopped_at > $2::timestamptz - interval '30 seconds') OR
       (work.state = 'starting' AND
        work.acknowledged_at >= $2::timestamptz - make_interval(secs => work.ttl_seconds)) OR
       (work.state = 'active' AND
@@ -94,13 +96,16 @@ WHERE work.sessions_token_hash = $1
       (work.state = 'stopping' AND
        work.stop_requested_at >= $2::timestamptz - make_interval(secs => work.ttl_seconds))
   )`, digest, s.clock.Now().UTC()).Scan(
-		&workspaceID, &scope.EnvironmentID, &scope.WorkID, &scope.SessionID,
+		&workspaceID, &scope.EnvironmentID, &scope.WorkID, &scope.SessionID, &scope.ResultOnly,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", workspace.SessionScope{}, workspace.ErrInvalidSessionToken
 	}
 	if err != nil {
 		return "", workspace.SessionScope{}, fmt.Errorf("pg: authenticate session token: %w", err)
+	}
+	if scope.SessionID == "" {
+		return workspaceID, scope, nil
 	}
 	rows, err := s.pool.Query(ctx, `
 SELECT skill_id, skill_version
@@ -190,17 +195,23 @@ func scanEnvironmentWork(row workScanner) (domain.EnvironmentWork, error) {
 		heartbeat  *time.Time
 		requested  *time.Time
 		stopped    *time.Time
+		result     []byte
 	)
 	err := row.Scan(
 		&work.ID, &work.EnvironmentID, &work.SessionID, &state, &metadata,
 		&work.CreatedAt, &ack, &start, &heartbeat, &work.TTLSeconds,
-		&requested, &stopped,
+		&requested, &stopped, &work.Type, &work.ExpiresAt, &result,
 	)
 	if err != nil {
 		return domain.EnvironmentWork{}, err
 	}
 	if err := json.Unmarshal(metadata, &work.Metadata); err != nil {
 		return domain.EnvironmentWork{}, err
+	}
+	if result != nil {
+		if err := json.Unmarshal(result, &work.Result); err != nil {
+			return domain.EnvironmentWork{}, err
+		}
 	}
 	work.State = domain.EnvironmentWorkState(state)
 	work.CreatedAt = work.CreatedAt.UTC()
@@ -209,6 +220,7 @@ func scanEnvironmentWork(row workScanner) (domain.EnvironmentWork, error) {
 	work.LatestHeartbeatAt = utcTimePtr(heartbeat)
 	work.StopRequestedAt = utcTimePtr(requested)
 	work.StoppedAt = utcTimePtr(stopped)
+	work.ExpiresAt = utcTimePtr(work.ExpiresAt)
 	return work, nil
 }
 
@@ -217,6 +229,9 @@ func (r *EnvironmentWorkRepository) GetWork(
 	environmentID, workID string,
 ) (domain.EnvironmentWork, error) {
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
+		return domain.EnvironmentWork{}, err
+	}
+	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
 		return domain.EnvironmentWork{}, err
 	}
 	work, err := scanEnvironmentWork(r.store.pool.QueryRow(ctx,
@@ -234,6 +249,9 @@ func (r *EnvironmentWorkRepository) UpdateWorkMetadata(
 	patch map[string]*string,
 ) (domain.EnvironmentWork, error) {
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
+		return domain.EnvironmentWork{}, err
+	}
+	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
 		return domain.EnvironmentWork{}, err
 	}
 	var result domain.EnvironmentWork
@@ -279,6 +297,9 @@ func (r *EnvironmentWorkRepository) ListWork(
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
 		return app.EnvironmentWorkListPage{}, err
 	}
+	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
+		return app.EnvironmentWorkListPage{}, err
+	}
 	clauses := []string{"environment_id = $1"}
 	args := []any{environmentID}
 	if query.After != nil {
@@ -322,6 +343,9 @@ func (r *EnvironmentWorkRepository) PollWork(
 	input app.EnvironmentWorkPollInput,
 ) (*domain.EnvironmentWork, error) {
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
+		return nil, err
+	}
+	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
 		return nil, err
 	}
 	var result *domain.EnvironmentWork
@@ -394,6 +418,11 @@ RETURNING `+environmentWorkTargetColumns,
 		if err != nil {
 			return err
 		}
+		if expired, err := expireHealthcheckLocked(ctx, tx, &work, r.store.clock.Now().UTC()); err != nil {
+			return err
+		} else if expired {
+			return nil
+		}
 		work.Secret = secret
 		result = &work
 		return nil
@@ -408,8 +437,12 @@ func (r *EnvironmentWorkRepository) AckWork(
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
 		return domain.EnvironmentWork{}, err
 	}
+	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
+		return domain.EnvironmentWork{}, err
+	}
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
 	var result domain.EnvironmentWork
+	var acknowledgementErr error
 	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
 		if err := r.store.authorizeEnvironmentKeyTx(ctx, tx, environmentID); err != nil {
 			return err
@@ -425,6 +458,13 @@ WHERE environment_id = $1 AND id = $2 FOR UPDATE`, environmentID, workID))
 		}
 		if err != nil {
 			return err
+		}
+		now = r.store.clock.Now().UTC().Truncate(time.Microsecond)
+		if expired, err := expireHealthcheckLocked(ctx, tx, &work, now); err != nil {
+			return err
+		} else if expired {
+			acknowledgementErr = domain.Conflict("healthcheck deadline has expired")
+			return nil
 		}
 		switch work.State {
 		case domain.EnvironmentWorkQueued:
@@ -448,6 +488,9 @@ RETURNING `+environmentWorkColumns, environmentID, workID, now))
 		result = work
 		return nil
 	})
+	if err == nil {
+		err = acknowledgementErr
+	}
 	return result, err
 }
 
@@ -460,12 +503,28 @@ func (r *EnvironmentWorkRepository) HeartbeatWork(
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
 		return domain.EnvironmentWorkHeartbeat{}, err
 	}
+	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
+		return domain.EnvironmentWorkHeartbeat{}, err
+	}
 	var response domain.EnvironmentWorkHeartbeat
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
 	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
 		work, err := r.workForUpdate(ctx, tx, environmentID, workID)
 		if err != nil {
 			return err
+		}
+		now = r.store.clock.Now().UTC().Truncate(time.Microsecond)
+		expired, err := expireHealthcheckLocked(ctx, tx, &work, now)
+		if err != nil {
+			return err
+		}
+		if expired {
+			last := now
+			if work.LatestHeartbeatAt != nil {
+				last = *work.LatestHeartbeatAt
+			}
+			response = domain.EnvironmentWorkHeartbeat{LastHeartbeat: last, State: domain.EnvironmentWorkStopped, TTLSeconds: work.TTLSeconds, LeaseExtended: false}
+			return nil
 		}
 		requestScope, _ := workspace.FromContext(ctx)
 		if requestScope.Session != nil && environmentWorkLeaseExpired(work, now) {
@@ -524,15 +583,34 @@ func (r *EnvironmentWorkRepository) StopWork(
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
 		return err
 	}
+	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
+		return err
+	}
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
 	return r.store.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
 		work, err := r.workForUpdate(ctx, tx, environmentID, workID)
 		if err != nil {
 			return err
 		}
+		now = r.store.clock.Now().UTC().Truncate(time.Microsecond)
+		expired, err := expireHealthcheckLocked(ctx, tx, &work, now)
+		if err != nil {
+			return err
+		}
+		if expired {
+			return nil
+		}
 		requestScope, _ := workspace.FromContext(ctx)
 		if requestScope.Session != nil && environmentWorkLeaseExpired(work, now) {
 			return domain.Precondition("work lease has expired")
+		}
+		if work.Type == "healthcheck" {
+			if work.State == domain.EnvironmentWorkStopped {
+				return domain.Conflict("work item is already stopped")
+			}
+			_, err := tx.Exec(ctx, `UPDATE environment_work SET state='stopped', stopped_at=$3, stop_requested_at=$3,
+                result='{"status":"cancelled","message":"Healthcheck cancelled"}'::jsonb WHERE environment_id=$1 AND id=$2`, environmentID, workID, now)
+			return err
 		}
 		var activationSeq int64
 		if err := tx.QueryRow(ctx, `SELECT activation_seq FROM environment_work
@@ -596,7 +674,17 @@ func (r *EnvironmentWorkRepository) FailWork(
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
 		return err
 	}
+	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
+		return err
+	}
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
+	current, err := r.GetWork(ctx, environmentID, workID)
+	if err != nil {
+		return err
+	}
+	if current.Type == "healthcheck" {
+		return domain.Validation("healthchecks report failure through result")
+	}
 	return r.store.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
 		var sessionID string
 		if err := tx.QueryRow(ctx, `
@@ -779,6 +867,9 @@ func (r *EnvironmentWorkRepository) WorkStats(
 	environmentID string,
 ) (domain.EnvironmentWorkQueueStats, error) {
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
+		return domain.EnvironmentWorkQueueStats{}, err
+	}
+	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
 		return domain.EnvironmentWorkQueueStats{}, err
 	}
 	var (

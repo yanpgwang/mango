@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -383,7 +384,7 @@ func acknowledgedWork() mango.EnvironmentWork {
 	secret := workSecret
 	return mango.EnvironmentWork{
 		ID: "work_test", EnvironmentID: "env_test", State: mango.EnvironmentWorkStateStarting,
-		Data: mango.EnvironmentWorkData{Type: "session", ID: "sesn_test"}, Secret: &secret,
+		Data: mango.EnvironmentWorkData{SessionWorkData: &mango.SessionWorkData{Type: "session", ID: "sesn_test"}}, Secret: &secret,
 	}
 }
 
@@ -398,7 +399,7 @@ func workFixture(state, secret string) map[string]any {
 		"state": state, "metadata": map[string]string{}, "secret": secretValue,
 		"created_at": "2026-09-04T00:00:00Z", "acknowledged_at": nil,
 		"started_at": nil, "latest_heartbeat_at": nil,
-		"stop_requested_at": nil, "stopped_at": nil,
+		"stop_requested_at": nil, "stopped_at": nil, "expires_at": nil, "result": nil,
 	}
 }
 
@@ -531,7 +532,7 @@ func inspectResultForWork(id string, work mango.EnvironmentWork, running bool) c
 		ID: id,
 		Config: &container.Config{Labels: map[string]string{
 			dockerManagedLabel: "true", dockerWorkIDLabel: work.ID,
-			dockerSessionIDLabel: work.Data.ID, dockerEnvironmentLabel: work.EnvironmentID,
+			dockerSessionIDLabel: work.Data.SessionWorkData.ID, dockerEnvironmentLabel: work.EnvironmentID,
 		}},
 		State: &container.State{Running: running},
 	}}
@@ -557,7 +558,7 @@ func TestDockerLauncherWorkspaceRoot(t *testing.T) {
 	if err := launcher.runItem(context.Background(), work); err != nil {
 		t.Fatal(err)
 	}
-	work.Data.ID += "_other"
+	work.Data.SessionWorkData.ID += "_other"
 	if err := launcher.runItem(context.Background(), work); err != nil {
 		t.Fatal(err)
 	}
@@ -581,5 +582,84 @@ func TestDockerLauncherWorkspaceRoot(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("accepted a relative workspace root")
+	}
+}
+
+func TestDockerLauncherHealthcheckUsesEphemeralWorkspace(t *testing.T) {
+	engine := newFakeDockerEngine()
+	supervisor, err := mango.New(mango.Config{BaseURL: "http://localhost:8080", APIKey: "supervisor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	launcher, err := NewDockerLauncher(engine, DockerLauncherOptions{Client: supervisor, EnvironmentID: "env_test", SandboxBaseURL: "http://host.docker.internal:8080", WorkspaceRoot: "/operator/session-data"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := acknowledgedWork()
+	work.Data = mango.EnvironmentWorkData{HealthcheckWorkData: &mango.HealthcheckWorkData{Type: "healthcheck"}}
+	if err := launcher.runItem(context.Background(), work); err != nil {
+		t.Fatal(err)
+	}
+	created := engine.created[0]
+	if len(created.HostConfig.Mounts) != 0 || created.HostConfig.Tmpfs["/workspace"] == "" {
+		t.Fatalf("healthcheck workspace leaked persistence: %+v", created.HostConfig)
+	}
+	if created.Config.StopTimeout == nil || *created.Config.StopTimeout != 0 {
+		t.Fatalf("healthcheck has unbounded cancellation grace: %+v", created.Config.StopTimeout)
+	}
+	if !strings.Contains(strings.Join(created.Config.Env, "\n"), "MANGO_WORK_TYPE=healthcheck") {
+		t.Fatal("missing healthcheck type")
+	}
+}
+
+type healthcheckCancelEngine struct {
+	*fakeDockerEngine
+	cancel        context.CancelFunc
+	cancelOnStart bool
+}
+
+func (e *healthcheckCancelEngine) ContainerStart(ctx context.Context, id string, opts client.ContainerStartOptions) (client.ContainerStartResult, error) {
+	result, err := e.fakeDockerEngine.ContainerStart(ctx, id, opts)
+	if e.cancelOnStart {
+		e.cancel()
+	}
+	return result, err
+}
+func (e *healthcheckCancelEngine) ContainerWait(ctx context.Context, id string, opts client.ContainerWaitOptions) client.ContainerWaitResult {
+	result := e.fakeDockerEngine.ContainerWait(ctx, id, opts)
+	if !e.cancelOnStart {
+		e.cancel()
+	}
+	return result
+}
+func TestDockerHealthcheckCancellationNeverGrantsLateExecutionOrSessionGrace(t *testing.T) {
+	for _, atStart := range []bool{true, false} {
+		t.Run(fmt.Sprintf("during_start_%v", atStart), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			engine := &healthcheckCancelEngine{fakeDockerEngine: newFakeDockerEngine(), cancel: cancel, cancelOnStart: atStart}
+			engine.waitImmediately = false
+			supervisor, _ := mango.New(mango.Config{BaseURL: "http://mango.invalid", APIKey: "supervisor"})
+			launcher, err := NewDockerLauncher(engine, DockerLauncherOptions{Client: supervisor, EnvironmentID: "env_test", SandboxBaseURL: "http://mango.invalid"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			work := acknowledgedWork()
+			work.Data = mango.EnvironmentWorkData{HealthcheckWorkData: &mango.HealthcheckWorkData{Type: "healthcheck"}}
+			err = launcher.runItem(ctx, work)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				t.Fatal(err)
+			}
+			encoded := <-engine.attachedInput
+			if atStart && len(encoded) != 0 {
+				t.Fatal("healthcheck received execution credential after attempt cancellation")
+			}
+			if !atStart && (engine.stopTimeout != 0 || engine.stopRequestBudget > 15*time.Second) {
+				t.Fatalf("healthcheck cancellation stop grace=%d budget=%s", engine.stopTimeout, engine.stopRequestBudget)
+			}
+			if engine.removeCalls != 1 {
+				t.Fatalf("remove calls=%d", engine.removeCalls)
+			}
+		})
 	}
 }

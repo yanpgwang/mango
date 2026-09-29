@@ -265,6 +265,47 @@ paths:
         '200': {$ref: '#/components/responses/EnvironmentWorkListResponse'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      operationId: createEnvironmentHealthcheck
+      x-sdk-resource: environments.work
+      x-sdk-method: create
+      tags: [Environment Work]
+      summary: Queue a bounded self-hosted execution healthcheck
+      description: Workspace credentials only. Creates no Session or model request. Each POST creates a new check; the fixed deadline is 120 seconds after creation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnvironmentWorkCreateRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/EnvironmentWorkResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '403': {$ref: '#/components/responses/PermissionError'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /v1/environments/{environment_id}/work/{work_id}/result:
+    parameters:
+      - $ref: '#/components/parameters/EnvironmentID'
+      - $ref: '#/components/parameters/EnvironmentWorkID'
+    post:
+      operationId: completeEnvironmentHealthcheck
+      x-sdk-resource: environments.work
+      x-sdk-method: complete
+      tags: [Environment Work]
+      summary: Commit a healthcheck execution result
+      description: Only the current active per-Work credential may complete a check. The immutable result stops Work atomically. Identical result retries are accepted for 30 seconds after completion; conflicting retries return 409. Expired or reclaimed credentials are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnvironmentWorkResultRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/EnvironmentWorkResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationError'}
+        '403': {$ref: '#/components/responses/PermissionError'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
   /v1/environments/{environment_id}/work/poll:
     parameters:
       - $ref: '#/components/parameters/EnvironmentID'
@@ -2769,6 +2810,13 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    PermissionError:
+      description: Credential does not authorize this operation
+      headers:
+        request-id: {$ref: '#/components/headers/RequestID'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     AuthenticationError:
       description: Missing or invalid bearer credential
       headers:
@@ -4323,17 +4371,51 @@ components:
       type: string
       enum: [queued, starting, active, stopping, stopped]
     EnvironmentWorkData:
+      oneOf:
+        - $ref: '#/components/schemas/SessionWorkData'
+        - $ref: '#/components/schemas/HealthcheckWorkData'
+      discriminator:
+        propertyName: type
+    SessionWorkData:
       type: object
       additionalProperties: false
       required: [id, type]
       properties:
         id: {type: string, pattern: '^sesn_'}
         type: {type: string, const: session}
+    HealthcheckWorkData:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, const: healthcheck}
+    EnvironmentWorkCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: {$ref: '#/components/schemas/HealthcheckWorkData'}
+    EnvironmentWorkResultRequest:
+      type: object
+      additionalProperties: false
+      required: [status, message]
+      properties:
+        status: {type: string, enum: [succeeded, failed]}
+        message: {type: string, minLength: 1, maxLength: 1024}
+    EnvironmentWorkResult:
+      type: object
+      additionalProperties: false
+      required: [status, message]
+      properties:
+        status: {type: string, enum: [succeeded, failed, timed_out, cancelled]}
+        message: {type: string, minLength: 1, maxLength: 1024}
     EnvironmentWork:
       type: object
       additionalProperties: false
       required:
         - id
+        - expires_at
+        - result
         - acknowledged_at
         - created_at
         - data
@@ -4351,6 +4433,15 @@ components:
         type: {type: string, const: work}
         environment_id: {type: string, pattern: '^env_'}
         data: {$ref: '#/components/schemas/EnvironmentWorkData'}
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Healthchecks expire 120 seconds after creation; Session Work has null expiry. Expiry is reconciled when Work is read or operated on, not by a background timer.
+        result:
+          oneOf:
+            - $ref: '#/components/schemas/EnvironmentWorkResult'
+            - {type: 'null'}
+          description: Immutable healthcheck terminal result; null for Session Work or unfinished checks.
         state: {$ref: '#/components/schemas/EnvironmentWorkState'}
         metadata:
           type: object
