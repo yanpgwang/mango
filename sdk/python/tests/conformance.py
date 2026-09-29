@@ -32,6 +32,13 @@ def main() -> None:
         try:
             environment = client.environments.create(name="python-sdk-conformance", config={"type": "self_hosted"})
             environment_id = environment["id"]
+            check = client.environments.work.create(environment_id, data={"type": "healthcheck"})
+            assert check["data"] == {"type": "healthcheck"}
+            assert check["expires_at"] is not None and check["result"] is None
+            done = client.environments.work.complete(environment_id, check["id"], status="failed", message="conformance diagnostic")
+            assert done["result"] == {"status": "failed", "message": "conformance diagnostic"}
+            checks = client.environments.work.list(environment_id)
+            assert checks["data"][0]["data"] == {"type": "healthcheck"}
             for suffix in ("one", "two"):
                 agent = client.agents.create(name="python-sdk-" + suffix, model="sdk-conformance", tools=[{
                         "type": "custom", "name": "lookup", "description": "Look up a record",

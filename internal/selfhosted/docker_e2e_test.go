@@ -52,14 +52,14 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 	work := acknowledgedWork()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	work.ID += "_" + suffix
-	work.Data.ID += "_" + suffix
+	work.Data.SessionWorkData.ID += "_" + suffix
 	second := work
 	second.ID += "_resume"
 	works := []mango.EnvironmentWork{work, second}
 	workspaceRoot := ""
 	if bindWorkspace {
 		workspaceRoot = t.TempDir()
-		workspace := filepath.Join(workspaceRoot, work.Data.ID)
+		workspace := filepath.Join(workspaceRoot, work.Data.SessionWorkData.ID)
 		if err := os.Mkdir(workspace, 0755); err != nil {
 			t.Fatal(err)
 		}
@@ -114,10 +114,10 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 				"type": "work_heartbeat", "last_heartbeat": "2026-09-04T00:00:01Z",
 				"lease_extended": true, "state": "active", "ttl_seconds": 1,
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions/"+work.Data.ID:
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions/"+work.Data.SessionWorkData.ID:
 			assertItemAuthorization(t, r)
 			writeJSON(t, w, map[string]any{
-				"id": work.Data.ID,
+				"id": work.Data.SessionWorkData.ID,
 				"agent": map[string]any{
 					"id": "agent_docker", "version": 1,
 					"skills": []any{map[string]any{
@@ -331,7 +331,7 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 		}
 	}
 
-	volume := dockerSessionVolume(work.Data.ID)
+	volume := dockerSessionVolume(work.Data.SessionWorkData.ID)
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -357,7 +357,7 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 	assertContainerRemoved(t, engine, dockerWorkName(work.ID))
 	assertContainerRemoved(t, engine, dockerWorkName(second.ID))
 	if bindWorkspace {
-		proof, err := os.ReadFile(filepath.Join(workspaceRoot, work.Data.ID, "proof.txt"))
+		proof, err := os.ReadFile(filepath.Join(workspaceRoot, work.Data.SessionWorkData.ID, "proof.txt"))
 		if err != nil || string(proof) != "docker-e2e" {
 			t.Fatalf("operator output = %q, %v", proof, err)
 		}
@@ -492,8 +492,8 @@ func TestDockerLauncherCancellationPostsToolErrorBeforeStop(t *testing.T) {
 	work := acknowledgedWork()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	work.ID += "_cancel_" + suffix
-	work.Data.ID += "_cancel_" + suffix
-	volume := dockerSessionVolume(work.Data.ID)
+	work.Data.SessionWorkData.ID += "_cancel_" + suffix
+	volume := dockerSessionVolume(work.Data.SessionWorkData.ID)
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -558,11 +558,11 @@ func dockerWorkFixture(work mango.EnvironmentWork, state string, includeSecret b
 	}
 	return map[string]any{
 		"id": work.ID, "type": "work", "environment_id": work.EnvironmentID,
-		"data":  map[string]any{"type": "session", "id": work.Data.ID},
+		"data":  map[string]any{"type": "session", "id": work.Data.SessionWorkData.ID},
 		"state": state, "metadata": map[string]string{}, "secret": secret,
 		"created_at": "2026-09-04T00:00:00Z", "acknowledged_at": nil,
 		"started_at": nil, "latest_heartbeat_at": nil,
-		"stop_requested_at": nil, "stopped_at": nil,
+		"stop_requested_at": nil, "stopped_at": nil, "expires_at": nil, "result": nil,
 	}
 }
 

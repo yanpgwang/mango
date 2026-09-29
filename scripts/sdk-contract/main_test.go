@@ -33,8 +33,8 @@ func TestRepositoryOperationsAreComplete(t *testing.T) {
 			t.Fatalf("protected operation %s became public", op.ID)
 		}
 	}
-	if len(ops) != 95 {
-		t.Fatalf("operations = %d, expected 95; review SDK coverage when adding routes", len(ops))
+	if len(ops) != 97 {
+		t.Fatalf("operations = %d, expected 97; review SDK coverage when adding routes", len(ops))
 	}
 	for _, id := range []string{
 		"createSessionResource", "getSessionResource", "listSessionResources", "deleteSessionResource",

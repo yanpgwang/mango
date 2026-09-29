@@ -415,9 +415,11 @@ class EnvironmentWork(TypedDict, total=False):
     created_at: Required[str]
     data: Required['EnvironmentWorkData']
     environment_id: Required[str]
+    expires_at: Required[Union[str, None]]
     id: Required[str]
     latest_heartbeat_at: Required['NullableTimestamp']
     metadata: Required[Dict[str, str]]
+    result: Required[Union['EnvironmentWorkResult', None]]
     secret: Required[Union[str, None]]
     started_at: Required['NullableTimestamp']
     state: Required['EnvironmentWorkState']
@@ -426,9 +428,11 @@ class EnvironmentWork(TypedDict, total=False):
     type: Required[Literal['work']]
 
 
-class EnvironmentWorkData(TypedDict, total=False):
-    id: Required[str]
-    type: Required[Literal['session']]
+class EnvironmentWorkCreateRequest(TypedDict, total=False):
+    data: Required['HealthcheckWorkData']
+
+
+EnvironmentWorkData: TypeAlias = Union['SessionWorkData', 'HealthcheckWorkData']
 
 
 class EnvironmentWorkFailureRequest(TypedDict, total=False):
@@ -454,6 +458,16 @@ class EnvironmentWorkQueueStats(TypedDict, total=False):
     pending: Required[int]
     type: Required[Literal['work_queue_stats']]
     workers_polling: Required[int]
+
+
+class EnvironmentWorkResult(TypedDict, total=False):
+    message: Required[str]
+    status: Required[Literal['succeeded', 'failed', 'timed_out', 'cancelled']]
+
+
+class EnvironmentWorkResultRequest(TypedDict, total=False):
+    message: Required[str]
+    status: Required[Literal['succeeded', 'failed']]
 
 
 EnvironmentWorkState: TypeAlias = Literal['queued', 'starting', 'active', 'stopping', 'stopped']
@@ -539,6 +553,10 @@ class FileRubric(TypedDict, total=False):
 
 class FileUploadRequest(TypedDict, total=False):
     file: Required[Upload]
+
+
+class HealthcheckWorkData(TypedDict, total=False):
+    type: Required[Literal['healthcheck']]
 
 
 class ImageBlockInput(TypedDict, total=False):
@@ -1248,6 +1266,11 @@ class SessionUsageSnapshot(TypedDict, total=False):
     server_tool_use: Required['SessionUsageSnapshotServerToolUse']
 
 
+class SessionWorkData(TypedDict, total=False):
+    id: Required[str]
+    type: Required[Literal['session']]
+
+
 class SkillDeleted(TypedDict, total=False):
     id: Required[str]
     type: Required[Literal['skill_deleted']]
@@ -1778,11 +1801,14 @@ __all__ = ['Agent',
  'EnvironmentVariableCredentialUpdate',
  'EnvironmentVariableCredentialUpdateInjectionLocation',
  'EnvironmentWork',
+ 'EnvironmentWorkCreateRequest',
  'EnvironmentWorkData',
  'EnvironmentWorkFailureRequest',
  'EnvironmentWorkHeartbeat',
  'EnvironmentWorkList',
  'EnvironmentWorkQueueStats',
+ 'EnvironmentWorkResult',
+ 'EnvironmentWorkResultRequest',
  'EnvironmentWorkState',
  'EnvironmentWorkStopRequest',
  'EnvironmentWorkUpdateRequest',
@@ -1801,6 +1827,7 @@ __all__ = ['Agent',
  'FileList',
  'FileRubric',
  'FileUploadRequest',
+ 'HealthcheckWorkData',
  'ImageBlockInput',
  'ImageSourceInput',
  'InitialEvent',
@@ -1929,6 +1956,7 @@ __all__ = ['Agent',
  'SessionUsageSnapshot',
  'SessionUsageSnapshotCacheCreation',
  'SessionUsageSnapshotServerToolUse',
+ 'SessionWorkData',
  'SkillDeleted',
  'SkillList',
  'SkillReferenceInput',

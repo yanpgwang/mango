@@ -128,6 +128,16 @@ func sessionScopeAllows(r *http.Request, scope workspace.SessionScope) bool {
 	if len(parts) < 3 || parts[0] != "v1" {
 		return false
 	}
+	if scope.SessionID == "" {
+		ownWork := len(parts) >= 5 && parts[1] == "environments" && parts[2] == scope.EnvironmentID && parts[3] == "work" && parts[4] == scope.WorkID
+		if !ownWork {
+			return false
+		}
+		if len(parts) != 6 || r.Method != http.MethodPost {
+			return false
+		}
+		return parts[5] == "result" || (!scope.ResultOnly && (parts[5] == "heartbeat" || parts[5] == "stop"))
+	}
 	if len(parts) == 6 && parts[1] == "environments" &&
 		parts[2] == scope.EnvironmentID && parts[3] == "work" && parts[4] == scope.WorkID &&
 		r.Method == http.MethodPost {

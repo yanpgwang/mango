@@ -46,6 +46,9 @@ type EnvironmentScope struct {
 // item. HTTP authorization further limits it to that Work's lease operations,
 // Session execution APIs, and immutable inputs attached to the Session.
 type SessionScope struct {
+	// ResultOnly is the brief terminal healthcheck replay grant. It never
+	// authorizes lease renewal or Session execution.
+	ResultOnly    bool
 	EnvironmentID string
 	WorkID        string
 	SessionID     string

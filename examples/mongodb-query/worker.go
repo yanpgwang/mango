@@ -94,6 +94,6 @@ func runWorker(ctx context.Context) error {
 	})
 	return worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{
 		WorkID: work.ID, EnvironmentID: work.EnvironmentID,
-		SessionID: work.Data.ID, WorkSecret: *work.Secret,
+		WorkType: work.Data.WorkType(), SessionID: work.Data.SessionID(), WorkSecret: *work.Secret,
 	})
 }

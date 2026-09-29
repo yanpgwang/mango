@@ -1132,6 +1132,21 @@
           }
         }
       },
+      "PermissionError": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Credential does not authorize this operation",
+        "headers": {
+          "request-id": {
+            "$ref": "#/components/headers/RequestID"
+          }
+        }
+      },
       "PreconditionFailed": {
         "content": {
           "application/json": {
@@ -3518,6 +3533,14 @@
             "pattern": "^env_",
             "type": "string"
           },
+          "expires_at": {
+            "description": "Healthchecks expire 120 seconds after creation; Session Work has null expiry. Expiry is reconciled when Work is read or operated on, not by a background timer.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "pattern": "^work_",
             "type": "string"
@@ -3530,6 +3553,17 @@
               "type": "string"
             },
             "type": "object"
+          },
+          "result": {
+            "description": "Immutable healthcheck terminal result; null for Session Work or unfinished checks.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentWorkResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "secret": {
             "description": "Base64url credential payload returned only by Poll; null on every other retrieval path.",
@@ -3557,6 +3591,8 @@
         },
         "required": [
           "id",
+          "expires_at",
+          "result",
           "acknowledged_at",
           "created_at",
           "data",
@@ -3572,23 +3608,30 @@
         ],
         "type": "object"
       },
-      "EnvironmentWorkData": {
+      "EnvironmentWorkCreateRequest": {
         "additionalProperties": false,
         "properties": {
-          "id": {
-            "pattern": "^sesn_",
-            "type": "string"
-          },
-          "type": {
-            "const": "session",
-            "type": "string"
+          "data": {
+            "$ref": "#/components/schemas/HealthcheckWorkData"
           }
         },
         "required": [
-          "id",
-          "type"
+          "data"
         ],
         "type": "object"
+      },
+      "EnvironmentWorkData": {
+        "discriminator": {
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SessionWorkData"
+          },
+          {
+            "$ref": "#/components/schemas/HealthcheckWorkData"
+          }
+        ]
       },
       "EnvironmentWorkFailureRequest": {
         "additionalProperties": false,
@@ -3683,6 +3726,52 @@
           "pending",
           "type",
           "workers_polling"
+        ],
+        "type": "object"
+      },
+      "EnvironmentWorkResult": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "succeeded",
+              "failed",
+              "timed_out",
+              "cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "type": "object"
+      },
+      "EnvironmentWorkResultRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
         ],
         "type": "object"
       },
@@ -4037,6 +4126,19 @@
         },
         "required": [
           "file"
+        ],
+        "type": "object"
+      },
+      "HealthcheckWorkData": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "healthcheck",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
         ],
         "type": "object"
       },
@@ -7062,6 +7164,24 @@
         ],
         "description": "Budget-event usage snapshot; list cost is always measurable and non-null."
       },
+      "SessionWorkData": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^sesn_",
+            "type": "string"
+          },
+          "type": {
+            "const": "session",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "type": "object"
+      },
       "SkillDeleted": {
         "additionalProperties": false,
         "properties": {
@@ -9392,7 +9512,41 @@
         {
           "$ref": "#/components/parameters/EnvironmentID"
         }
-      ]
+      ],
+      "post": {
+        "description": "Workspace credentials only. Creates no Session or model request. Each POST creates a new check; the fixed deadline is 120 seconds after creation.",
+        "operationId": "createEnvironmentHealthcheck",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentWorkCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/EnvironmentWorkResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/PermissionError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Queue a bounded self-hosted execution healthcheck",
+        "tags": [
+          "Environment Work"
+        ],
+        "x-sdk-method": "create",
+        "x-sdk-resource": "environments.work"
+      }
     },
     "/v1/environments/{environment_id}/work/poll": {
       "get": {
@@ -9649,6 +9803,59 @@
           "Environment Work"
         ],
         "x-sdk-method": "heartbeat",
+        "x-sdk-resource": "environments.work"
+      }
+    },
+    "/v1/environments/{environment_id}/work/{work_id}/result": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/EnvironmentID"
+        },
+        {
+          "$ref": "#/components/parameters/EnvironmentWorkID"
+        }
+      ],
+      "post": {
+        "description": "Only the current active per-Work credential may complete a check. The immutable result stops Work atomically. Identical result retries are accepted for 30 seconds after completion; conflicting retries return 409. Expired or reclaimed credentials are rejected.",
+        "operationId": "completeEnvironmentHealthcheck",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentWorkResultRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EnvironmentWorkResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/PermissionError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        },
+        "summary": "Commit a healthcheck execution result",
+        "tags": [
+          "Environment Work"
+        ],
+        "x-sdk-method": "complete",
         "x-sdk-resource": "environments.work"
       }
     },
