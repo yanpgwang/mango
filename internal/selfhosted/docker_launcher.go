@@ -43,7 +43,7 @@ const (
 )
 
 // DockerLauncherOptions configure a trusted host-side queue consumer. Client
-// carries the Workspace credential and is used only by WorkPoller. The launcher
+// carries the Environment credential and is used only by WorkPoller. The launcher
 // passes the per-item Work secret, never that client credential, into Docker.
 type DockerLauncherOptions struct {
 	Client         *mango.Client

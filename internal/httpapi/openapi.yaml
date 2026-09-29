@@ -278,7 +278,10 @@ paths:
         - $ref: '#/components/parameters/EnvironmentWorkBlockMs'
         - $ref: '#/components/parameters/EnvironmentWorkReclaimMs'
         - $ref: '#/components/parameters/EnvironmentWorkerID'
+      description: An Environment key may poll only its bound Environment. Every claim and long-poll retry revalidates the key transactionally; revocation fences further claims.
       responses:
+        '401': {$ref: '#/components/responses/AuthenticationError'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '200': {$ref: '#/components/responses/EnvironmentWorkPollResponse'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -291,7 +294,10 @@ paths:
       x-sdk-method: stats
       tags: [Environment Work]
       summary: Get Environment Work queue statistics
+      description: An Environment key may read these aggregate queue statistics only for its bound Environment.
       responses:
+        '401': {$ref: '#/components/responses/AuthenticationError'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '200': {$ref: '#/components/responses/EnvironmentWorkStatsResponse'}
         '404': {$ref: '#/components/responses/NotFound'}
   /v1/environments/{environment_id}/work/{work_id}:
@@ -332,7 +338,10 @@ paths:
       x-sdk-method: ack
       tags: [Environment Work]
       summary: Acknowledge a polled Work item and transition it to starting
+      description: An Environment key may acknowledge only Work in its bound Environment. Revocation fences further Acks; already-acknowledged Work retains its independent per-Work lease.
       responses:
+        '401': {$ref: '#/components/responses/AuthenticationError'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '200': {$ref: '#/components/responses/EnvironmentWorkResponse'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
@@ -1773,7 +1782,8 @@ components:
       type: http
       scheme: bearer
       description: >-
-        Workspace API key, or the per-Work sessions_token on the limited
+        Workspace API key, an Environment key restricted to Poll, Ack, and Stats
+        on its bound Environment, or the per-Work sessions_token on the limited
         self-hosted execution routes authorized for that claim. The latter can
         read attached Memory Stores and mutate only read_write attachments while
         its Work lease remains live.

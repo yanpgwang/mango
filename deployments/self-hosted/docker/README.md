@@ -2,7 +2,7 @@
 
 This is Mango's first reference launcher for a `self_hosted` Environment. The
 trusted host process polls and acknowledges Environment Work with
-`MANGO_API_KEY`; each acknowledged item runs in a separate Docker container
+`MANGO_ENVIRONMENT_KEY`; each acknowledged item runs in a separate Docker container
 with only its short-lived Work credential.
 
 Build the sandbox image from the repository root:
@@ -14,12 +14,13 @@ docker build \
   .
 ```
 
-Run the host supervisor:
+Issue an Environment key with `mango api-key create -workspace ID -environment ID
+-label LABEL` on the operator host, then run the host supervisor:
 
 ```sh
 export MANGO_BASE_URL=http://localhost:8080
 export MANGO_DOCKER_BASE_URL=http://host.docker.internal:8080
-export MANGO_API_KEY=replace-with-a-workspace-key
+export MANGO_ENVIRONMENT_KEY=replace-with-an-environment-key
 export MANGO_ENVIRONMENT_ID=env_replace_me
 
 go run ./cmd/mango-worker docker
@@ -46,7 +47,7 @@ examples:
 
 Mango makes CMA's narrower per-Session credential path mandatory rather than
 retaining the SDK's Environment-key fallback or the Docker cookbook script's
-broader handoff. The Workspace key is never placed in the container. The Work
+broader handoff. The Environment key is never placed in the container. The Work
 secret is length-framed over an attached stdin stream, decoded only by that item
 process, and absent from the container environment, command, labels, and volume.
 The item process becomes non-dumpable before reading the secret; together with

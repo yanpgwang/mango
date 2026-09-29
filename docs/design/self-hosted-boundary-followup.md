@@ -69,13 +69,10 @@ the old 15-second kill deadline and verifies renewal, persistence, and cleanup.
 These are proposed work items, not current capabilities or an automatic CMA
 parity backlog. Select and design one slice before implementation.
 
-1. **Limit supervisor credentials to one Environment.** Operators should not
-   need a Workspace application key on a polling host. Define issuance,
-   revocation, and rotation for an Environment-scoped poll/Ack credential.
-   Acceptance: it cannot read Files, Vaults, or unrelated Sessions or queues;
-   revocation fences new claims; already-issued Work credentials retain their
-   explicit lease lifecycle. Reuse existing key and Work primitives where they
-   fit. Compare both CMA's public API and SDK before selecting the wire design.
+1. **Environment supervisor credentials — implemented.** The
+   [credential design](environment-credentials.md) records the operator key
+   lifecycle, Poll/Ack/Stats scope, transactional revocation, and independent
+   in-flight Work leases.
 2. **Make worker readiness observable.** An empty queue does not establish that
    a worker can launch, reach Mango, prepare inputs, or renew a lease. Design a
    bounded health-check Work flow with operator-visible results and expiry.

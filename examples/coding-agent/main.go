@@ -273,8 +273,11 @@ func (d *demo) startWorker() error {
 	command := exec.Command(d.worker, "docker", "--environment-id", d.environmentID,
 		"--base-url", d.baseURL, "--sandbox-base-url", d.sandboxURL,
 		"--image", d.image, "--workspace-root", d.root, "--user", d.user, "--max-idle", "1m")
-	// The supervisor needs the application key; no model credentials are needed.
-	for _, key := range []string{"PATH", "HOME", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "MANGO_API_KEY"} {
+	// This trusted demo creates its own Environment and explicitly uses its
+	// application credential for its supervisor. Production supervisors should
+	// receive a scoped Environment key issued by the local operator CLI.
+	command.Env = append(command.Env, "MANGO_ENVIRONMENT_KEY="+os.Getenv("MANGO_API_KEY"))
+	for _, key := range []string{"PATH", "HOME", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"} {
 		if value, ok := os.LookupEnv(key); ok {
 			command.Env = append(command.Env, key+"="+value)
 		}

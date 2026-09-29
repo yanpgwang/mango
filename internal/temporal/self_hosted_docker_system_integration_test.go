@@ -29,6 +29,7 @@ import (
 	"github.com/yanpgwang/mango/internal/pg"
 	"github.com/yanpgwang/mango/internal/selfhosted"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
+	"github.com/yanpgwang/mango/internal/workspace"
 	mango "github.com/yanpgwang/mango/sdk/go"
 	temporalclient "go.temporal.io/sdk/client"
 )
@@ -254,8 +255,10 @@ func newDockerSystemFixture(
 	t.Cleanup(func() { removeDockerSystemVolume(t, fixture.engine, fixture.sessionID) })
 	fixture.launcherParent, fixture.cancelLaunchers = context.WithCancel(ctx)
 	t.Cleanup(fixture.stopLaunchers)
+	_, environmentKey, err := fixture.store.CreateEnvironmentKey(ctx, workspace.DefaultID, fixture.environmentID, "system-test-supervisor")
+	require.NoError(t, err)
 	fixture.supervisor, err = mango.New(mango.Config{
-		BaseURL: fixture.hostBaseURL, APIKey: fixture.workspaceKey,
+		BaseURL: fixture.hostBaseURL, APIKey: environmentKey,
 	})
 	require.NoError(t, err)
 	return fixture
