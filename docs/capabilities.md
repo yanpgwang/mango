@@ -55,6 +55,7 @@ access still depends on the sandbox boundary.
 | [Webhooks](api/webhooks.md) | Limited | Signed Session and Deployment Run lifecycle delivery, with three at-least-once attempts. No delivery-log API or configurable sustained-failure threshold. |
 | [Deployments](api/deployments.md) | Limited | Pinned templates, manual and cron runs, Memory Store templates, budgets, leases, and Run records. Agent-archive propagation remains open. |
 | [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, and permanent-input failure. Environment-scoped polling keys and health-check Work remain open. |
+| [API health](deployment.md#health-probes) | Supported | Public process liveness and bounded PostgreSQL readiness, including read-only rejection and recovery. Does not certify worker execution. |
 | [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. |
 
 ## Product and operational boundaries
