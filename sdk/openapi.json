@@ -8645,6 +8645,7 @@
   "paths": {
     "/healthz": {
       "get": {
+        "description": "Process liveness only; performs no dependency checks.",
         "operationId": "health",
         "responses": {
           "200": {
@@ -8680,10 +8681,26 @@
     },
     "/readyz": {
       "get": {
+        "description": "Checks PostgreSQL connectivity and writable transaction mode within two seconds. Temporal, NATS, and worker execution availability do not gate API request admission. Responses are not cacheable.",
         "operationId": "readiness",
         "responses": {
           "200": {
-            "description": "Ready"
+            "description": "PostgreSQL accepts queries in writable transaction mode"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PostgreSQL unavailable, read-only, timed out, or readiness unconfigured. Uses a sanitized api_error message.",
+            "headers": {
+              "request-id": {
+                "$ref": "#/components/headers/RequestID"
+              }
+            }
           }
         },
         "security": [],

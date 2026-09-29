@@ -159,6 +159,8 @@ type DeploymentService interface {
 }
 
 type Deps struct {
+	// Readiness must honor cancellation; production uses the API PostgreSQL pool.
+	Readiness       func(context.Context) error
 	Agents          AgentService
 	Envs            EnvironmentService
 	Sessions        SessionService
@@ -188,7 +190,7 @@ func NewServer(deps Deps, cfg Config) *Server {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
-	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	s.mux.HandleFunc("GET /readyz", s.readiness)
 	s.mux.HandleFunc("GET /openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
 		_, _ = w.Write([]byte(openapiDoc))
