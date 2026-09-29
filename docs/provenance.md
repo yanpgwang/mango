@@ -1071,3 +1071,20 @@ callers, examples and tests move together; there are no legacy forwarding method
 Validation uses Mango HTTP conformance, literal payload/routing checks, language
 static checks, transport and worker tests, with durability coverage remaining in
 its owning Go packages. The source-only alpha 2 packages have not been published.
+
+
+## API readiness (2026-09-29)
+
+- Mango history: closed, unmerged [PR #57](https://github.com/yanpgwang/mango/pull/57),
+  especially commit `e39b182ff19d2374fc09ae509d931be871bb5c82`, supplied the original
+  separation of liveness and dependency readiness. The current implementation is
+  a smaller slice of that earlier work.
+- Adopted: public HTTP liveness, bounded readiness, failure status 503, and
+  sanitized errors. Changed: one PostgreSQL pool check also rejects read-only
+  transaction mode; it uses Mango's existing error envelope and no probe cache.
+- Rejected: hard readiness gates for NATS and Temporal, because asynchronous
+  dispatch is backed by Mango's durable PostgreSQL outbox. No hosted-agent API or
+  SDK mapping is imported for these self-hosted process probes. First-party SDKs
+  retain `system.health` and `system.readiness` with normal API error decoding.
+- [Design and acceptance criteria](design/api-readiness.md) distinguish admission
+  readiness from later Environment worker execution checks.

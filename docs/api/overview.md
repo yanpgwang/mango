@@ -29,7 +29,13 @@ call the HTTP endpoints directly.
 | [Environment Work](environment-work.md) | Claim and renew leased work for self-hosted execution. | `/v1/environments/{id}/work` |
 
 The public probes are `GET /healthz` and `GET /readyz`; `GET /openapi.yaml`
-returns the schema. For execution-path constraints, consult
+returns the schema. Both probes are unauthenticated. `/healthz` returns an empty
+200 for process liveness without contacting dependencies. `/readyz` returns an
+empty 200 when the API PostgreSQL pool can execute a query in writable transaction
+mode, or a sanitized `503 api_error` on failure, read-only mode, or timeout. Its
+check has a two-second deadline and responses use `Cache-Control: no-store`.
+Temporal, NATS, model providers, and Environment workers do not gate API readiness.
+For execution-path constraints, consult
 [capabilities and limits](../capabilities.md).
 
 ## Headers
@@ -95,6 +101,7 @@ JSON errors include a type, message, and request ID:
 | `413` | `request_too_large` |
 | `422` | `invalid_request_error` |
 | `500` | `api_error` |
+| `503` | `api_error` (readiness unavailable) |
 
 A failed Memory SHA-256 precondition is the more specific
 `409 memory_precondition_failed_error`.

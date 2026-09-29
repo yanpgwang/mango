@@ -1728,6 +1728,7 @@ paths:
       x-sdk-resource: system
       x-sdk-method: health
       summary: Liveness probe
+      description: Process liveness only; performs no dependency checks.
       security: []
       responses:
         '200':
@@ -1738,10 +1739,20 @@ paths:
       x-sdk-resource: system
       x-sdk-method: readiness
       summary: Readiness probe
+      description: Checks PostgreSQL connectivity and writable transaction mode within two seconds. Temporal, NATS, and worker execution availability do not gate API request admission. Responses are not cacheable.
       security: []
       responses:
         '200':
-          description: Ready
+          description: PostgreSQL accepts queries in writable transaction mode
+        '503':
+          description: PostgreSQL unavailable, read-only, timed out, or readiness unconfigured. Uses a sanitized api_error message.
+          headers:
+            request-id:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /openapi.yaml:
     get:
       operationId: openAPI
