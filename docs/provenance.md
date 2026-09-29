@@ -817,8 +817,8 @@ editorial; it does not change HTTP, persistence, scheduling, or recovery semanti
   Neither path creates compute, prepares File/Git/Memory inputs, closes
   caller-owned tools, or introduces a provider SDK. Custom Skill preparation is
   now the shared worker behavior described above. Environment-scoped Poll
-  credentials remain a future requirement before supervisors are described as
-  untrusted or multi-tenant.
+  credentials are implemented as documented below; supervisors still own
+  Docker daemon access and remain trusted infrastructure.
 - Acceptance: HTTP-backed tests independently verify supervisor-versus-item
   bearer separation, first heartbeat and forced Stop, serial Session tool
   execution, cancellation with no result or Stop after `412` lease loss,
@@ -1071,3 +1071,17 @@ callers, examples and tests move together; there are no legacy forwarding method
 Validation uses Mango HTTP conformance, literal payload/routing checks, language
 static checks, transport and worker tests, with durability coverage remaining in
 its owning Go packages. The source-only alpha 2 packages have not been published.
+
+## Environment-scoped supervisor credentials
+
+The [Environment credential design](design/environment-credentials.md) records
+the API documentation, official Go v1.76.0, Python v1.9.0, TypeScript
+sdk-v0.129.0, and cookbook commits reviewed on 2026-09-29. Mango adopts the
+standing Environment credential / per-Work execution token separation and
+preserves the Environments.Work SDK hierarchy. It replaces Console-only issuance
+with its existing database-backed operator CLI, uses standard Bearer auth, and
+limits standing keys to Poll, Ack, and Stats for one Environment. Key-row locks
+order revocation against Poll/Ack; already-Acked execution retains its independent
+lease. These choices protect unrelated Workspace resources while retaining
+Mango's self-hosted operation and recovery model. No hosted credentials or
+external SDK implementation are required.

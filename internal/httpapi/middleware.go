@@ -22,6 +22,10 @@ type SessionTokenAuthenticator interface {
 	AuthenticateSessionToken(context.Context, string) (string, workspace.SessionScope, error)
 }
 
+type EnvironmentKeyAuthenticator interface {
+	AuthenticateEnvironmentKey(context.Context, string) (string, workspace.EnvironmentScope, error)
+}
+
 type Config struct {
 	RequireAuth   bool
 	Authenticator WorkspaceAuthenticator
@@ -59,30 +63,12 @@ func authMiddleware(cfg Config, next http.Handler) http.Handler {
 					writeError(w, err)
 					return
 				}
-				sessionAuthenticator, ok := cfg.Authenticator.(SessionTokenAuthenticator)
-				if !ok {
-					writeErrorEnvelope(w, http.StatusUnauthorized, "authentication_error",
-						"invalid API key")
+				authenticated, credentialErr := authenticateScopedCredential(r, cfg.Authenticator, key)
+				if credentialErr != nil {
+					writeError(w, credentialErr)
 					return
 				}
-				workspaceID, sessionScope, sessionErr := sessionAuthenticator.AuthenticateSessionToken(
-					r.Context(), key,
-				)
-				if sessionErr != nil {
-					if !errors.Is(sessionErr, workspace.ErrInvalidSessionToken) {
-						writeError(w, sessionErr)
-						return
-					}
-					writeErrorEnvelope(w, http.StatusUnauthorized, "authentication_error",
-						"invalid credential")
-					return
-				}
-				if !sessionScopeAllows(r, sessionScope) {
-					writeErrorEnvelope(w, http.StatusForbidden, "permission_error",
-						"session credential is not authorized for this resource")
-					return
-				}
-				r = r.WithContext(workspace.WithSessionScope(r.Context(), workspaceID, sessionScope))
+				r = authenticated
 			}
 		} else if cfg.RequireAuth && !present {
 			writeErrorEnvelope(w, http.StatusUnauthorized, "authentication_error",
@@ -95,6 +81,46 @@ func authMiddleware(cfg Config, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func authenticateScopedCredential(r *http.Request, authenticator WorkspaceAuthenticator, key string) (*http.Request, error) {
+	if environmentAuthenticator, ok := authenticator.(EnvironmentKeyAuthenticator); ok {
+		workspaceID, scope, err := environmentAuthenticator.AuthenticateEnvironmentKey(r.Context(), key)
+		if err == nil {
+			if !environmentScopeAllows(r, scope) {
+				return nil, domain.Permission("environment credential is not authorized for this resource")
+			}
+			return r.WithContext(workspace.WithEnvironmentScope(r.Context(), workspaceID, scope)), nil
+		}
+		if !errors.Is(err, workspace.ErrInvalidEnvironmentKey) {
+			return nil, err
+		}
+	}
+	if sessionAuthenticator, ok := authenticator.(SessionTokenAuthenticator); ok {
+		workspaceID, scope, err := sessionAuthenticator.AuthenticateSessionToken(r.Context(), key)
+		if err == nil {
+			if !sessionScopeAllows(r, scope) {
+				return nil, domain.Permission("session credential is not authorized for this resource")
+			}
+			return r.WithContext(workspace.WithSessionScope(r.Context(), workspaceID, scope)), nil
+		}
+		if !errors.Is(err, workspace.ErrInvalidSessionToken) {
+			return nil, err
+		}
+	}
+	return nil, workspace.ErrInvalidAPIKey
+}
+
+func environmentScopeAllows(r *http.Request, scope workspace.EnvironmentScope) bool {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 5 || parts[0] != "v1" || parts[1] != "environments" ||
+		parts[2] != scope.EnvironmentID || parts[3] != "work" {
+		return false
+	}
+	if len(parts) == 5 && r.Method == http.MethodGet {
+		return parts[4] == "poll" || parts[4] == "stats"
+	}
+	return len(parts) == 6 && r.Method == http.MethodPost && parts[5] == "ack"
 }
 
 func sessionScopeAllows(r *http.Request, scope workspace.SessionScope) bool {

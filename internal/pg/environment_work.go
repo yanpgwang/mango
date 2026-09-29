@@ -35,6 +35,9 @@ func NewEnvironmentWorkRepository(store *Store) *EnvironmentWorkRepository {
 }
 
 func (r *EnvironmentWorkRepository) authorizeEnvironment(ctx context.Context, id string) error {
+	if scope, ok := workspace.FromContext(ctx); ok && scope.Environment != nil && scope.Environment.EnvironmentID != id {
+		return domain.Permission("environment credential is not authorized for this resource")
+	}
 	_, err := NewEnvironmentRepository(r.store).Get(ctx, id)
 	return err
 }
@@ -328,6 +331,9 @@ func (r *EnvironmentWorkRepository) PollWork(
 		return nil, err
 	}
 	err = r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
+		if err := r.store.authorizeEnvironmentKeyTx(ctx, tx, environmentID); err != nil {
+			return err
+		}
 		if input.WorkerID != "" {
 			if _, err := tx.Exec(ctx, `
 INSERT INTO environment_work_pollers (environment_id, worker_id, polled_at)
@@ -405,6 +411,9 @@ func (r *EnvironmentWorkRepository) AckWork(
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
 	var result domain.EnvironmentWork
 	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
+		if err := r.store.authorizeEnvironmentKeyTx(ctx, tx, environmentID); err != nil {
+			return err
+		}
 		if requestScope, _ := workspace.FromContext(ctx); requestScope.Session != nil {
 			return domain.Precondition("session credential cannot acknowledge work")
 		}

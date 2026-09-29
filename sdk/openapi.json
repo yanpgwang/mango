@@ -8626,7 +8626,7 @@
     },
     "securitySchemes": {
       "BearerAuth": {
-        "description": "Workspace API key, or the per-Work sessions_token on the limited self-hosted execution routes authorized for that claim. The latter can read attached Memory Stores and mutate only read_write attachments while its Work lease remains live.",
+        "description": "Workspace API key, an Environment key restricted to Poll, Ack, and Stats on its bound Environment, or the per-Work sessions_token on the limited self-hosted execution routes authorized for that claim. The latter can read attached Memory Stores and mutate only read_write attachments while its Work lease remains live.",
         "scheme": "bearer",
         "type": "http"
       }
@@ -9379,6 +9379,7 @@
     },
     "/v1/environments/{environment_id}/work/poll": {
       "get": {
+        "description": "An Environment key may poll only its bound Environment. Every claim and long-poll retry revalidates the key transactionally; revocation fences further claims.",
         "operationId": "pollEnvironmentWork",
         "parameters": [
           {
@@ -9397,6 +9398,12 @@
           },
           "400": {
             "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -9417,10 +9424,17 @@
     },
     "/v1/environments/{environment_id}/work/stats": {
       "get": {
+        "description": "An Environment key may read these aggregate queue statistics only for its bound Environment.",
         "operationId": "getEnvironmentWorkStats",
         "responses": {
           "200": {
             "$ref": "#/components/responses/EnvironmentWorkStatsResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -9506,10 +9520,17 @@
         }
       ],
       "post": {
+        "description": "An Environment key may acknowledge only Work in its bound Environment. Revocation fences further Acks; already-acknowledged Work retains its independent per-Work lease.",
         "operationId": "acknowledgeEnvironmentWork",
         "responses": {
           "200": {
             "$ref": "#/components/responses/EnvironmentWorkResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"

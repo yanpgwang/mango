@@ -70,9 +70,9 @@ func runDocker(ctx context.Context, arguments []string) error {
 	if flags.NArg() != 0 {
 		return errors.New("mango-worker docker does not accept positional arguments")
 	}
-	apiKey := os.Getenv("MANGO_API_KEY")
+	apiKey := strings.TrimSpace(os.Getenv("MANGO_ENVIRONMENT_KEY"))
 	if apiKey == "" {
-		return errors.New("MANGO_API_KEY is required by the trusted Docker supervisor")
+		return errors.New("MANGO_ENVIRONMENT_KEY is required by the trusted Docker supervisor")
 	}
 	supervisor, err := mango.New(mango.Config{BaseURL: *baseURL, APIKey: apiKey})
 	if err != nil {

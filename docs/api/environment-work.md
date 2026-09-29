@@ -35,7 +35,7 @@ Poll -> Ack -> Heartbeat(NO_HEARTBEAT) -> Heartbeat(previous timestamp) -> Stop
   query parameter contributes to queue statistics and operational correlation;
   it is not a credential.
 - `Ack` removes the item from the queue and changes it from `queued` to
-  `starting`. It uses the polling client's Workspace credential and has no
+  `starting`. It uses the polling client's Environment credential and has no
   request body. Repeating Ack after a successful transition is idempotent, so a
   lost success response can be retried.
 - The first heartbeat uses `expected_last_heartbeat=NO_HEARTBEAT`. Every later
@@ -102,14 +102,14 @@ Build and run the preview reference worker from the repository root:
 docker build -f deployments/self-hosted/docker/Dockerfile \
   -t mango-self-hosted-worker:local .
 
-MANGO_API_KEY=replace-with-a-workspace-key \
+MANGO_ENVIRONMENT_KEY=replace-with-an-environment-key \
 MANGO_ENVIRONMENT_ID=env_replace_me \
 MANGO_BASE_URL=http://localhost:8080 \
 MANGO_DOCKER_BASE_URL=http://host.docker.internal:8080 \
 go run ./cmd/mango-worker docker
 ```
 
-The supervisor uses the Workspace key only for Poll and Ack. It creates a
+The supervisor uses the Environment key only for Poll and Ack. It creates a
 hardened container for each acknowledged Work item. Resource IDs and the
 sandbox-visible Mango URL are non-secret environment values; the opaque Work
 secret crosses a one-shot attached stdin stream and is absent from container
@@ -184,23 +184,51 @@ being uploaded or removed. See [Memory](memory.md).
 
 ## Security boundary
 
-The supervisor uses a Workspace API key to Poll and Ack. Poll additionally
+The supervisor uses an Environment-scoped API key to Poll and Ack. Poll additionally
 issues an unpredictable per-claim credential payload; only the SHA-256 digest
 of its `sessions_token` is stored. That token is limited to the claimed Work's
 Heartbeat, Fail, and Stop, the claimed Session's read/event execution routes, and the
-immutable File and Skill inputs plus the Memory Stores attached to that Session.
+immutable Skill inputs plus the Memory Stores attached to that Session.
 Memory mutations are limited to `read_write` attachments and are fenced against
 the live Work lease in the same database transaction as the change. On the event write
 route it may submit only `user.tool_result` and `user.custom_tool_result`, not
 ordinary user messages, interrupts, approvals, or `system.message`. It becomes
 invalid when the Work stops, its lease expires, or it is reclaimed. An existing
 Session event stream rechecks that ownership once per second and closes after
-invalidation. A Workspace key retains full operator access and must stay in the
-trusted supervisor rather than an untrusted Session sandbox. Mango does not yet
-issue a narrower Environment-level polling key. A sandbox runner necessarily
+invalidation. A Workspace key retains full operator access and must never enter
+an untrusted Session sandbox. A sandbox runner necessarily
 receives its per-Work token, but tool subprocesses must not inherit that token
 or be able to inspect it through their parent process. An allowlisted child
 environment is necessary but not sufficient when untrusted code shares a Linux
 process identity with the trusted runner.
 
 See [capabilities and limits](../capabilities.md) for the current support boundary.
+
+## Supervisor key lifecycle
+
+Issue a key on the Mango operator host, where `MANGO_DATABASE_URL` is configured:
+
+```sh
+mango api-key create -workspace wrkspc_default -environment env_replace_me -label docker-pool
+mango api-key list -workspace wrkspc_default
+mango api-key revoke -id key_replace_me
+```
+
+Creation prints `api_key` once. Supply that value as `MANGO_ENVIRONMENT_KEY` to
+`mango-worker docker`; it does not read `MANGO_API_KEY`. The key can only Poll,
+Ack, and read Stats on its bound Environment. Stats exposes aggregate queue
+counts and the oldest queued timestamp for supervisor diagnostics. Work
+Get/List/Update, Environment management, Session APIs, Files, and Vaults return
+`403 permission_error`. Invalid and revoked keys return `401 authentication_error`.
+First-party SDKs use their existing bearer configuration (`APIKey`, `api_key`,
+or `apiKey`) with the Environment key; their `Environments.Work` methods retain
+the same request and response shapes.
+
+Rotate by issuing a replacement key, deploying it to the supervisor, and revoking
+the old key. A replacement can Ack a pending claim in the same Environment.
+Poll and Ack check the key inside their database transaction, including every
+empty long-poll retry. Revocation waits for transactions already holding the
+key lock; after revocation commits, the old key cannot commit another claim or
+Ack. Already-Acked Work keeps its per-Work token and finishes under its existing
+lease. Unacknowledged claims remain reclaimable after the normal reclaim delay.
+To stop active execution immediately, an operator separately stops the Work.

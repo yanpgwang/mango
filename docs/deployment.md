@@ -60,8 +60,11 @@ mango api-key create -workspace wrkspc_... -label production
 ```
 
 The plaintext generated key is printed only by `api-key create`; PostgreSQL
-stores its SHA-256 digest. API and worker processes share Workspace ownership
-through PostgreSQL, but only the API needs request credentials.
+stores its SHA-256 digest. API and orchestration processes share Workspace
+ownership through PostgreSQL. An external Environment supervisor receives a
+key issued with `api-key create -workspace ID -environment ID -label LABEL`;
+configure it as `MANGO_ENVIRONMENT_KEY`. See the
+[worker guide](guides/self-hosted-worker.md#issue-a-supervisor-key).
 
 Model credentials belong to the orchestration worker. Configure an endpoint
 with the [model guide](guides/model-configuration.md); application clients and

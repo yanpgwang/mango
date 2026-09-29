@@ -97,3 +97,8 @@ Mango provides the same debugging workflow through operator-owned staging and
 explicit artifact transfer. This example demonstrates that workflow, without
 claiming automatic mounts or complete CMA feature parity. See
 [design provenance](../provenance.md#coding-agent-workflow-2026-09-08).
+
+The demo creates a temporary Environment and explicitly gives its trusted local
+supervisor the demo application's Workspace credential through
+`MANGO_ENVIRONMENT_KEY`. A deployed supervisor should use an
+[Environment-scoped key](../api/environment-work.md#supervisor-key-lifecycle).

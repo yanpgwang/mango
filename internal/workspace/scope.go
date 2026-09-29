@@ -20,16 +20,26 @@ const (
 )
 
 var (
-	ErrMissingScope        = errors.New("workspace scope is required")
-	ErrInvalidAPIKey       = errors.New("invalid API key")
-	ErrInvalidSessionToken = errors.New("invalid session token")
+	ErrMissingScope          = errors.New("workspace scope is required")
+	ErrInvalidAPIKey         = errors.New("invalid API key")
+	ErrInvalidSessionToken   = errors.New("invalid session token")
+	ErrInvalidEnvironmentKey = errors.New("invalid environment key")
 )
 
 type Scope struct {
 	ID string
-	// Session is non-nil only for a per-Work Session credential. API keys
-	// retain Workspace-wide authority and leave it nil.
-	Session *SessionScope
+	// Session is non-nil only for a per-Work Session credential. Environment
+	// is non-nil only for a supervisor key. Workspace keys leave both nil.
+	Session     *SessionScope
+	Environment *EnvironmentScope
+}
+
+// EnvironmentScope permits a supervisor to Poll/Ack one Environment and read
+// its queue statistics. The digest fences revocation inside claim transactions.
+type EnvironmentScope struct {
+	EnvironmentID    string
+	KeyID            string
+	CredentialDigest []byte
 }
 
 // SessionScope is the least-privilege identity issued with one claimed Work
@@ -63,6 +73,10 @@ func WithScope(ctx context.Context, id string) context.Context {
 
 func WithSessionScope(ctx context.Context, id string, session SessionScope) context.Context {
 	return context.WithValue(ctx, contextKey{}, Scope{ID: id, Session: &session})
+}
+
+func WithEnvironmentScope(ctx context.Context, id string, environment EnvironmentScope) context.Context {
+	return context.WithValue(ctx, contextKey{}, Scope{ID: id, Environment: &environment})
 }
 
 func FromContext(ctx context.Context) (Scope, bool) {

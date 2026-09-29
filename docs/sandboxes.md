@@ -68,9 +68,9 @@ pre-release registry.
 ## Run the Docker reference
 
 Follow [Self-hosted worker](guides/self-hosted-worker.md). The supervisor uses a
-Workspace API key plus an Environment ID to poll Work. Each claimed item yields
+Environment-scoped API key plus its Environment ID to poll Work. Each claimed item yields
 a short-lived, Session-scoped credential used inside the container; the
-Workspace key is not passed into the Session container.
+Environment key is not passed into the Session container.
 
 For lifecycle and recovery details, see
 [Self-hosted workers](architecture/self-hosted-workers.md) and

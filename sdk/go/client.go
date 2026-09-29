@@ -20,7 +20,8 @@ import (
 // Config controls HTTP transport. Agent execution helpers are configured
 // separately and never change the Client's transport settings.
 type Config struct {
-	BaseURL    string
+	BaseURL string
+	// APIKey is the Bearer credential: a Workspace key, Environment key, or per-Work token.
 	APIKey     string
 	HTTPClient *http.Client
 	// RequestTimeout applies to finite requests, not SSE or binary downloads.

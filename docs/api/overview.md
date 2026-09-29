@@ -47,9 +47,9 @@ File and Skill uploads instead require `multipart/form-data`; File uploads are
 limited to 500 MB and Skill bundles must be smaller than 30 MB. Mango does not
 use provider version or beta headers on its inbound API.
 
-Each API key resolves to exactly one Workspace, and every API key for that
-Workspace can access the same resources. Self-hosted Poll responses are the one
-internal exception: their credential payload contains a per-Work Session token
+Each API key resolves to exactly one Workspace. Workspace keys access all its
+resources; Environment keys access only Work Poll, Ack, and Stats for one bound
+Environment. Self-hosted Poll responses contain a per-Work Session token
 accepted after Ack only by the claimed read/stream, tool-result, lease, and
 pinned-input routes. Expiry, Stop, or reclaim revokes the capability. Workspace
 IDs are not added to public request or response bodies.
@@ -61,6 +61,7 @@ operator CLI to manage the OSS boundary:
 ```sh
 mango workspace create -name acme
 mango api-key create -workspace wrkspc_... -label production
+mango api-key create -workspace wrkspc_... -environment env_... -label supervisor
 mango api-key list -workspace wrkspc_...
 mango api-key revoke -id key_...
 ```
