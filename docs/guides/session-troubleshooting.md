@@ -82,8 +82,8 @@ does **not** complete the action. If approval exists without a matching
 approving or executing again. A `deny` resolves the call without execution or a
 tool result. See [Approve externally executed tools](../api/events.md#approve-externally-executed-tools).
 
-Copy a blocking ID from `stop_reason.event_ids` to inspect its call, approval,
-and result together:
+Copy a blocking ID from `stop_reason.event_ids`. For a primary action, this
+selection shows its call, approval, and result together:
 
 ```sh
 export MANGO_ACTION_ID=sevt_...
@@ -92,8 +92,9 @@ mango_list_all "/v1/sessions/$MANGO_SESSION_ID/events" --data-urlencode 'order=a
     'select(.id == $action or .custom_tool_use_id == $action or .tool_use_id == $action)'
 ```
 
-For a child action, apply this selection to the owning Thread's event list
-described below; its approval and result live there.
+For a child action, the command above shows the cross-posted call. Use the same
+action ID against the owning Thread's event list below to find its approval and
+result. The child's own call has a separate ID in that ledger.
 
 A `session.error` describes a failure at a particular point in history. Its
 `error.retry_status.type` determines the immediate response:
