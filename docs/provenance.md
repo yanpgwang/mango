@@ -20,6 +20,11 @@ and self-hosted. Public surface definitions may be design inputs, but external
 implementation code and non-public types must not be copied, and an external
 release is never an automatic roadmap.
 
+Migration numbers in the historical entries below identify the implementation
+at the time of that work. On 2026-09-30, the pre-release migration chain was
+consolidated into the [current development schema baseline](deployment.md#development-database-baseline);
+those historical upgrade and downgrade paths are no longer shipped.
+
 ## Coding agent workflow (2026-09-08)
 
 - Reviewed the locally downloaded cookbook at

@@ -124,8 +124,8 @@ ON CONFLICT (session_id) WHERE state IN ('queued', 'starting', 'active') DO NOTH
 type EnqueueEnvironmentWorkParams struct {
 	ID            string
 	EnvironmentID string
-	SessionID     string
-	ActivationSeq int64
+	SessionID     *string
+	ActivationSeq *int64
 	CreatedAt     pgtype.Timestamptz
 }
 

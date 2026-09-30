@@ -79,9 +79,7 @@ The effective custom Skill list is revalidated when the Session is created.
 Every omitted or `latest` value is replaced by a concrete immutable Version in
 the returned `session.agent.skills` snapshot. PostgreSQL pins those Versions in
 the same transaction as the Session; deleting a pinned Version is rejected
-until the Session is physically deleted. The pin migration backfills concrete,
-still-ready custom references from existing Session snapshots; former opaque
-values remain readable but are not treated as executable references. Up to 500
+until the Session is physically deleted. Up to 500
 unique scope-pinned Skills are accepted across the primary and complete roster,
 subject to one 500 MiB aggregate expanded-size limit and unique runtime names
 per execution scope. The self-hosted worker verifies pinned archives and exposes

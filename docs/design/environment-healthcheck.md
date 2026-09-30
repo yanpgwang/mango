@@ -91,10 +91,11 @@ Mango omits the separate opaque healthcheck identifier, hosted connectivity
 probes, beta headers, Console-only management, and hosted credentials. Official
 code is research material only, never executed or added as a dependency.
 
-Migration 41 permits null Session/activation fields only for healthchecks and
-adds type, deadline, and result storage. This development schema changes `/v1`
-in place. Rollback removes healthcheck rows before restoring Session-only
-constraints; operators should export any results they want to retain first.
+The schema permits null Session/activation fields only for healthchecks and
+includes type, deadline, and result storage. The original migration 41 and its
+downgrade path were consolidated into the
+[development schema baseline](../deployment.md#development-database-baseline).
+Development databases from the historical chain must be rebuilt.
 
 ## Implementation plan
 
@@ -102,7 +103,7 @@ Use test-first changes in these three reviewable units:
 
 1. Add raw HTTP and PostgreSQL regression tests for creation, scoped results,
    reclaim, expiry and retry; then implement domain/app/HTTP/repository and
-   migration 41. Verify with the targeted HTTP and PostgreSQL commands.
+   schema constraints. Verify with the targeted HTTP and PostgreSQL commands.
 2. Update OpenAPI's Work data union and create/result operations, regenerate
    all SDKs, then add worker tests for callback timeout and token isolation.
    Implement the Go worker callback and Docker's ephemeral bounded path.

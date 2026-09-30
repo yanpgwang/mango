@@ -28,13 +28,14 @@ type AgentSkillVersion struct {
 }
 
 type ApiKey struct {
-	ID          string
-	WorkspaceID string
-	SecretHash  []byte
-	Label       string
-	CreatedAt   pgtype.Timestamptz
-	RevokedAt   pgtype.Timestamptz
-	LastUsedAt  pgtype.Timestamptz
+	ID            string
+	WorkspaceID   string
+	SecretHash    []byte
+	Label         string
+	CreatedAt     pgtype.Timestamptz
+	RevokedAt     pgtype.Timestamptz
+	LastUsedAt    pgtype.Timestamptz
+	EnvironmentID *string
 }
 
 type Deployment struct {
@@ -78,8 +79,8 @@ type Environment struct {
 type EnvironmentWork struct {
 	ID                string
 	EnvironmentID     string
-	SessionID         string
-	ActivationSeq     int64
+	SessionID         *string
+	ActivationSeq     *int64
 	State             string
 	Metadata          []byte
 	CreatedAt         pgtype.Timestamptz
@@ -92,6 +93,9 @@ type EnvironmentWork struct {
 	PolledAt          pgtype.Timestamptz
 	PollWorkerID      *string
 	SessionsTokenHash []byte
+	WorkType          string
+	ExpiresAt         pgtype.Timestamptz
+	Result            []byte
 }
 
 type EnvironmentWorkPoller struct {
@@ -211,7 +215,7 @@ type PendingAction struct {
 type ProviderTranscriptTurn struct {
 	SessionID           string
 	TriggerEventID      string
-	TurnOrdinal         *int64
+	TurnOrdinal         int64
 	CommittedThroughSeq int64
 	RepresentedEventIds []byte
 	Messages            []byte
@@ -313,7 +317,7 @@ type ThreadContextSnapshot struct {
 	ThreadID                  string
 	TriggerEventID            string
 	ParentSnapshotID          *string
-	SnapshotOrdinal           *int64
+	SnapshotOrdinal           int64
 	TranscriptTriggerEventIds []byte
 	Messages                  []byte
 	Projection                []byte

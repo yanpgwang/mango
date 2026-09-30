@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
@@ -294,33 +292,6 @@ func TestEnvironmentKeyRevocationInterruptsAuthenticatedLongPoll(t *testing.T) {
 	}
 	if body.Type != "error" || body.Error.Type != "authentication_error" || body.Error.Message != "invalid credential" {
 		t.Fatalf("wrong error: %s", response.Body.String())
-	}
-}
-
-func TestEnvironmentKeyRollbackDoesNotPromoteScopedKeys(t *testing.T) {
-	store, ctx, _, scopedKey, _ := environmentCredentialFixture(t)
-	adminKey, _, err := store.CreateAPIKey(ctx, workspace.DefaultID, "administrator")
-	if err != nil {
-		t.Fatal(err)
-	}
-	goose.SetBaseFS(migrationsFS)
-	if err := goose.SetDialect("postgres"); err != nil {
-		t.Fatal(err)
-	}
-	db := stdlib.OpenDBFromPool(store.pool)
-	if err := goose.DownToContext(ctx, db, "migrations", 39); err != nil {
-		_ = db.Close()
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-	var adminExists, scopedExists bool
-	if err := store.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM api_keys WHERE id=$1),EXISTS(SELECT 1 FROM api_keys WHERE id=$2)`, adminKey.ID, scopedKey.ID).Scan(&adminExists, &scopedExists); err != nil {
-		t.Fatal(err)
-	}
-	if !adminExists || scopedExists {
-		t.Fatalf("rollback retained admin=%t scoped=%t", adminExists, scopedExists)
 	}
 }
 

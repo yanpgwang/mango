@@ -172,6 +172,30 @@ role. This avoids every replica racing to manage schema during a rollout.
 
 ## Repository commands
 
+### Development database baseline
+
+The current schema starts from `internal/pg/migrations/00001_schema.sql`.
+Historical pre-release migrations have been squashed into this baseline;
+their old-row backfills and downgrade paths are no longer supported. Mango
+has no supported stable release or customer database migration requirement.
+
+Use a fresh development database when moving from a checkout that used the
+historical migration chain. Do not edit Goose's version table to make an old
+database appear initialized. Keep the old database and checkout together if
+you need to inspect their data. This change provides no in-place upgrade path.
+
+For a disposable local Compose stack, `make local-down VOLUMES=1` followed by
+`make local-up` rebuilds state from the baseline. **This deletes all local
+PostgreSQL data, Temporal history, and MinIO objects.** Back up anything you
+need before using that reset. Contributor tests create isolated schemas and
+do not require resetting a running local stack.
+
+API, orchestration, and operator commands still initialize the schema on
+startup. A separate migration command and schema-only startup checks remain
+the next deployment step.
+
+### Build and run
+
 Build the application image with `make image`. For a restricted build network,
 set `GOPROXY` to an accessible Go module proxy. Contributor validation commands
 are documented in [CONTRIBUTING.md](https://github.com/yanpgwang/mango/blob/main/CONTRIBUTING.md).

@@ -68,7 +68,10 @@ access still depends on the sandbox boundary.
   worker are not hardened boundaries for hostile tenants. The supervisor has
   Docker daemon authority; network egress policy is operator-owned.
 - **Deployment:** the local Compose stack is reproducible, but supported
-  production Compose and Kubernetes distributions are not available.
+  production Compose and Kubernetes distributions are not available. The
+  [development schema baseline](deployment.md#development-database-baseline)
+  requires a fresh database when replacing the historical migration chain;
+  schema initialization still runs during process startup.
 - **Scaling and recovery:** API and orchestration roles can scale independently.
   Worker Versioning, heterogeneous-worker routing, distributed Files
   reconciliation, backup, audit, and observability still need work.
