@@ -9935,6 +9935,7 @@
         "x-sdk-resource": "files"
       },
       "post": {
+        "description": "If cleanup after a failed object write also fails, a hidden upload record is retained for deletion by startup reconciliation.",
         "operationId": "uploadFile",
         "requestBody": {
           "content": {
@@ -11138,6 +11139,7 @@
         "x-sdk-resource": "skills"
       },
       "post": {
+        "description": "Failed archive writes retain hidden cleanup records until object deletion succeeds. Startup reconciliation retries pending cleanup.",
         "operationId": "createSkill",
         "requestBody": {
           "content": {
@@ -11259,6 +11261,7 @@
         }
       ],
       "post": {
+        "description": "Failed archive writes retain hidden cleanup records until object deletion succeeds. Startup reconciliation retries pending cleanup without removing existing ready Versions.",
         "operationId": "createSkillVersion",
         "requestBody": {
           "content": {

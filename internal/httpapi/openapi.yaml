@@ -759,6 +759,9 @@ paths:
       x-sdk-method: upload
       tags: [Files]
       summary: Upload a File
+      description: >-
+        If cleanup after a failed object write also fails, a hidden upload
+        record is retained for deletion by startup reconciliation.
       requestBody:
         required: true
         content:
@@ -848,6 +851,9 @@ paths:
       x-sdk-method: create
       tags: [Skills]
       summary: Create a custom Skill and its first immutable Version
+      description: >-
+        Failed archive writes retain hidden cleanup records until object
+        deletion succeeds. Startup reconciliation retries pending cleanup.
       requestBody:
         required: true
         content:
@@ -920,6 +926,10 @@ paths:
       x-sdk-method: create
       tags: [Skills]
       summary: Create an immutable Skill Version
+      description: >-
+        Failed archive writes retain hidden cleanup records until object
+        deletion succeeds. Startup reconciliation retries pending cleanup
+        without removing existing ready Versions.
       requestBody:
         required: true
         content:
