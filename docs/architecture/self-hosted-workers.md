@@ -41,7 +41,7 @@ claimed Work identity, and tear it down. The runner, not the provider, owns the
 Mango protocol: event recovery, permission gates, heartbeat, lease loss, tool
 result submission, and Stop.
 
-## Reference scope
+## Earlier reference scope (2026-09-07)
 
 The public Claude cookbook at `main` commit
 `a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5` and the current public Go, Python,
@@ -89,6 +89,103 @@ security guide recommends passing a Work item's per-Session secret only to that
 Session sandbox, while its SDK retains an Environment-key fallback. Mango makes
 the narrower path mandatory: it will not pass a standing credential into a
 Session container merely to copy the cookbook script.
+
+## Assessment on 2026-09-30
+
+This review starts from Mango runtime commit `7f4e2b5`, its OpenAPI, startup
+code, and executable tests. It refreshes the earlier boundary comparison; it
+does not turn every external difference into implementation work.
+
+CMA's [self-hosted sandbox guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+keeps orchestration and durable services at Anthropic and moves execution to the
+operator. Mango also hosts its own control plane, database, object storage,
+Memory, and scheduling. A sound SDK worker design does not establish that
+Mango's independently implemented storage and recovery are safe.
+
+### Compare the same execution mode
+
+| Concern | Relevant CMA scope | Mango decision and current evidence |
+| --- | --- | --- |
+| Shell/file execution | Self-hosted workers provide six core tools. | Implemented in Docker, including a persistent Bash within each activation and a retained Session workspace. Launcher and tool conformance live in `internal/selfhosted`. |
+| Skill and Memory preparation | SDK workers prepare these in self-hosted sandboxes. | Go `EnvironmentWorker` prepares immutable primary/roster Skills and scoped Memory roots before tool dispatch. Integrity, permissions, sync conflicts, cancellation flush, and lease loss have focused tests. |
+| File/Git resource mounts | Self-hosted staging is operator-owned; cloud mounts are managed. | File/Git Session Resources are deliberately rejected. The coding example stages Files into an operator directory. Automatic mounts are a possible convenience, not missing self-hosted parity. |
+| Deliverable collection | Self-hosted outputs stay in the operator's filesystem. | Explicit Workspace File upload/download and independent artifact checks already exist. No hosted output-directory lifecycle is required. |
+| Sandbox providers | The operator chooses and runs compute. | Docker is the supported reference. Other platform cookbook examples do not make those platforms Mango-supported providers. OpenSandbox remains deferred. |
+| SDK worker languages | Official Go, Python, and TypeScript provide worker composition. | All three Mango clients cover the HTTP surface; only Go composes Poller, runner, Memory, and Environment worker helpers. Additional language helpers are a real developer-experience difference, selected only for demonstrated users. |
+| Environment-variable Vault secrets | The [Vault guide](https://platform.claude.com/docs/en/managed-agents/vaults) explicitly excludes self-hosted sandboxes. | Mango implements MCP bearer/OAuth Vault use, not placeholder substitution at sandbox egress. This is not a CMA self-hosted gap. Operator-injected secrets are a different trust decision. |
+| Cloud image contents and networking | The [cloud reference](https://platform.claude.com/docs/en/managed-agents/cloud-sandboxes-reference) applies to managed images. | Operators own the worker image and network policy. Cloud package catalogs, resource limits, and hosted network controls are not Mango acceptance criteria. |
+| Private MCP | [MCP tunnels](https://platform.claude.com/docs/en/agents-and-tools/mcp-tunnels/overview) can serve either sandbox mode. | Mango's direct remote connector enforces public-address egress. Operator-owned worker tools can already reach internal services under the operator's policy. A private remote connector is a separate possible need; design an explicit trusted policy rather than bypassing the existing SSRF boundary or copying a hosted tunnel service. |
+| Image/PDF message input | Shared Session request types include image/document blocks; these are distinct from sandbox resource mounts. | Mango currently accepts bounded UTF-8 File messages, not image/PDF File input. This is a real model-input limitation; provider support and admission/recovery need independent validation before adding it. |
+| Large MCP output | The general [MCP guide](https://platform.claude.com/docs/en/managed-agents/mcp-connector) describes file-backed full results. | Mango retains only bounded inline output. The reviewed general guide does not establish its full-result transfer path for external self-hosted workers, so no exact mode parity is claimed. Preserving complete results remains a Mango user problem when truncation loses needed data. |
+| Session retries, approvals, Threads, budgets, and schedules | Control-plane workflows can accompany self-hosted execution. | These are not cloud-only features. Mango owns their runtime and tests. A Docker tool smoke alone does not verify every combined workflow. |
+
+The current official SDK references are Go v1.76.0
+(`ad865dfa3d1a8d2f4a7ad0d072011e811e9957a9`), Python v1.9.0
+(`a7285e919ab79998d9380b3b57f6315b7860b8d8`), and TypeScript sdk-v0.129.0
+(`bf2058689f845dfb10e59bd9ebeb5cb4e9318a9d`). Paired reads covered the Work
+resources and worker/Poller/runner responsibilities, heartbeat during input
+preparation, and Memory/Skill setup. The cookbook was reviewed at
+`d7265d6ae994ccd8429db0594b000073b2f9ad43`. Reference implementations were not
+executed or imported.
+
+The cookbook Docker script still forwards an Environment key and discards the
+item secret, while the current [security guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes-security)
+describes passing the item credential to its own sandbox. Follow the actual
+lifecycle and Mango trust boundary, not one script mechanically. Mango already
+requires the scoped item credential and keeps standing keys outside containers.
+
+### Completed work that must not be scheduled again
+
+| Delivery | Existing implementation and verification location |
+| --- | --- |
+| Go worker composition, scoped leases, and Docker recovery | PRs #202–#215; `sdk/go/environment_worker_test.go`, `internal/pg/environment_work_test.go`, and real Docker/Temporal vertical tests. |
+| Complete coding/deliverable application | [PR #218](https://github.com/yanpgwang/mango/pull/218), [example](../examples/coding-agent.md), and [design](../design/coding-agent-demo.md). It stages Files, replaces the worker, verifies pristine tests, and uploads/downloads the result. |
+| Writable API readiness | [PR #221](https://github.com/yanpgwang/mango/pull/221) and [readiness design](../design/api-readiness.md). API admission and worker execution are different checks. |
+| Environment supervisor key lifecycle | [PR #223](https://github.com/yanpgwang/mango/pull/223) and [credential design](../design/environment-credentials.md). |
+| Bounded worker execution healthcheck | [PR #224](https://github.com/yanpgwang/mango/pull/224) and [healthcheck design](../design/environment-healthcheck.md). |
+| Retained failed-upload cleanup intent | [PR #225](https://github.com/yanpgwang/mango/pull/225); File and Skill tests cover storage failure followed by restart reconciliation. |
+| Approval application resume | [PR #226](https://github.com/yanpgwang/mango/pull/226), with the retry-history correction in [PR #230](https://github.com/yanpgwang/mango/pull/230). |
+| Explicit database migration and typed Skills | PRs #228–#229. These consolidate the development contract; they are not newly added worker capabilities. |
+
+The approval bug was a missed application boundary. Model retry recovery and
+exhaustion tests already existed in runtime commit `0914ea4` (PR #215). PR #226
+added a full-history reader that returned on every `session.error`; its fixture
+covered restart and ambiguous results but no historical provider retry. Normal
+live runs did not force such a failure. PR #230 adds independently authored
+recovered/active retry cases and keeps exhausted, terminal, and unknown errors
+fatal for this single-turn tutorial. That fixes the example without replacing
+the runtime's existing recovery.
+
+### Remaining work and evidence limits
+
+The first storage follow-up is **active-upload ownership during API startup**,
+not a new Files API or another deliverable tutorial. `FileService.Reconcile`
+selects all non-ready rows and deletes their blobs; `serve` runs it at startup.
+There is no owner/staleness distinction from another API process's live upload.
+A temporary application-level probe paused one service in `BlobStore.Put`, ran
+a second service's reconciler over the shared repository, then released Put.
+Upload completion failed with `not pending`, and one object remained without
+metadata. This used controlled repository/blob doubles, not PostgreSQL/S3;
+the probe was not retained as a shipped test or presented as service coverage.
+
+Existing `TestFileService_PostgresS3ConcurrentLifecycle` proves concurrent
+uploads/deletes through one service. It does not cover this interleaving.
+`SkillService.Reconcile` has the analogous ownership question, which needs its
+own reproduction. PR #225's crash/outage cleanup remains useful; safe cleanup
+must preserve that behavior while protecting active operations. Acceptance for
+the next selected slice must include independent real-PostgreSQL, two-service
+upload-versus-reconcile coverage, lost-completion-response behavior, and eventual
+cleanup after a genuine crash. Until then, multi-replica API rollout with
+Files/Skills is not an established operating mode.
+
+After that storage boundary, prioritize a versioned self-hosted alpha bundle,
+matched native SDK artifacts, and a demonstrated backup/restore procedure for
+database, objects, Memory, and encryption keys. Kubernetes distribution and
+worker rollout/versioning require their own operational acceptance; a Docker
+demo or CMA sandbox feature list does not prove them. Additional worker
+languages, private MCP, and complete large-result retention remain separately
+selectable product work. Cloud/OpenSandbox does not gate the current self-hosted
+scope. [Capabilities](../capabilities.md) remains the product inventory.
 
 ## Lifecycle and security invariants
 

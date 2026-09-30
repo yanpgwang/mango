@@ -43,10 +43,13 @@ SDK contracts, operator documentation, capabilities, and provenance together.
 This extracts the useful readiness idea from closed, unmerged PR #57 and commit
 `e39b182ff19d2374fc09ae509d931be871bb5c82`. Its multi-dependency hard gate is
 rejected: NATS is an optimization and Temporal execution is asynchronous. Worker
-execution readiness belongs to a later bounded Environment healthcheck Work PR.
+execution readiness was delivered separately through
+[bounded Environment healthcheck Work](environment-healthcheck.md) in PR #224.
 This slice does not add metrics, logging infrastructure, an aggregate dependency
 status API, or change API startup dependency requirements.
 
-The next independent slice restricts supervisor credentials to one Environment.
-Bounded worker healthcheck Work follows that credential boundary. Session
-inspection and SDK release preparation remain subsequent slices.
+The originally planned supervisor credentials and bounded worker healthcheck
+slices are implemented in PRs #223–#224. Existing Session inspection APIs now
+have a [troubleshooting guide](../guides/session-troubleshooting.md) from PR #230.
+Native SDK release preparation remains separate work; see the
+[current assessment](../architecture/self-hosted-workers.md#assessment-on-2026-09-30).

@@ -1234,3 +1234,29 @@ guides. Paired official SDK retry-status types were read in Go v1.76.0
   new diagnostics resource. No runtime, HTTP, SDK schema, or database change was
   needed. Official SDKs remain research sources only; validation uses Mango's
   Go SDK and an independently authored application HTTP fixture.
+
+## Self-hosted capability assessment (2026-09-30)
+
+The [refreshed assessment](architecture/self-hosted-workers.md#assessment-on-2026-09-30)
+records current official self-hosted, cloud, Vault, MCP, and security documentation,
+paired Go v1.76.0 / Python v1.9.0 / TypeScript sdk-v0.129.0 source revisions,
+and cookbook `d7265d6ae994ccd8429db0594b000073b2f9ad43`. Mango source and tests at
+`7f4e2b5` remain the authority for its current implementation.
+
+- User problem: avoid repeating completed work or prioritizing hosted-only
+  conveniences while preparing an independent self-hosted release.
+- Durable invariants: protect active uploads during recovery, retain genuine
+  crash cleanup, and distinguish historical retry errors from current failure.
+  The active-File-upload risk was reproduced only with an application-level
+  temporary probe; real PostgreSQL/S3 coverage and a fix remain follow-up work.
+- Hosted constraints: managed image inventories, File/Git mounts, hosted output
+  lifecycles, and environment-variable secret substitution are not imported as
+  self-hosted requirements. Private MCP is not inherently cloud-only; its hosted
+  tunnel implementation is not a Mango dependency or required architecture.
+- Wire choices: no routes, fields, SDK bindings, or storage schemas changed.
+  Useful Work/Session/helper responsibility mappings remain independently owned
+  by Mango. The general CMA large-MCP-result documentation does not by itself
+  establish the equivalent transport into an external worker.
+
+Earlier follow-up lists now identify delivered healthchecks, credentials, and
+the coding/deliverable example instead of presenting them as outstanding work.
