@@ -26,6 +26,9 @@
 .DS_Store
 *.swp
 
+# Local example decision journals
+/.mango/
+
 # Local agent execution artifacts
 /.claude/worktrees/
 /.superpowers/

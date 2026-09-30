@@ -453,10 +453,10 @@ as a current capability.
 - Mango adopted the application-owned action boundary: the model proposes a
   typed custom call, the Session becomes idle, and an application or human
   returns the correlated result before inference continues.
-- The example's expense flow is a runnable public-HTTP program exercised against
-  a real model. Its client represents the external expense system and prompts
-  a terminal user for the review decision, while the deterministic scenario
-  separately proves crash and concurrency invariants.
+- The expense flow is a standalone Go SDK application. Its local decision
+  journal simulates an external expense system and prompts a terminal user for
+  review. Runtime persistence, crash, and concurrency invariants remain in
+  separate deterministic runtime and service tests.
 - Mango changed the hosted presentation behavior. One idle event exposes every
   action in the current barrier rather than a sliding window. Partial results
   are durably claimed without waking execution; the final result resumes the
@@ -464,9 +464,43 @@ as a current capability.
 - The scenario uses Mango-owned synthetic inputs and copies no Cookbook
   fixture. Its executable contract is PostgreSQL atomic admission, Temporal
   recovery, duplicate-result rejection, and persisted Event ordering.
-- Mango's Webhook slice can now wake the application on
-  `session.status_idled`, but the example retains stream-plus-history recovery:
-  an at-least-once notification is not the authoritative custom-tool barrier.
+- Mango's Webhook slice can wake an application on `session.status_idled`;
+  this small example polls paginated persisted history. Notifications and live
+  streams do not replace the authoritative custom-tool barrier.
+
+### SDK tutorial recovery review (2026-09-30)
+
+- User problem and acceptance: stop the application at human review and resume
+  the same Session; retain resource IDs and chosen decisions; reconcile every
+  history page before resubmitting a saved result; make partial cleanup retryable.
+  This gives a self-hosted operator an inspectable recovery path through ordinary
+  Mango SDK resources without adding runtime APIs or business logic to core code.
+- Paired references reviewed: the current official [event lifecycle and
+  streaming guide](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
+  and Go SDK `v1.76.0`, commit
+  `ad865dfa3d1a8d2f4a7ad0d072011e811e9957a9`, specifically
+  [`betasessionevent.go`](https://github.com/anthropics/anthropic-sdk-go/blob/ad865dfa3d1a8d2f4a7ad0d072011e811e9957a9/betasessionevent.go)
+  and the Session tool-runner public surface. The lifecycle guide is a published
+  Beta surface; it is research evidence, not a stable Mango compatibility target.
+- Adopted mapping: `Sessions.Events.ListAutoPaging` for complete durable history,
+  `requires_action.event_ids` for the barrier, and `Sessions.Events.Send` with
+  `custom_tool_use_id` for correlated results. Existing Mango SDK types express
+  these mappings directly. No external implementation was copied or executed.
+- Changed helper responsibility: this tutorial owns a private local decision
+  journal and explicit start/resume/cleanup commands. The journal records the
+  simulated business decision before sending; a fresh history read reconciles
+  ambiguous responses. This makes human approval and client restart visible,
+  rather than hiding them in a generic runner. SDK and server internals are unchanged.
+- Rejected hosted constraints: no beta headers, hosted credentials, external
+  service calls, or provider-specific client setup. One operator and one Session
+  are the bounds. Distributed coordination, automatic resource-create retries,
+  external-business exactly-once effects, and a general workflow engine are
+  non-goals. Unknown create outcomes retain their setup stage for manual inspection.
+- Validation stays beside the application: real Mango SDK requests against an
+  independently authored HTTP fixture cover pagination, partial completion,
+  accepted/lost and unaccepted result responses, private atomic state, input
+  cancellation, and cleanup retry. These do not replace SDK contract or runtime
+  service tests, and no system harness imports or runs the tutorial.
 
 ## Multi-agent specialist team
 
