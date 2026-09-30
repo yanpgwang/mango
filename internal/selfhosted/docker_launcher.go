@@ -43,7 +43,7 @@ const (
 )
 
 // DockerLauncherOptions configure a trusted host-side queue consumer. Client
-// carries the Workspace credential and is used only by WorkPoller. The launcher
+// carries the Environment credential and is used only by WorkPoller. The launcher
 // passes the per-item Work secret, never that client credential, into Docker.
 type DockerLauncherOptions struct {
 	Client         *mango.Client
@@ -173,7 +173,7 @@ func (l *DockerLauncher) Run(ctx context.Context) error {
 				}
 				return err
 			}
-			l.log.Error("Work container failed", "work_id", work.ID, "session_id", work.Data.ID, "error", err)
+			l.log.Error("Work container failed", "work_id", work.ID, "session_id", work.Data.SessionID(), "error", err)
 		}
 	}
 	if err := poller.Err(); err != nil && ctx.Err() == nil {
@@ -183,21 +183,33 @@ func (l *DockerLauncher) Run(ctx context.Context) error {
 }
 
 func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork) (runErr error) {
-	if work.ID == "" || work.EnvironmentID == "" || work.Data.Type != "session" || work.Data.ID == "" || work.Secret == nil || *work.Secret == "" {
+	if work.ID == "" || work.EnvironmentID == "" || (work.Data.WorkType() != "healthcheck" && (work.Data.WorkType() != "session" || work.Data.SessionID() == "")) || work.Secret == nil || *work.Secret == "" {
 		return errors.New("selfhosted: acknowledged Work item has an invalid identity or secret")
 	}
 	if work.EnvironmentID != l.opts.EnvironmentID {
 		return fmt.Errorf("selfhosted: Work environment %q does not match launcher environment %q", work.EnvironmentID, l.opts.EnvironmentID)
 	}
-	workspace, err := l.workspaceMount(work.Data.ID)
-	if err != nil {
-		return err
+	var mounts []mount.Mount
+	healthcheck := work.Data.WorkType() == "healthcheck"
+	if healthcheck {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+	} else {
+		workspace, err := l.workspaceMount(work.Data.SessionID())
+		if err != nil {
+			return err
+		}
+		mounts = []mount.Mount{workspace}
 	}
 	name := dockerWorkName(work.ID)
 	if err := l.clearPreviousAttempt(ctx, name, work); err != nil {
 		return err
 	}
 	stopSeconds := int(defaultContainerStopGrace / time.Second)
+	if healthcheck {
+		stopSeconds = 0
+	}
 	createOptions := client.ContainerCreateOptions{
 		Name: name,
 		Config: &container.Config{
@@ -212,7 +224,7 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 			StopTimeout: &stopSeconds,
 			Labels: map[string]string{
 				dockerManagedLabel: "true", dockerWorkIDLabel: work.ID,
-				dockerSessionIDLabel: work.Data.ID, dockerEnvironmentLabel: work.EnvironmentID,
+				dockerSessionIDLabel: work.Data.SessionID(), dockerEnvironmentLabel: work.EnvironmentID,
 			},
 		},
 		HostConfig: &container.HostConfig{
@@ -225,12 +237,15 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 				"/tmp":        "rw,nosuid,nodev,size=64m",
 				"/mnt/memory": "rw,nosuid,nodev,noexec,size=512m,mode=1777",
 			},
-			Mounts: []mount.Mount{workspace},
+			Mounts: mounts,
 			Resources: container.Resources{
 				Memory: l.opts.MemoryBytes, NanoCPUs: l.opts.NanoCPUs,
 				PidsLimit: &l.opts.PidsLimit,
 			},
 		},
+	}
+	if healthcheck {
+		createOptions.HostConfig.Tmpfs[defaultSandboxWorkdir] = "rw,nosuid,nodev,size=16m,mode=1777"
 	}
 	containerID, err := l.createContainer(ctx, name, work, createOptions)
 	if err != nil {
@@ -254,16 +269,24 @@ func (l *DockerLauncher) runItem(ctx context.Context, work mango.EnvironmentWork
 	if err := l.startContainer(ctx, containerID); err != nil {
 		return err
 	}
-	if err := sendContainerWorkSecret(secretInput, *work.Secret); err != nil {
+	secretCtx := context.WithoutCancel(ctx)
+	if healthcheck {
+		secretCtx = ctx
+	}
+	if err := sendContainerWorkSecret(secretCtx, secretInput, *work.Secret); err != nil {
 		return err
 	}
-	l.log.Info("started Work container", "work_id", work.ID, "session_id", work.Data.ID, "container_id", shortContainerID(containerID))
+	l.log.Info("started Work container", "work_id", work.ID, "session_id", work.Data.SessionID(), "container_id", shortContainerID(containerID))
 
 	wait := l.engine.ContainerWait(context.Background(), containerID, client.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	select {
 	case <-ctx.Done():
-		stopCtx, cancel := context.WithTimeout(context.Background(), defaultContainerStopGrace+defaultWorkerStopTimeout)
-		timeoutSeconds := int(defaultContainerStopGrace / time.Second)
+		stopBudget := defaultContainerStopGrace + defaultWorkerStopTimeout
+		if healthcheck {
+			stopBudget = defaultWorkerStopTimeout
+		}
+		stopCtx, cancel := context.WithTimeout(context.Background(), stopBudget)
+		timeoutSeconds := stopSeconds
 		_, stopErr := l.engine.ContainerStop(stopCtx, containerID, client.ContainerStopOptions{Timeout: &timeoutSeconds})
 		cancel()
 		if stopErr != nil && !errdefs.IsNotFound(stopErr) && !errdefs.IsNotModified(stopErr) {
@@ -304,9 +327,21 @@ func (l *DockerLauncher) attachContainerInput(ctx context.Context, containerID s
 	return &attached, nil
 }
 
-func sendContainerWorkSecret(attached *client.ContainerAttachResult, secret string) error {
-	if err := attached.Conn.SetWriteDeadline(time.Now().Add(defaultWorkerStopTimeout)); err != nil {
+func sendContainerWorkSecret(ctx context.Context, attached *client.ContainerAttachResult, secret string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(defaultWorkerStopTimeout)
+	if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
+		deadline = limit
+	}
+	if err := attached.Conn.SetWriteDeadline(deadline); err != nil {
 		return fmt.Errorf("selfhosted: bound Work secret input: %w", err)
+	}
+	stopCancellation := context.AfterFunc(ctx, func() { _ = attached.Conn.SetWriteDeadline(time.Now()) })
+	defer stopCancellation()
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := WriteWorkSecret(attached.Conn, secret); err != nil {
 		return err
@@ -393,8 +428,9 @@ func (l *DockerLauncher) itemEnvironment(work mango.EnvironmentWork) []string {
 		"MANGO_SANDBOXED=1",
 		"MANGO_BASE_URL=" + l.opts.SandboxBaseURL,
 		"MANGO_WORK_ID=" + work.ID,
+		"MANGO_WORK_TYPE=" + work.Data.WorkType(),
 		"MANGO_ENVIRONMENT_ID=" + work.EnvironmentID,
-		"MANGO_SESSION_ID=" + work.Data.ID,
+		"MANGO_SESSION_ID=" + work.Data.SessionID(),
 		"MANGO_WORKDIR=" + defaultSandboxWorkdir,
 	}
 	values = append(values, "MANGO_WORKER_MAX_IDLE="+l.opts.MaxIdle.String())
@@ -431,7 +467,7 @@ func validateWorkContainer(inspect client.ContainerInspectResult, name string, w
 	}
 	labels := inspect.Container.Config.Labels
 	if labels[dockerManagedLabel] != "true" || labels[dockerWorkIDLabel] != work.ID ||
-		labels[dockerSessionIDLabel] != work.Data.ID || labels[dockerEnvironmentLabel] != work.EnvironmentID {
+		labels[dockerSessionIDLabel] != work.Data.SessionID() || labels[dockerEnvironmentLabel] != work.EnvironmentID {
 		return fmt.Errorf("selfhosted: refusing to replace unrelated container %q", name)
 	}
 	return nil

@@ -23,7 +23,7 @@ process responsibilities.
   are ready to run a tool-capable Agent.
 
 Run setup commands from the repository root. The model credential belongs to
-the orchestration worker; the Docker supervisor needs only the Mango Workspace key.
+the orchestration worker; the Docker supervisor uses a Mango Environment key.
 
 ## Create an Environment
 
@@ -44,6 +44,22 @@ Omitting `config` selects `self_hosted`. Keep this Environment ID: new Sessions
 must use it to reach this worker. The Quickstart removes its own Environment,
 so create this one independently.
 
+## Issue a supervisor key
+
+On the operator host with `MANGO_DATABASE_URL` configured:
+
+```bash
+go run ./cmd/mango api-key create -workspace wrkspc_default \
+  -environment "$MANGO_ENVIRONMENT_ID" -label docker-supervisor
+```
+
+Use the Workspace that owns this Environment (`wrkspc_default` for the local
+bootstrap key). Creation prints the secret once as `api_key`; set it on the
+supervisor host as `MANGO_ENVIRONMENT_KEY`. The secret is scoped to Poll, Ack,
+and queue Stats for this Environment. The supervisor does not fall back to
+`MANGO_API_KEY`. For rotation and revocation, see
+[Supervisor key lifecycle](../api/environment-work.md#supervisor-key-lifecycle).
+
 ## Build the worker image
 
 ```bash
@@ -62,6 +78,7 @@ select it with `MANGO_WORKER_IMAGE`.
 In the same setup terminal:
 
 ```bash
+export MANGO_ENVIRONMENT_KEY=replace-with-the-issued-api_key
 export MANGO_DOCKER_BASE_URL=http://host.docker.internal:8080
 go run ./cmd/mango-worker docker
 ```

@@ -282,6 +282,45 @@
       "public": false
     },
     {
+      "id": "completeEnvironmentHealthcheck",
+      "method": "POST",
+      "path": "/v1/environments/{environment_id}/work/{work_id}/result",
+      "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "complete",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "work_id",
+          "required": true,
+          "schema": {
+            "pattern": "^work_",
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/EnvironmentWorkResultRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentWork"
+      },
+      "response_status": 200,
+      "public": false
+    },
+    {
       "id": "createAgent",
       "method": "POST",
       "path": "/v1/agents",
@@ -339,6 +378,36 @@
         "$ref": "#/components/schemas/Environment"
       },
       "response_status": 200,
+      "public": false
+    },
+    {
+      "id": "createEnvironmentHealthcheck",
+      "method": "POST",
+      "path": "/v1/environments/{environment_id}/work",
+      "tag": "Environment Work",
+      "sdk_resource": "environments.work",
+      "sdk_method": "create",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "environment_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "request_content_type": "application/json",
+      "request_schema": {
+        "$ref": "#/components/schemas/EnvironmentWorkCreateRequest"
+      },
+      "request_required": true,
+      "response_content_type": "application/json",
+      "response_schema": {
+        "$ref": "#/components/schemas/EnvironmentWork"
+      },
+      "response_status": 201,
       "public": false
     },
     {

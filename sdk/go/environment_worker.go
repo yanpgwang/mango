@@ -31,6 +31,10 @@ var ErrEnvironmentWorkLeaseLost = errors.New("mango: Environment Work lease lost
 // used only for Poll and Ack. Every request after Ack uses the scoped token
 // carried by the Work secret.
 type EnvironmentWorkerOptions struct {
+	// Healthcheck executes a fixed provider-owned probe inside the sandbox.
+	// It must honor context cancellation, avoid external/model calls, and
+	// return only bounded diagnostics. No handler reports a failed check.
+	Healthcheck        func(context.Context, string) error
 	EnvironmentID      string
 	WorkerID           string
 	Drain              bool
@@ -76,6 +80,7 @@ type EnvironmentWorkerToolContext struct {
 // variables. WorkSecret is always explicit so a launcher cannot accidentally
 // expose it through process environment to untrusted subprocesses.
 type EnvironmentWorkerHandleItemOptions struct {
+	WorkType      string
 	WorkID        string
 	EnvironmentID string
 	SessionID     string
@@ -141,7 +146,7 @@ func (w *EnvironmentWorker) Run(ctx context.Context) error {
 			continue
 		}
 		if err := w.handleWork(ctx, *work); err != nil && ctx.Err() == nil {
-			w.logger.Warn("Environment Work item failed", "work_id", work.ID, "session_id", work.Data.ID, "error", err)
+			w.logger.Warn("Environment Work item failed", "work_id", work.ID, "session_id", work.Data.SessionID(), "error", err)
 		}
 	}
 	if err := poller.Err(); err != nil && ctx.Err() == nil {
@@ -161,18 +166,25 @@ func (w *EnvironmentWorker) HandleItem(ctx context.Context, opts EnvironmentWork
 	workID := firstNonEmpty(opts.WorkID, os.Getenv("MANGO_WORK_ID"))
 	environmentID := firstNonEmpty(opts.EnvironmentID, w.opts.EnvironmentID, os.Getenv("MANGO_ENVIRONMENT_ID"))
 	sessionID := firstNonEmpty(opts.SessionID, os.Getenv("MANGO_SESSION_ID"))
+	workType := firstNonEmpty(opts.WorkType, os.Getenv("MANGO_WORK_TYPE"), "session")
 	secret := opts.WorkSecret
 	for _, required := range []struct{ name, value string }{
 		{"work ID", workID}, {"environment ID", environmentID},
-		{"session ID", sessionID}, {"Work secret", secret},
+		{"Work secret", secret},
 	} {
 		if required.value == "" {
 			return fmt.Errorf("mango: EnvironmentWorker.HandleItem: %s is required", required.name)
 		}
 	}
+	data := EnvironmentWorkData{SessionWorkData: &SessionWorkData{Type: "session", ID: sessionID}}
+	if workType == "healthcheck" {
+		data = EnvironmentWorkData{HealthcheckWorkData: &HealthcheckWorkData{Type: "healthcheck"}}
+	} else if workType != "session" || sessionID == "" {
+		return errors.New("mango: invalid Work type or missing Session ID")
+	}
 	return w.handleWork(ctx, EnvironmentWork{
 		ID: workID, EnvironmentID: environmentID,
-		Data:  EnvironmentWorkData{Type: "session", ID: sessionID},
+		Data:  data,
 		State: EnvironmentWorkStateStarting, Secret: &secret,
 	})
 }
@@ -202,7 +214,7 @@ func (w *EnvironmentWorker) validate(requireEnvironment bool) error {
 }
 
 func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork) error {
-	if work.ID == "" || work.EnvironmentID == "" || work.Data.Type != "session" || work.Data.ID == "" {
+	if work.ID == "" || work.EnvironmentID == "" || (work.Data.WorkType() != "healthcheck" && (work.Data.WorkType() != "session" || work.Data.SessionID() == "")) {
 		return errors.New("mango: Environment Work has an invalid identity")
 	}
 	if work.State != EnvironmentWorkStateStarting {
@@ -216,7 +228,10 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 		return fmt.Errorf("mango: Environment Work scoped secret is invalid: %w", err)
 	}
 	itemClient := w.client.withAPIKey(token)
-	log := w.logger.With("work_id", work.ID, "session_id", work.Data.ID)
+	if work.Data.WorkType() == "healthcheck" {
+		return w.handleHealthcheck(ctx, itemClient, work)
+	}
+	log := w.logger.With("work_id", work.ID, "session_id", work.Data.SessionID())
 
 	sessionCtx, cancelSession := context.WithCancelCause(ctx)
 	defer cancelSession(context.Canceled)
@@ -248,7 +263,7 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 	failureCommitted := false
 	if startup.ready {
 		inputs, preparationErr, permanent := w.prepareSessionInputs(
-			sessionCtx, itemClient, work.Data.ID, log,
+			sessionCtx, itemClient, work.Data.SessionID(), log,
 		)
 		if preparationErr != nil {
 			runnerErr = preparationErr
@@ -274,7 +289,7 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 				abandonWork = true
 			}
 		} else {
-			runner := NewSessionToolRunner(sessionCtx, itemClient, work.Data.ID, SessionToolRunnerOptions{
+			runner := NewSessionToolRunner(sessionCtx, itemClient, work.Data.SessionID(), SessionToolRunnerOptions{
 				Tools: inputs.tools, MaxIdle: w.opts.MaxIdle,
 				ToolTimeout: w.opts.ToolTimeout, SendTimeout: w.opts.SendTimeout,
 				SendRetryWindow: startup.ttl, Logger: log,

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -28,7 +29,7 @@ func TestMangoSDKEnvironmentWorkSurface(t *testing.T) {
 	ctx := context.Background()
 
 	got, err := client.Environments.Work.Get(ctx, service.work.EnvironmentID, service.work.ID)
-	if err != nil || got.ID != service.work.ID || got.Data.ID != service.work.SessionID ||
+	if err != nil || got.ID != service.work.ID || got.Data.SessionWorkData.ID != service.work.SessionID ||
 		got.Type != "work" || got.Secret != nil {
 		t.Fatalf("Get Work = %+v, err=%v", got, err)
 	}
@@ -301,4 +302,83 @@ func (s *sdkEnvironmentWorkService) Stats(
 	context.Context, string,
 ) (domain.EnvironmentWorkQueueStats, error) {
 	return domain.EnvironmentWorkQueueStats{WorkersPolling: 1}, nil
+}
+
+func (s *sdkEnvironmentWorkService) CreateHealthcheck(_ context.Context, environmentID string) (domain.EnvironmentWork, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	expires := s.work.CreatedAt.Add(120 * time.Second)
+	s.work.EnvironmentID = environmentID
+	s.work.Type = "healthcheck"
+	s.work.SessionID = ""
+	s.work.ExpiresAt = &expires
+	s.work.State = domain.EnvironmentWorkQueued
+	s.work.Result = nil
+	return s.work, nil
+}
+func (s *sdkEnvironmentWorkService) CompleteHealthcheck(_ context.Context, _, _ string, result domain.EnvironmentWorkResult) (domain.EnvironmentWork, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.work.Result = &result
+	s.work.State = domain.EnvironmentWorkStopped
+	return s.work, nil
+}
+
+func TestMangoSDKEnvironmentHealthcheckSurface(t *testing.T) {
+	t.Parallel()
+	service := newSDKEnvironmentWorkService()
+	server := httptest.NewServer(NewServer(Deps{EnvironmentWork: service}, Config{RequireAuth: true}).Handler())
+	defer server.Close()
+	client, err := mango.New(mango.Config{BaseURL: server.URL, APIKey: "sk-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	created, err := client.Environments.Work.New(ctx, "env_sdk", mango.EnvironmentWorkCreateRequest{Data: mango.HealthcheckWorkData{Type: "healthcheck"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Data.HealthcheckWorkData == nil || created.Data.SessionWorkData != nil || created.Result != nil || created.ExpiresAt == nil {
+		t.Fatalf("created=%+v", created)
+	}
+	completed, err := client.Environments.Work.Complete(ctx, "env_sdk", created.ID, mango.EnvironmentWorkResultRequest{Status: "succeeded", Message: "probe passed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.State != "stopped" || completed.Result == nil || completed.Result.Status != "succeeded" {
+		t.Fatalf("completed=%+v", completed)
+	}
+	got, err := client.Environments.Work.Get(ctx, "env_sdk", created.ID)
+	if err != nil || got.Result == nil || got.Result.Message != "probe passed" {
+		t.Fatalf("get=%+v err=%v", got, err)
+	}
+}
+
+func TestEnvironmentHealthcheckRawJSON(t *testing.T) {
+	service := newSDKEnvironmentWorkService()
+	handler := NewServer(Deps{EnvironmentWork: service}, Config{}).Handler()
+	for _, body := range []string{`{}`, `{"data":null}`, `{"data":{"type":"session","id":"sesn_one"}}`, `{"data":{"type":"healthcheck","command":"id"}}`} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/environments/env_sdk/work", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body=%s status=%d", body, rec.Code)
+		}
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/environments/env_sdk/work", bytes.NewBufferString(`{"data":{"type":"healthcheck"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	data := got["data"].(map[string]any)
+	if len(data) != 1 || data["type"] != "healthcheck" || got["result"] != nil || got["expires_at"] == nil || got["secret"] != nil {
+		t.Fatalf("body=%s", rec.Body)
+	}
 }

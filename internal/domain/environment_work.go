@@ -12,14 +12,15 @@ const (
 	EnvironmentWorkStopped  EnvironmentWorkState = "stopped"
 )
 
-// EnvironmentWork is Mango's durable control-plane lease for a self-hosted
-// Session worker. The current Anthropic EnvironmentWorker helper can consume
-// it as optional interoperability evidence. It activates the existing Session
-// event/tool-result protocol; it is not a second runtime.
+// EnvironmentWork is a durable execution lease for a self-hosted Session or
+// a bounded Environment healthcheck.
 type EnvironmentWork struct {
 	ID            string
 	EnvironmentID string
 	SessionID     string
+	Type          string
+	ExpiresAt     *time.Time
+	Result        *EnvironmentWorkResult
 	// Secret is populated only for the worker that tentatively claimed this
 	// activation. Persistence stores only its digest, and read/list surfaces
 	// redact it.
@@ -33,6 +34,11 @@ type EnvironmentWork struct {
 	StopRequestedAt   *time.Time
 	StoppedAt         *time.Time
 	TTLSeconds        int64
+}
+
+type EnvironmentWorkResult struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
 }
 
 type EnvironmentWorkHeartbeat struct {

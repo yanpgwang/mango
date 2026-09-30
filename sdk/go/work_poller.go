@@ -256,10 +256,10 @@ func validatePolledWork(work EnvironmentWork, environmentID string) error {
 			"mango: poll Environment Work returned environment %q for queue %q",
 			work.EnvironmentID, environmentID,
 		)
-	case work.Data.Type != "session" || work.Data.ID == "":
+	case work.Data.WorkType() != "healthcheck" && (work.Data.WorkType() != "session" || work.Data.SessionID() == ""):
 		return fmt.Errorf(
 			"mango: poll Environment Work returned invalid data identity %q/%q",
-			work.Data.Type, work.Data.ID,
+			work.Data.WorkType(), work.Data.SessionID(),
 		)
 	case work.State != EnvironmentWorkStateQueued:
 		return fmt.Errorf("mango: poll Environment Work returned state %q", work.State)
@@ -273,7 +273,7 @@ func validatePolledWork(work EnvironmentWork, environmentID string) error {
 func validateAcknowledgedWork(acknowledged, polled EnvironmentWork) error {
 	if acknowledged.ID != polled.ID ||
 		acknowledged.EnvironmentID != polled.EnvironmentID ||
-		acknowledged.Data != polled.Data {
+		acknowledged.Data.WorkType() != polled.Data.WorkType() || acknowledged.Data.SessionID() != polled.Data.SessionID() {
 		return fmt.Errorf(
 			"mango: acknowledge Environment Work returned mismatched identity %q/%q",
 			acknowledged.EnvironmentID, acknowledged.ID,

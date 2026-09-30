@@ -47,19 +47,21 @@ access still depends on the sandbox boundary.
 | [Model and context](architecture/storage-context-and-tools.md) | Limited | Durable transcripts, model-window profiles, usage-based estimates, request admission, and compaction. Exact provider token counts, complete request audit records, and equivalent Outcome/Advisor overflow recovery remain open. |
 | [Shell and file tools](guides/self-hosted-worker.md) | Limited | `bash`, `read`, `write`, `edit`, `glob`, and `grep`; `read` is capped at 64 KiB. No host-process fallback. See the execution-path table above. |
 | [MCP](architecture/storage-context-and-tools.md#mcp) | Limited | Streamable HTTP, permissions, journaled calls, and Vault bearer/OAuth authentication. Large results are truncated without a full-result file; binary content, private-network connectivity, deprecated SSE, MCP resources, and prompts are unsupported. |
-| [Files](api/files.md) | Limited | S3-compatible immutable upload/download, Workspace isolation, and lifecycle recovery. Applications explicitly transfer workspace deliverables. File-sourced images/PDFs and distributed reconciliation remain open. |
+| [Files](api/files.md) | Limited | S3-compatible immutable upload/download, Workspace isolation, and lifecycle recovery, including retained cleanup records when failed-upload deletion must be retried. Applications explicitly transfer workspace deliverables. File-sourced images/PDFs and distributed reconciliation remain open. |
 | [Session Resources](api/session-resources.md) | Limited | Create-time Memory Store attachments. File/Git staging is operator-owned. |
 | [Skills](api/skills.md) | Limited | Validated bundles, immutable Versions, Agent-scoped pins, and instruction loading. External catalogs and repository discovery are not implemented. |
 | [Memory](api/memory.md) | Limited | Versioned UTF-8 files, optimistic preconditions, and attached-Store synchronization. Automatic retention and non-Docker self-hosted launchers are not implemented. |
 | [Vaults](api/vaults.md) | Limited | Encrypted credentials, Session attachment, OAuth validation/refresh, and rotation. Environment-variable secret egress and refresh-failure notifications are not implemented. |
 | [Webhooks](api/webhooks.md) | Limited | Signed Session and Deployment Run lifecycle delivery, with three at-least-once attempts. No delivery-log API or configurable sustained-failure threshold. |
 | [Deployments](api/deployments.md) | Limited | Pinned templates, manual and cron runs, Memory Store templates, budgets, leases, and Run records. Agent-archive propagation remains open. |
-| [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, and permanent-input failure. Environment-scoped polling keys and health-check Work remain open. |
+| [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, and permanent-input failure. Environment-scoped supervisor keys with issue/list/revoke/rotation; bounded healthcheck Work proves sandbox execution without a Session/model and stores durable success, failure, timeout, or cancellation. |
+| [API health](deployment.md#health-probes) | Supported | Public process liveness and bounded PostgreSQL readiness, including read-only rejection and recovery. Does not certify worker execution. |
 | [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. |
 
 ## Product and operational boundaries
 
-- **Identity:** Workspace API keys and scoped Work credentials are implemented.
+- **Identity:** Workspace API keys, Environment-scoped supervisor keys, and
+  scoped Work credentials are implemented.
   Your application owns end-user identity and authorization; general roles,
   enterprise key lifecycle, quota, and billing are incomplete.
 - **Isolation:** Docker shares the host kernel. The local stack and reference

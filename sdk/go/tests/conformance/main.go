@@ -61,6 +61,28 @@ func run() (result error) {
 		return err
 	}
 	environmentID = environment.ID
+	check, err := client.Environments.Work.New(ctx, environmentID, mango.EnvironmentWorkCreateRequest{Data: mango.HealthcheckWorkData{Type: "healthcheck"}})
+	if err != nil {
+		return err
+	}
+	if check.Data.HealthcheckWorkData == nil || check.Data.SessionWorkData != nil || check.ExpiresAt == nil || check.Result != nil {
+		return fmt.Errorf("invalid healthcheck response")
+	}
+	done, err := client.Environments.Work.Complete(ctx, environmentID, check.ID, mango.EnvironmentWorkResultRequest{Status: "failed", Message: "conformance diagnostic"})
+	if err != nil {
+		return err
+	}
+	if done.Result == nil || done.Result.Status != "failed" || done.Result.Message != "conformance diagnostic" {
+		return fmt.Errorf("invalid healthcheck result")
+	}
+	workPage, err := client.Environments.Work.List(ctx, environmentID, mango.ListEnvironmentWorkParams{})
+	if err != nil {
+		return err
+	}
+	if len(workPage.Data) != 1 || workPage.Data[0].Data.HealthcheckWorkData == nil {
+		return fmt.Errorf("invalid healthcheck list")
+	}
+
 	for _, suffix := range []string{"one", "two"} {
 		agent, err := client.Agents.New(ctx, mango.AgentCreateRequest{Name: "go-sdk-" + suffix, Model: mango.ModelID("sdk-conformance")})
 		if err != nil {

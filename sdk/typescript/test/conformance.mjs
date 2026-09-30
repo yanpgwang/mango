@@ -20,6 +20,14 @@ try {
     assert.deepEqual(new Uint8Array(await response.arrayBuffer()), payload);
   } finally { await client.files.delete(uploaded.id); }
   environment = await client.environments.create({ name: 'TypeScript conformance', config: { type: 'self_hosted' } });
+  const check = await client.environments.work.create(environment.id, { data: { type: 'healthcheck' } });
+  assert.deepEqual(check.data, { type: 'healthcheck' });
+  assert.ok(check.expires_at);
+  assert.equal(check.result, null);
+  const done = await client.environments.work.complete(environment.id, check.id, { status: 'failed', message: 'conformance diagnostic' });
+  assert.deepEqual(done.result, { status: 'failed', message: 'conformance diagnostic' });
+  const checks = await client.environments.work.list(environment.id);
+  assert.deepEqual(checks.data[0].data, { type: 'healthcheck' });
   for (let index = 0; index < 2; index++) agents.push(await client.agents.create({ name: `TypeScript conformance ${index}`, model: 'sdk-conformance' }));
   assert.equal((await client.agents.retrieve(agents[0].id)).id, agents[0].id);
   const listed = [];

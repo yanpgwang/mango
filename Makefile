@@ -40,6 +40,7 @@ PYTHON ?= python3
 UV ?= uv
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
 MANGO_EXAMPLE_ADVISOR_MODEL_ID ?= $(MANGO_EXAMPLE_MODEL_ID)
+HITL_ARGS ?= start
 DOCKER_BUILD_ARGS := --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION)
 ifneq ($(strip $(GOPROXY)),)
 DOCKER_BUILD_ARGS += --build-arg GOPROXY=$(GOPROXY)
@@ -70,7 +71,7 @@ help:
 	@echo "  make test-platform-live  alias for the self-hosted live smoke"
 	@echo "  make test-custom-tool-barrier  test custom-tool results across a worker restart"
 	@echo "  make demo-coding-agent  run the coding agent example with a local Docker worker"
-	@echo "  make demo-hitl-gate      run the interactive HITL example over public HTTP"
+	@echo "  make demo-hitl-gate      run the recoverable HITL Go SDK example"
 	@echo "  make demo-multi-agent-team  run the interactive multi-agent example over public HTTP"
 	@echo "  make vet            run go vet"
 	@echo "  make verify         run the core Go checks"
@@ -169,7 +170,7 @@ demo-coding-agent:
 demo-hitl-gate:
 	MANGO_EXAMPLE_MODEL_ID='$(MANGO_EXAMPLE_MODEL_ID)' \
 	env -u MANGO_MODEL_BASE_URL -u MANGO_MODEL_API_KEY -u MANGO_MODEL_AUTH -u MANGO_MODEL_ID \
-		$(GO) run ./examples/hitl-gate
+		$(GO) run ./examples/hitl-gate $(HITL_ARGS)
 
 demo-multi-agent-team:
 	MANGO_EXAMPLE_MODEL_ID='$(MANGO_EXAMPLE_MODEL_ID)' \

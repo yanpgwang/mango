@@ -99,6 +99,9 @@ not automatically mount inputs or publish outputs from a workspace.
 - Metadata becomes visible only after the object write completes.
 - Delete hides metadata before deleting bytes; startup reconciliation finishes
   interrupted operations.
+- If an object write fails and its cleanup cannot delete the object, Mango
+  retains the hidden upload record. Startup reconciliation retries that
+  deletion after storage recovers; failed cleanup does not discard the record.
 - Files are accepted as bounded UTF-8 outcome rubrics and text-only
   `user.message` document content.
 - Worker workspace files remain private to the operator unless an application
