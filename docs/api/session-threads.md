@@ -20,8 +20,7 @@ GET  /v1/sessions/{session_id}/threads/{thread_id}/stream
 
 The primary identity and its initial execution projection are inserted in the
 same PostgreSQL transaction as the Session, its immutable Skill and Vault pins,
-initial events, and orchestration outbox. Existing databases receive
-deterministic primary identities and backfilled projections during migration.
+initial events, and orchestration outbox.
 Deleting a Session cascades to its Threads.
 
 ## Projection model

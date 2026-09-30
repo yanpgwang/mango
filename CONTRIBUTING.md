@@ -183,6 +183,21 @@ before claiming it is verified, and record the result in the pull request.
 A simulated external application or service boundary must be named as such;
 never present it as a real third-party integration.
 
+## Development schema changes
+
+`internal/pg/migrations/00001_schema.sql` initializes the current development
+schema and is also sqlc's schema input. Historical pre-release migrations have
+been consolidated; development databases from the old chain must be rebuilt.
+See the [database baseline notes](docs/deployment.md#development-database-baseline)
+before resetting any local state.
+
+Preserve current constraints, indexes, seed data, and runtime recovery tests
+when consolidating schema history. Do not keep old-row backfill or historical
+downgrade tests solely to support an earlier checkout. Test initialization and
+reapplication against real PostgreSQL and use the owning package's service
+tests to establish current persistence behavior. When editing the schema,
+regenerate the query bindings with sqlc and review the generated diff.
+
 ## Public API changes
 
 First-party SDKs are generated from the checked-in OpenAPI source. After an API

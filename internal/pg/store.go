@@ -1021,8 +1021,8 @@ func (s *Store) admitLocked(
 		if err := q.EnqueueEnvironmentWork(ctx, pgstore.EnqueueEnvironmentWorkParams{
 			ID:            s.ids.NewID(domain.PrefixEnvironmentWork),
 			EnvironmentID: session.EnvironmentID,
-			SessionID:     session.ID,
-			ActivationSeq: maxSeq,
+			SessionID:     &session.ID,
+			ActivationSeq: &maxSeq,
 			CreatedAt:     tsUTC(s.clock.Now().UTC()),
 		}); err != nil {
 			return Admission{}, err

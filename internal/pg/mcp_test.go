@@ -2,69 +2,11 @@ package pg
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/mcpclient"
 )
-
-func TestMCPDiscoverySnapshotMigrationBackfillsPrimaryThread(t *testing.T) {
-	store := testStoreWithOptions(t, 1, 24)
-	ctx := context.Background()
-	session := newSession("sess_mcp_snapshot_backfill")
-	body, err := json.Marshal(session)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.pool.Exec(ctx, `
-INSERT INTO sessions (id, status, body, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5)`,
-		session.ID, session.Status, body, session.CreatedAt, session.UpdatedAt,
-	); err != nil {
-		t.Fatal(err)
-	}
-	tx, err := store.pool.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.insertPrimarySessionThread(ctx, tx, session); err != nil {
-		_ = tx.Rollback(ctx)
-		t.Fatal(err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatal(err)
-	}
-	tools, err := json.Marshal([]mcpclient.Tool{{Name: "legacy_tool"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.pool.Exec(ctx, `
-INSERT INTO mcp_discovery_snapshots (
-    session_id, server_name, server_url, tools, created_at
-) VALUES ($1, 'github', 'https://legacy.example.com', $2, $3)`,
-		session.ID, tools, time.Now().UTC()); err != nil {
-		t.Fatal(err)
-	}
-	if err := Migrate(ctx, store.pool); err != nil {
-		t.Fatalf("apply Thread MCP migration: %v", err)
-	}
-	var threadID, kind string
-	if err := store.pool.QueryRow(ctx, `
-SELECT snapshot.thread_id, thread.kind
-FROM mcp_discovery_snapshots AS snapshot
-JOIN session_threads AS thread
-  ON thread.session_id = snapshot.session_id
- AND thread.id = snapshot.thread_id
-WHERE snapshot.session_id = $1 AND snapshot.server_name = 'github'`,
-		session.ID).Scan(&threadID, &kind); err != nil {
-		t.Fatal(err)
-	}
-	if threadID == "" || kind != "primary" {
-		t.Fatalf("backfilled snapshot Thread = %q (%s)", threadID, kind)
-	}
-}
 
 func TestMCPDiscoverySnapshot_IsInsertOncePerThreadServer(t *testing.T) {
 	store := testStore(t)

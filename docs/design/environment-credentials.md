@@ -57,11 +57,12 @@ credential explicitly and does not fall back to MANGO_API_KEY.
 
 ## Durability, migration, and non-goals
 
-Migration 40 adds the nullable scope and its referential integrity. Existing
-Workspace keys retain their correct administration role. Deleting an Environment
-removes its scoped keys. Down migration must delete scoped keys before dropping
-the scope column so rollback cannot promote them to Workspace keys. Mango is
-pre-release; there is no old-checkout data compatibility layer.
+The schema includes the nullable scope and its referential integrity. Workspace
+keys have no Environment scope; deleting an Environment removes its scoped keys.
+The original migration 40 and its downgrade path were consolidated into the
+[development schema baseline](../deployment.md#development-database-baseline).
+Mango is pre-release; development databases from the historical chain must be
+rebuilt, and no old-checkout data compatibility layer is provided.
 
 No IAM/RBAC framework, hosted authentication, new API namespace, automatic expiry,
 healthcheck Work, worker heartbeat command, credential sharing with sandboxes, or
