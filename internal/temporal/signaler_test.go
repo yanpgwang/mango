@@ -65,8 +65,9 @@ type completedWorkflowRun struct {
 	id string
 }
 
-func (r completedWorkflowRun) GetID() string  { return r.id }
-func (completedWorkflowRun) GetRunID() string { return "run" }
+func (r completedWorkflowRun) GetID() string                { return r.id }
+func (completedWorkflowRun) GetRunID() string               { return "run" }
+func (completedWorkflowRun) GetFirstExecutionRunID() string { return "run" }
 func (completedWorkflowRun) Get(context.Context, interface{}) error {
 	return nil
 }
