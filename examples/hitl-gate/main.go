@@ -284,7 +284,11 @@ func (a *gateApp) history(ctx context.Context) (historyView, error) {
 			return view, errors.New("session terminated or deleted; use cleanup")
 		}
 		if failure := event.SessionErrorEvent; failure != nil {
-			return view, fmt.Errorf("session error: %s", failure.Error.Message)
+			// Automatic retries remain in history even after the turn recovers.
+			// Only an explicit retrying status lets this tutorial keep following.
+			if retry, ok := failure.Error.RetryStatus.Get(); !ok || retry.Type != "retrying" {
+				return view, fmt.Errorf("session error: %s", failure.Error.Message)
+			}
 		}
 		if message := event.AgentMessageEvent; message != nil {
 			var text []string

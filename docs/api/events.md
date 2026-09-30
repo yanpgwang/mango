@@ -193,6 +193,13 @@ places processed events first and unprocessed (`null`) events last; descending
 order reverses that placement. The internal receipt sequence is used only as a
 stable tie-breaker for equal or null timestamps and is never exposed.
 
+## Interpret lifecycle events
+
+To interpret retry errors, idle stop reasons, and worker progress together,
+follow [Troubleshoot a Session](../guides/session-troubleshooting.md). Historical
+`session.error` events marked `retrying` remain visible after recovery and must
+not be treated as terminal failures.
+
 ## Stream events
 
 `GET /v1/sessions/{id}/events/stream`
