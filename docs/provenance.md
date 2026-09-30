@@ -1206,3 +1206,31 @@ serves self-hosted operator verification without a model call or synthetic
 Session. The three native clients encode Mango's union and create/result
 operations; only the Go helper owns execution. Official implementations were
 neither copied nor used as clients or dependencies.
+
+## Session troubleshooting and tutorial retries (2026-09-30)
+
+Reviewed Mango's HTTP projections, OpenAPI error/stop-reason shapes, provider
+retry workflow tests, Work lease/reclaim code, and the approval application's
+persisted-history reader alongside the current official
+[event stream](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
+and [Session operations](https://platform.claude.com/docs/en/managed-agents/session-operations)
+guides. Paired official SDK retry-status types were read in Go v1.76.0
+(`ad865dfa3d1a8d2f4a7ad0d072011e811e9957a9`), Python v1.9.0
+(`a7285e919ab79998d9380b3b57f6315b7860b8d8`), and TypeScript sdk-v0.129.0
+(`bf2058689f845dfb10e59bd9ebeb5cb4e9318a9d`).
+
+- Adopted the client responsibility to wait on `retrying` errors and distinguish
+  exhausted turns from terminal Sessions. These concepts already exist in
+  Mango's API and generated Go SDK; the approval example now uses that mapping
+  instead of treating every historical error as fatal.
+- Added a [troubleshooting path](guides/session-troubleshooting.md) through
+  Mango's existing Session, Event, Thread, and Work APIs, including full
+  pagination, action/result reconciliation, and self-hosted lease evidence.
+- Kept unknown errors as a stop-and-inspect condition in the bounded tutorial.
+  Its one application-owned turn does not automatically submit a new prompt
+  after retry exhaustion. Saved decisions and explicit cleanup remain local
+  application responsibilities.
+- Did not adopt a hosted Console viewer, hosted credential/header rules, or a
+  new diagnostics resource. No runtime, HTTP, SDK schema, or database change was
+  needed. Official SDKs remain research sources only; validation uses Mango's
+  Go SDK and an independently authored application HTTP fixture.

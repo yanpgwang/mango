@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
 // This fixture exercises the tutorial's SDK requests and local recovery only.
@@ -193,6 +195,88 @@ func TestStartThenResumePartialGate(t *testing.T) {
 	if f.creates != 3 || f.prompts != 1 || f.results["call_1"] != 1 || f.results["call_2"] != 1 {
 		t.Fatalf("restart repeated work: creates=%d prompts=%d results=%v", f.creates, f.prompts, f.results)
 	}
+}
+
+func TestResumeAfterRecoveredModelRetry(t *testing.T) {
+	f, _, path := newGateServer(t)
+	if _, err := invoke(t, path, "start", "", "-stop-after-first-result"); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	// The retry happened before the actions, but remains in every history read.
+	prefix := []map[string]any{f.history[0], fixtureSessionError("retrying"),
+		{"id": "rescheduled", "type": "session.status_rescheduled", "processed_at": "2026-09-30T00:00:00Z"},
+		{"id": "running", "type": "session.status_running", "processed_at": "2026-09-30T00:00:00Z"},
+	}
+	f.history = append(prefix, f.history[1:]...)
+	f.mu.Unlock()
+	if out, err := invoke(t, path, "resume", "reject\n"); err != nil || !strings.Contains(out, "Expenses recorded.") {
+		t.Fatalf("recovered retry blocked pending approval: output=%s error=%v", out, err)
+	}
+	if out, err := invoke(t, path, "resume", ""); err != nil || !strings.Contains(out, "Expenses recorded.") || strings.Contains(out, "Decision [") {
+		t.Fatalf("recovered retry blocked completed history: output=%s error=%v", out, err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.creates != 3 || f.prompts != 1 || f.results["call_1"] != 1 || f.results["call_2"] != 1 || len(f.deletes) != 0 {
+		t.Fatalf("retry repeated or cleaned up work: creates=%d prompts=%d results=%v deletes=%v", f.creates, f.prompts, f.results, f.deletes)
+	}
+}
+
+func TestHistoryWaitsDuringModelRetry(t *testing.T) {
+	f, server, _ := newGateServer(t)
+	f.history = []map[string]any{
+		{"id": "prompt", "type": "user.message", "processed_at": "2026-09-30T00:00:00Z", "content": []any{map[string]any{"type": "text", "text": "Review expenses"}}},
+		fixtureSessionError("retrying"),
+		{"id": "rescheduled", "type": "session.status_rescheduled", "processed_at": "2026-09-30T00:00:00Z"},
+	}
+	client, err := mango.New(mango.Config{BaseURL: server.URL, APIKey: "test-secret-must-not-be-saved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := gateApp{client: client, state: gateState{SessionID: "session_1"}}
+	view, err := app.history(t.Context())
+	if err != nil || !view.started || view.ended || len(view.pending) != 0 {
+		t.Fatalf("active retry must wait: view=%+v error=%v", view, err)
+	}
+}
+
+func TestResumeStopsOnNonRetryingSessionErrors(t *testing.T) {
+	for _, status := range []string{"exhausted", "terminal", "", "unknown"} {
+		t.Run("status="+status, func(t *testing.T) {
+			f, _, path := newGateServer(t)
+			if _, err := invoke(t, path, "start", "", "-stop-after-first-result"); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.mu.Lock()
+			f.history = append(f.history, fixtureSessionError(status))
+			f.mu.Unlock()
+			if _, err := invoke(t, path, "resume", "reject\n"); err == nil || !strings.Contains(err.Error(), "model unavailable") {
+				t.Fatalf("must report model failure: %v", err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatalf("failure must preserve state: %v", err)
+			}
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if f.results["call_2"] != 0 || f.prompts != 1 || f.creates != 3 || len(f.deletes) != 0 {
+				t.Fatalf("failure sent or deleted work: results=%v prompts=%d creates=%d deletes=%v", f.results, f.prompts, f.creates, f.deletes)
+			}
+		})
+	}
+}
+
+func fixtureSessionError(status string) map[string]any {
+	failure := map[string]any{"type": "model_request_failed_error", "message": "model unavailable"}
+	if status != "" {
+		failure["retry_status"] = map[string]any{"type": status}
+	}
+	return map[string]any{"id": "retry_error", "type": "session.error", "processed_at": "2026-09-30T00:00:00Z", "error": failure}
 }
 
 func TestAmbiguousAcceptedResultIsReconciledWithoutAskingAgain(t *testing.T) {

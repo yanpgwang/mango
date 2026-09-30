@@ -131,6 +131,13 @@ already saved decision without asking you again. Keep the same server URL,
 Workspace credential, and state file across runs; a different server URL is
 rejected before any resume or cleanup request.
 
+A `session.error` with `error.retry_status.type: retrying` means Mango is
+retrying automatically. The client keeps following history, including when
+that error remains in a recovered Session. Exhausted, terminal, or unrecognized
+errors stop the client and preserve its journal and resources. Inspect the
+[Session troubleshooting guide](../guides/session-troubleshooting.md) before
+choosing recovery or cleanup.
+
 Every state update writes a complete private file (mode `0600`) and atomically
 replaces the previous file. New state directories use `0700`. `start` refuses
 to overwrite any existing state. The default `.mango/` directory is Git-ignored;
