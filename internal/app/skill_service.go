@@ -387,7 +387,11 @@ func (s *SkillService) Reconcile(ctx context.Context) error {
 func (s *SkillService) cleanupIncompleteVersion(ctx context.Context, version domain.SkillVersion) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), skillCleanupTimeout)
 	defer cancel()
-	_ = s.blobs.Delete(cleanupCtx, version.BlobKey)
+	if err := s.blobs.Delete(cleanupCtx, version.BlobKey); err != nil {
+		// Preserve the Version and its parent so reconciliation can retry an
+		// ambiguous upload's archive deletion after object storage recovers.
+		return
+	}
 	_ = s.repo.RemoveIncompleteVersion(cleanupCtx, version.SkillID, version.Version)
 	if version.Initial {
 		_ = s.repo.DeleteEmptySkill(cleanupCtx, version.SkillID)

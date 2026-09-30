@@ -6,11 +6,17 @@ description: Build with Mango through runnable applications.
 # Examples
 
 Each example includes its source, prerequisites, expected results, and cleanup.
-For a first offline API call, start with the [Quickstart](../getting-started.md).
+Start with the [Quickstart](../getting-started.md) for an offline SDK call, then
+try the [human-in-the-loop gate](./hitl-gate.md) to learn custom-tool results
+and client restart. The coding agent and specialist team build on longer
+worker and multi-agent workflows.
 
 <Cards>
-  <Card title="Terminal UI" href="./terminal-ui.md">
-    Browse Sessions, stream responses, inspect child Threads, and answer action requests.
+  <Card title="Query MongoDB" href="./mongodb-query.md">
+    Query inventory from a self-hosted Docker worker using your database configuration.
+  </Card>
+  <Card title="Coding agent" href="./coding-agent.md">
+    Fix failing tests, continue after worker replacement, and download verified code.
   </Card>
   <Card title="Human-in-the-loop gate" href="./hitl-gate.md">
     Review sample expenses and let an agent continue after an application or human decision.
@@ -22,6 +28,6 @@ For a first offline API call, start with the [Quickstart](../getting-started.md)
 
 ## Before you run
 
-The terminal UI includes an offline demo. The approval and team examples
-require a running Mango deployment and a [configured model](../guides/model-configuration.md).
+These examples require a running Mango deployment and a
+[configured model](../guides/model-configuration.md).
 Their commands connect to that deployment; start it before running the client.

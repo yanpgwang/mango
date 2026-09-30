@@ -1,189 +1,180 @@
 ---
 title: Human-in-the-loop gate
-description: Pause an agent for an application action or a human decision.
+description: Review expenses with the Go SDK and resume the same Session after a client restart.
 slug: /examples/hitl-gate
 ---
 
 # Human-in-the-loop gate
 
-Custom tools let an Agent ask your application to perform work that should not
-run inside its sandbox. The application can call an internal service, record an
-audited decision, or wait for a human reviewer, then return the result to the
-same durable Session.
+Build an application that records a clear expense decision and asks a human
+about an ambiguous one. Mango waits for both custom-tool results before the
+Agent continues. Stop the client at the gate, restart it, and finish the same
+Session without repeating the recorded decision.
 
-This example includes a runnable Go program over Mango's public HTTP API.
-It currently uses the standard `net/http` client. First-party
-[Go, Python, and TypeScript SDKs](../sdk.md) are available for the same operations;
-this example has not yet been migrated to one.
-It never calls the model provider directly: the configured Mango worker owns
-that credential and model request. Complete [Quickstart](../getting-started.md)
-first and use the exact request shapes from the [Agents](../api/agents.md) and
-[Events](../api/events.md) references.
+The [Go application source](https://github.com/yanpgwang/mango/tree/main/examples/hitl-gate)
+uses Mango's public SDK. Its private local state file is the **simulated expense
+system**: saving a decision is the only business effect. It does not submit
+payments or connect to a real expense service.
 
-## Define the gate
+## Prerequisites
 
-A custom tool has a name, description, and JSON Schema. It does not need a
-sandbox implementation:
+- Complete the [Quickstart](../getting-started.md), then configure a real model
+  on the Mango worker using the [model configuration guide](../guides/model-configuration.md).
+- Keep that Mango deployment running. The model must support custom tools;
+  this example does not need a sandbox tool call.
+- Run from a Mango repository checkout with **Go 1.26.6 or newer**. This root
+  application uses the source Go SDK through the repository's local module
+  replacement. The standalone SDK quickstart has its own Go 1.24 minimum.
+- Use one terminal process and one operator per state file.
 
-```json
-{
-  "name": "expense-gate",
-  "model": "your-model-id",
-  "system": "Use decide for clear expenses and escalate when a human judgment is required.",
-  "tools": [
-    {
-      "type": "custom",
-      "name": "decide",
-      "description": "Record a final approve or reject decision.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "receipt_id": {"type": "string"},
-          "action": {"type": "string", "enum": ["approve", "reject"]},
-          "reason": {"type": "string"}
-        },
-        "required": ["receipt_id", "action", "reason"]
-      }
-    },
-    {
-      "type": "custom",
-      "name": "escalate",
-      "description": "Request a human decision for an ambiguous expense.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "receipt_id": {"type": "string"},
-          "question": {"type": "string"}
-        },
-        "required": ["receipt_id", "question"]
-      }
-    }
-  ]
-}
+```sh
+export MANGO_EXAMPLE_BASE_URL=http://localhost:8080
+export MANGO_API_KEY=sk-mango-local-development
+export MANGO_EXAMPLE_MODEL_ID=your-configured-model-id
 ```
 
-When the model calls either tool, Mango persists an
-`agent.custom_tool_use`. It does not execute application or human work on the
-model's behalf.
+Use your deployment's Workspace key in place of the local development key.
+Only `start` needs the model ID. Model-provider credentials belong on the Mango
+worker; the client reads no model credential and stores no credentials.
 
-## Observe the barrier
+## Run and recognize success
 
-After committing all custom calls from that model round, Mango emits
-`session.status_idle` with `stop_reason.type=requires_action`. Its `event_ids`
-contains every action that must be answered before the model can continue.
-
-Store your business result idempotently before sending the corresponding
-`user.custom_tool_result`. Use the `agent.custom_tool_use` event ID as the
-`custom_tool_use_id`; do not invent a separate correlation ID.
-
-Multiple results can be sent in one Events request:
-
-```json
-{
-  "events": [
-    {
-      "type": "user.custom_tool_result",
-      "custom_tool_use_id": "sevt_decide",
-      "content": [{"type": "text", "text": "{\"recorded\":true,\"receipt_id\":\"r01\",\"decision\":\"approve\"}"}]
-    },
-    {
-      "type": "user.custom_tool_result",
-      "custom_tool_use_id": "sevt_escalate",
-      "content": [{"type": "text", "text": "{\"recorded\":true,\"receipt_id\":\"r02\",\"human_decision\":\"reject\"}"}]
-    }
-  ]
-}
+```sh
+go run ./examples/hitl-gate start
 ```
 
-Replace `sevt_decide` and `sevt_escalate` with the actual
-`agent.custom_tool_use` event IDs returned by the Session.
+The program creates an Environment, Agent, and Session and saves their IDs to
+`.mango/hitl-gate.json`. The model proposes two custom actions:
 
-Partial results remain durable without reopening the Session. The final result
-claims the complete barrier, changes the Session to running, and wakes one
-resume turn containing every paired tool result. A duplicate or mismatched
-result is rejected. An ordinary user message may be accepted during the wait,
-but cannot run before the result round completes.
+| Receipt | Input | Who decides |
+| --- | --- | --- |
+| `r01` | USD 12 for office pencils, itemized receipt | Application records the proposed clear decision |
+| `r02` | USD 900 for an unspecified team activity, no itemized receipt | You enter `approve` or `reject` |
 
-## Recover safely
-
-PostgreSQL, not the API connection or worker memory, owns the barrier. If the
-client, API, or execution worker restarts:
-
-1. open the Session event stream;
-2. list persisted history while the stream is open;
-3. find the latest `requires_action` boundary;
-4. correlate its action IDs with already persisted `user.custom_tool_result`
-   events;
-5. submit only missing results.
-
-An application may subscribe to `session.status_idled` through
-[Webhooks](../api/webhooks.md) to start this recovery promptly. The notification
-is deliberately thin, at least once, and not an infinite log: production
-consumers must still use the documented stream-plus-history recovery pattern or
-bounded reconciliation after receiving it.
-
-## Run the example
-
-First configure a running API and worker using
-[Model configuration](../guides/model-configuration.md).
-With the same `~/.config/mango/dev.env`, run the interactive client:
-
-```bash
-scripts/with-dev-env make demo-hitl-gate
-```
-
-The example connects to that deployment; it does not start services or change
-the worker's model or sandbox configuration.
-
-The program creates a default `self_hosted` Environment, Agent, and Session
-through public HTTP. Custom tools are application-owned, so this example does
-not require an Environment worker. It
-sends two receipts, and waits for the complete `requires_action` barrier. The
-real model must produce `decide` for the clear receipt and `escalate` for the
-ambiguous one. The application records `decide` automatically; for `escalate`,
-the terminal displays the model's question and waits for you to type
-`approve` or `reject`. Results are submitted separately, and the program waits
-for the real model's final response after the complete barrier.
-
-The runnable source is
-[`examples/hitl-gate`](https://github.com/yanpgwang/mango/tree/main/examples/hitl-gate).
-It defaults to `http://localhost:8080` and the documented local Mango API key.
-Set `MANGO_EXAMPLE_BASE_URL`, `MANGO_API_KEY`, or
-`MANGO_EXAMPLE_MODEL_ID` to override them. Set
-`MANGO_EXAMPLE_KEEP_RESOURCES=1` to retain the created resources for history
-inspection; otherwise the program deletes the Session and Environment and
-archives the Agent after success. The Make target removes model-provider
-credentials from the example process environment before starting it.
-
-A successful run resembles the following. Model wording can vary, but the
-program requires the two typed actions and the final completed turn:
+The default run waits for you at the second receipt. Output resembles:
 
 ```text
-The real model requested these application-owned actions:
-  decide {"action":"approve",...,"receipt_id":"r01"}
-  escalate {"question":"This USD 900 expense ... can an itemized receipt be provided?","receipt_id":"r02"}
+Created Environment env_...
+Created Agent agent_...
+Created Session sess_...
+Session sess_...; state: .mango/hitl-gate.json
+Recorded approve for r01 (application).
+Result persisted for sevt_...
 
-Application records approve for r01.
-First result persisted; the Session remains at the incomplete barrier.
-
-Human review required for r02: This USD 900 expense ... can an itemized receipt be provided?
+Human review for r02: ...
 Decision [approve/reject]: reject
+Recorded reject for r02 (human).
+Result persisted for sevt_...
 
 Agent final response:
-Summary of recorded outcomes:
-Receipt r01: Approved ...
-Receipt r02: Rejected (after human review) ...
+...the model summarizes both recorded outcomes...
+Resources retained. Use cleanup with the same -state path when finished.
 ```
 
-This application records decisions for the sample receipts; it does not call a
-payment service or approve a real expense. Its successful run shows the public
-custom-tool workflow, not a production integration or exhaustive recovery test.
-Independent runtime tests are described in the
-[contributor guide](https://github.com/yanpgwang/mango/blob/main/CONTRIBUTING.md).
+IDs, the review question, and final prose vary with the model. A successful run
+records both results and observes `end_turn` with a final Agent message. The
+example rejects a model response that does not contain the two expected actions.
 
-## Design boundary
+`make demo-hitl-gate` runs `start` as well. Pass another command with, for
+example, `make demo-hitl-gate HITL_ARGS=resume`.
 
-The expense-approval user problem and custom-tool round trip are informed by
-Anthropic's public CMA gate cookbook. Mango uses its own complete-barrier,
-PostgreSQL admission, Temporal recovery, and event semantics. See
-[Design provenance](../provenance.md) for the adopted and changed parts.
+## Read the SDK flow
+
+The client connects to your Mango server with a Workspace credential:
+
+::include[../../examples/hitl-gate/main.go#client]{lang="go"}
+
+The Agent declares custom tools. `customTool` builds each tool's JSON Schema;
+the application handles the requests outside the sandbox:
+
+::include[../../examples/hitl-gate/main.go#agent]{lang="go"}
+
+The Session uses the created resources:
+
+::include[../../examples/hitl-gate/main.go#session]{lang="go"}
+
+The application polls **persisted event history**, using the SDK iterator to
+read every page. A `requires_action` idle event identifies the blocking custom
+actions. The application subtracts IDs already answered by persisted
+`user.custom_tool_result` events before asking for or submitting anything:
+
+::include[../../examples/hitl-gate/main.go#history]{lang="go"}
+
+The local decision journal is keyed by the custom-tool event ID. Saving happens
+before `Sessions.Events.Send`; the same ID becomes `custom_tool_use_id`:
+
+::include[../../examples/hitl-gate/main.go#decision]{lang="go"}
+
+This application uses explicit event operations so the human decision and local
+journal remain visible. See the [Events API](../api/events.md) for the runtime's
+barrier and duplicate-result semantics and the [SDK guide](../sdk.md) for its
+other resources and helpers.
+
+## Stop, resume, and clean up
+
+Try a deterministic restart before the human decision:
+
+```sh
+go run ./examples/hitl-gate start -state .mango/restart.json -stop-after-first-result
+go run ./examples/hitl-gate resume -state .mango/restart.json
+```
+
+The first command exits after submitting the clear expense result. The second
+reads the existing Session history, skips that result, and asks for the human
+decision. You can also press **Ctrl-C** while the normal run waits for input,
+then use `resume`. Input cancellation preserves the state file and resources.
+
+`resume` uses the saved Session ID. It never creates another Session or sends
+the initial prompt again. If a result response fails after the server accepted
+it, the next run finds it in history. If the result is absent, it sends the
+already saved decision without asking you again. Keep the same server URL,
+Workspace credential, and state file across runs; a different server URL is
+rejected before any resume or cleanup request.
+
+Every state update writes a complete private file (mode `0600`) and atomically
+replaces the previous file. New state directories use `0700`. `start` refuses
+to overwrite any existing state. The default `.mango/` directory is Git-ignored;
+keep custom state paths out of source control as well.
+
+Delete the Session, archive the Agent, and delete the Environment explicitly:
+
+```sh
+go run ./examples/hitl-gate cleanup -state .mango/restart.json
+# For the default run:
+go run ./examples/hitl-gate cleanup
+```
+
+Cleanup saves progress after each successful operation. On failure it keeps
+the remaining IDs and reports the failed resource; retry the same command.
+It removes the state file only after known cleanup is complete. Once cleanup
+starts, the state cannot be resumed.
+
+If initial setup fails, already returned IDs stay in the state file. A lost
+resource-creation response may leave an unknown resource: the state records the
+creation stage, and cleanup retains it with instructions to inspect the
+corresponding [Environment](../api/environments.md), [Agent](../api/agents.md),
+or [Session](../api/sessions.md) list for the printed ID, `HITL` name, or
+`Interactive expense review` title. Clean up the uncertain resource manually
+before removing that state file. If no initial user message reached the
+Session, `resume` reports that condition for inspection and cleanup.
+
+## Limits
+
+This is one tutorial Session owned by one application and one operator. Do not
+run two processes on the same state file, switch Workspace keys, or send extra
+messages/results from another client. The server URL check cannot detect a
+changed Workspace credential or a different server installed at the same URL.
+
+The local journal demonstrates restart-safe application decisions; it is not an
+exactly-once guarantee for an external payment, email, or database write. A real
+integration needs its own durable transaction or idempotency mechanism keyed by
+the custom-tool event ID. Losing or manually changing the journal can lose the
+record of application work.
+
+History polling reads the complete log on each pass. That keeps the small
+example understandable; large applications should maintain their own cursor
+and projection. Errors preserve resources for inspection and explicit cleanup.
+The adjacent package tests exercise this application's SDK calls and state-file
+recovery with an independent HTTP fixture. Mango's runtime, persistence, and
+service tests remain separate; fixture success does not establish a real-model
+run of this tutorial.

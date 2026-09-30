@@ -349,6 +349,25 @@ actual OpenAPI document by `go run ./scripts/sdk-contract`. Changes to the API m
 regenerate both the shared contract and language bindings.
 
 The tests use deterministic local HTTP servers. Repository-level
-`make sdk-conformance` additionally runs `examples/conformance` against Mango's
+`make sdk-conformance` additionally runs `tests/conformance` against Mango's
 actual HTTP handlers with test repositories. Neither tier calls a real model or
 claims verification of a deployed service, storage provider, or paid model.
+
+## Environment healthchecks
+
+`client.Environments.Work.New(ctx, environmentID, mango.EnvironmentWorkCreateRequest{
+Data: mango.HealthcheckWorkData{Type: "healthcheck"}})` queues a bounded check.
+Inspect `work.Result` through `Work.Get` or `Work.List`. `work.Data` is a wire
+union with `SessionWorkData` and `HealthcheckWorkData` variants. `WorkType()` and
+`SessionID()` help launchers dispatch these; unknown variants return an empty
+type and are rejected by `WorkPoller`.
+
+`EnvironmentWorkerOptions.Healthcheck` supplies the provider-owned fixed probe.
+It must honor its ten-second context; a missing handler produces a failed
+result. `HandleItem` accepts `WorkType: "healthcheck"` (or `MANGO_WORK_TYPE`)
+without a Session ID. The first-party Docker worker supplies the sandbox probe,
+using an ephemeral tmpfs and a bounded container attempt. Result delivery retries
+without repeating execution; the server permits identical completion retries
+for 30 seconds after the result commits. This does not call Session or model
+APIs. See the repository's Environment Work guide for deadline and authorization
+semantics.

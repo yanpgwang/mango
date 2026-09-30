@@ -48,6 +48,22 @@ The default self-hosted tool path also needs a separate Environment worker.
 Its supervisor runs `mango-worker docker`; its per-Work container executes
 tools. See [Core concepts](concepts.md#environments-and-workers).
 
+## Health probes
+
+Use `GET /healthz` for API liveness and `GET /readyz` to decide whether to route
+new requests to an API process. Both are public. Readiness queries the same
+PostgreSQL pool used for requests, verifies writable transaction mode, and fails
+with 503 after at most two seconds when the database cannot be reached or a
+connection cannot be acquired. Recovery is checked on the next request.
+
+Allow the external probe more than two seconds to receive Mango's failure
+response. Do not restart the process just because readiness fails. The check is
+a point-in-time observation: it does not test storage capacity or every write
+permission. It does not certify Worker execution or model-provider availability.
+Temporal and NATS outages do not change the running API's readiness because
+PostgreSQL admits work durably for later processing. Startup still requires the
+configured dependencies to connect.
+
 ## Workspace authentication
 
 The API refuses to start without an active Workspace key. Set
@@ -60,8 +76,11 @@ mango api-key create -workspace wrkspc_... -label production
 ```
 
 The plaintext generated key is printed only by `api-key create`; PostgreSQL
-stores its SHA-256 digest. API and worker processes share Workspace ownership
-through PostgreSQL, but only the API needs request credentials.
+stores its SHA-256 digest. API and orchestration processes share Workspace
+ownership through PostgreSQL. An external Environment supervisor receives a
+key issued with `api-key create -workspace ID -environment ID -label LABEL`;
+configure it as `MANGO_ENVIRONMENT_KEY`. See the
+[worker guide](guides/self-hosted-worker.md#issue-a-supervisor-key).
 
 Model credentials belong to the orchestration worker. Configure an endpoint
 with the [model guide](guides/model-configuration.md); application clients and

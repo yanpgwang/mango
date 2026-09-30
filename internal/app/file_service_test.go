@@ -324,6 +324,42 @@ func TestFileService_CleanupOutlivesCanceledRequest(t *testing.T) {
 	}
 }
 
+func TestFileService_FailedUploadRetainsCleanupUntilStorageRecovers(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemoryFileRepository()
+	blobs := newMemoryBlobStore()
+	blobs.putErrAfterCommit = errors.New("upload response lost after object was stored")
+	blobs.deleteErr = errors.New("object deletion unavailable")
+	service := NewFileService(repo, blobs, domain.NewSeqIDGen(), domain.FixedClock{})
+	_, err := service.Upload(ctx, FileUploadInput{
+		Filename: "pending.txt", MimeType: "text/plain", Body: bytes.NewBufferString("pending bytes"),
+	})
+	if !errors.Is(err, blobs.putErrAfterCommit) {
+		t.Fatalf("Upload error = %v, want original upload error", err)
+	}
+	if page, err := service.List(ctx, FileListQuery{}); err != nil || len(page.Files) != 0 {
+		t.Fatalf("failed upload became visible: %+v, %v", page, err)
+	}
+	pending, err := repo.ListIncomplete(ctx)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("cleanup intent after failed object deletion = %+v, %v", pending, err)
+	}
+	restarted := NewFileService(repo, blobs, domain.NewSeqIDGen(), domain.FixedClock{})
+	if err := restarted.Reconcile(ctx); !errors.Is(err, blobs.deleteErr) {
+		t.Fatalf("Reconcile during outage = %v, want deletion error", err)
+	}
+	blobs.deleteErr = nil
+	if err := restarted.Reconcile(ctx); err != nil {
+		t.Fatalf("Reconcile after recovery: %v", err)
+	}
+	if len(blobs.objects) != 0 {
+		t.Fatalf("orphaned bytes remain after recovery: %v", blobs.objects)
+	}
+	if pending, err := repo.ListIncomplete(ctx); err != nil || len(pending) != 0 {
+		t.Fatalf("cleanup intents remain after recovery: %+v, %v", pending, err)
+	}
+}
+
 type memoryFileRepository struct {
 	mu                     sync.Mutex
 	files                  map[string]domain.File
@@ -434,6 +470,8 @@ type memoryBlobStore struct {
 	objects               map[string][]byte
 	putCalls              int
 	putErr                error
+	putErrAfterCommit     error
+	deleteErr             error
 	rejectCanceledCleanup bool
 }
 
@@ -460,6 +498,9 @@ func (s *memoryBlobStore) Put(
 		return BlobInfo{}, ErrBlobTooLarge
 	}
 	s.objects[key] = data
+	if s.putErrAfterCommit != nil {
+		return BlobInfo{}, s.putErrAfterCommit
+	}
 	return ComputeBlobInfo(data), nil
 }
 
@@ -474,6 +515,9 @@ func (s *memoryBlobStore) Open(_ context.Context, key string) (io.ReadCloser, er
 func (s *memoryBlobStore) Delete(ctx context.Context, key string) error {
 	if s.rejectCanceledCleanup && ctx.Err() != nil {
 		return ctx.Err()
+	}
+	if s.deleteErr != nil {
+		return s.deleteErr
 	}
 	delete(s.objects, key)
 	return nil

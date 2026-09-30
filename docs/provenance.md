@@ -20,6 +20,28 @@ and self-hosted. Public surface definitions may be design inputs, but external
 implementation code and non-public types must not be copied, and an external
 release is never an automatic roadmap.
 
+## Coding agent workflow (2026-09-08)
+
+- Reviewed the locally downloaded cookbook at
+  `a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5`: `CMA_iterate_fix_failing_tests.ipynb`
+  and the Docker self-hosted launcher, alongside official Go SDK v1.71.0
+  (`de6914c544629b14a67c0695ce147edae6a291e0`) Session, Agent, Environment,
+  Files and event-stream resource methods and the Environment worker helper.
+- Adopted: create Agent/Environment/Session; upload inputs; observe tool calls
+  through an open-before-send stream; continue a second turn; verify results;
+  archive resources. Mango's Go client maps the same resource hierarchy to its
+  own HTTP contract. The fixture and application are independently authored.
+- Adapted: the application downloads Files into an operator-owned directory,
+  binds it through `mango-worker docker --workspace-root`, and explicitly uploads
+  the selected deliverable. A replacement worker uses the same Session directory.
+  A fresh container runs pristine tests independently of the agent's claims.
+- Rejected for this self-hosted tutorial: cloud provisioning, managed File
+  mounts, automatic output publication, hosted credentials, beta headers and
+  executing an official SDK as a Mango client. No public API or storage change
+  is needed. Acceptance criteria are in the
+  [demo design](design/coding-agent-demo.md); runnable instructions are in the
+  [coding agent example](examples/coding-agent.md).
+
 ## Self-hosted boundary follow-up (2026-09-08)
 
 - User/operator rationale and acceptance criteria are recorded in the
@@ -36,6 +58,10 @@ release is never an automatic roadmap.
   Memory teardown, and separate queue/Session credentials. Mango keeps the Work
   lease renewing during cancellation teardown and gives its reference Docker
   container 120 seconds, with a longer Engine request deadline.
+  That grace applies to ordinary shutdown of the current worker. After reclaim,
+  the old attempt has lost its credential and is force-removed within a separate
+  Engine request budget before its replacement starts. Waiting for the old
+  attempt's Memory teardown would consume the new claim's starting lease.
 - Changed: Mango has only immutable Workspace Files and no producer of hosted
   Session-scoped copies. Every ready File is downloadable by that Workspace's
   authenticated application. `downloadable`, `scope`, and `scope_id` are removed
@@ -80,6 +106,31 @@ release is never an automatic roadmap.
   exception were retired together. Mango's existing `/v1` contract changed in
   place, as permitted before a supported release.
 
+## MongoDB query example
+
+- User problem: let a self-hosted agent query an operator's database using
+  ordinary container configuration. The example asks a replenishment question
+  against synthetic inventory in a real MongoDB container.
+- Reviewed CMA's public Docker self-hosted cookbook on 2026-09-10, alongside
+  the local cookbook snapshot at `a97b9a2dc300635f0c26b5e05d0b54bbe0279ee5`
+  and Python SDK v1.4.0 at `62de60b27d04f0927a0ccf0f2610597fafcfab6a`.
+  The Docker example supplies `MONGO_URI` through its launcher; the public SDK
+  separates Work polling from per-item tool execution and lease management.
+- Mango adopts that division using its own Go SDK: the example launches Docker
+  and passes the business environment; `WorkPoller` owns Poll/Ack and
+  `EnvironmentWorker.HandleItem` owns tools, heartbeats, and Stop. Mango's scoped
+  Work payload travels through the example's stdin transport. The Workspace
+  key remains in the host application.
+- The example owns its input data, Docker image, and optional local database.
+  It queries through Bash and `pymongo`, without an application-side database
+  tool or a hosted runtime. It does not adopt Atlas search, the separate fraud
+  review workflow, CMA credentials, or the official client's implementation.
+- Acceptance: run the standalone application against a real model and a real
+  MongoDB, inspect the tool call and replenishment answer, and clean up the
+  resources it created. No API, SDK, core launcher, or runtime change is needed.
+  No system-test or CI harness invokes this example; durability and recovery
+  remain covered by Mango's independent runtime tests.
+
 ## Self-hosted default user path
 
 - User/operator problem: an OSS runtime should lead users through the execution
@@ -95,7 +146,7 @@ release is never an automatic roadmap.
   Environment queue, trusted poller, per-Session worker, operator-owned
   File/Git staging, workspace outputs, and SDK-owned Skill/Memory lifecycle.
 - Mango adopts that high-level lifecycle and maps it coherently across HTTP,
-  OpenAPI, the three SDK quickstarts, HTTP quickstart, terminal UI, and examples
+  OpenAPI, the three SDK quickstarts, HTTP quickstart, and examples
   that need no managed File/Git mounts. Unlike CMA's hosted-product default,
   omitting Mango's Environment config now resolves to `self_hosted`; this is an
   intentional OSS trust-boundary choice, not wire compatibility.
@@ -147,10 +198,9 @@ release is never an automatic roadmap.
   retains the generic `request-id` response header, and exposes optional worker
   correlation as the `worker_id` query parameter. It does not expose provider
   rollout headers on its inbound API.
-- The Anthropic Messages adapter continues to send the provider headers its
-  outbound endpoint requires. Tests that exercise Mango through an Anthropic
-  SDK are optional research evidence; raw HTTP and OpenAPI tests define Mango's
-  transport contract.
+- The Messages adapter continues to send the headers its configured outbound
+  endpoint requires. Public SDK source is research input only; independent raw
+  HTTP, OpenAPI, and Mango SDK tests verify Mango's transport contract.
 - Claude Managed Agents' agent-level `inference_geo` and the public
   [Claude data-residency design](https://platform.claude.com/docs/en/manage-claude/data-residency)
   prompted a focused review on 2026-08-27. Mango rejected request-time
@@ -339,17 +389,18 @@ support, so they run the same credential-free and opt-in live conformance suites
 ## Coding-agent scenario fixtures
 
 This section records a retired pre-release experiment. The managed-sandbox
-system test, standalone tutorial, and fixtures were removed when Mango adopted
-the self-hosted-only boundary; they must not be read as current capabilities.
+system test and standalone tutorial were removed when Mango adopted the
+self-hosted-only boundary. The unused calculator fixture was removed during
+the subsequent example/test boundary cleanup. This experiment must not be read
+as a current capability.
 
 - Anthropic's public
   [`CMA_iterate_fix_failing_tests` cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_iterate_fix_failing_tests.ipynb)
   supplied the MIT-licensed `calc.py` and `test_calc.py` fixture and the useful
-  do-observe-fix workflow. System tests own the fixture under
-  `internal/temporal/testdata/coding_agent_iterate`; the standalone example owns
-  separate inputs under `examples/coding-agent/fixtures`. Both retain the source
-  license. The example adapts the checks to standard-library `unittest` so it
-  needs no sandbox package installation; the original assertions are retained.
+  do-observe-fix workflow. The retired system test and standalone example owned
+  separate copies of the inputs, each retaining the source license. The example
+  adapted the checks to standard-library `unittest` so it needed no sandbox
+  package installation; the original assertions were retained.
 - Mango adopted the user problem and acceptance outcome: expose immutable input
   files, let a coding Agent iterate in a writable sandbox, independently verify
   the fix, and publish the final source as a durable Session output.
@@ -402,10 +453,10 @@ the self-hosted-only boundary; they must not be read as current capabilities.
 - Mango adopted the application-owned action boundary: the model proposes a
   typed custom call, the Session becomes idle, and an application or human
   returns the correlated result before inference continues.
-- The example's expense flow is a runnable public-HTTP program exercised against
-  a real model. Its client represents the external expense system and prompts
-  a terminal user for the review decision, while the deterministic scenario
-  separately proves crash and concurrency invariants.
+- The expense flow is a standalone Go SDK application. Its local decision
+  journal simulates an external expense system and prompts a terminal user for
+  review. Runtime persistence, crash, and concurrency invariants remain in
+  separate deterministic runtime and service tests.
 - Mango changed the hosted presentation behavior. One idle event exposes every
   action in the current barrier rather than a sliding window. Partial results
   are durably claimed without waking execution; the final result resumes the
@@ -413,9 +464,43 @@ the self-hosted-only boundary; they must not be read as current capabilities.
 - The scenario uses Mango-owned synthetic inputs and copies no Cookbook
   fixture. Its executable contract is PostgreSQL atomic admission, Temporal
   recovery, duplicate-result rejection, and persisted Event ordering.
-- Mango's Webhook slice can now wake the application on
-  `session.status_idled`, but the example retains stream-plus-history recovery:
-  an at-least-once notification is not the authoritative custom-tool barrier.
+- Mango's Webhook slice can wake an application on `session.status_idled`;
+  this small example polls paginated persisted history. Notifications and live
+  streams do not replace the authoritative custom-tool barrier.
+
+### SDK tutorial recovery review (2026-09-30)
+
+- User problem and acceptance: stop the application at human review and resume
+  the same Session; retain resource IDs and chosen decisions; reconcile every
+  history page before resubmitting a saved result; make partial cleanup retryable.
+  This gives a self-hosted operator an inspectable recovery path through ordinary
+  Mango SDK resources without adding runtime APIs or business logic to core code.
+- Paired references reviewed: the current official [event lifecycle and
+  streaming guide](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
+  and Go SDK `v1.76.0`, commit
+  `ad865dfa3d1a8d2f4a7ad0d072011e811e9957a9`, specifically
+  [`betasessionevent.go`](https://github.com/anthropics/anthropic-sdk-go/blob/ad865dfa3d1a8d2f4a7ad0d072011e811e9957a9/betasessionevent.go)
+  and the Session tool-runner public surface. The lifecycle guide is a published
+  Beta surface; it is research evidence, not a stable Mango compatibility target.
+- Adopted mapping: `Sessions.Events.ListAutoPaging` for complete durable history,
+  `requires_action.event_ids` for the barrier, and `Sessions.Events.Send` with
+  `custom_tool_use_id` for correlated results. Existing Mango SDK types express
+  these mappings directly. No external implementation was copied or executed.
+- Changed helper responsibility: this tutorial owns a private local decision
+  journal and explicit start/resume/cleanup commands. The journal records the
+  simulated business decision before sending; a fresh history read reconciles
+  ambiguous responses. This makes human approval and client restart visible,
+  rather than hiding them in a generic runner. SDK and server internals are unchanged.
+- Rejected hosted constraints: no beta headers, hosted credentials, external
+  service calls, or provider-specific client setup. One operator and one Session
+  are the bounds. Distributed coordination, automatic resource-create retries,
+  external-business exactly-once effects, and a general workflow engine are
+  non-goals. Unknown create outcomes retain their setup stage for manual inspection.
+- Validation stays beside the application: real Mango SDK requests against an
+  independently authored HTTP fixture cover pagination, partial completion,
+  accepted/lost and unaccepted result responses, private atomic state, input
+  cancellation, and cleanup retry. These do not replace SDK contract or runtime
+  service tests, and no system harness imports or runs the tutorial.
 
 ## Multi-agent specialist team
 
@@ -766,8 +851,8 @@ editorial; it does not change HTTP, persistence, scheduling, or recovery semanti
   Neither path creates compute, prepares File/Git/Memory inputs, closes
   caller-owned tools, or introduces a provider SDK. Custom Skill preparation is
   now the shared worker behavior described above. Environment-scoped Poll
-  credentials remain a future requirement before supervisors are described as
-  untrusted or multi-tenant.
+  credentials are implemented as documented below; supervisors still own
+  Docker daemon access and remain trusted infrastructure.
 - Acceptance: HTTP-backed tests independently verify supervisor-versus-item
   bearer separation, first heartbeat and forced Stop, serial Session tool
   execution, cancellation with no result or Stop after `412` lease loss,
@@ -1020,3 +1105,48 @@ callers, examples and tests move together; there are no legacy forwarding method
 Validation uses Mango HTTP conformance, literal payload/routing checks, language
 static checks, transport and worker tests, with durability coverage remaining in
 its owning Go packages. The source-only alpha 2 packages have not been published.
+
+
+## API readiness (2026-09-29)
+
+- Mango history: closed, unmerged [PR #57](https://github.com/yanpgwang/mango/pull/57),
+  especially commit `e39b182ff19d2374fc09ae509d931be871bb5c82`, supplied the original
+  separation of liveness and dependency readiness. The current implementation is
+  a smaller slice of that earlier work.
+- Adopted: public HTTP liveness, bounded readiness, failure status 503, and
+  sanitized errors. Changed: one PostgreSQL pool check also rejects read-only
+  transaction mode; it uses Mango's existing error envelope and no probe cache.
+- Rejected: hard readiness gates for NATS and Temporal, because asynchronous
+  dispatch is backed by Mango's durable PostgreSQL outbox. No hosted-agent API or
+  SDK mapping is imported for these self-hosted process probes. First-party SDKs
+  retain `system.health` and `system.readiness` with normal API error decoding.
+- [Design and acceptance criteria](design/api-readiness.md) distinguish admission
+  readiness from later Environment worker execution checks.
+
+## Environment-scoped supervisor credentials
+
+The [Environment credential design](design/environment-credentials.md) records
+the API documentation, official Go v1.76.0, Python v1.9.0, TypeScript
+sdk-v0.129.0, and cookbook commits reviewed on 2026-09-29. Mango adopts the
+standing Environment credential / per-Work execution token separation and
+preserves the Environments.Work SDK hierarchy. It replaces Console-only issuance
+with its existing database-backed operator CLI, uses standard Bearer auth, and
+limits standing keys to Poll, Ack, and Stats for one Environment. Key-row locks
+order revocation against Poll/Ack; already-Acked execution retains its independent
+lease. These choices protect unrelated Workspace resources while retaining
+Mango's self-hosted operation and recovery model. No hosted credentials or
+external SDK implementation are required.
+
+## Bounded Environment healthchecks (2026-09-29)
+
+The [healthcheck design](design/environment-healthcheck.md) records paired official
+Work API, Go/Python/TypeScript SDK, and self-hosted cookbook references with
+reviewed revisions. Mango adopted the Work healthcheck variant and supervisor
+versus per-item responsibility split. It omitted a redundant healthcheck ID,
+hosted connectivity assumptions, and vendor authentication. Unlike the reviewed
+SDK helpers, which skip non-Session items, Mango's Docker worker executes a fixed
+local process/filesystem probe and commits a bounded, immutable result. This
+serves self-hosted operator verification without a model call or synthetic
+Session. The three native clients encode Mango's union and create/result
+operations; only the Go helper owns execution. Official implementations were
+neither copied nor used as clients or dependencies.

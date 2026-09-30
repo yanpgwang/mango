@@ -124,6 +124,25 @@ pull-request requirements.
   side-effect invariants; successful SDK calls do not establish them. Keep
   cookbook applications separate from contract and system-test harnesses.
 
+## Local design references
+
+- Optional official reference checkouts live in `mango-reference/` beside the
+  primary Mango checkout. When working in a linked Git worktree, resolve this
+  location from the primary checkout, not from the worktree directory.
+- Use `claude-cookbooks/managed_agents/` for end-to-end CMA workflows and
+  `anthropic-sdk-go/`, `anthropic-sdk-python/`, and
+  `anthropic-sdk-typescript/` for the corresponding public SDK designs.
+  `mango-reference/README.md` indexes useful entry points and update commands.
+- During relevant development, consult these alongside the current official
+  API documentation. Resource hierarchies, wire shapes, types, streams, and
+  helper responsibilities are all legitimate references under the policies
+  above. Verify the checkout revision and current release; record the actual
+  tags or commits reviewed when a design materially influences Mango.
+- These checkouts are optional research material outside the Mango repository,
+  not submodules, vendored code, build inputs, or runtime dependencies. If they
+  are absent, use the official public sources directly. Do not execute the
+  reference SDKs or cookbooks as Mango clients.
+
 ## Product-driven development
 
 - Mango's documented HTTP API and observable runtime behavior define the

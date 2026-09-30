@@ -29,7 +29,13 @@ call the HTTP endpoints directly.
 | [Environment Work](environment-work.md) | Claim and renew leased work for self-hosted execution. | `/v1/environments/{id}/work` |
 
 The public probes are `GET /healthz` and `GET /readyz`; `GET /openapi.yaml`
-returns the schema. For execution-path constraints, consult
+returns the schema. Both probes are unauthenticated. `/healthz` returns an empty
+200 for process liveness without contacting dependencies. `/readyz` returns an
+empty 200 when the API PostgreSQL pool can execute a query in writable transaction
+mode, or a sanitized `503 api_error` on failure, read-only mode, or timeout. Its
+check has a two-second deadline and responses use `Cache-Control: no-store`.
+Temporal, NATS, model providers, and Environment workers do not gate API readiness.
+For execution-path constraints, consult
 [capabilities and limits](../capabilities.md).
 
 ## Headers
@@ -47,9 +53,9 @@ File and Skill uploads instead require `multipart/form-data`; File uploads are
 limited to 500 MB and Skill bundles must be smaller than 30 MB. Mango does not
 use provider version or beta headers on its inbound API.
 
-Each API key resolves to exactly one Workspace, and every API key for that
-Workspace can access the same resources. Self-hosted Poll responses are the one
-internal exception: their credential payload contains a per-Work Session token
+Each API key resolves to exactly one Workspace. Workspace keys access all its
+resources; Environment keys access only Work Poll, Ack, and Stats for one bound
+Environment. Self-hosted Poll responses contain a per-Work Session token
 accepted after Ack only by the claimed read/stream, tool-result, lease, and
 pinned-input routes. Expiry, Stop, or reclaim revokes the capability. Workspace
 IDs are not added to public request or response bodies.
@@ -61,6 +67,7 @@ operator CLI to manage the OSS boundary:
 ```sh
 mango workspace create -name acme
 mango api-key create -workspace wrkspc_... -label production
+mango api-key create -workspace wrkspc_... -environment env_... -label supervisor
 mango api-key list -workspace wrkspc_...
 mango api-key revoke -id key_...
 ```
@@ -95,6 +102,7 @@ JSON errors include a type, message, and request ID:
 | `413` | `request_too_large` |
 | `422` | `invalid_request_error` |
 | `500` | `api_error` |
+| `503` | `api_error` (readiness unavailable) |
 
 A failed Memory SHA-256 precondition is the more specific
 `409 memory_precondition_failed_error`.

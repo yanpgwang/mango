@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,19 +20,24 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	mango "github.com/yanpgwang/mango/sdk/go"
 )
 
-func TestDockerLauncherRealItemLifecycle(t *testing.T) {
-	testDockerItemLifecycle(t, false)
+func TestDockerLauncherRealItemLifecycleReclaimsPreviousAttempt(t *testing.T) {
+	testDockerItemLifecycle(t, false, false)
 }
 
 func TestDockerLauncherShutdownAllowsSlowMemoryFlush(t *testing.T) {
-	testDockerItemLifecycle(t, true)
+	testDockerItemLifecycle(t, true, false)
 }
 
-func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
+func TestDockerLauncherOperatorWorkspaceSurvivesReplacement(t *testing.T) {
+	testDockerItemLifecycle(t, false, true)
+}
+
+func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool) {
 	t.Helper()
 	if os.Getenv("MANGO_TEST_DOCKER") != "1" {
 		t.Skip("set MANGO_TEST_DOCKER=1 to require Docker worker E2E")
@@ -46,10 +52,24 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 	work := acknowledgedWork()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	work.ID += "_" + suffix
-	work.Data.ID += "_" + suffix
+	work.Data.SessionWorkData.ID += "_" + suffix
 	second := work
 	second.ID += "_resume"
 	works := []mango.EnvironmentWork{work, second}
+	workspaceRoot := ""
+	if bindWorkspace {
+		workspaceRoot = t.TempDir()
+		workspace := filepath.Join(workspaceRoot, work.Data.SessionWorkData.ID)
+		if err := os.Mkdir(workspace, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(workspace, 0777); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(workspace, "operator-input.txt"), []byte("operator-staged\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	skillArchive := dockerSkillArchive(t)
 	var memoryMu sync.Mutex
 	memoryContent := "memory-initial"
@@ -94,10 +114,10 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 				"type": "work_heartbeat", "last_heartbeat": "2026-09-04T00:00:01Z",
 				"lease_extended": true, "state": "active", "ttl_seconds": 1,
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions/"+work.Data.ID:
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions/"+work.Data.SessionWorkData.ID:
 			assertItemAuthorization(t, r)
 			writeJSON(t, w, map[string]any{
-				"id": work.Data.ID,
+				"id": work.Data.SessionWorkData.ID,
 				"agent": map[string]any{
 					"id": "agent_docker", "version": 1,
 					"skills": []any{map[string]any{
@@ -197,6 +217,13 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 					{ID: "tool_e2e_memory_write", Input: map[string]any{"command": "printf memory-updated > /mnt/memory/docker-memory/notes.txt && cat /mnt/memory/docker-memory/notes.txt"}},
 				}
 			}
+			if bindWorkspace && activation == 1 {
+				for i := range calls {
+					if calls[i].ID == "tool_e2e_file" {
+						calls[i].Input["command"] = "cat operator-input.txt; printf docker-e2e > proof.txt && cat proof.txt"
+					}
+				}
+			}
 			for _, call := range calls {
 				if err := writeDockerBashEvent(w, call); err != nil {
 					t.Errorf("write tool event: %v", err)
@@ -232,6 +259,9 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 				"tool_e2e_memory_read":         "memory-initial",
 				"tool_e2e_memory_write":        "memory-updated",
 				"tool_e2e_memory_resume":       "memory-updated",
+			}
+			if bindWorkspace {
+				expected["tool_e2e_file"] = "operator-staged\\ndocker-e2e"
 			}
 			matched := false
 			for toolUseID, text := range expected {
@@ -274,8 +304,34 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 	if err != nil {
 		t.Fatalf("Docker Engine is required: %v", err)
 	}
+	if !cancelDuringFlush {
+		// Model a reclaimed worker whose process does not exit on Docker Stop.
+		// SIGCONT deliberately leaves sleep running, without a readiness race
+		// between installing a shell signal handler and starting the launcher.
+		previous, err := engine.ContainerCreate(ctx, client.ContainerCreateOptions{
+			Name: dockerWorkName(work.ID),
+			Config: &container.Config{
+				Image: image, Entrypoint: []string{"sleep", "300"}, StopSignal: "SIGCONT",
+				Labels: inspectResultForWork("previous", work, true).Container.Config.Labels,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, err := engine.ContainerRemove(cleanupCtx, previous.ID, client.ContainerRemoveOptions{Force: true})
+			if err != nil && !errdefs.IsNotFound(err) {
+				t.Errorf("clean up previous container: %v", err)
+			}
+		}()
+		if _, err := engine.ContainerStart(ctx, previous.ID, client.ContainerStartOptions{}); err != nil {
+			t.Fatal(err)
+		}
+	}
 
-	volume := dockerSessionVolume(work.Data.ID)
+	volume := dockerSessionVolume(work.Data.SessionWorkData.ID)
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -290,6 +346,7 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 		Client: supervisor, EnvironmentID: "env_test", Image: image, Drain: true,
 		SandboxBaseURL: "http://host.docker.internal:" + strconv.Itoa(port),
 		MaxIdle:        750 * time.Millisecond,
+		WorkspaceRoot:  workspaceRoot,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -299,6 +356,12 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush bool) {
 	}
 	assertContainerRemoved(t, engine, dockerWorkName(work.ID))
 	assertContainerRemoved(t, engine, dockerWorkName(second.ID))
+	if bindWorkspace {
+		proof, err := os.ReadFile(filepath.Join(workspaceRoot, work.Data.SessionWorkData.ID, "proof.txt"))
+		if err != nil || string(proof) != "docker-e2e" {
+			t.Fatalf("operator output = %q, %v", proof, err)
+		}
+	}
 	memoryMu.Lock()
 	finalMemory := memoryContent
 	memoryMu.Unlock()
@@ -429,8 +492,8 @@ func TestDockerLauncherCancellationPostsToolErrorBeforeStop(t *testing.T) {
 	work := acknowledgedWork()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	work.ID += "_cancel_" + suffix
-	work.Data.ID += "_cancel_" + suffix
-	volume := dockerSessionVolume(work.Data.ID)
+	work.Data.SessionWorkData.ID += "_cancel_" + suffix
+	volume := dockerSessionVolume(work.Data.SessionWorkData.ID)
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -495,11 +558,11 @@ func dockerWorkFixture(work mango.EnvironmentWork, state string, includeSecret b
 	}
 	return map[string]any{
 		"id": work.ID, "type": "work", "environment_id": work.EnvironmentID,
-		"data":  map[string]any{"type": "session", "id": work.Data.ID},
+		"data":  map[string]any{"type": "session", "id": work.Data.SessionWorkData.ID},
 		"state": state, "metadata": map[string]string{}, "secret": secret,
 		"created_at": "2026-09-04T00:00:00Z", "acknowledged_at": nil,
 		"started_at": nil, "latest_heartbeat_at": nil,
-		"stop_requested_at": nil, "stopped_at": nil,
+		"stop_requested_at": nil, "stopped_at": nil, "expires_at": nil, "result": nil,
 	}
 }
 

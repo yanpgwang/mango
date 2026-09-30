@@ -15,6 +15,9 @@ the control-plane sandbox path was removed.
 - The Docker reference allows the worker's result delivery, Memory teardown,
   and final Work Stop to finish before a hard kill. Ordinary cancellation keeps
   the lease renewable through teardown; lease loss still fences the worker.
+- Replacing a reclaimed attempt must not spend the new claim's starting lease
+  waiting for an expired worker to shut down. Validate the old container's
+  identity, force-remove it, and start the new worker only after removal succeeds.
 - An authenticated application can upload, list, retrieve, download, and delete
   an immutable File in its Workspace. Another Workspace cannot read its bytes.
   File metadata and queries do not retain unused Session scope or download
@@ -26,6 +29,9 @@ the control-plane sandbox path was removed.
 - No development or CI test uses the official Anthropic SDK as a Mango client.
   Keep independent HTTP and first-party SDK coverage and preserve persistence,
   recovery, and service assertions when replacing old research tests.
+- Independent HTTP tests retain successful Session budget creation, increases,
+  removal, and rejected additions; Mango SDK tests verify budget and usage
+  amounts in Session and event responses.
 
 ## Design and non-goals
 
@@ -63,13 +69,10 @@ the old 15-second kill deadline and verifies renewal, persistence, and cleanup.
 These are proposed work items, not current capabilities or an automatic CMA
 parity backlog. Select and design one slice before implementation.
 
-1. **Limit supervisor credentials to one Environment.** Operators should not
-   need a Workspace application key on a polling host. Define issuance,
-   revocation, and rotation for an Environment-scoped poll/Ack credential.
-   Acceptance: it cannot read Files, Vaults, or unrelated Sessions or queues;
-   revocation fences new claims; already-issued Work credentials retain their
-   explicit lease lifecycle. Reuse existing key and Work primitives where they
-   fit. Compare both CMA's public API and SDK before selecting the wire design.
+1. **Environment supervisor credentials — implemented.** The
+   [credential design](environment-credentials.md) records the operator key
+   lifecycle, Poll/Ack/Stats scope, transactional revocation, and independent
+   in-flight Work leases.
 2. **Make worker readiness observable.** An empty queue does not establish that
    a worker can launch, reach Mango, prepare inputs, or renew a lease. Design a
    bounded health-check Work flow with operator-visible results and expiry.

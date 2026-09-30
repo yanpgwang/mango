@@ -265,6 +265,47 @@ paths:
         '200': {$ref: '#/components/responses/EnvironmentWorkListResponse'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      operationId: createEnvironmentHealthcheck
+      x-sdk-resource: environments.work
+      x-sdk-method: create
+      tags: [Environment Work]
+      summary: Queue a bounded self-hosted execution healthcheck
+      description: Workspace credentials only. Creates no Session or model request. Each POST creates a new check; the fixed deadline is 120 seconds after creation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnvironmentWorkCreateRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/EnvironmentWorkResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '403': {$ref: '#/components/responses/PermissionError'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /v1/environments/{environment_id}/work/{work_id}/result:
+    parameters:
+      - $ref: '#/components/parameters/EnvironmentID'
+      - $ref: '#/components/parameters/EnvironmentWorkID'
+    post:
+      operationId: completeEnvironmentHealthcheck
+      x-sdk-resource: environments.work
+      x-sdk-method: complete
+      tags: [Environment Work]
+      summary: Commit a healthcheck execution result
+      description: Only the current active per-Work credential may complete a check. The immutable result stops Work atomically. Identical result retries are accepted for 30 seconds after completion; conflicting retries return 409. Expired or reclaimed credentials are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnvironmentWorkResultRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/EnvironmentWorkResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationError'}
+        '403': {$ref: '#/components/responses/PermissionError'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
   /v1/environments/{environment_id}/work/poll:
     parameters:
       - $ref: '#/components/parameters/EnvironmentID'
@@ -278,7 +319,10 @@ paths:
         - $ref: '#/components/parameters/EnvironmentWorkBlockMs'
         - $ref: '#/components/parameters/EnvironmentWorkReclaimMs'
         - $ref: '#/components/parameters/EnvironmentWorkerID'
+      description: An Environment key may poll only its bound Environment. Every claim and long-poll retry revalidates the key transactionally; revocation fences further claims.
       responses:
+        '401': {$ref: '#/components/responses/AuthenticationError'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '200': {$ref: '#/components/responses/EnvironmentWorkPollResponse'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -291,7 +335,10 @@ paths:
       x-sdk-method: stats
       tags: [Environment Work]
       summary: Get Environment Work queue statistics
+      description: An Environment key may read these aggregate queue statistics only for its bound Environment.
       responses:
+        '401': {$ref: '#/components/responses/AuthenticationError'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '200': {$ref: '#/components/responses/EnvironmentWorkStatsResponse'}
         '404': {$ref: '#/components/responses/NotFound'}
   /v1/environments/{environment_id}/work/{work_id}:
@@ -332,7 +379,10 @@ paths:
       x-sdk-method: ack
       tags: [Environment Work]
       summary: Acknowledge a polled Work item and transition it to starting
+      description: An Environment key may acknowledge only Work in its bound Environment. Revocation fences further Acks; already-acknowledged Work retains its independent per-Work lease.
       responses:
+        '401': {$ref: '#/components/responses/AuthenticationError'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '200': {$ref: '#/components/responses/EnvironmentWorkResponse'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
@@ -709,6 +759,9 @@ paths:
       x-sdk-method: upload
       tags: [Files]
       summary: Upload a File
+      description: >-
+        If cleanup after a failed object write also fails, a hidden upload
+        record is retained for deletion by startup reconciliation.
       requestBody:
         required: true
         content:
@@ -798,6 +851,9 @@ paths:
       x-sdk-method: create
       tags: [Skills]
       summary: Create a custom Skill and its first immutable Version
+      description: >-
+        Failed archive writes retain hidden cleanup records until object
+        deletion succeeds. Startup reconciliation retries pending cleanup.
       requestBody:
         required: true
         content:
@@ -870,6 +926,10 @@ paths:
       x-sdk-method: create
       tags: [Skills]
       summary: Create an immutable Skill Version
+      description: >-
+        Failed archive writes retain hidden cleanup records until object
+        deletion succeeds. Startup reconciliation retries pending cleanup
+        without removing existing ready Versions.
       requestBody:
         required: true
         content:
@@ -1728,6 +1788,7 @@ paths:
       x-sdk-resource: system
       x-sdk-method: health
       summary: Liveness probe
+      description: Process liveness only; performs no dependency checks.
       security: []
       responses:
         '200':
@@ -1738,10 +1799,20 @@ paths:
       x-sdk-resource: system
       x-sdk-method: readiness
       summary: Readiness probe
+      description: Checks PostgreSQL connectivity and writable transaction mode within two seconds. Temporal, NATS, and worker execution availability do not gate API request admission. Responses are not cacheable.
       security: []
       responses:
         '200':
-          description: Ready
+          description: PostgreSQL accepts queries in writable transaction mode
+        '503':
+          description: PostgreSQL unavailable, read-only, timed out, or readiness unconfigured. Uses a sanitized api_error message.
+          headers:
+            request-id:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /openapi.yaml:
     get:
       operationId: openAPI
@@ -1762,7 +1833,8 @@ components:
       type: http
       scheme: bearer
       description: >-
-        Workspace API key, or the per-Work sessions_token on the limited
+        Workspace API key, an Environment key restricted to Poll, Ack, and Stats
+        on its bound Environment, or the per-Work sessions_token on the limited
         self-hosted execution routes authorized for that claim. The latter can
         read attached Memory Stores and mutate only read_write attachments while
         its Work lease remains live.
@@ -2748,6 +2820,13 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    PermissionError:
+      description: Credential does not authorize this operation
+      headers:
+        request-id: {$ref: '#/components/headers/RequestID'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     AuthenticationError:
       description: Missing or invalid bearer credential
       headers:
@@ -4302,17 +4381,51 @@ components:
       type: string
       enum: [queued, starting, active, stopping, stopped]
     EnvironmentWorkData:
+      oneOf:
+        - $ref: '#/components/schemas/SessionWorkData'
+        - $ref: '#/components/schemas/HealthcheckWorkData'
+      discriminator:
+        propertyName: type
+    SessionWorkData:
       type: object
       additionalProperties: false
       required: [id, type]
       properties:
         id: {type: string, pattern: '^sesn_'}
         type: {type: string, const: session}
+    HealthcheckWorkData:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, const: healthcheck}
+    EnvironmentWorkCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: {$ref: '#/components/schemas/HealthcheckWorkData'}
+    EnvironmentWorkResultRequest:
+      type: object
+      additionalProperties: false
+      required: [status, message]
+      properties:
+        status: {type: string, enum: [succeeded, failed]}
+        message: {type: string, minLength: 1, maxLength: 1024}
+    EnvironmentWorkResult:
+      type: object
+      additionalProperties: false
+      required: [status, message]
+      properties:
+        status: {type: string, enum: [succeeded, failed, timed_out, cancelled]}
+        message: {type: string, minLength: 1, maxLength: 1024}
     EnvironmentWork:
       type: object
       additionalProperties: false
       required:
         - id
+        - expires_at
+        - result
         - acknowledged_at
         - created_at
         - data
@@ -4330,6 +4443,15 @@ components:
         type: {type: string, const: work}
         environment_id: {type: string, pattern: '^env_'}
         data: {$ref: '#/components/schemas/EnvironmentWorkData'}
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Healthchecks expire 120 seconds after creation; Session Work has null expiry. Expiry is reconciled when Work is read or operated on, not by a background timer.
+        result:
+          oneOf:
+            - $ref: '#/components/schemas/EnvironmentWorkResult'
+            - {type: 'null'}
+          description: Immutable healthcheck terminal result; null for Session Work or unfinished checks.
         state: {$ref: '#/components/schemas/EnvironmentWorkState'}
         metadata:
           type: object

@@ -28,16 +28,17 @@ type Workspace struct {
 }
 
 type APIKey struct {
-	ID          string
-	WorkspaceID string
-	Label       string
-	CreatedAt   time.Time
-	RevokedAt   *time.Time
-	LastUsedAt  *time.Time
+	ID            string
+	WorkspaceID   string
+	EnvironmentID string
+	Label         string
+	CreatedAt     time.Time
+	RevokedAt     *time.Time
+	LastUsedAt    *time.Time
 }
 
-// AuthenticateAPIKey resolves a credential to the only authorization scope
-// Mango exposes. Revoked keys deliberately look identical to unknown keys.
+// AuthenticateAPIKey resolves only Workspace-wide credentials. Revoked keys
+// deliberately look identical to unknown keys.
 func (s *Store) AuthenticateAPIKey(ctx context.Context, secret string) (string, error) {
 	if secret == "" {
 		return "", workspace.ErrInvalidAPIKey
@@ -47,7 +48,7 @@ func (s *Store) AuthenticateAPIKey(ctx context.Context, secret string) (string, 
 	err := s.pool.QueryRow(ctx, `
 SELECT workspace_id
 FROM api_keys
-WHERE secret_hash = $1 AND revoked_at IS NULL`, digest[:]).Scan(&workspaceID)
+WHERE secret_hash = $1 AND revoked_at IS NULL AND environment_id IS NULL`, digest[:]).Scan(&workspaceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", workspace.ErrInvalidAPIKey
 	}
@@ -79,7 +80,7 @@ SET secret_hash = EXCLUDED.secret_hash,
 
 func (s *Store) CountActiveAPIKeys(ctx context.Context) (int, error) {
 	var count int
-	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM api_keys WHERE revoked_at IS NULL`).Scan(&count)
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM api_keys WHERE revoked_at IS NULL AND environment_id IS NULL`).Scan(&count)
 	return count, err
 }
 
@@ -148,7 +149,7 @@ VALUES ($1, $2, $3, $4, $5)`,
 
 func (s *Store) ListAPIKeys(ctx context.Context, workspaceID string) ([]APIKey, error) {
 	rows, err := s.pool.Query(ctx, `
-SELECT id, workspace_id, label, created_at, revoked_at, last_used_at
+SELECT id, workspace_id, COALESCE(environment_id, ''), label, created_at, revoked_at, last_used_at
 FROM api_keys
 WHERE workspace_id = $1
 ORDER BY created_at, id`, workspaceID)
@@ -160,7 +161,7 @@ ORDER BY created_at, id`, workspaceID)
 	for rows.Next() {
 		var item APIKey
 		if err := rows.Scan(
-			&item.ID, &item.WorkspaceID, &item.Label, &item.CreatedAt,
+			&item.ID, &item.WorkspaceID, &item.EnvironmentID, &item.Label, &item.CreatedAt,
 			&item.RevokedAt, &item.LastUsedAt,
 		); err != nil {
 			return nil, err

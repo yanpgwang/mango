@@ -1,469 +1,438 @@
-// Command hitl-gate runs the documented human-in-the-loop custom-tool example
-// against a live Mango HTTP API. It intentionally uses net/http instead of an
-// SDK so every public operation in the example is visible.
+// Command hitl-gate is a standalone Mango SDK application, not a runtime runner.
 package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/signal"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
+
+	mango "github.com/yanpgwang/mango/sdk/go"
 )
-
-const (
-	defaultBaseURL  = "http://localhost:8080"
-	defaultAPIKey   = "sk-mango-local-development"
-	requestTimeout  = 30 * time.Second
-	scenarioTimeout = 6 * time.Minute
-)
-
-type apiClient struct {
-	baseURL string
-	apiKey  string
-	http    *http.Client
-}
-
-type resource struct {
-	ID string `json:"id"`
-}
-
-type eventList struct {
-	Data []event `json:"data"`
-}
-
-type event struct {
-	ID         string         `json:"id"`
-	Type       string         `json:"type"`
-	Name       string         `json:"name"`
-	Input      map[string]any `json:"input"`
-	Content    []contentBlock `json:"content"`
-	StopReason *stopReason    `json:"stop_reason"`
-}
-
-type contentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type stopReason struct {
-	Type     string   `json:"type"`
-	EventIDs []string `json:"event_ids"`
-}
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "HITL example failed:", err)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := runCommand(ctx, os.Args[1:], os.Stdin, os.Stdout); err != nil {
+		if errors.Is(err, context.Canceled) {
+			fmt.Println("Stopped; state is preserved. Use resume or cleanup with the same -state path.")
+			return
+		}
+		_, _ = fmt.Fprintln(os.Stderr, "HITL example:", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	modelID := strings.TrimSpace(os.Getenv("MANGO_EXAMPLE_MODEL_ID"))
-	if modelID == "" {
-		return errors.New("MANGO_EXAMPLE_MODEL_ID is required; set it to the model configured on the Mango worker")
+func runCommand(ctx context.Context, args []string, input io.Reader, output io.Writer) error {
+	if len(args) == 0 || (args[0] != "start" && args[0] != "resume" && args[0] != "cleanup") {
+		return errors.New("usage: hitl-gate {start|resume|cleanup} [-state .mango/hitl-gate.json] [-stop-after-first-result]")
 	}
-	baseURL := strings.TrimSpace(os.Getenv("MANGO_EXAMPLE_BASE_URL"))
+	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	flags.SetOutput(output)
+	path := flags.String("state", ".mango/hitl-gate.json", "private local resource and decision journal")
+	stopAfterFirst := flags.Bool("stop-after-first-result", false, "exit after one result submission to try resume")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected positional arguments")
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("MANGO_EXAMPLE_BASE_URL")), "/")
 	if baseURL == "" {
-		baseURL = defaultBaseURL
+		baseURL = "http://localhost:8080"
 	}
-	apiKey := strings.TrimSpace(os.Getenv("MANGO_API_KEY"))
+	apiKey := os.Getenv("MANGO_API_KEY")
 	if apiKey == "" {
-		apiKey = defaultAPIKey
+		apiKey = "sk-mango-local-development"
 	}
-	keepResources := os.Getenv("MANGO_EXAMPLE_KEEP_RESOURCES") == "1"
-
-	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	ctx, cancel := context.WithTimeout(signalContext, scenarioTimeout)
-	defer cancel()
-
-	client := &apiClient{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
-		http:    &http.Client{Timeout: requestTimeout},
-	}
-	if err := client.get(ctx, "/readyz", nil); err != nil {
-		return fmt.Errorf("mango is not ready at %s: %w", client.baseURL, err)
-	}
-
-	fmt.Println("Creating Environment, Agent, and Session through the Mango HTTP API...")
-	environment, err := client.create(ctx, "/v1/environments", map[string]any{
-		"name": "HITL expense example",
+	// #region client
+	client, err := mango.New(mango.Config{
+		BaseURL: baseURL, APIKey: apiKey, RequestTimeout: 30 * time.Second,
 	})
-	if err != nil {
-		return fmt.Errorf("create Environment: %w", err)
-	}
-
-	agent, err := client.create(ctx, "/v1/agents", map[string]any{
-		"name":   "HITL expense gate",
-		"model":  modelID,
-		"system": "You process expense receipts through application-owned tools. Follow the supplied policy and call exactly one tool per receipt. After tool results arrive, summarize the recorded outcomes without calling another tool.",
-		"tools": []any{
-			map[string]any{
-				"type": "custom", "name": "decide",
-				"description": "Record a final approve or reject decision for a clear expense.",
-				"input_schema": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"receipt_id": map[string]any{"type": "string"},
-						"action":     map[string]any{"type": "string", "enum": []string{"approve", "reject"}},
-						"reason":     map[string]any{"type": "string"},
-					},
-					"required": []string{"receipt_id", "action", "reason"},
-				},
-			},
-			map[string]any{
-				"type": "custom", "name": "escalate",
-				"description": "Request a human decision for an ambiguous expense.",
-				"input_schema": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"receipt_id": map[string]any{"type": "string"},
-						"question":   map[string]any{"type": "string"},
-					},
-					"required": []string{"receipt_id", "question"},
-				},
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("create Agent: %w", err)
-	}
-
-	session, err := client.create(ctx, "/v1/sessions", map[string]any{
-		"agent":          agent.ID,
-		"environment_id": environment.ID,
-		"title":          "Interactive expense review",
-	})
-	if err != nil {
-		return fmt.Errorf("create Session: %w", err)
-	}
-	fmt.Printf("Session %s is processing two receipts with model %s.\n", session.ID, modelID)
-
-	prompt := strings.Join([]string{
-		"Apply this expense policy: office supplies at or below USD 100 with a receipt are approved; expenses above USD 500 without an itemized receipt require human review.",
-		"Process exactly two receipts in one response.",
-		"Receipt r01 is USD 12 for office pencils and has an itemized receipt. Call decide with action approve.",
-		"Receipt r02 is USD 900 for an unspecified team activity and has no itemized receipt. Call escalate with a useful reviewer question.",
-		"Call exactly one tool for each receipt now, with no prose before the two tool calls.",
-	}, " ")
-	if err := client.post(ctx, "/v1/sessions/"+session.ID+"/events", map[string]any{
-		"events": []any{map[string]any{
-			"type":    "user.message",
-			"content": []any{map[string]any{"type": "text", "text": prompt}},
-		}},
-	}, nil); err != nil {
-		return fmt.Errorf("send user message: %w", err)
-	}
-
-	actions, err := client.waitForActions(ctx, session.ID)
+	// #endregion client
 	if err != nil {
 		return err
 	}
-	fmt.Println("The real model requested these application-owned actions:")
-	for _, action := range actions {
-		encoded, _ := json.Marshal(action.Input)
-		fmt.Printf("  %s %s\n", action.Name, encoded)
-	}
-
-	reader := bufio.NewReader(os.Stdin)
-	for index, action := range actions {
-		result, err := resolveAction(reader, os.Stdout, action)
+	app := gateApp{client: client, path: *path, output: output}
+	if args[0] == "start" {
+		model := strings.TrimSpace(os.Getenv("MANGO_EXAMPLE_MODEL_ID"))
+		if model == "" {
+			return errors.New("start requires MANGO_EXAMPLE_MODEL_ID, configured on the Mango worker")
+		}
+		app.state = gateState{BaseURL: baseURL, Decisions: map[string]decision{}}
+		if err := writeState(app.path, app.state, true); err != nil {
+			return fmt.Errorf("create state (use resume or another -state path): %w", err)
+		}
+		if err := app.start(ctx, model); err != nil {
+			return fmt.Errorf("%w; state kept at %s; use cleanup for known resources", err, app.path)
+		}
+	} else {
+		app.state, err = readState(app.path)
 		if err != nil {
 			return err
 		}
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			return fmt.Errorf("encode result for %s: %w", action.ID, err)
+		if app.state.BaseURL != baseURL {
+			return fmt.Errorf("state belongs to server %s, not server %s", app.state.BaseURL, baseURL)
 		}
-		if err := client.post(ctx, "/v1/sessions/"+session.ID+"/events", map[string]any{
-			"events": []any{map[string]any{
-				"type":               "user.custom_tool_result",
-				"custom_tool_use_id": action.ID,
-				"content": []any{map[string]any{
-					"type": "text", "text": string(encoded),
-				}},
-			}},
-		}, nil); err != nil {
-			return fmt.Errorf("submit result for %s: %w", action.ID, err)
+		if args[0] == "cleanup" {
+			return app.cleanup(ctx)
 		}
-		if index == 0 {
-			fmt.Println("First result persisted; the Session remains at the incomplete barrier.")
+		if app.state.Cleaning || app.state.SessionID == "" || app.state.Creating != "" {
+			return errors.New("setup or cleanup is incomplete; use cleanup with the same state file")
 		}
 	}
+	_, _ = fmt.Fprintf(output, "Session %s; state: %s\n", app.state.SessionID, app.path)
+	return app.follow(ctx, bufio.NewReader(input), *stopAfterFirst)
+}
 
-	answer, err := client.waitForCompletion(ctx, session.ID)
-	if err != nil {
+type gateApp struct {
+	client *mango.Client
+	path   string
+	state  gateState
+	output io.Writer
+}
+
+func (a *gateApp) save() error { return writeState(a.path, a.state, false) }
+
+func (a *gateApp) start(ctx context.Context, model string) error {
+	// Record each creation attempt and returned ID separately. Creation has no
+	// idempotency key: a lost response can require manual resource inspection.
+	a.state.Creating = "Environment"
+	if err := a.save(); err != nil {
 		return err
 	}
-	fmt.Println("\nAgent final response:")
-	fmt.Println(answer)
-
-	if keepResources {
-		fmt.Printf(
-			"\nKeeping Session %s, Agent %s, and Environment %s for inspection.\n",
-			session.ID,
-			agent.ID,
-			environment.ID,
-		)
-		fmt.Printf("History: GET /v1/sessions/%s/events\n", session.ID)
-		return nil
+	environment, err := a.client.Environments.New(ctx, mango.EnvironmentCreateRequest{Name: "HITL expense example"})
+	if err := a.created("Environment", environment.ID, &a.state.EnvironmentID, err); err != nil {
+		return err
 	}
-	fmt.Println("\nSet MANGO_EXAMPLE_KEEP_RESOURCES=1 on a later run to inspect its durable history.")
-	client.cleanup(ctx, session.ID, agent.ID, environment.ID)
-	return nil
-}
-
-func (c *apiClient) waitForActions(ctx context.Context, sessionID string) ([]event, error) {
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		history, err := c.events(ctx, sessionID)
-		if err != nil {
-			return nil, fmt.Errorf("list events while waiting for actions: %w", err)
-		}
-		if failure := firstEvent(history, "session.error"); failure != nil {
-			return nil, fmt.Errorf("session failed before the gate: %+v", *failure)
-		}
-		idle := lastEvent(history, "session.status_idle")
-		if idle != nil && idle.StopReason != nil && idle.StopReason.Type == "requires_action" {
-			byID := make(map[string]event, len(history))
-			for _, item := range history {
-				byID[item.ID] = item
-			}
-			actions := make([]event, 0, len(idle.StopReason.EventIDs))
-			for _, id := range idle.StopReason.EventIDs {
-				action, ok := byID[id]
-				if !ok || action.Type != "agent.custom_tool_use" {
-					return nil, fmt.Errorf("requires_action referenced missing custom-tool event %s", id)
-				}
-				actions = append(actions, action)
-			}
-			if err := validateScenarioActions(actions); err != nil {
-				return nil, err
-			}
-			sort.Slice(actions, func(i, j int) bool {
-				return stringInput(actions[i], "receipt_id") < stringInput(actions[j], "receipt_id")
-			})
-			return actions, nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("wait for requires_action: %w", ctx.Err())
-		case <-ticker.C:
-		}
+	a.state.Creating = "Agent"
+	if err := a.save(); err != nil {
+		return err
 	}
-}
-
-func (c *apiClient) waitForCompletion(ctx context.Context, sessionID string) (string, error) {
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		history, err := c.events(ctx, sessionID)
-		if err != nil {
-			return "", fmt.Errorf("list events while waiting for completion: %w", err)
-		}
-		if failure := firstEvent(history, "session.error"); failure != nil {
-			return "", fmt.Errorf("session failed after the gate: %+v", *failure)
-		}
-		idle := lastEvent(history, "session.status_idle")
-		if idle != nil && idle.StopReason != nil && idle.StopReason.Type == "end_turn" {
-			message := lastEvent(history, "agent.message")
-			if message == nil {
-				return "", errors.New("session ended without an agent.message")
-			}
-			parts := make([]string, 0, len(message.Content))
-			for _, block := range message.Content {
-				if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
-					parts = append(parts, strings.TrimSpace(block.Text))
-				}
-			}
-			if len(parts) == 0 {
-				return "", errors.New("final agent.message contained no text")
-			}
-			return strings.Join(parts, "\n"), nil
-		}
-		select {
-		case <-ctx.Done():
-			return "", fmt.Errorf("wait for end_turn: %w", ctx.Err())
-		case <-ticker.C:
-		}
+	// #region agent
+	agent, err := a.client.Agents.New(ctx, mango.AgentCreateRequest{
+		Name: "HITL expense gate", Model: mango.ModelID(model),
+		System: mango.SomePtr("Follow the expense policy. Call exactly one tool per receipt in one response. After both results arrive, summarize them without calling more tools."),
+		Tools: mango.Some([]mango.AgentTool{
+			customTool("decide", "Record an approve or reject decision for a clear expense.",
+				`{"receipt_id":{"type":"string"},"action":{"type":"string","enum":["approve","reject"]},"reason":{"type":"string"}}`, `["receipt_id","action","reason"]`),
+			customTool("escalate", "Request a human decision for an ambiguous expense.",
+				`{"receipt_id":{"type":"string"},"question":{"type":"string"}}`, `["receipt_id","question"]`),
+		}),
+	})
+	// #endregion agent
+	if err := a.created("Agent", agent.ID, &a.state.AgentID, err); err != nil {
+		return err
 	}
-}
-
-func validateScenarioActions(actions []event) error {
-	want := map[string]string{"r01": "decide", "r02": "escalate"}
-	if len(actions) != len(want) {
-		return fmt.Errorf("model emitted %d actions, want exactly %d", len(actions), len(want))
+	a.state.Creating = "Session"
+	if err := a.save(); err != nil {
+		return err
 	}
-	seen := make(map[string]bool, len(actions))
-	for _, action := range actions {
-		receiptID := stringInput(action, "receipt_id")
-		if receiptID == "" || want[receiptID] != action.Name || seen[receiptID] {
-			return fmt.Errorf("unexpected action %s for receipt %q: %+v", action.Name, receiptID, action.Input)
-		}
-		seen[receiptID] = true
+	// #region session
+	session, err := a.client.Sessions.New(ctx, mango.SessionCreateRequest{
+		Agent: mango.AgentID(a.state.AgentID), EnvironmentID: a.state.EnvironmentID,
+		Title: mango.Some("Interactive expense review"),
+	})
+	// #endregion session
+	if err := a.created("Session", session.ID, &a.state.SessionID, err); err != nil {
+		return err
+	}
+	// Only start sends this message. Resume never creates or starts another turn.
+	_, err = a.client.Sessions.Events.Send(ctx, session.ID, mango.SendSessionEventsRequest{
+		Events: []mango.ClientSessionEventInput{mango.UserMessage(
+			"Apply this expense policy: office supplies up to USD 100 with a receipt are approved; expenses above USD 500 without an itemized receipt require human review. " +
+				"Process exactly two receipts in one response. r01: USD 12 for office pencils with an itemized receipt; call decide with action approve. " +
+				"r02: USD 900 for an unspecified team activity without an itemized receipt; call escalate with a useful reviewer question. " +
+				"Call exactly one tool for each receipt now, with no prose before the two calls.")},
+	})
+	if err != nil {
+		return fmt.Errorf("initial message response failed; use resume to inspect history, never resend blindly: %w", err)
 	}
 	return nil
 }
 
-func resolveAction(reader *bufio.Reader, writer io.Writer, action event) (map[string]any, error) {
-	receiptID := stringInput(action, "receipt_id")
-	switch action.Name {
-	case "decide":
-		decision := stringInput(action, "action")
-		if decision != "approve" && decision != "reject" {
-			return nil, fmt.Errorf("decide action has invalid decision %q", decision)
+func customTool(name, description, properties, required string) mango.AgentTool {
+	return mango.AgentTool{CustomTool: &mango.CustomTool{
+		Type: "custom", Name: name, Description: description,
+		InputSchema: mango.CustomToolInputSchema{Type: "object", AdditionalProperties: map[string]json.RawMessage{
+			"properties": json.RawMessage(properties), "required": json.RawMessage(required),
+		}},
+	}}
+}
+
+func (a *gateApp) created(kind, id string, target *string, err error) error {
+	if err != nil {
+		var apiErr *mango.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
+			a.state.Creating = "" // Explicit admission rejection created no resource.
+			return errors.Join(fmt.Errorf("create %s: %w", kind, err), a.save())
 		}
-		if _, err := fmt.Fprintf(writer, "\nApplication records %s for %s.\n", decision, receiptID); err != nil {
-			return nil, fmt.Errorf("write application decision: %w", err)
+		return fmt.Errorf("create %s outcome unknown; inspect its resource list for HITL entries before retrying: %w", kind, err)
+	}
+	if id == "" {
+		return fmt.Errorf("create %s response omitted ID; inspect its resource list", kind)
+	}
+	_, _ = fmt.Fprintf(a.output, "Created %s %s\n", kind, id)
+	*target = id
+	a.state.Creating = ""
+	if err := a.save(); err != nil {
+		return fmt.Errorf("save %s %s: %w; retain this ID for manual cleanup", kind, id, err)
+	}
+	return nil
+}
+
+func (a *gateApp) follow(ctx context.Context, reader *bufio.Reader, stopAfterFirst bool) error {
+	for {
+		view, err := a.history(ctx)
+		if err != nil {
+			return err
 		}
-		return map[string]any{
-			"recorded": true, "receipt_id": receiptID, "decision": decision,
-		}, nil
-	case "escalate":
-		if _, err := fmt.Fprintf(
-			writer,
-			"\nHuman review required for %s: %s\n",
-			receiptID,
-			stringInput(action, "question"),
-		); err != nil {
-			return nil, fmt.Errorf("write review question: %w", err)
+		if !view.started {
+			return errors.New("no persisted initial message; setup may have stopped before sending; inspect the Session and use cleanup, not a repeated start")
 		}
-		for {
-			if _, err := fmt.Fprint(writer, "Decision [approve/reject]: "); err != nil {
-				return nil, fmt.Errorf("write review prompt: %w", err)
+		if view.ended {
+			_, _ = fmt.Fprintln(a.output, "\nAgent final response:\n"+view.answer)
+			_, _ = fmt.Fprintln(a.output, "Resources retained. Use cleanup with the same -state path when finished.")
+			return nil
+		}
+		for _, action := range view.pending {
+			// #region decision
+			result, saved := a.state.Decisions[action.ID]
+			if !saved {
+				result, err = resolveAction(ctx, reader, a.output, action)
+				if err != nil {
+					return err
+				}
+				a.state.Decisions[action.ID] = result
+				// This local record is the simulated application's only business effect.
+				// Persist it BEFORE submitting; retries reuse the recorded decision.
+				if err := a.save(); err != nil {
+					return err
+				}
+				_, _ = fmt.Fprintf(a.output, "Recorded %s for %s (%s).\n", result.Decision, result.ReceiptID, result.DecidedBy)
 			}
-			line, err := reader.ReadString('\n')
-			decision := strings.ToLower(strings.TrimSpace(line))
-			if decision == "approve" || decision == "reject" {
-				return map[string]any{
-					"recorded": true, "receipt_id": receiptID, "human_decision": decision,
-				}, nil
-			}
+			encoded, err := json.Marshal(result)
 			if err != nil {
-				return nil, fmt.Errorf("read human decision: %w", err)
+				return err
 			}
-			if _, err := fmt.Fprintln(writer, "Enter approve or reject."); err != nil {
-				return nil, fmt.Errorf("write review guidance: %w", err)
+			_, err = a.client.Sessions.Events.Send(ctx, a.state.SessionID, mango.SendSessionEventsRequest{
+				Events: []mango.ClientSessionEventInput{{UserCustomToolResultEventInput: &mango.UserCustomToolResultEventInput{
+					Type: "user.custom_tool_result", CustomToolUseID: action.ID,
+					Content: mango.Some([]mango.ResultContentInput{{TextBlockInput: &mango.TextBlockInput{Type: "text", Text: string(encoded)}}}),
+				}}},
+			})
+			if err != nil {
+				return fmt.Errorf("result %s response failed; decision saved; resume reconciles history before retrying: %w", action.ID, err)
+			}
+			// #endregion decision
+			_, _ = fmt.Fprintf(a.output, "Result persisted for %s.\n", action.ID)
+			if stopAfterFirst {
+				_, _ = fmt.Fprintln(a.output, "Stopped after one result; use resume with the same -state path.")
+				return nil
 			}
 		}
-	default:
-		return nil, fmt.Errorf("unsupported custom tool %q", action.Name)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 }
 
-func stringInput(action event, key string) string {
-	value, _ := action.Input[key].(string)
+type historyView struct {
+	started, ended bool
+	answer         string
+	pending        []mango.AgentCustomToolUseEvent
+}
+
+func (a *gateApp) history(ctx context.Context) (historyView, error) {
+	view := historyView{}
+	actions := map[string]mango.AgentCustomToolUseEvent{}
+	answered := map[string]bool{}
+	var idle *mango.SessionStatusIdleEvent
+	// #region history
+	pages := a.client.Sessions.Events.ListAutoPaging(ctx, a.state.SessionID, mango.ListSessionEventsParams{
+		Order: mango.Some("asc"), Limit: mango.Some(int64(100)),
+	})
+	for pages.Next() {
+		event := pages.Value()
+		if event.PersistedUserMessageEvent != nil {
+			view.started = true
+		}
+		if action := event.AgentCustomToolUseEvent; action != nil {
+			actions[action.ID] = *action
+		}
+		if result := event.PersistedUserCustomToolResultEvent; result != nil {
+			answered[result.CustomToolUseID] = true
+		}
+		if event.SessionStatusRunningEvent != nil || event.SessionStatusRescheduledEvent != nil {
+			idle = nil
+		}
+		if event.SessionStatusIdleEvent != nil {
+			idle = event.SessionStatusIdleEvent
+		}
+		if event.SessionStatusTerminatedEvent != nil || event.SessionDeletedEvent != nil {
+			return view, errors.New("session terminated or deleted; use cleanup")
+		}
+		if failure := event.SessionErrorEvent; failure != nil {
+			return view, fmt.Errorf("session error: %s", failure.Error.Message)
+		}
+		if message := event.AgentMessageEvent; message != nil {
+			var text []string
+			for _, block := range message.Content {
+				text = append(text, block.Text)
+			}
+			view.answer = strings.Join(text, "\n")
+		}
+	}
+	if err := pages.Err(); err != nil {
+		return view, err
+	}
+	if idle == nil {
+		return view, nil
+	}
+	if barrier := idle.StopReason.SessionRequiresAction; barrier != nil {
+		if err := validateActions(actions); err != nil {
+			return view, err
+		}
+		for _, id := range barrier.EventIDs {
+			action, ok := actions[id]
+			if !ok {
+				return view, fmt.Errorf("barrier references missing custom action %s", id)
+			}
+			if !answered[id] {
+				view.pending = append(view.pending, action)
+			}
+		}
+		sort.Slice(view.pending, func(i, j int) bool {
+			return stringInput(view.pending[i], "receipt_id") < stringInput(view.pending[j], "receipt_id")
+		})
+	} else if idle.StopReason.SessionEndTurn != nil {
+		view.ended = view.answer != "" && len(answered) == 2
+		if !view.ended {
+			return view, errors.New("session ended without both expense results and a final answer")
+		}
+	} else {
+		return view, errors.New("session stopped for another reason; inspect history before cleanup")
+	}
+	// #endregion history
+	return view, nil
+}
+
+func validateActions(actions map[string]mango.AgentCustomToolUseEvent) error {
+	want := map[string]string{"r01": "decide", "r02": "escalate"}
+	if len(actions) != 2 {
+		return fmt.Errorf("model requested %d actions; this tutorial expects exactly two", len(actions))
+	}
+	for _, action := range actions {
+		receipt := stringInput(action, "receipt_id")
+		if want[receipt] != action.Name || action.Name == "" {
+			return fmt.Errorf("unexpected %s action for %q", action.Name, receipt)
+		}
+		delete(want, receipt)
+	}
+	return nil
+}
+
+func resolveAction(ctx context.Context, reader *bufio.Reader, output io.Writer, action mango.AgentCustomToolUseEvent) (decision, error) {
+	result := decision{Recorded: true, ReceiptID: stringInput(action, "receipt_id"), Decision: stringInput(action, "action"), DecidedBy: "application"}
+	if action.Name == "escalate" {
+		result.DecidedBy = "human"
+		_, _ = fmt.Fprintf(output, "\nHuman review for %s: %s\n", result.ReceiptID, stringInput(action, "question"))
+		for {
+			if _, err := fmt.Fprint(output, "Decision [approve/reject]: "); err != nil {
+				return decision{}, err
+			}
+			line, err := readLine(ctx, reader)
+			if err != nil {
+				return decision{}, err
+			}
+			result.Decision = strings.ToLower(strings.TrimSpace(line))
+			if result.Decision == "approve" || result.Decision == "reject" {
+				break
+			}
+			_, _ = fmt.Fprintln(output, "Enter approve or reject.")
+		}
+	}
+	if result.Decision != "approve" && result.Decision != "reject" {
+		return decision{}, fmt.Errorf("invalid decision %q", result.Decision)
+	}
+	return result, nil
+}
+
+func stringInput(action mango.AgentCustomToolUseEvent, key string) string {
+	var value string
+	_ = json.Unmarshal(action.Input[key], &value)
 	return value
 }
 
-func firstEvent(events []event, eventType string) *event {
-	for index := range events {
-		if events[index].Type == eventType {
-			return &events[index]
+func readLine(ctx context.Context, reader *bufio.Reader) (string, error) {
+	type lineResult struct {
+		line string
+		err  error
+	}
+	ready := make(chan lineResult, 1)
+	// Stdin may block forever. Cancellation lets main exit without waiting for it;
+	// no resource or decision changes happen in this goroutine.
+	go func() { line, err := reader.ReadString('\n'); ready <- lineResult{line, err} }()
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case result := <-ready:
+		if result.err == io.EOF && strings.TrimSpace(result.line) != "" {
+			result.err = nil
 		}
+		return result.line, result.err
 	}
-	return nil
 }
 
-func lastEvent(events []event, eventType string) *event {
-	for index := len(events) - 1; index >= 0; index-- {
-		if events[index].Type == eventType {
-			return &events[index]
-		}
-	}
-	return nil
-}
-
-func (c *apiClient) events(ctx context.Context, sessionID string) ([]event, error) {
-	var history eventList
-	if err := c.get(ctx, "/v1/sessions/"+sessionID+"/events?order=asc&limit=1000", &history); err != nil {
-		return nil, err
-	}
-	return history.Data, nil
-}
-
-func (c *apiClient) create(ctx context.Context, endpoint string, input any) (resource, error) {
-	var output resource
-	if err := c.post(ctx, endpoint, input, &output); err != nil {
-		return resource{}, err
-	}
-	if output.ID == "" {
-		return resource{}, errors.New("response omitted id")
-	}
-	return output, nil
-}
-
-func (c *apiClient) get(ctx context.Context, endpoint string, output any) error {
-	return c.do(ctx, http.MethodGet, endpoint, nil, output)
-}
-
-func (c *apiClient) post(ctx context.Context, endpoint string, input, output any) error {
-	return c.do(ctx, http.MethodPost, endpoint, input, output)
-}
-
-func (c *apiClient) do(ctx context.Context, method, endpoint string, input, output any) error {
-	var body io.Reader
-	if input != nil {
-		encoded, err := json.Marshal(input)
-		if err != nil {
-			return fmt.Errorf("encode request: %w", err)
-		}
-		body = bytes.NewReader(encoded)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+endpoint, body)
-	if err != nil {
+func (a *gateApp) cleanup(ctx context.Context) error {
+	a.state.Cleaning = true
+	if err := a.save(); err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	if input != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	response, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = response.Body.Close() }()
-	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil {
-		return err
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("%s %s returned %s: %s", method, endpoint, response.Status, strings.TrimSpace(string(data)))
-	}
-	if output == nil || len(bytes.TrimSpace(data)) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(data, output); err != nil {
-		return fmt.Errorf("decode %s %s response: %w", method, endpoint, err)
-	}
-	return nil
-}
-
-func (c *apiClient) cleanup(ctx context.Context, sessionID, agentID, environmentID string) {
-	fmt.Println("Cleaning up example resources...")
 	steps := []struct {
-		method   string
-		endpoint string
+		kind   string
+		id     *string
+		remove func(context.Context, string) error
 	}{
-		{http.MethodDelete, "/v1/sessions/" + sessionID},
-		{http.MethodPost, "/v1/agents/" + agentID + "/archive"},
-		{http.MethodDelete, "/v1/environments/" + environmentID},
+		{"Session", &a.state.SessionID, func(ctx context.Context, id string) error { _, err := a.client.Sessions.Delete(ctx, id); return err }},
+		{"Agent", &a.state.AgentID, func(ctx context.Context, id string) error { _, err := a.client.Agents.Archive(ctx, id); return err }},
+		{"Environment", &a.state.EnvironmentID, func(ctx context.Context, id string) error {
+			_, err := a.client.Environments.Delete(ctx, id)
+			return err
+		}},
 	}
 	for _, step := range steps {
-		if err := c.do(ctx, step.method, step.endpoint, nil, nil); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: cleanup %s failed: %v\n", step.endpoint, err)
+		if *step.id == "" {
+			continue
+		}
+		err := step.remove(ctx, *step.id)
+		var apiErr *mango.APIError
+		if err != nil && (!errors.As(err, &apiErr) || apiErr.StatusCode != 404) {
+			return fmt.Errorf("cleanup %s %s: %w; state retained; retry cleanup", step.kind, *step.id, err)
+		}
+		_, _ = fmt.Fprintf(a.output, "Cleaned %s %s\n", step.kind, *step.id)
+		*step.id = ""
+		if err := a.save(); err != nil {
+			return err
 		}
 	}
+	if a.state.Creating != "" {
+		return fmt.Errorf("known resources cleaned, but %s creation outcome is unknown; inspect its HITL resource entries and clean manually, then remove %s; state retained", a.state.Creating, a.path)
+	}
+	if err := os.Remove(a.path); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(a.output, "Cleanup complete; state file removed.")
+	return nil
 }

@@ -119,7 +119,7 @@ func TestVerticalSlice_SelfHostedWebTranscriptSurvivesWorkerRestart(t *testing.T
 		TaskQueue:   "self-hosted-web-" + ids.NewID(""),
 		RelayConfig: temporalpkg.RelayConfig{PollInterval: 20 * time.Millisecond}}
 	runtime := temporalpkg.NewRuntime(cfg)
-	stopFirst := startGateRuntime(t, ctx, runtime)
+	stopFirst := startIntegrationRuntime(t, ctx, runtime)
 	defer stopFirst()
 	now := time.Now().UTC()
 	environment := domain.Environment{ID: "env_web", Name: "external", ConfigType: "self_hosted",
@@ -170,11 +170,11 @@ func TestVerticalSlice_SelfHostedWebTranscriptSurvivesWorkerRestart(t *testing.T
 	require.Equal(t, int64(1), modelCalls.Load())
 
 	stopFirst()
-	stopSecond := startGateRuntime(t, ctx, temporalpkg.NewRuntime(cfg))
+	stopSecond := startIntegrationRuntime(t, ctx, temporalpkg.NewRuntime(cfg))
 	defer stopSecond()
 	send(map[string]any{"type": "user.tool_result", "tool_use_id": readActionID,
 		"content": []any{map[string]any{"type": "text", "text": "external report"}}})
-	waitForGateCompletion(t, store, session.ID, 15*time.Second)
+	waitForIntegrationCompletion(t, store, session.ID, 15*time.Second)
 	require.Equal(t, int64(2), modelCalls.Load())
 	pending, err = store.UnresolvedPendingActions(ctx, session.ID)
 	require.NoError(t, err)

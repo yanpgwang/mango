@@ -161,11 +161,12 @@ The live targets require the `MANGO_MODEL_*` variables documented in
 [model configuration guide](docs/guides/model-configuration.md). They are intentionally not run in public CI and must
 never print or persist API keys.
 
-The durable custom-tool gate scenario can be selected with
-`make test-hitl-gate`; its credentialed user journey runs with
-`scripts/with-dev-env make demo-hitl-gate` against the public HTTP API. Keep
-its documented example aligned with the complete-barrier, partial-result,
-duplicate-result, worker-replacement, and interactive live-model assertions.
+The durable custom-tool barrier integration test can be selected with
+`make test-custom-tool-barrier`. It covers the complete barrier, partial
+results, duplicate rejection, and worker replacement with a deterministic
+model and neutral tool fixtures. The standalone approval example runs with
+`scripts/with-dev-env make demo-hitl-gate` against the public HTTP API; its
+expense data and interactive model journey belong in `examples/hitl-gate`.
 
 The specialist-team user journey runs with
 `scripts/with-dev-env make demo-multi-agent-team`. Keep it aligned with the
@@ -189,9 +190,11 @@ or schema change, run `make sdk-generate` and `make sdk-check`. Install SDK
 development dependencies with `make sdk-install`, then run `make sdk-test`
 and `make sdk-conformance`. The latter executes all language clients against
 the real HTTP handlers with test-only storage/model fakes; it does not replace
-the service or live-model verification tiers. Keep SDK source packages free of
-server runtime dependencies and do not publish packages as part of development
-without an explicit release request.
+the service or live-model verification tiers. Conformance clients live in
+`sdk/go/tests`, `sdk/python/tests`, and `sdk/typescript/test`; SDK `examples/`
+contain runnable user tutorials, including the checked documentation snippets.
+Keep SDK source packages free of server runtime dependencies and do not publish
+packages as part of development without an explicit release request.
 
 When changing the public HTTP surface:
 

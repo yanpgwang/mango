@@ -63,7 +63,7 @@ Environment worker separately when your Agent needs shell/file tools. A
 text-only Session or an application-owned approval workflow can run without it.
 
 **Environment Work** is a leased activation of a Session. The Docker supervisor
-claims the activation using a Workspace API key; its container receives a
+claims the activation using an Environment-scoped API key; its container receives a
 short-lived credential scoped to that Work. A later activation reuses the
 Session's workspace volume. The shell process itself persists only within one
 activation.
@@ -110,7 +110,8 @@ necessarily a downloadable File object or a durable Memory entry. Read
 ## Workspaces and credentials
 
 A **Workspace** is Mango's tenant boundary. Its API keys authenticate with
-standard bearer authorization and share access to that Workspace's resources.
+standard bearer authorization. Workspace keys access all its resources; an
+Environment key permits only one Environment's Poll, Ack, and queue Stats.
 Your application owns end-user authorization. Model credentials stay with the
 orchestration worker, and per-Work credentials limit sandbox access.
 

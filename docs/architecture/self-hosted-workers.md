@@ -77,7 +77,7 @@ opt-in.
 | Concern | Public CMA behavior | Mango behavior | Status |
 | --- | --- | --- | --- |
 | Claim boundary | A trusted host Polls and Acks | The Docker supervisor Polls and Acks | Aligned |
-| Item credential | Work can carry a per-Session secret, which the SDK prefers; the SDK can fall back to the Environment key and the Docker cookbook currently passes that broader key into the container | The scoped Work secret crosses one-shot stdin into a non-dumpable item runner; it is absent from Docker environment and command metadata, while the Workspace key stays on the supervisor | Same scoped normal path; intentionally stricter fallback and child-process boundary |
+| Item credential | Work can carry a per-Session secret, which the SDK prefers; the SDK can fall back to the Environment key and the Docker cookbook currently passes that broader key into the container | The scoped Work secret crosses one-shot stdin into a non-dumpable item runner; it is absent from Docker environment and command metadata, while the Environment key stays on the supervisor | Same scoped normal path; intentionally stricter fallback and child-process boundary |
 | Lease ownership | The item runner performs first heartbeat, continuous renewal, Session handling, and Stop | `EnvironmentWorker.HandleItem` owns the same sequence | Aligned |
 | Workspace continuity | Docker examples retain a per-Session workspace across activations | A named `/workspace` volume is keyed by Session ID and retained after each Work container exits | Aligned |
 | Agent tools | Core shell/file tools execute inside customer infrastructure; Web tools remain server-side | The Docker image executes `bash`, `read`, `write`, `edit`, `glob`, and `grep`; Web Search/Fetch use the configured model endpoint and never become external result waits | Same execution boundary; native Web endpoint support and `always_allow` are current Mango requirements |
@@ -87,7 +87,7 @@ opt-in.
 This table is a behavioral audit, not a compatibility claim. CMA's current
 security guide recommends passing a Work item's per-Session secret only to that
 Session sandbox, while its SDK retains an Environment-key fallback. Mango makes
-the narrower path mandatory: it will not pass a Workspace credential into a
+the narrower path mandatory: it will not pass a standing credential into a
 Session container merely to copy the cookbook script.
 
 ## Lifecycle and security invariants
@@ -149,10 +149,11 @@ cutover follow separately.
   rechecks the live Work lease in the same PostgreSQL transaction as the write,
   so reclaim cannot race a previously authorized request.
 - No model-provider key or broad server credential belongs in a sandbox.
-- Mango currently authorizes supervisor Poll/Ack with a Workspace API key and
-  item execution with the per-Session token. Until scoped Environment polling
-  credentials exist, worker supervisors are trusted peers within the Workspace;
-  only the item token may cross into the Session sandbox.
+- Mango authorizes supervisor Poll/Ack and queue Stats with an Environment key.
+  The operator issues, lists, and revokes keys through `mango api-key`; revocation
+  fences claims/Acks without cancelling already-Acked Work leases. Only the
+  item token crosses into the Session sandbox. The supervisor still controls
+  its Docker host and remains trusted infrastructure.
 
 ## Incremental delivery
 
@@ -170,9 +171,9 @@ cutover follow separately.
    successful conditional heartbeat before tool execution, keeps heartbeating
    in parallel, derives result retry bounds from the lease TTL, cancels on
    lease loss, and force-Stops ordinary exits. It requires the per-Work token
-   after Ack and never falls back to the supervisor's Workspace key. Scoped
-   Environment polling credentials remain required before claiming an
-   untrusted or multi-tenant supervisor boundary.
+   after Ack and never falls back to the supervisor's standing key. Environment
+   keys now restrict the supervisor to its own queue; Docker host access still
+   requires trusted operators.
 5. Added a standalone Docker launcher. A trusted supervisor polls and Acks,
    creates one hardened container per Work item, gives it only the Work secret,
    and retains one named workspace volume per Session. A real Docker test covers
