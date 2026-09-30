@@ -198,7 +198,11 @@ has no supported stable release or customer database migration requirement.
 Use a fresh development database when moving from a checkout that used the
 historical migration chain. Do not edit Goose's version table to make an old
 database appear initialized. Keep the old database and checkout together if
-you need to inspect their data. This change provides no in-place upgrade path.
+you need to inspect their data. There is no in-place upgrade path.
+The baseline may also change directly during pre-release development. For
+example, Skill Version expanded-size metadata must now be nonnegative; rebuild
+an older development database before using this contract. The startup ledger
+check does not detect changes made within an already applied baseline.
 
 For a disposable local Compose stack, `make local-down VOLUMES=1` followed by
 `make local-up` rebuilds state from the baseline. **This deletes all local

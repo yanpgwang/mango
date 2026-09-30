@@ -83,8 +83,13 @@ func run() (result error) {
 		return fmt.Errorf("invalid healthcheck list")
 	}
 
+	skillInput := mango.Some([]mango.SkillReferenceInput{{CustomSkillReferenceInput: &mango.CustomSkillReferenceInput{
+		Type: "custom", SkillID: "skill_reports", Version: mango.Some("latest"),
+	}}})
+	skillTools := mango.Some([]mango.AgentTool{{BuiltinToolset: &mango.BuiltinToolset{Type: "agent_toolset_20260401"}}})
+	wantSkill := mango.SkillReferenceResponse{Type: "custom", SkillID: "skill_reports", Version: "1759178010641129"}
 	for _, suffix := range []string{"one", "two"} {
-		agent, err := client.Agents.New(ctx, mango.AgentCreateRequest{Name: "go-sdk-" + suffix, Model: mango.ModelID("sdk-conformance")})
+		agent, err := client.Agents.New(ctx, mango.AgentCreateRequest{Name: "go-sdk-" + suffix, Model: mango.ModelID("sdk-conformance"), Tools: skillTools, Skills: skillInput})
 		if err != nil {
 			return err
 		}
@@ -92,6 +97,9 @@ func run() (result error) {
 		fetched, err := client.Agents.Get(ctx, agent.ID)
 		if err != nil {
 			return err
+		}
+		if len(agent.Skills) != 1 || agent.Skills[0] != wantSkill || len(fetched.Skills) != 1 || fetched.Skills[0] != wantSkill {
+			return errors.New("Agent response lost its resolved custom Skill reference")
 		}
 		if fetched.Name != "go-sdk-"+suffix {
 			return fmt.Errorf("wrong retrieved Agent name: %q", fetched.Name)
@@ -118,7 +126,7 @@ func run() (result error) {
 		}
 	}
 	coordinator, err := client.Agents.New(ctx, mango.AgentCreateRequest{
-		Name: "go-sdk-lead", Model: mango.ModelID("sdk-conformance"),
+		Name: "go-sdk-lead", Model: mango.ModelID("sdk-conformance"), Tools: skillTools, Skills: skillInput,
 		Multiagent: mango.Some(mango.Coordinator(
 			mango.RosterAgentVersion(agentIDs[0], 1), mango.RosterAgent(agentIDs[1]),
 			mango.Self(), mango.Advisor("review-model"),
@@ -140,6 +148,9 @@ func run() (result error) {
 		return err
 	}
 	sessionID = session.ID
+	if len(session.Agent.Skills) != 1 || session.Agent.Skills[0] != wantSkill {
+		return errors.New("Session snapshot lost its resolved custom Skill reference")
+	}
 	stream, err := client.Sessions.Events.Stream(ctx, session.ID, mango.StreamSessionEventsParams{})
 	if err != nil {
 		return err

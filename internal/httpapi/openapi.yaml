@@ -3904,20 +3904,8 @@ components:
         version:
           type: string
           minLength: 1
-    LegacySkillReference:
-      description: >-
-        Temporary read-only cleanup path for an opaque Skills value written by
-        an earlier development checkout. It carries no compatibility guarantee
-        and cannot be supplied by current create/update requests or used to
-        start a new Session.
-      not:
-        $ref: '#/components/schemas/ResolvedSkillReference'
     SkillReferenceResponse:
-      description: >-
-        A resolved custom reference or a temporary read-only cleanup value.
-      oneOf:
-        - $ref: '#/components/schemas/ResolvedSkillReference'
-        - $ref: '#/components/schemas/LegacySkillReference'
+      $ref: '#/components/schemas/ResolvedSkillReference'
     MultiagentAgentReferenceInput:
       type: object
       additionalProperties: false

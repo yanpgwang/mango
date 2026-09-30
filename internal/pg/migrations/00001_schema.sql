@@ -363,7 +363,7 @@ CREATE TABLE skill_versions (
     uncompressed_size_bytes bigint NOT NULL,
     CONSTRAINT skill_versions_size_bytes_check CHECK ((size_bytes >= 0)),
     CONSTRAINT skill_versions_state_check CHECK ((state = ANY (ARRAY['uploading'::text, 'ready'::text, 'deleting'::text]))),
-    CONSTRAINT skill_versions_uncompressed_size_bytes_check CHECK (((uncompressed_size_bytes >= '-1'::integer) AND (uncompressed_size_bytes < 30000000))),
+    CONSTRAINT skill_versions_uncompressed_size_bytes_check CHECK (((uncompressed_size_bytes >= 0) AND (uncompressed_size_bytes < 30000000))),
     CONSTRAINT skill_versions_version_check CHECK ((version ~ '^[0-9]+$'::text)),
     CONSTRAINT skill_versions_blob_key_key UNIQUE (blob_key),
     CONSTRAINT skill_versions_pkey PRIMARY KEY (skill_id, version)

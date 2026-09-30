@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -45,7 +44,7 @@ func (r *AgentRepository) PutVersion(ctx context.Context, agent domain.Agent) er
 		if err := q.InsertAgentVersion(ctx, params); err != nil {
 			return err
 		}
-		return replaceAgentSkillVersions(ctx, tx, workspaceID, agent, true)
+		return replaceAgentSkillVersions(ctx, tx, workspaceID, agent)
 	})
 }
 
@@ -86,7 +85,6 @@ func (r *AgentRepository) UpdateVersion(
 		next.Version = current.Version + 1
 		next.CreatedAt = current.CreatedAt
 		next.ArchivedAt = nil
-		skillsChanged := !reflect.DeepEqual(current.Skills, next.Skills)
 		params, err := agentInsertParams(workspaceID, next)
 		if err != nil {
 			return err
@@ -97,7 +95,7 @@ func (r *AgentRepository) UpdateVersion(
 			}
 			return err
 		}
-		if err := replaceAgentSkillVersions(ctx, tx, workspaceID, next, skillsChanged); err != nil {
+		if err := replaceAgentSkillVersions(ctx, tx, workspaceID, next); err != nil {
 			return err
 		}
 		result = next
@@ -166,28 +164,21 @@ func replaceAgentSkillVersions(
 	tx pgx.Tx,
 	workspaceID string,
 	agent domain.Agent,
-	strict bool,
 ) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM agent_skill_versions WHERE agent_id = $1`, agent.ID); err != nil {
 		return err
 	}
 	for position, reference := range agent.Skills {
-		// Opaque pre-feature values and unsupported provider references remain
-		// readable, but they are not execution pins. New API writes have already
-		// passed strict application validation and cannot reach these branches.
-		if reference.IsLegacy() || reference.Type != "custom" ||
-			reference.SkillID == "" || reference.Version == "" || reference.Version == "latest" {
-			continue
+		if reference.Type != "custom" || reference.SkillID == "" ||
+			reference.Version == "" || reference.Version == "latest" {
+			return domain.Validation("Agent requires resolved custom Skill references")
 		}
 		locked, err := lockReadySkillVersion(ctx, tx, workspaceID, reference)
 		if err != nil {
 			return err
 		}
 		if !locked {
-			if strict {
-				return domain.Validation("Agent references a missing custom Skill Version")
-			}
-			continue
+			return domain.Validation("Agent references a missing custom Skill Version")
 		}
 		if _, err := tx.Exec(ctx, `
 INSERT INTO agent_skill_versions (

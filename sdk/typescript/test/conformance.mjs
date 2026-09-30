@@ -7,6 +7,9 @@ const apiKey = process.env.MANGO_SDK_TEST_KEY;
 if (!baseURL || !apiKey) throw new Error('MANGO_SDK_TEST_URL and MANGO_SDK_TEST_KEY are required');
 const client = new Mango({ baseURL, apiKey, timeoutMs: 10_000 });
 const agents = [];
+const skillInput = { type: 'custom', skill_id: 'skill_reports', version: 'latest' };
+const resolvedSkill = { type: 'custom', skill_id: 'skill_reports', version: '1759178010641129' };
+const skillConfig = { skills: [skillInput], tools: [{ type: 'agent_toolset_20260401' }] };
 let environment;
 let session;
 try {
@@ -28,13 +31,18 @@ try {
   assert.deepEqual(done.result, { status: 'failed', message: 'conformance diagnostic' });
   const checks = await client.environments.work.list(environment.id);
   assert.deepEqual(checks.data[0].data, { type: 'healthcheck' });
-  for (let index = 0; index < 2; index++) agents.push(await client.agents.create({ name: `TypeScript conformance ${index}`, model: 'sdk-conformance' }));
+  for (let index = 0; index < 2; index++) agents.push(await client.agents.create({ name: `TypeScript conformance ${index}`, model: 'sdk-conformance', ...skillConfig }));
   assert.equal((await client.agents.retrieve(agents[0].id)).id, agents[0].id);
+  for (const agent of agents) {
+    assert.deepEqual(agent.skills, [resolvedSkill]);
+    assert.deepEqual((await client.agents.retrieve(agent.id)).skills, [resolvedSkill]);
+  }
+
   const listed = [];
   for await (const item of client.agents.listItems({ limit: 1 })) listed.push(item.id);
   for (const agent of agents) assert.ok(listed.includes(agent.id));
   const coordinator = await client.agents.create({
-    name: 'TypeScript lead', model: 'sdk-conformance',
+    name: 'TypeScript lead', model: 'sdk-conformance', ...skillConfig,
     multiagent: { type: 'coordinator', agents: [
       { type: 'agent', id: agents[0].id, version: 1 }, agents[1].id,
       { type: 'self' }, { type: 'advisor', model: 'review-model' },
@@ -45,6 +53,7 @@ try {
   assert.deepEqual(coordinator.multiagent.agents.at(-1), { type: 'advisor', model: 'review-model' });
   session = await client.sessions.create({ agent: coordinator.id, environment_id: environment.id, title: 'TypeScript conformance' });
   assert.equal((await client.sessions.retrieve(session.id)).id, session.id);
+  assert.deepEqual(session.agent.skills, [resolvedSkill]);
   const live = await client.sessions.events.stream(session.id, {}, { signal: AbortSignal.timeout(10_000) });
   let batch;
   try {

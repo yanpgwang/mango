@@ -1073,7 +1073,7 @@ func validateRuntimeSkillPins(
 	var expandedBytes int64
 	for index, reference := range references {
 		version := versions[index]
-		if reference.IsLegacy() || reference.Type != "custom" ||
+		if reference.Type != "custom" ||
 			reference.SkillID != version.SkillID || reference.Version != version.Version {
 			return "custom Skill runtime pins do not match the Session snapshot"
 		}

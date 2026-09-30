@@ -15,6 +15,37 @@ import (
 	"testing"
 )
 
+func TestPrepareSessionSkillsRejectsUnresolvedReferences(t *testing.T) {
+	for _, reference := range []SkillReferenceResponse{
+		{Type: "anthropic", SkillID: "xlsx", Version: "100"},
+		{Type: "custom", SkillID: "skill_report", Version: "latest"},
+		{Type: "custom", SkillID: "skill_report"},
+		{Type: "custom", Version: "100"},
+	} {
+		t.Run(reference.Type+"/"+reference.SkillID+"/"+reference.Version, func(t *testing.T) {
+			var requests int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests++
+				http.Error(w, "unexpected Skill lookup", http.StatusBadRequest)
+			}))
+			defer server.Close()
+			client, err := New(Config{BaseURL: server.URL})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = PrepareSessionSkills(context.Background(), client, Session{Agent: AgentSnapshot{
+				Skills: []SkillReferenceResponse{reference},
+			}}, t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), "unresolved custom Skill reference") {
+				t.Fatalf("unresolved reference error = %v", err)
+			}
+			if requests != 0 {
+				t.Fatalf("unresolved reference made %d Skill lookups", requests)
+			}
+		})
+	}
+}
+
 func TestPrepareSessionSkillsMaterializesPrimaryAndRosterPins(t *testing.T) {
 	t.Parallel()
 	archives := map[string][]byte{
@@ -61,12 +92,8 @@ func TestPrepareSessionSkillsMaterializesPrimaryAndRosterPins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	primary := SkillReferenceResponse{ResolvedSkillReference: &ResolvedSkillReference{
-		Type: "custom", SkillID: "skill_primary", Version: "100",
-	}}
-	child := SkillReferenceResponse{ResolvedSkillReference: &ResolvedSkillReference{
-		Type: "custom", SkillID: "skill_child", Version: "200",
-	}}
+	primary := SkillReferenceResponse{Type: "custom", SkillID: "skill_primary", Version: "100"}
+	child := SkillReferenceResponse{Type: "custom", SkillID: "skill_child", Version: "200"}
 	session := Session{Agent: AgentSnapshot{
 		ID: "agent_primary", Version: 1, Skills: []SkillReferenceResponse{primary},
 		Multiagent: SessionMultiagent{SessionResolvedMultiagent: &SessionResolvedMultiagent{
@@ -146,9 +173,7 @@ func TestPrepareSessionSkillsRejectsArchiveEscapeAndCleansPriorSkill(t *testing.
 		t.Fatal(err)
 	}
 	ref := func(id string) SkillReferenceResponse {
-		return SkillReferenceResponse{ResolvedSkillReference: &ResolvedSkillReference{
-			Type: "custom", SkillID: id, Version: "1",
-		}}
+		return SkillReferenceResponse{Type: "custom", SkillID: id, Version: "1"}
 	}
 	workdir := t.TempDir()
 	_, err = PrepareSessionSkills(context.Background(), client, Session{Agent: AgentSnapshot{
@@ -184,9 +209,7 @@ func TestPrepareSessionSkillsDoesNotFollowPriorOrReplacementRootSymlink(t *testi
 		t.Fatal(err)
 	}
 	session := Session{Agent: AgentSnapshot{Skills: []SkillReferenceResponse{{
-		ResolvedSkillReference: &ResolvedSkillReference{
-			Type: "custom", SkillID: "skill_safe", Version: "1",
-		},
+		Type: "custom", SkillID: "skill_safe", Version: "1",
 	}}}}
 	setup, err := PrepareSessionSkills(context.Background(), client, session, workdir)
 	if err != nil {
@@ -228,9 +251,9 @@ func TestPrepareSessionSkillsRejectsIntegrityMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = PrepareSessionSkills(context.Background(), client, Session{Agent: AgentSnapshot{
-		Skills: []SkillReferenceResponse{{ResolvedSkillReference: &ResolvedSkillReference{
+		Skills: []SkillReferenceResponse{{
 			Type: "custom", SkillID: "skill_safe", Version: "1",
-		}}},
+		}},
 	}}, t.TempDir())
 	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("integrity error = %v", err)
@@ -249,9 +272,7 @@ func TestPrepareSessionSkillsAppliesAggregateExpandedAndFileBudgets(t *testing.T
 		t.Fatal(err)
 	}
 	session := Session{Agent: AgentSnapshot{Skills: []SkillReferenceResponse{{
-		ResolvedSkillReference: &ResolvedSkillReference{
-			Type: "custom", SkillID: "skill_safe", Version: "1",
-		},
+		Type: "custom", SkillID: "skill_safe", Version: "1",
 	}}}}
 	base := sessionSkillBudget{
 		archiveLimit: 1 << 20, fileLimit: 100, countLimit: 10,

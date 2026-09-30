@@ -573,9 +573,6 @@ InitialEvent: TypeAlias = Union['UserMessageInitialEvent', 'DefineOutcomeInitial
 LegacyMultiagent: TypeAlias = Dict[str, Any]
 
 
-LegacySkillReference: TypeAlias = Any
-
-
 class MCPOAuthCredentialAuth(TypedDict, total=False):
     expires_at: Required[Union[str, None]]
     mcp_server_url: Required[str]
@@ -1285,9 +1282,6 @@ class SkillList(TypedDict, total=False):
 SkillReferenceInput: TypeAlias = Union['CustomSkillReferenceInput', 'AnthropicSkillReferenceInput']
 
 
-SkillReferenceResponse: TypeAlias = Union['ResolvedSkillReference', 'LegacySkillReference']
-
-
 class SkillResource(TypedDict, total=False):
     created_at: Required[str]
     display_title: Required[str]
@@ -1735,6 +1729,9 @@ SessionResource: TypeAlias = MemoryStoreSessionResource
 SessionResourceInput: TypeAlias = MemoryStoreSessionResourceInput
 
 
+SkillReferenceResponse: TypeAlias = ResolvedSkillReference
+
+
 __all__ = ['Agent',
  'AgentCreateRequest',
  'AgentCustomToolUseEvent',
@@ -1832,7 +1829,6 @@ __all__ = ['Agent',
  'ImageSourceInput',
  'InitialEvent',
  'LegacyMultiagent',
- 'LegacySkillReference',
  'MCPOAuthCredentialAuth',
  'MCPOAuthCredentialCreate',
  'MCPOAuthCredentialUpdate',
