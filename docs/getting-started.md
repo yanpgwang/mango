@@ -42,7 +42,8 @@ Wait for every service to report `healthy`. The API listens on
 curl -i http://localhost:8080/readyz
 ```
 
-Expect `HTTP/1.1 200 OK`. The stack starts Mango's API and orchestration worker,
+Expect `HTTP/1.1 200 OK`. The stack initializes the schema with a one-shot
+`migrate` container, then starts Mango's API and orchestration worker,
 PostgreSQL, Temporal, NATS, and MinIO. The model variables above explicitly
 select offline mode. Later, use [Model configuration](guides/model-configuration.md)
 to connect a real endpoint.

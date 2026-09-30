@@ -22,9 +22,9 @@ documented:
   production defaults.
 
 The release topology uses one immutable Mango image with separate process
-roles. API and worker capacity must remain independently scalable, and schema
-migration will become an explicit one-shot role before production bundles are
-published. Production manifests should reference external PostgreSQL,
+roles. API and worker capacity remain independently scalable; `mango migrate`
+is the explicit one-shot schema role, and both processes check the migration
+ledger without applying migrations. Production manifests should reference external PostgreSQL,
 Temporal, NATS, and object storage by default rather than installing stateful
 dependencies implicitly.
 

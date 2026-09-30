@@ -36,10 +36,11 @@ open. Follow the
 
 ## Process topology
 
-The Mango application image serves two roles. The local Compose stack runs
-them in separate containers:
+The Mango application image serves three roles. Run the one-shot migration
+before starting the independently scalable API and orchestration processes:
 
 ```text
+mango migrate
 mango serve -addr :8080
 mango orchestrate
 ```
@@ -166,9 +167,24 @@ PostgreSQL. The bundled local keyring is
 deterministic development material and must not be reused outside the local
 Compose stack.
 
-Before production deployment bundles are promoted, database migration will be
-removed from normal API/worker startup and exposed as an explicit one-shot
-role. This avoids every replica racing to manage schema during a rollout.
+Database migration is an explicit one-shot role. Normal API, orchestration,
+Workspace, and API-key commands only read the migration ledger at startup;
+they do not initialize or change the schema. The API's optional API-key
+bootstrap still writes application data after this check succeeds.
+
+Run `mango migrate` with `MANGO_DATABASE_URL` pointing to the intended database
+before starting a new installation or after deploying a binary with pending
+migrations. It needs only PostgreSQL; it does not connect to Temporal, NATS,
+object storage, or a model. Concurrent migration jobs for the same database
+schema serialize through a PostgreSQL advisory lock. Re-running the command
+preserves existing application data and bootstrap Workspace changes.
+
+Startup fails with `run mango migrate` guidance if the ledger is absent or a
+required migration is pending. Applied versions absent from the binary are
+rejected by both startup and migration; use a matching checkout/release and
+database. The check validates applied migration versions, not manual schema
+edits or a complete upgrade/rollback policy. A read-only connection can perform
+the schema check, but the API's `/readyz` still rejects read-only PostgreSQL.
 
 ## Repository commands
 
@@ -190,9 +206,11 @@ PostgreSQL data, Temporal history, and MinIO objects.** Back up anything you
 need before using that reset. Contributor tests create isolated schemas and
 do not require resetting a running local stack.
 
-API, orchestration, and operator commands still initialize the schema on
-startup. A separate migration command and schema-only startup checks remain
-the next deployment step.
+The local Compose stack builds the shared Mango image in its `migrate` service.
+API and worker startup wait for that service to complete successfully. For
+direct binary use, set `MANGO_DATABASE_URL`, run `mango migrate`, then create
+operator keys or start the API and worker. Migration does not reset a database
+from the historical chain or make it compatible with this baseline.
 
 ### Build and run
 

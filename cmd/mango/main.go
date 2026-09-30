@@ -145,9 +145,11 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: mango <serve|orchestrate|workspace|api-key> [flags]")
+		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key> [flags]")
 	}
 	switch os.Args[1] {
+	case "migrate":
+		runMigrate()
 	case "serve":
 		runServe()
 	case "orchestrate":
@@ -157,7 +159,7 @@ func main() {
 	case "api-key":
 		runAPIKeyCommand()
 	default:
-		log.Fatal("usage: mango <serve|orchestrate|workspace|api-key> [flags]")
+		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key> [flags]")
 	}
 }
 
@@ -300,8 +302,8 @@ func withOperatorStore(run func(context.Context, *pg.Store) error) error {
 		return fmt.Errorf("postgres: %w", err)
 	}
 	defer pool.Close()
-	if err := pg.Migrate(ctx, pool); err != nil {
-		return fmt.Errorf("migrate: %w", err)
+	if err := pg.CheckSchema(ctx, pool); err != nil {
+		return fmt.Errorf("schema: %w", err)
 	}
 	return run(ctx, pg.NewSystemStore(pool, domain.NewRandomIDGen(), realClock{}))
 }
@@ -317,8 +319,8 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 		log.Fatalf("serve: postgres: %v", err)
 	}
 	defer pool.Close()
-	if err := pg.Migrate(ctx, pool); err != nil {
-		log.Fatalf("serve: migrate: %v", err)
+	if err := pg.CheckSchema(ctx, pool); err != nil {
+		log.Fatalf("serve: schema: %v", err)
 	}
 
 	ids := domain.NewRandomIDGen()
