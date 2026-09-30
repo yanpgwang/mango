@@ -76,6 +76,13 @@ OPERATIONS: dict[str, dict[str, Any]] = {'acknowledge_environment_work': {'id': 
                               'public': False,
                               'accept': 'application/json',
                               'request': 'json'},
+ 'complete_environment_healthcheck': {'id': 'completeEnvironmentHealthcheck',
+                                      'method': 'POST',
+                                      'path': '/v1/environments/{environment_id}/work/{work_id}/result',
+                                      'mode': 'json',
+                                      'public': False,
+                                      'accept': 'application/json',
+                                      'request': 'json'},
  'create_agent': {'id': 'createAgent',
                   'method': 'POST',
                   'path': '/v1/agents',
@@ -97,6 +104,13 @@ OPERATIONS: dict[str, dict[str, Any]] = {'acknowledge_environment_work': {'id': 
                         'public': False,
                         'accept': 'application/json',
                         'request': 'json'},
+ 'create_environment_healthcheck': {'id': 'createEnvironmentHealthcheck',
+                                    'method': 'POST',
+                                    'path': '/v1/environments/{environment_id}/work',
+                                    'mode': 'json',
+                                    'public': False,
+                                    'accept': 'application/json',
+                                    'request': 'json'},
  'create_memory': {'id': 'createMemory',
                    'method': 'POST',
                    'path': '/v1/memory_stores/{store_id}/memories',
@@ -1062,6 +1076,26 @@ class EnvironmentsWorkResource:
     ) -> models.EnvironmentWork:
         """POST /v1/environments/{environment_id}/work/{work_id}/ack."""
         return cast(models.EnvironmentWork, self._client._request(OPERATIONS['acknowledge_environment_work'], {'environment_id': environment_id, 'work_id': work_id}, {}))
+
+    def complete(
+        self,
+        environment_id: str,
+        work_id: str,
+        *,
+        message: str,
+        status: Literal['succeeded', 'failed'],
+    ) -> models.EnvironmentWork:
+        """POST /v1/environments/{environment_id}/work/{work_id}/result."""
+        return cast(models.EnvironmentWork, self._client._request(OPERATIONS['complete_environment_healthcheck'], {'environment_id': environment_id, 'work_id': work_id}, {}, {'message': message, 'status': status}))
+
+    def create(
+        self,
+        environment_id: str,
+        *,
+        data: models.HealthcheckWorkData,
+    ) -> models.EnvironmentWork:
+        """POST /v1/environments/{environment_id}/work."""
+        return cast(models.EnvironmentWork, self._client._request(OPERATIONS['create_environment_healthcheck'], {'environment_id': environment_id}, {}, {'data': data}))
 
     def fail(
         self,
@@ -2370,6 +2404,26 @@ class AsyncEnvironmentsWorkResource:
     ) -> models.EnvironmentWork:
         """POST /v1/environments/{environment_id}/work/{work_id}/ack."""
         return cast(models.EnvironmentWork, await self._client._request(OPERATIONS['acknowledge_environment_work'], {'environment_id': environment_id, 'work_id': work_id}, {}))
+
+    async def complete(
+        self,
+        environment_id: str,
+        work_id: str,
+        *,
+        message: str,
+        status: Literal['succeeded', 'failed'],
+    ) -> models.EnvironmentWork:
+        """POST /v1/environments/{environment_id}/work/{work_id}/result."""
+        return cast(models.EnvironmentWork, await self._client._request(OPERATIONS['complete_environment_healthcheck'], {'environment_id': environment_id, 'work_id': work_id}, {}, {'message': message, 'status': status}))
+
+    async def create(
+        self,
+        environment_id: str,
+        *,
+        data: models.HealthcheckWorkData,
+    ) -> models.EnvironmentWork:
+        """POST /v1/environments/{environment_id}/work."""
+        return cast(models.EnvironmentWork, await self._client._request(OPERATIONS['create_environment_healthcheck'], {'environment_id': environment_id}, {}, {'data': data}))
 
     async def fail(
         self,

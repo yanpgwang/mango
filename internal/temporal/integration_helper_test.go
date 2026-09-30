@@ -2,6 +2,8 @@ package temporal_test
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/pg"
+	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
 )
 
 var integrationSchemaSeq int
@@ -86,4 +89,71 @@ func itoaInt(n int) string {
 		b[i] = '-'
 	}
 	return string(b[i:])
+}
+
+func startIntegrationRuntime(
+	t *testing.T,
+	parent context.Context,
+	runtime *temporalpkg.Runtime,
+) func() {
+	t.Helper()
+	if err := runtime.Worker.Start(); err != nil {
+		t.Fatalf("start integration worker: %v", err)
+	}
+	relayCtx, cancelRelay := context.WithCancel(parent)
+	relayDone := make(chan error, 1)
+	go func() { relayDone <- runtime.Relay.Run(relayCtx) }()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			cancelRelay()
+			runtime.Worker.Stop()
+			select {
+			case err := <-relayDone:
+				if err != nil && !errors.Is(err, context.Canceled) {
+					t.Errorf("stop integration relay: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Error("integration relay did not stop")
+			}
+		})
+	}
+}
+
+func waitForIntegrationCompletion(
+	t *testing.T,
+	store *pg.Store,
+	sessionID string,
+	timeout time.Duration,
+) []domain.Event {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		events, err := store.EventsAfter(context.Background(), sessionID, 0, 300)
+		if err != nil {
+			t.Fatalf("list completed integration events: %v", err)
+		}
+		if failure, ok := firstFailureEvent(events); ok {
+			t.Fatalf("integration failed with %s: %#v", failure.Type, failure.Payload)
+		}
+		if hasType(events, domain.EvAgentMessage) && latestIdleReason(events) == "end_turn" {
+			return events
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	events, _ := store.EventsAfter(context.Background(), sessionID, 0, 300)
+	t.Fatalf("timed out waiting for integration completion; events=%s", typeList(events))
+	return nil
+}
+
+func latestIdleReason(events []domain.Event) string {
+	for index := len(events) - 1; index >= 0; index-- {
+		if events[index].Type != domain.EvSessionStatusIdle {
+			continue
+		}
+		stopReason, _ := events[index].Payload["stop_reason"].(map[string]any)
+		reason, _ := stopReason["type"].(string)
+		return reason
+	}
+	return ""
 }

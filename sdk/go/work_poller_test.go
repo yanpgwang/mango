@@ -165,7 +165,7 @@ func TestWorkPollerValidatesWorkIdentityAndState(t *testing.T) {
 	}{
 		{name: "empty work id", mutate: func(work map[string]any) { work["id"] = "" }},
 		{name: "wrong data type", mutate: func(work map[string]any) {
-			work["data"] = map[string]any{"type": "healthcheck", "id": "sesn_test"}
+			work["data"] = map[string]any{"type": "future_work_type", "id": "sesn_test"}
 		}},
 		{name: "empty session id", mutate: func(work map[string]any) {
 			work["data"] = map[string]any{"type": "session", "id": ""}
@@ -442,7 +442,7 @@ func workPollerFixture(state string) map[string]any {
 		"state": state, "metadata": map[string]string{}, "secret": secret,
 		"created_at": "2026-09-03T00:00:00Z", "acknowledged_at": nil,
 		"started_at": nil, "latest_heartbeat_at": nil,
-		"stop_requested_at": nil, "stopped_at": nil,
+		"stop_requested_at": nil, "stopped_at": nil, "expires_at": nil, "result": nil,
 	}
 }
 

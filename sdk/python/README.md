@@ -157,5 +157,5 @@ uv run ruff check src tests generate.py examples
 shared snapshot first with `go run ./scripts/sdk-contract` from the repository
 root, then run `uv run python generate.py`. Generated bindings are reproducible;
 the handwritten HTTP transport is not generated from any vendor implementation.
-Tests are offline and deterministic. The optional `examples/conformance.py`
+Tests are offline and deterministic. The optional `tests/conformance.py`
 targets Mango's own local HTTP-handler harness, not a live model or CMA service.

@@ -342,7 +342,11 @@ func (s *FileService) Reconcile(ctx context.Context) error {
 func (s *FileService) cleanupIncomplete(ctx context.Context, file domain.File) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fileCleanupTimeout)
 	defer cancel()
-	_ = s.blobs.Delete(cleanupCtx, file.BlobKey)
+	if err := s.blobs.Delete(cleanupCtx, file.BlobKey); err != nil {
+		// A failed Put may have stored bytes before its response was lost.
+		// Keep the durable intent until reconciliation can delete those bytes.
+		return
+	}
 	_ = s.repo.RemoveIncomplete(cleanupCtx, file.ID)
 }
 

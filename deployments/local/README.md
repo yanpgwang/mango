@@ -9,7 +9,7 @@ infrastructure versions and health checks.
 | Temporal   | `temporalio/auto-setup:1.29.7` | `7233` (gRPC)               | Durable session/thread orchestration.                |
 | Temporal UI| `temporalio/ui:2.52.1`         | `8233` → container `8080`   | Workflow explorer at <http://localhost:8233>.        |
 | NATS Core  | `nats:2.11.17-alpine`          | `4222` (client), `8222` (monitoring) | Ephemeral previews and SSE wakeups; PostgreSQL cursor reads repair loss. |
-| MinIO      | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | `9000` | S3-compatible File bytes for development and service conformance. |
+| MinIO      | Local source build (`RELEASE.2025-10-15T17-29-55Z`) | `9000` | S3-compatible File bytes for development and service conformance. |
 | API        | `mango:local`        | `8080`                      | PostgreSQL-backed Mango HTTP API. |
 | Worker     | `mango:local`        | —                           | Temporal worker and PostgreSQL outbox relay. |
 
@@ -132,3 +132,27 @@ storage remain deployment work. The bundled MinIO credentials and deterministic
 Vault keyring are not a production recommendation. Files startup reconciliation
 also currently requires one Files-enabled API process. See
 [the deployment model](../../docs/deployment.md).
+
+
+### Development object-store image
+
+The stack builds `mango-minio:local` from MinIO's public release
+`RELEASE.2025-10-15T17-29-55Z`, commit
+`9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`. The immutable Go module version is
+pinned in `minio/Dockerfile`; module downloads are verified by Go's checksum
+database. The image includes MinIO's AGPL license and source/revision labels.
+No vendor account or image-registry credential is required.
+
+This replaces the unavailable community image, which prevented both fresh local
+stacks and CI service tests from starting. The first Compose start builds the
+image and takes longer; later builds reuse Docker's build cache. Rebuild after
+changing its Dockerfile with
+`docker compose -f deployments/local/compose.yaml build minio` from the repository
+root. The `/data` volume,
+S3 endpoint, development credentials, and health probe remain the same.
+
+MinIO's community repository is archived and its distribution is source-only;
+see the [upstream README](https://github.com/minio/minio/blob/master/README.md).
+This pinned service is a local test dependency, not a supported production
+object-store distribution. Mango's Files API continues to accept a separately
+operated S3-compatible service.

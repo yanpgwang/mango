@@ -52,12 +52,12 @@ while the Environment is referenced.
 
 ## Worker credentials
 
-Configure a Workspace API key and this Environment's ID on the supervisor.
-Mango has not yet introduced a narrower Environment polling key. The supervisor
+Issue an Environment-scoped API key through the operator CLI and configure it
+as `MANGO_ENVIRONMENT_KEY` with this Environment's ID. The supervisor
 polls and acknowledges Environment Work. After Ack, the Work item supplies a
 short-lived Session credential for heartbeat, Session events, immutable inputs,
 result submission, failure, and Stop.
 
-The first-party Docker launcher keeps the Workspace credential outside Session
+The first-party Docker launcher keeps the Environment credential outside Session
 containers. See [Environment Work](environment-work.md) and
 [Self-hosted worker](../guides/self-hosted-worker.md).

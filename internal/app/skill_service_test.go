@@ -106,6 +106,80 @@ func TestSkillService_CleansFailedInitialUpload(t *testing.T) {
 	}
 }
 
+func TestSkillService_FailedUploadRetainsCleanupUntilStorageRecovers(t *testing.T) {
+	for _, initial := range []bool{true, false} {
+		name := "new_version"
+		if initial {
+			name = "initial_version"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			repo := newMemorySkillRepository()
+			blobs := newMemoryBlobStore()
+			service := NewSkillService(repo, blobs, domain.NewSeqIDGen(), domain.FixedClock{})
+			files := []SkillUploadFile{{
+				Filename: "safe-skill/SKILL.md",
+				Body:     []byte("---\nname: safe-skill\ndescription: Handles safe work when requested.\n---\n"),
+			}}
+			var existing domain.Skill
+			var err error
+			if !initial {
+				existing, err = service.Create(ctx, SkillCreateInput{Files: files})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			blobs.putErrAfterCommit = errors.New("upload response lost after archive was stored")
+			blobs.deleteErr = errors.New("archive deletion unavailable")
+			if initial {
+				_, err = service.Create(ctx, SkillCreateInput{Files: files})
+			} else {
+				_, err = service.CreateVersion(ctx, existing.ID, files)
+			}
+			if !errors.Is(err, blobs.putErrAfterCommit) {
+				t.Fatalf("upload error = %v, want original upload error", err)
+			}
+			pending, err := repo.ListIncompleteVersions(ctx)
+			if err != nil || len(pending) != 1 {
+				t.Fatalf("cleanup intent after failed archive deletion = %+v, %v", pending, err)
+			}
+			if _, err := service.GetVersion(ctx, pending[0].SkillID, pending[0].Version); err == nil {
+				t.Fatal("failed Version upload became visible")
+			}
+			restarted := NewSkillService(repo, blobs, domain.NewSeqIDGen(), domain.FixedClock{})
+			if err := restarted.Reconcile(ctx); !errors.Is(err, blobs.deleteErr) {
+				t.Fatalf("Reconcile during outage = %v, want deletion error", err)
+			}
+			blobs.deleteErr = nil
+			if err := restarted.Reconcile(ctx); err != nil {
+				t.Fatalf("Reconcile after recovery: %v", err)
+			}
+			if pending, err := repo.ListIncompleteVersions(ctx); err != nil || len(pending) != 0 {
+				t.Fatalf("cleanup intents remain after recovery: %+v, %v", pending, err)
+			}
+			if initial {
+				if len(repo.skills) != 0 || len(blobs.objects) != 0 {
+					t.Fatalf("failed initial Skill remains: skills=%v objects=%v", repo.skills, blobs.objects)
+				}
+			} else {
+				current, err := restarted.Get(ctx, existing.ID)
+				if err != nil || current.LatestVersion != existing.LatestVersion || len(blobs.objects) != 1 {
+					t.Fatalf("existing Skill changed after cleanup: %+v, %v; objects=%v", current, err, blobs.objects)
+				}
+				download, err := restarted.Download(ctx, existing.ID, existing.LatestVersion)
+				if err != nil {
+					t.Fatalf("download previous Version: %v", err)
+				}
+				archive, err := io.ReadAll(download.Body)
+				_ = download.Body.Close()
+				if err != nil || string(readZipFile(t, archive, "safe-skill/SKILL.md")) != string(files[0].Body) {
+					t.Fatalf("previous Version bytes changed: %v", err)
+				}
+			}
+		})
+	}
+}
+
 type memorySkillRepository struct {
 	skills   map[string]domain.Skill
 	versions map[string]map[string]domain.SkillVersion

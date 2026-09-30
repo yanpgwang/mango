@@ -44,7 +44,7 @@ func TestVerticalSlice_ExternalApprovalHTTPRecovery(t *testing.T) {
 				TaskQueue:   "external-approval-" + ids.NewID(""),
 				RelayConfig: temporalpkg.RelayConfig{PollInterval: 20 * time.Millisecond}}
 			runtime := temporalpkg.NewRuntime(cfg)
-			stopFirst := startGateRuntime(t, ctx, runtime)
+			stopFirst := startIntegrationRuntime(t, ctx, runtime)
 			defer stopFirst()
 			now := time.Now().UTC()
 			environment := domain.Environment{ID: "env_external", Name: "external", ConfigType: "self_hosted",
@@ -111,7 +111,7 @@ func TestVerticalSlice_ExternalApprovalHTTPRecovery(t *testing.T) {
 				require.Equal(t, int64(1), probe.calls.Load())
 				stopFirst()
 				restarted := temporalpkg.NewRuntime(cfg)
-				stopSecond := startGateRuntime(t, ctx, restarted)
+				stopSecond := startIntegrationRuntime(t, ctx, restarted)
 				defer stopSecond()
 				// Recovery needs the persisted approval, not any SDK/process memory.
 				historyRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, eventsURL, nil)
@@ -135,7 +135,7 @@ func TestVerticalSlice_ExternalApprovalHTTPRecovery(t *testing.T) {
 				send(confirmation, 200)
 				send(result, 400)
 			}
-			waitForGateCompletion(t, store, session.ID, 15*time.Second)
+			waitForIntegrationCompletion(t, store, session.ID, 15*time.Second)
 			require.Equal(t, int64(2), probe.calls.Load())
 			pending, err := store.UnresolvedPendingActions(ctx, session.ID)
 			require.NoError(t, err)

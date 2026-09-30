@@ -22,9 +22,11 @@ var Operations = []Operation{
 	{"archiveSessionThread", "POST", "/v1/sessions/{session_id}/threads/{thread_id}/archive", "Sessions.Threads", "Archive"},
 	{"archiveVault", "POST", "/v1/vaults/{vault_id}/archive", "Vaults", "Archive"},
 	{"archiveVaultCredential", "POST", "/v1/vaults/{vault_id}/credentials/{credential_id}/archive", "Vaults.Credentials", "Archive"},
+	{"completeEnvironmentHealthcheck", "POST", "/v1/environments/{environment_id}/work/{work_id}/result", "Environments.Work", "Complete"},
 	{"createAgent", "POST", "/v1/agents", "Agents", "New"},
 	{"createDeployment", "POST", "/v1/deployments", "Deployments", "New"},
 	{"createEnvironment", "POST", "/v1/environments", "Environments", "New"},
+	{"createEnvironmentHealthcheck", "POST", "/v1/environments/{environment_id}/work", "Environments.Work", "New"},
 	{"createMemory", "POST", "/v1/memory_stores/{store_id}/memories", "MemoryStores.Memories", "New"},
 	{"createMemoryStore", "POST", "/v1/memory_stores", "MemoryStores", "New"},
 	{"createSession", "POST", "/v1/sessions", "Sessions", "New"},
@@ -191,6 +193,15 @@ func (c *VaultsCredentialsService) Archive(ctx context.Context, vault_id string,
 	return result, err
 }
 
+// Complete Commit a healthcheck execution result (POST /v1/environments/{environment_id}/work/{work_id}/result).
+func (c *EnvironmentsWorkService) Complete(ctx context.Context, environment_id string, work_id string, body EnvironmentWorkResultRequest) (EnvironmentWork, error) {
+	query := make(url.Values)
+	path := "/v1/environments/" + escapePath(environment_id) + "/work/" + escapePath(work_id) + "/result"
+	var result EnvironmentWork
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
+	return result, err
+}
+
 // New Create an Agent (POST /v1/agents).
 func (c *AgentsService) New(ctx context.Context, body AgentCreateRequest) (Agent, error) {
 	query := make(url.Values)
@@ -214,6 +225,15 @@ func (c *EnvironmentsService) New(ctx context.Context, body EnvironmentCreateReq
 	query := make(url.Values)
 	path := "/v1/environments"
 	var result Environment
+	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
+	return result, err
+}
+
+// New Queue a bounded self-hosted execution healthcheck (POST /v1/environments/{environment_id}/work).
+func (c *EnvironmentsWorkService) New(ctx context.Context, environment_id string, body EnvironmentWorkCreateRequest) (EnvironmentWork, error) {
+	query := make(url.Values)
+	path := "/v1/environments/" + escapePath(environment_id) + "/work"
+	var result EnvironmentWork
 	err := c.client.doJSON(ctx, "POST", path, query, body, &result, true)
 	return result, err
 }

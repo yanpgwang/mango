@@ -32,6 +32,7 @@ permission decisions, Work lease fencing, result correlation, retries, and
 recovery.
 
 The first-party Docker launcher creates a named workspace volume per Session
+by default, or binds an operator-owned directory selected with `--workspace-root`,
 and runs each activation in a container. The control-plane API and Temporal
 worker do not mount the Docker socket.
 
@@ -67,10 +68,18 @@ pre-release registry.
 ## Run the Docker reference
 
 Follow [Self-hosted worker](guides/self-hosted-worker.md). The supervisor uses a
-Workspace API key plus an Environment ID to poll Work. Each claimed item yields
+Environment-scoped API key plus its Environment ID to poll Work. Each claimed item yields
 a short-lived, Session-scoped credential used inside the container; the
-Workspace key is not passed into the Session container.
+Environment key is not passed into the Session container.
 
 For lifecycle and recovery details, see
 [Self-hosted workers](architecture/self-hosted-workers.md) and
 [Environment Work](api/environment-work.md).
+
+## Verify execution before starting a Session
+
+Create an [Environment healthcheck](api/environment-work.md#check-an-environments-execution-path)
+with a Workspace key, then let the ordinary supervisor claim it. The reference
+Docker worker executes a fixed, ten-second process/filesystem probe in an
+ephemeral workspace and records its result on Work. This requires no Agent,
+Session, or model credentials. Queue statistics alone only establish polling.

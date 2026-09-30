@@ -25,6 +25,12 @@ DELETE /v1/skills/{skill_id}/versions/{version}
 Skills routes require configured Files storage and Mango's standard bearer
 authentication. Create and Version uploads require `multipart/form-data`.
 
+If writing an archive fails and object cleanup also fails, Mango retains the
+hidden Version record so startup reconciliation can retry deletion after
+storage recovers. A failed first upload also retains its hidden parent Skill
+until cleanup completes. Existing ready Versions remain available. As with
+Files, startup reconciliation currently requires one API process.
+
 ## Bundle contract
 
 Create and Version uploads accept a zip archive or path-qualified multipart

@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/yanpgwang/mango/internal/domain"
+	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -25,6 +26,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // Mango owns this envelope. Some third-party clients can also decode it, which
 // remains optional research evidence rather than a compatibility requirement.
 func writeError(w http.ResponseWriter, err error) {
+	if errors.Is(err, workspace.ErrInvalidAPIKey) || errors.Is(err, workspace.ErrInvalidEnvironmentKey) || errors.Is(err, workspace.ErrInvalidSessionToken) {
+		writeErrorEnvelope(w, http.StatusUnauthorized, "authentication_error", "invalid credential")
+		return
+	}
 	status := http.StatusInternalServerError
 	typ := "api_error"
 	var de *domain.DomainError

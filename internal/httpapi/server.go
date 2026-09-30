@@ -35,6 +35,8 @@ type EnvironmentService interface {
 }
 
 type EnvironmentWorkService interface {
+	CreateHealthcheck(context.Context, string) (domain.EnvironmentWork, error)
+	CompleteHealthcheck(context.Context, string, string, domain.EnvironmentWorkResult) (domain.EnvironmentWork, error)
 	Get(context.Context, string, string) (domain.EnvironmentWork, error)
 	Update(context.Context, string, string, map[string]*string) (domain.EnvironmentWork, error)
 	List(context.Context, string, app.EnvironmentWorkListQuery) (app.EnvironmentWorkListPage, error)
@@ -159,6 +161,8 @@ type DeploymentService interface {
 }
 
 type Deps struct {
+	// Readiness must honor cancellation; production uses the API PostgreSQL pool.
+	Readiness       func(context.Context) error
 	Agents          AgentService
 	Envs            EnvironmentService
 	Sessions        SessionService
@@ -188,7 +192,7 @@ func NewServer(deps Deps, cfg Config) *Server {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
-	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	s.mux.HandleFunc("GET /readyz", s.readiness)
 	s.mux.HandleFunc("GET /openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
 		_, _ = w.Write([]byte(openapiDoc))
@@ -208,6 +212,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v1/environments/{id}/archive", s.archiveEnvironment)
 	s.mux.HandleFunc("DELETE /v1/environments/{id}", s.deleteEnvironment)
 	s.mux.HandleFunc("GET /v1/environments/{environment_id}/work", s.listEnvironmentWork)
+	s.mux.HandleFunc("POST /v1/environments/{environment_id}/work", s.createEnvironmentHealthcheck)
+	s.mux.HandleFunc("POST /v1/environments/{environment_id}/work/{work_id}/result", s.completeEnvironmentHealthcheck)
 	s.mux.HandleFunc("GET /v1/environments/{environment_id}/work/poll", s.pollEnvironmentWork)
 	s.mux.HandleFunc("GET /v1/environments/{environment_id}/work/stats", s.environmentWorkStats)
 	s.mux.HandleFunc("GET /v1/environments/{environment_id}/work/{work_id}", s.getEnvironmentWork)

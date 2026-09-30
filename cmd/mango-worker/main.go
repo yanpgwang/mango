@@ -58,6 +58,7 @@ func runDocker(ctx context.Context, arguments []string) error {
 	image := flags.String("image", envOr("MANGO_WORKER_IMAGE", selfhosted.DefaultWorkerImage), "worker sandbox image")
 	network := flags.String("network", envOr("MANGO_WORKER_NETWORK", "bridge"), "Docker network mode or network name")
 	user := flags.String("user", envOr("MANGO_WORKER_USER", "65532:65532"), "sandbox uid:gid")
+	workspaceRoot := flags.String("workspace-root", os.Getenv("MANGO_WORKSPACE_ROOT"), "bind existing <root>/<session-id> directories from the Docker host at /workspace")
 	drain := flags.Bool("drain", false, "exit once the queue is empty")
 	maxIdle := flags.Duration("max-idle", envDuration("MANGO_WORKER_MAX_IDLE", time.Minute), "idle time after end_turn")
 	memoryBytes := flags.Int64("memory-bytes", envInt64("MANGO_WORKER_MEMORY_BYTES", 1<<30), "per-sandbox memory limit")
@@ -69,9 +70,9 @@ func runDocker(ctx context.Context, arguments []string) error {
 	if flags.NArg() != 0 {
 		return errors.New("mango-worker docker does not accept positional arguments")
 	}
-	apiKey := os.Getenv("MANGO_API_KEY")
+	apiKey := strings.TrimSpace(os.Getenv("MANGO_ENVIRONMENT_KEY"))
 	if apiKey == "" {
-		return errors.New("MANGO_API_KEY is required by the trusted Docker supervisor")
+		return errors.New("MANGO_ENVIRONMENT_KEY is required by the trusted Docker supervisor")
 	}
 	supervisor, err := mango.New(mango.Config{BaseURL: *baseURL, APIKey: apiKey})
 	if err != nil {
@@ -91,7 +92,7 @@ func runDocker(ctx context.Context, arguments []string) error {
 	launcher, err := selfhosted.NewDockerLauncher(engine, selfhosted.DockerLauncherOptions{
 		Client: supervisor, EnvironmentID: *environmentID, WorkerID: *workerID,
 		Image: *image, SandboxBaseURL: *sandboxBaseURL, NetworkMode: *network,
-		User: *user, Drain: *drain, MaxIdle: *maxIdle,
+		User: *user, WorkspaceRoot: *workspaceRoot, Drain: *drain, MaxIdle: *maxIdle,
 		MemoryBytes: *memoryBytes, NanoCPUs: *nanoCPUs, PidsLimit: *pidsLimit,
 	})
 	if err != nil {
@@ -129,9 +130,10 @@ func runItem(ctx context.Context, arguments []string) error {
 		return err
 	}
 	worker := mango.NewEnvironmentWorker(itemClient, mango.EnvironmentWorkerOptions{
-		ToolsFunc: selfhosted.SandboxToolsForSession,
-		MaxIdle:   maxIdle,
-		Workdir:   *workdir,
+		Healthcheck: selfhosted.SandboxHealthcheck,
+		ToolsFunc:   selfhosted.SandboxToolsForSession,
+		MaxIdle:     maxIdle,
+		Workdir:     *workdir,
 	})
 	return worker.HandleItem(ctx, mango.EnvironmentWorkerHandleItemOptions{WorkSecret: workSecret})
 }

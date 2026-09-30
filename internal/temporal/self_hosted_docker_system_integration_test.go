@@ -29,6 +29,7 @@ import (
 	"github.com/yanpgwang/mango/internal/pg"
 	"github.com/yanpgwang/mango/internal/selfhosted"
 	temporalpkg "github.com/yanpgwang/mango/internal/temporal"
+	"github.com/yanpgwang/mango/internal/workspace"
 	mango "github.com/yanpgwang/mango/sdk/go"
 	temporalclient "go.temporal.io/sdk/client"
 )
@@ -187,7 +188,7 @@ func newDockerSystemFixture(
 		PreviewPublisher: broker,
 	}
 	runtime := temporalpkg.NewRuntime(fixture.runtimeConfig)
-	fixture.stopRuntime = startGateRuntime(t, ctx, runtime)
+	fixture.stopRuntime = startIntegrationRuntime(t, ctx, runtime)
 	t.Cleanup(func() { fixture.stopRuntime() })
 
 	agents := pg.NewAgentRepository(fixture.store)
@@ -254,8 +255,10 @@ func newDockerSystemFixture(
 	t.Cleanup(func() { removeDockerSystemVolume(t, fixture.engine, fixture.sessionID) })
 	fixture.launcherParent, fixture.cancelLaunchers = context.WithCancel(ctx)
 	t.Cleanup(fixture.stopLaunchers)
+	_, environmentKey, err := fixture.store.CreateEnvironmentKey(ctx, workspace.DefaultID, fixture.environmentID, "system-test-supervisor")
+	require.NoError(t, err)
 	fixture.supervisor, err = mango.New(mango.Config{
-		BaseURL: fixture.hostBaseURL, APIKey: fixture.workspaceKey,
+		BaseURL: fixture.hostBaseURL, APIKey: environmentKey,
 	})
 	require.NoError(t, err)
 	return fixture
@@ -288,7 +291,7 @@ func (f *dockerSystemFixture) restartRuntime() {
 	f.t.Helper()
 	f.stopRuntime()
 	runtime := temporalpkg.NewRuntime(f.runtimeConfig)
-	f.stopRuntime = startGateRuntime(f.t, context.Background(), runtime)
+	f.stopRuntime = startIntegrationRuntime(f.t, context.Background(), runtime)
 }
 
 func (f *dockerSystemFixture) stopLaunchers() {

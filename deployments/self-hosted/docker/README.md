@@ -2,7 +2,7 @@
 
 This is Mango's first reference launcher for a `self_hosted` Environment. The
 trusted host process polls and acknowledges Environment Work with
-`MANGO_API_KEY`; each acknowledged item runs in a separate Docker container
+`MANGO_ENVIRONMENT_KEY`; each acknowledged item runs in a separate Docker container
 with only its short-lived Work credential.
 
 Build the sandbox image from the repository root:
@@ -14,12 +14,13 @@ docker build \
   .
 ```
 
-Run the host supervisor:
+Issue an Environment key with `mango api-key create -workspace ID -environment ID
+-label LABEL` on the operator host, then run the host supervisor:
 
 ```sh
 export MANGO_BASE_URL=http://localhost:8080
 export MANGO_DOCKER_BASE_URL=http://host.docker.internal:8080
-export MANGO_API_KEY=replace-with-a-workspace-key
+export MANGO_ENVIRONMENT_KEY=replace-with-an-environment-key
 export MANGO_ENVIRONMENT_ID=env_replace_me
 
 go run ./cmd/mango-worker docker
@@ -38,11 +39,15 @@ examples:
    renewal, Session event recovery, tool execution, result submission, and
    forced Stop;
 3. containers are removed on exit, while one named `/workspace` volume remains
-   per Session so later activations see the same working tree.
+   per Session so later activations see the same working tree. With
+   `--workspace-root /absolute/host/path`, the launcher instead binds the existing
+   `/absolute/host/path/<session-id>` directory. The operator prepares its contents
+   and permissions for `--user`; the directory survives worker and API cleanup.
+   See the [coding agent example](../../../docs/examples/coding-agent.md).
 
 Mango makes CMA's narrower per-Session credential path mandatory rather than
 retaining the SDK's Environment-key fallback or the Docker cookbook script's
-broader handoff. The Workspace key is never placed in the container. The Work
+broader handoff. The Environment key is never placed in the container. The Work
 secret is length-framed over an attached stdin stream, decoded only by that item
 process, and absent from the container environment, command, labels, and volume.
 The item process becomes non-dumpable before reading the secret; together with

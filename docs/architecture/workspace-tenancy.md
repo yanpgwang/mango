@@ -5,7 +5,7 @@ description: How Workspace and Work credentials scope access to resources and ex
 
 # Workspace tenancy
 
-Mango uses a Workspace as its only tenant and authorization boundary. This is
+Mango uses a Workspace as its tenant boundary. This is
 deliberately narrower than an application user or enterprise RBAC model: it is
 enough for the OSS runtime to demonstrate a managed agent serving multiple
 tenants without making Mango responsible for a SaaS product's identities.
@@ -14,7 +14,10 @@ tenants without making Mango responsible for a SaaS product's identities.
 
 - Every protected HTTP request presents an opaque bearer credential.
 - An operator API key resolves to exactly one Workspace before a handler runs.
-- All API keys for a Workspace have equal access to all resources in it.
+- Workspace-wide API keys have equal access to all resources in it.
+- An Environment API key is bound to a self-hosted Environment in that Workspace
+  and permits only its Work Poll, Ack, and Stats routes. Poll/Ack revalidate the
+  key transactionally so revocation fences in-flight requests.
 - A self-hosted Work claim additionally receives a per-Session token limited to
   its Work lease operations, Session read/stream and tool-result APIs, and pinned
   immutable inputs. The token becomes usable after Ack and is continuously
@@ -25,7 +28,8 @@ tenants without making Mango responsible for a SaaS product's identities.
 
 There are no users, roles, ownership inheritance, general per-resource grants,
 or permission-policy engine. The Work token is a fixed internal execution
-capability, not an application RBAC system. A SaaS layer may authenticate many
+capability; the Environment key is a fixed supervisor capability. Neither
+introduces an application RBAC system. A SaaS layer may authenticate many
 users, decide what they may do, and then call Mango with the key for their
 Workspace. If enterprise requirements later need finer policy, that layer can
 introduce OpenFGA or a similar system without changing Mango resource semantics.
@@ -61,9 +65,15 @@ surface.
 mango workspace list
 mango workspace create -name acme
 mango api-key create -workspace wrkspc_... -label production
+mango api-key create -workspace wrkspc_... -environment env_... -label supervisor
 mango api-key list -workspace wrkspc_...
 mango api-key revoke -id key_...
 ```
+
+Listing includes the scope (`workspace` or the Environment ID) and never the
+secret. Rotate a key by issuing and deploying a replacement, then revoking the
+old key. Revoking an Environment key leaves already-Acked Work leases active;
+see [Environment Work](../api/environment-work.md#supervisor-key-lifecycle).
 
 `MANGO_API_KEY` binds an operator-supplied bootstrap key to
 `wrkspc_default`, which preserves a simple single-Workspace deployment and a

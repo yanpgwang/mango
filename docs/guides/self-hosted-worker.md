@@ -8,7 +8,7 @@ description: Run shell and file tools in containers on your infrastructure.
 The first-party Docker launcher connects an operator-run worker to a
 `self_hosted` Environment. A trusted supervisor claims Work from Mango and
 starts a container for each activation. The Session's workspace persists in a
-named Docker volume between activations.
+named Docker volume between activations, or in an operator-selected directory.
 
 This worker is separate from `mango orchestrate`, which runs the model loop.
 See [Environments and workers](../concepts.md#environments-and-workers) for the
@@ -23,7 +23,7 @@ process responsibilities.
   are ready to run a tool-capable Agent.
 
 Run setup commands from the repository root. The model credential belongs to
-the orchestration worker; the Docker supervisor needs only the Mango Workspace key.
+the orchestration worker; the Docker supervisor uses a Mango Environment key.
 
 ## Create an Environment
 
@@ -44,6 +44,22 @@ Omitting `config` selects `self_hosted`. Keep this Environment ID: new Sessions
 must use it to reach this worker. The Quickstart removes its own Environment,
 so create this one independently.
 
+## Issue a supervisor key
+
+On the operator host with `MANGO_DATABASE_URL` configured:
+
+```bash
+go run ./cmd/mango api-key create -workspace wrkspc_default \
+  -environment "$MANGO_ENVIRONMENT_ID" -label docker-supervisor
+```
+
+Use the Workspace that owns this Environment (`wrkspc_default` for the local
+bootstrap key). Creation prints the secret once as `api_key`; set it on the
+supervisor host as `MANGO_ENVIRONMENT_KEY`. The secret is scoped to Poll, Ack,
+and queue Stats for this Environment. The supervisor does not fall back to
+`MANGO_API_KEY`. For rotation and revocation, see
+[Supervisor key lifecycle](../api/environment-work.md#supervisor-key-lifecycle).
+
 ## Build the worker image
 
 ```bash
@@ -62,6 +78,7 @@ select it with `MANGO_WORKER_IMAGE`.
 In the same setup terminal:
 
 ```bash
+export MANGO_ENVIRONMENT_KEY=replace-with-the-issued-api_key
 export MANGO_DOCKER_BASE_URL=http://host.docker.internal:8080
 go run ./cmd/mango-worker docker
 ```
@@ -116,7 +133,7 @@ same Environment and that its container can reach Mango. Use
 
 | Location or resource | Behavior |
 | --- | --- |
-| `/workspace` | A named volume reused by later activations of the same Session. |
+| `/workspace` | A named volume by default, or `<workspace-root>/<session-id>` with `--workspace-root`; reused by later activations. |
 | Bash process | Preserves cwd, environment, and background jobs within one activation; a new activation starts a new shell. |
 | Custom Skills | Downloaded from the Session's immutable pins and verified before tool execution. |
 | `/mnt/memory` | Attached Memory Stores are prepared and synchronized; file tools enforce attachment access for writes and edits. |
@@ -124,8 +141,27 @@ same Environment and that its container can reach Mango. Use
 
 Automatic File/Git preparation and Session output publication are not yet
 implemented by this worker. Read-write Memory has its own durable synchronization;
-ordinary workspace files stay in the Docker volume. Avoid assuming that a
+ordinary workspace files stay in the operator workspace. Avoid assuming that a
 workspace file is already a downloadable Mango File.
+
+## Stage inputs and retrieve outputs
+
+To work directly with files on the Docker host, pass an absolute
+`--workspace-root /path/to/workspaces` (or `MANGO_WORKSPACE_ROOT`). Before sending
+Session input, create `/path/to/workspaces/<session-id>` and put its files there.
+The launcher binds that one directory at `/workspace`; it does not mount the
+parent or create/chown missing directories. Give the container user write access,
+for example by selecting `--user "$(id -u):$(id -g)"` for a directory owned by
+your non-root user. Docker Desktop maps local shared directories into its VM.
+
+The path refers to the Docker daemon host. For remote or multiple supervisors,
+arrange the same storage and permissions on each host. Operator-selected symlinks
+and their targets are trusted. Archive/delete does not remove this directory;
+retain or remove it after all workers have stopped.
+
+Your application can download Files into the directory, then upload selected
+results through the Files API after the worker stops. The
+[coding agent example](../examples/coding-agent.md) performs this whole flow.
 
 ## Stop the worker
 
@@ -136,6 +172,11 @@ and Work Stop before a hard kill. The container carries that same default for
 an ordinary `docker stop`; allow the supervisor at least 150 seconds if another
 process manager controls its shutdown. A forced kill or failed/timed-out Memory
 upload can still lose unsynchronized edits; uploaded Memory remains durable.
+
+Recovery uses a different path: once an expired Work claim is reclaimed, its
+previous container has no valid Memory write credential and is force-removed
+before the replacement starts. The normal 120-second shutdown grace does not
+apply to that expired attempt or consume the replacement's starting lease.
 
 Inspect any active Session before
 sending more work. Stopping the supervisor does not delete your Environment,

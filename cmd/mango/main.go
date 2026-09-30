@@ -217,17 +217,29 @@ func runAPIKeyCommand() {
 		fs := flag.NewFlagSet("api-key create", flag.ExitOnError)
 		workspaceID := fs.String("workspace", "", "workspace ID")
 		label := fs.String("label", "", "operator-visible key label")
+		environmentID := fs.String("environment", "", "limit key to this self-hosted Environment")
 		_ = fs.Parse(os.Args[3:])
 		if strings.TrimSpace(*workspaceID) == "" {
 			log.Fatal("api-key create: -workspace is required")
 		}
 		if err := withOperatorStore(func(ctx context.Context, store *pg.Store) error {
-			item, secret, err := store.CreateAPIKey(ctx, *workspaceID, *label)
+			var item pg.APIKey
+			var secret string
+			var err error
+			if *environmentID != "" {
+				item, secret, err = store.CreateEnvironmentKey(ctx, *workspaceID, *environmentID, *label)
+			} else {
+				item, secret, err = store.CreateAPIKey(ctx, *workspaceID, *label)
+			}
 			if err != nil {
 				return err
 			}
 			// The plaintext secret is intentionally emitted only at creation.
-			fmt.Printf("id\t%s\nworkspace\t%s\napi_key\t%s\n", item.ID, item.WorkspaceID, secret)
+			fmt.Printf("id\t%s\nworkspace\t%s\n", item.ID, item.WorkspaceID)
+			if item.EnvironmentID != "" {
+				fmt.Printf("environment\t%s\n", item.EnvironmentID)
+			}
+			fmt.Printf("api_key\t%s\n", secret)
 			return nil
 		}); err != nil {
 			log.Fatalf("api-key create: %v", err)
@@ -249,7 +261,11 @@ func runAPIKeyCommand() {
 				if item.RevokedAt != nil {
 					status = "revoked"
 				}
-				fmt.Printf("%s\t%s\t%s\t%s\n", item.ID, item.Label, status, item.CreatedAt.Format(time.RFC3339))
+				scope := "workspace"
+				if item.EnvironmentID != "" {
+					scope = item.EnvironmentID
+				}
+				fmt.Printf("%s\t%s\t%s\t%s\t%s\n", item.ID, item.Label, status, item.CreatedAt.Format(time.RFC3339), scope)
 			}
 			return nil
 		}); err != nil {
@@ -429,7 +445,8 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 	threads := controlplane.NewSessionThreadService(pgStore)
 	stream := live.NewStream(pgStore, broker, ids, clock, 0)
 	handler := httpapi.NewServer(httpapi.Deps{
-		Agents: agents, Envs: environments, Sessions: sessions,
+		Readiness: pgStore.Readiness,
+		Agents:    agents, Envs: environments, Sessions: sessions,
 		Threads: threads, Events: events, Stream: stream, Files: files, Skills: skills, Memory: memory,
 		Vaults: vaults, Webhooks: webhooks, Deployments: deployments, EnvironmentWork: environmentWork,
 	}, cfg).Handler()
