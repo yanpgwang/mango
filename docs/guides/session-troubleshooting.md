@@ -71,10 +71,29 @@ superseded by running, rescheduled, or terminated events:
 
 | `stop_reason.type` | Meaning and next step |
 | --- | --- |
-| `requires_action` | Read each event in `stop_reason.event_ids`. Answer custom calls with `user.custom_tool_result`, client-executed built-ins with `user.tool_result`, or permission asks with `user.tool_confirmation`. Correlate persisted answers by the original action ID; all blocking actions must be resolved. |
+| `requires_action` | Read each event in `stop_reason.event_ids`. Answer custom calls with `user.custom_tool_result`; built-in permission asks need `user.tool_confirmation`, and an allowed self-hosted call still needs `user.tool_result`. Correlate approval and completion separately by the original action ID; all blocking actions must be resolved. |
 | `end_turn` | The turn finished or was interrupted. Inspect the final Agent message and your application's success criteria; this is not a guarantee that the overall task succeeded. Send a new message only when you intend a new turn. |
 | `retries_exhausted` | Automatic model retries have stopped and later queued messages were flushed. Inspect the error and fix the provider/configuration issue before deliberately submitting a new prompt. |
 | `budget_reached` | The shared budget paused further model calls. Review usage and the [Session budget controls](../api/sessions.md). |
+
+For a self-hosted built-in, a persisted `allow` only authorizes execution; it
+does **not** complete the action. If approval exists without a matching
+`user.tool_result`, inspect the worker and wait for that result instead of
+approving or executing again. A `deny` resolves the call without execution or a
+tool result. See [Approve externally executed tools](../api/events.md#approve-externally-executed-tools).
+
+Copy a blocking ID from `stop_reason.event_ids` to inspect its call, approval,
+and result together:
+
+```sh
+export MANGO_ACTION_ID=sevt_...
+mango_list_all "/v1/sessions/$MANGO_SESSION_ID/events" --data-urlencode 'order=asc' \
+  | jq --arg action "$MANGO_ACTION_ID" \
+    'select(.id == $action or .custom_tool_use_id == $action or .tool_use_id == $action)'
+```
+
+For a child action, apply this selection to the owning Thread's event list
+described below; its approval and result live there.
 
 A `session.error` describes a failure at a particular point in history. Its
 `error.retry_status.type` determines the immediate response:
