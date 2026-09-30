@@ -178,7 +178,7 @@ func validateAgent(a domain.Agent) error {
 	if err := domain.ValidateToolConfiguration(a.Tools, a.MCPServers); err != nil {
 		return domain.Validation("invalid tool configuration: " + err.Error())
 	}
-	if err := domain.ValidateSkillToolConfiguration(a.Tools, hasRuntimeSkills(a.Skills)); err != nil {
+	if err := domain.ValidateSkillToolConfiguration(a.Tools, len(a.Skills) > 0); err != nil {
 		return domain.Validation("invalid Skill tool configuration: " + err.Error())
 	}
 	if err := validateMultiagentShape(a.Multiagent); err != nil {
@@ -317,13 +317,4 @@ func (s *AgentService) resolveMultiagent(
 		resolved.Agents = append(resolved.Agents, *advisor)
 	}
 	return resolved, nil
-}
-
-func hasRuntimeSkills(skills []domain.SkillReference) bool {
-	for _, skill := range skills {
-		if !skill.IsLegacy() {
-			return true
-		}
-	}
-	return false
 }

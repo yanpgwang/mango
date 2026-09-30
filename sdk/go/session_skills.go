@@ -132,8 +132,9 @@ func prepareSessionSkills(
 	seenNames := make(map[string]struct{})
 	for _, current := range scopes {
 		for _, reference := range current.skills {
-			resolved := reference.ResolvedSkillReference
-			if resolved == nil || resolved.SkillID == "" || resolved.Version == "" {
+			resolved := reference
+			if resolved.Type != "custom" || resolved.SkillID == "" ||
+				resolved.Version == "" || resolved.Version == "latest" {
 				return nil, errors.New("mango: Session contains an unresolved custom Skill reference")
 			}
 			pin := current.root + "\x00" + resolved.SkillID + "\x00" + resolved.Version

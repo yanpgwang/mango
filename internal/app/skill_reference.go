@@ -14,13 +14,9 @@ const (
 	MaxSessionSkillBytes = 500 << 20
 )
 
-// SkillExpandedBudgetBytes returns the conservative sandbox footprint used for
-// Session admission. Legacy Versions without exact metadata consume the full
-// per-bundle allowance rather than bypassing the aggregate bound.
+// SkillExpandedBudgetBytes validates the exact sandbox footprint used for
+// Session admission against the per-bundle limit.
 func SkillExpandedBudgetBytes(size int64) (int64, bool) {
-	if size == domain.UnknownSkillUncompressedSize {
-		return MaxSkillUploadBytes - 1, true
-	}
 	if size < 0 || size >= MaxSkillUploadBytes {
 		return 0, false
 	}
@@ -83,12 +79,6 @@ func validateSkillReferenceInputs(references []domain.SkillReference) error {
 		return domain.Validation("skills must contain at most 500 entries")
 	}
 	for index, reference := range references {
-		if reference.IsLegacy() {
-			return domain.Unsupported(fmt.Sprintf(
-				"skills[%d] uses a legacy opaque value; replace the Agent Skills list before creating a Session",
-				index,
-			))
-		}
 		switch reference.Type {
 		case "custom", "anthropic":
 		default:

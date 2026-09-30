@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -149,36 +148,6 @@ func TestAgentService_ResolvesSkillsBeforeRepositoryMutation(t *testing.T) {
 	}
 }
 
-func TestLegacySkillReferencesRemainReadableAndAreRejectedForNewExecution(t *testing.T) {
-	var references []domain.SkillReference
-	if err := json.Unmarshal([]byte(`[
-        "former-provider-value",
-        {"type":"custom","skill_id":"skill_old","version":"100","extension":true}
-    ]`), &references); err != nil {
-		t.Fatalf("decode legacy references: %v", err)
-	}
-	if len(references) != 2 || !references[0].IsLegacy() || !references[1].IsLegacy() {
-		t.Fatalf("legacy references = %+v", references)
-	}
-	encoded, err := json.Marshal(references)
-	if err != nil {
-		t.Fatalf("encode legacy references: %v", err)
-	}
-	var roundTrip []any
-	if err := json.Unmarshal(encoded, &roundTrip); err != nil {
-		t.Fatalf("decode round trip: %v", err)
-	}
-	object, ok := roundTrip[1].(map[string]any)
-	if !ok || object["extension"] != true {
-		t.Fatalf("legacy extension was lost: %s", encoded)
-	}
-	_, err = ResolveAgentSkillReferences(context.Background(), &mutableSkillResolver{}, references)
-	var domainErr *domain.DomainError
-	if !errors.As(err, &domainErr) || domainErr.Kind != domain.KindUnsupported {
-		t.Fatalf("legacy execution error = %T %v, want unsupported", err, err)
-	}
-}
-
 func TestResolveAgentSkillReferences_ValidationAndUnsupportedProviders(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
@@ -258,6 +227,27 @@ func TestSkillService_ResolvesLatestAndExplicitVersions(t *testing.T) {
 		Type: "custom", SkillID: "skill_a", Version: "missing",
 	}}); err == nil {
 		t.Fatal("missing explicit Version was accepted")
+	}
+}
+
+func TestSkillServiceRejectsNegativeExpandedSize(t *testing.T) {
+	repo := newMemorySkillRepository()
+	repo.skills["skill_size"] = domain.Skill{
+		ID: "skill_size", Source: "custom", Ready: true, LatestVersion: "100",
+	}
+	repo.versions["skill_size"] = map[string]domain.SkillVersion{
+		"100": {
+			ID: "100", SkillID: "skill_size", Version: "100", Name: "skill-size",
+			UncompressedSizeBytes: -1, State: domain.SkillVersionReady,
+		},
+	}
+	service := NewSkillService(repo, nil, domain.NewSeqIDGen(), domain.FixedClock{})
+	_, err := service.ResolveSkillReferences(context.Background(), []domain.SkillReference{{
+		Type: "custom", SkillID: "skill_size", Version: "100",
+	}})
+	var domainErr *domain.DomainError
+	if !errors.As(err, &domainErr) || domainErr.Kind != domain.KindTooLarge {
+		t.Fatalf("negative expanded size error = %v, want size rejection", err)
 	}
 }
 

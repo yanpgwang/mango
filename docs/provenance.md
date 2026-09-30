@@ -616,6 +616,35 @@ editorial; it does not change HTTP, persistence, scheduling, or recovery semanti
   Static-site checks establish rendering and link correctness, not evidence
   that a model or production workflow was run.
 
+## Typed custom Skill references (2026-09-30)
+
+- Mango users need concrete Skill pins in Agent and Session responses and useful
+  SDK types. Reviewed the current HTTP parser, stored snapshots, retention
+  transactions, runtime admission, OpenAPI, and first-party SDK helper alongside
+  the [CMA Skills guide](https://platform.claude.com/docs/en/managed-agents/skills)
+  and its paired public SDK types: Go v1.76.0
+  (`ad865dfa3d1a8d2f4a7ad0d072011e811e9957a9`), Python v1.9.0
+  (`a7285e919ab79998d9380b3b57f6315b7860b8d8`), and TypeScript sdk-v0.129.0
+  (`bf2058689f845dfb10e59bd9ebeb5cb4e9318a9d`). These were the current core
+  releases checked on 2026-09-30; the TypeScript checkout also carries
+  unrelated package tags.
+- Retained the useful request-to-response mapping: omitted or `latest` request
+  Versions resolve to a custom reference with `type`, `skill_id`, and a concrete
+  `version`. OpenAPI and all three generated Mango SDKs now express that
+  response directly. Removed the arbitrary JSON response union and persistence
+  fallbacks for earlier development data; Mango has no supported stable release
+  or customer migration obligation.
+- Kept Mango's independently owned durability rules: active Agent and Session
+  pins retain archives, unrelated Agent updates preserve pins, and every stored
+  pin must name a ready custom Version. Exact expanded archive size is required
+  for bounded admission; the former unknown-size sentinel is rejected in both
+  application validation and the development schema baseline. Older development
+  databases must be rebuilt; no upgrade or translation layer was added.
+- Hosted managed catalogs, vendor authentication, beta headers, and external SDK
+  implementations were not adopted. Validation uses independently authored Mango
+  HTTP/SDK checks plus PostgreSQL retention, deletion, rollback, runtime, and
+  recovery tests. Skills functionality and cookbook applications remain separate.
+
 ## Custom Skills
 
 - The public [Claude Managed Agents Skills guide](https://platform.claude.com/docs/en/managed-agents/skills)

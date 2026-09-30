@@ -2,7 +2,6 @@ package pg
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
-	"github.com/yanpgwang/mango/internal/workspace"
 )
 
 func TestSkillRepository_ImmutableLifecyclePagingAndDeleteGuard(t *testing.T) {
@@ -114,6 +112,59 @@ func TestSkillRepository_ImmutableLifecyclePagingAndDeleteGuard(t *testing.T) {
 	}
 	if _, err := repo.DeleteSkill(ctx, skill.ID); err != nil {
 		t.Fatalf("DeleteSkill: %v", err)
+	}
+}
+
+func TestSkillRepositoryRejectsNegativeExpandedSize(t *testing.T) {
+	store := testStore(t)
+	repo := NewSkillRepository(store)
+	ctx := context.Background()
+	base := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	skill := domain.Skill{
+		ID: "skill_invalid_size", CreatedAt: base, UpdatedAt: base,
+		DisplayTitle: "Invalid Size", Source: "custom", TitleExplicit: true,
+	}
+	version := repositorySkillVersion(skill.ID, "100", base, true)
+	version.UncompressedSizeBytes = -1
+	if err := repo.BeginSkill(ctx, skill, version); err == nil {
+		t.Fatal("negative expanded size was persisted")
+	}
+	var count int
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM skills WHERE id = $1`, skill.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("failed Version insert left a partial Skill")
+	}
+}
+
+func TestAgentSkillPinsRejectUnresolvedReferencesAtomically(t *testing.T) {
+	store := testStore(t)
+	repo := NewAgentRepository(store)
+	ctx := context.Background()
+	for index, reference := range []domain.SkillReference{
+		{Type: "custom", SkillID: "skill_missing", Version: "latest"},
+		{Type: "custom", SkillID: "skill_missing"},
+		{Type: "custom", Version: "100"},
+		{Type: "anthropic", SkillID: "xlsx", Version: "100"},
+		{Type: "custom", SkillID: "skill_missing", Version: "100"},
+	} {
+		t.Run(fmt.Sprint(index), func(t *testing.T) {
+			agent := domain.Agent{
+				ID: fmt.Sprintf("agent_invalid_pin_%d", index), Version: 1,
+				Name: "invalid-pin", Model: domain.Model{ID: "test"},
+				CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+				Skills: []domain.SkillReference{reference},
+			}
+			err := repo.PutVersion(ctx, agent)
+			var domainErr *domain.DomainError
+			if !errors.As(err, &domainErr) || domainErr.Kind != domain.KindValidation {
+				t.Fatalf("unresolved pin error = %v, want validation", err)
+			}
+			if _, err := repo.Latest(ctx, agent.ID); err == nil {
+				t.Fatal("invalid pin committed a partial Agent")
+			}
+		})
 	}
 }
 
@@ -354,97 +405,6 @@ SELECT EXISTS (
 			return fmt.Errorf("wait for blocked Agent statement: %w", ctx.Err())
 		case <-ticker.C:
 		}
-	}
-}
-
-func TestLegacyAgentSkillsSurviveReadAndUnrelatedUpdate(t *testing.T) {
-	store := testStore(t)
-	ctx := context.Background()
-	base := time.Date(2026, 8, 4, 19, 0, 0, 0, time.UTC)
-	body := map[string]any{
-		"ID": "agent_legacy_skills", "Version": 1, "Name": "legacy",
-		"Model": map[string]any{"ID": "claude-test"},
-		"Skills": []any{
-			"former-provider-value",
-			map[string]any{
-				"type": "custom", "skill_id": "skill_old", "version": "1",
-				"extension": true,
-			},
-		},
-		"CreatedAt": base, "UpdatedAt": base,
-	}
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.pool.Exec(ctx, `
-	INSERT INTO agents (id, version, name, body, created_at, updated_at, workspace_id)
-	VALUES ($1, 1, $2, $3, $4, $4, $5)`,
-		"agent_legacy_skills", "legacy", encoded, base, workspace.DefaultID,
-	); err != nil {
-		t.Fatal(err)
-	}
-	repo := NewAgentRepository(store)
-	agents := app.NewAgentService(repo, &seqIDGen{}, fixedClock{})
-	persisted, err := agents.Get(ctx, "agent_legacy_skills")
-	if err != nil || len(persisted.Skills) != 2 ||
-		!persisted.Skills[0].IsLegacy() || !persisted.Skills[1].IsLegacy() {
-		t.Fatalf("read legacy Agent Skills = %+v, %v", persisted.Skills, err)
-	}
-	name := "legacy-renamed"
-	updated, err := agents.Update(ctx, persisted.ID, domain.AgentPatch{Name: &name})
-	if err != nil {
-		t.Fatalf("unrelated legacy Agent update: %v", err)
-	}
-	if updated.Version != 2 || len(updated.Skills) != 2 {
-		t.Fatalf("updated legacy Agent = %+v", updated)
-	}
-	marshaled, err := json.Marshal(updated.Skills)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var values []any
-	if err := json.Unmarshal(marshaled, &values); err != nil {
-		t.Fatal(err)
-	}
-	object, ok := values[1].(map[string]any)
-	if !ok || object["extension"] != true {
-		t.Fatalf("legacy Skill fields were lost: %s", marshaled)
-	}
-}
-
-func TestLegacySessionSkillsRemainReadableAndDeletable(t *testing.T) {
-	store := testStore(t)
-	ctx := context.Background()
-	session := newSession("sesn_legacy_skills")
-	if err := json.Unmarshal(
-		[]byte(`["former-provider-value"]`),
-		&session.AgentSnapshot.Skills,
-	); err != nil {
-		t.Fatal(err)
-	}
-	body, err := json.Marshal(session)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.pool.Exec(ctx, `
-	INSERT INTO sessions (id, status, body, created_at, updated_at, workspace_id)
-	VALUES ($1, $2, $3, $4, $5, $6)`,
-		session.ID, session.Status, body, session.CreatedAt, session.UpdatedAt,
-		workspace.DefaultID,
-	); err != nil {
-		t.Fatal(err)
-	}
-	persisted, err := store.GetSession(ctx, session.ID)
-	if err != nil || len(persisted.AgentSnapshot.Skills) != 1 ||
-		!persisted.AgentSnapshot.Skills[0].IsLegacy() {
-		t.Fatalf("read legacy Session Skills = %+v, %v", persisted.AgentSnapshot.Skills, err)
-	}
-	if err := store.PrepareSessionDeletion(ctx, session.ID); err != nil {
-		t.Fatalf("prepare legacy Session deletion: %v", err)
-	}
-	if err := store.FinalizeSessionDeletion(ctx, session.ID); err != nil {
-		t.Fatalf("finalize legacy Session deletion: %v", err)
 	}
 }
 

@@ -44,9 +44,8 @@ type SkillVersion struct {
 	BlobKey     string
 	SizeBytes   int64
 	// UncompressedSizeBytes is the exact byte footprint of the validated
-	// canonical bundle before zip compression, or UnknownSkillUncompressedSize
-	// for Versions created before this metadata existed. Runtime admission uses
-	// it to bound per-Session staging independently of compression ratio.
+	// canonical bundle before zip compression. Runtime admission uses it to
+	// bound per-Session staging independently of compression ratio.
 	UncompressedSizeBytes int64
 	ChecksumSHA256        string
 	State                 SkillVersionState
@@ -94,9 +93,4 @@ const (
 	// from the Environment API, so the control plane must describe Skill files
 	// relative to that root rather than assume /workspace.
 	SessionSkillsRelativeRoot = "skills"
-
-	// UnknownSkillUncompressedSize marks Versions created before the runtime
-	// started persisting exact expanded archive sizes. Their archive checksum is
-	// still authoritative; extraction applies the normal per-bundle upper bound.
-	UnknownSkillUncompressedSize int64 = -1
 )

@@ -852,15 +852,7 @@ func TestOpenAPISkillReferenceContract(t *testing.T) {
 	if resolvedType["const"] != "custom" {
 		t.Fatalf("resolved Skill type = %v, want custom", resolvedType["const"])
 	}
-	legacy := openAPIMap(t, schemas["LegacySkillReference"], "legacy Skill reference")
-	assertOpenAPIRef(t, legacy["not"], "#/components/schemas/ResolvedSkillReference")
-	response := openAPIMap(t, schemas["SkillReferenceResponse"], "Skill reference response")
-	variants, _ := response["oneOf"].([]any)
-	if len(variants) != 2 {
-		t.Fatalf("Skill response variants = %v, want resolved and legacy", variants)
-	}
-	assertOpenAPIRef(t, variants[0], "#/components/schemas/ResolvedSkillReference")
-	assertOpenAPIRef(t, variants[1], "#/components/schemas/LegacySkillReference")
+	assertOpenAPIRef(t, schemas["SkillReferenceResponse"], "#/components/schemas/ResolvedSkillReference")
 
 	create := openAPIMap(t, schemas["AgentCreateRequest"], "Agent create")
 	createSkills := openAPIMap(t, openAPIMap(t, create["properties"], "Agent create properties")["skills"], "Agent create skills")

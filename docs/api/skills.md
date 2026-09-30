@@ -41,8 +41,14 @@ paths, and invalid frontmatter metadata.
 Every Version response includes `size_bytes` and `checksum_sha256` for the
 exact canonical zip returned by its content endpoint. Workers must verify both
 before using the archive; transport success alone is not an integrity check.
+Mango also persists the exact expanded size of each validated canonical bundle
+and uses it for Session admission. Negative or unknown-size metadata is rejected.
+Earlier development databases that used unknown-size records must be rebuilt
+with the current schema; they are not a supported migration path.
 
-Agent references use the documented custom union. An omitted Version or
+Agent and Session responses expose typed custom references with `type`,
+`skill_id`, and a concrete `version`. Agent requests use the documented custom
+reference. An omitted Version or
 `latest` is replaced by a concrete ready Version before the Agent Version or
 Session snapshot is stored. Active Agent and Session pins prevent deleting an
 archive that is still executable.

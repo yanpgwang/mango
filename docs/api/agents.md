@@ -121,11 +121,10 @@ also holds a relational retention pin, so its Skill archive cannot be deleted
 until the list is replaced or the Agent is archived. External managed-catalog
 references return `422` because Mango does not mirror those archives.
 
-The current implementation can also read an untagged Skill value written by an
-earlier development checkout. This cleanup branch is not a compatibility
-promise and may be removed directly from `/v1`. While it exists, the value is
-read-only and must be replaced with a current custom reference before the Agent
-can start a new Session.
+Skill references in Agent responses, version history, and Session snapshots
+always contain `type: "custom"`, `skill_id`, and a concrete `version`. Opaque
+Skill values from earlier development checkouts are unsupported; recreate those
+resources using the current reference format.
 
 A successful create returns `200` and version `1`.
 

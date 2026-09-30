@@ -14,6 +14,8 @@ def main() -> None:
     agents: list[str] = []
     environment_id: str | None = None
     session_id: str | None = None
+    skill_input = {"type": "custom", "skill_id": "skill_reports", "version": "latest"}
+    resolved_skill = {"type": "custom", "skill_id": "skill_reports", "version": "1759178010641129"}
     input_schema = {
         "type": "object", "properties": {"query": {"type": "string"}},
         "required": ["query"], "additionalProperties": False,
@@ -40,19 +42,22 @@ def main() -> None:
             checks = client.environments.work.list(environment_id)
             assert checks["data"][0]["data"] == {"type": "healthcheck"}
             for suffix in ("one", "two"):
-                agent = client.agents.create(name="python-sdk-" + suffix, model="sdk-conformance", tools=[{
+                agent = client.agents.create(name="python-sdk-" + suffix, model="sdk-conformance", skills=[skill_input], tools=[{
                         "type": "custom", "name": "lookup", "description": "Look up a record",
                         "input_schema": input_schema,
-                    }])
+                    }, {"type": "agent_toolset_20260401"}])
                 agents.append(agent["id"])
                 assert client.agents.retrieve(agent["id"])["name"] == "python-sdk-" + suffix
                 assert agent["tools"][0]["input_schema"] == input_schema
+                assert agent["skills"] == [resolved_skill]
+                assert client.agents.retrieve(agent["id"])["skills"] == [resolved_skill]
             page = client.agents.list(limit=1)
             assert len(page["data"]) == 1 and page["next_page"]
             listed = {item["id"] for item in client.agents.iter(limit=1)}
             assert set(agents).issubset(listed)
             coordinator = client.agents.create(
                 name="python-sdk-lead", model="sdk-conformance",
+                skills=[skill_input], tools=[{"type": "agent_toolset_20260401"}],
                 multiagent={"type": "coordinator", "agents": [
                     {"type": "agent", "id": agents[0], "version": 1},
                     agents[1], {"type": "self"},
@@ -68,6 +73,7 @@ def main() -> None:
             }
             session = client.sessions.create(agent={"type": "agent", "id": coordinator["id"]}, environment_id=environment_id)
             session_id = session["id"]
+            assert session["agent"]["skills"] == [resolved_skill]
             with client.sessions.events.stream(session_id) as stream:
                 sent = client.sessions.events.send(session_id, events=[{
                     "type": "user.message", "content": [{"type": "text", "text": "sdk test"}],

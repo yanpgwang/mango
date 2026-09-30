@@ -964,8 +964,6 @@ func (value *InitialEvent) UnmarshalJSON(data []byte) error {
 
 type LegacyMultiagent map[string]json.RawMessage
 
-type LegacySkillReference json.RawMessage
-
 type ListAgentVersionsParams struct {
 	Limit Optional[int64]  `json:"limit,omitzero"`
 	Page  Optional[string] `json:"page,omitzero"`
@@ -2271,23 +2269,10 @@ func (value *SkillReferenceInput) UnmarshalJSON(data []byte) error {
 	)
 }
 
-// SkillReferenceResponse is a wire union. Set exactly one variant when constructing it.
-// Raw preserves an unknown variant received from the server.
 type SkillReferenceResponse struct {
-	Raw                    json.RawMessage         `json:"-"`
-	ResolvedSkillReference *ResolvedSkillReference `json:"-"`
-	LegacySkillReference   *LegacySkillReference   `json:"-"`
-}
-
-func (value SkillReferenceResponse) MarshalJSON() ([]byte, error) {
-	return marshalUnion(value.Raw, value.ResolvedSkillReference, value.LegacySkillReference)
-}
-func (value *SkillReferenceResponse) UnmarshalJSON(data []byte) error {
-	*value = SkillReferenceResponse{}
-	return unmarshalUnion(data, &value.Raw,
-		unionChoice{target: &value.ResolvedSkillReference, kind: "object", required: []string{"type", "skill_id", "version"}, constants: map[string]string{"type": "\"custom\""}},
-		unionChoice{target: &value.LegacySkillReference, kind: "", required: []string{}, constants: map[string]string{}},
-	)
+	SkillID string `json:"skill_id"`
+	Type    string `json:"type"`
+	Version string `json:"version"`
 }
 
 type SkillResource struct {
