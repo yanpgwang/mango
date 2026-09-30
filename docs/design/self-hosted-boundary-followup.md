@@ -64,28 +64,26 @@ with its durable orchestration intent. Worker tests own cancellation and lease
 fencing; one real Docker shutdown test deliberately delays a Memory write beyond
 the old 15-second kill deadline and verifies renewal, persistence, and cleanup.
 
-## Suggested next delivery slices
+## Follow-up deliveries completed
 
-These are proposed work items, not current capabilities or an automatic CMA
-parity backlog. Select and design one slice before implementation.
+The original follow-up slices below have been delivered. Do not treat this
+historical list as outstanding work; use the
+[2026-09-30 assessment](../architecture/self-hosted-workers.md#assessment-on-2026-09-30)
+and current capabilities when selecting another slice.
 
 1. **Environment supervisor credentials — implemented.** The
    [credential design](environment-credentials.md) records the operator key
    lifecycle, Poll/Ack/Stats scope, transactional revocation, and independent
    in-flight Work leases.
-2. **Make worker readiness observable.** An empty queue does not establish that
-   a worker can launch, reach Mango, prepare inputs, or renew a lease. Design a
-   bounded health-check Work flow with operator-visible results and expiry.
-   Acceptance: distinguish unavailable workers, launch failure, and successful
-   execution; retries and stale results do not misreport readiness. Keep it
-   separate from application Sessions and an unrelated monitoring platform.
-3. **Restore a complete deliverable application.** Build one standalone coding
-   workflow that stages operator-owned inputs, executes a Session, checks the
-   output, uploads selected Files, and downloads them with the application key.
-   Acceptance: document credential ownership and interruption/retry behavior,
-   run it against a real local deployment and model, and keep runtime/recovery
-   tests independent of the example. Its evidence should determine whether a
-   subsequent artifact association or large-MCP-result transfer is needed.
+2. **Worker execution healthcheck — implemented in PR #224.** The
+   [healthcheck design](environment-healthcheck.md) and Work API describe the
+   fixed, bounded sandbox probe with durable result and expiry. It proves that
+   execution path, not arbitrary Session input preparation or provider health.
+3. **Complete deliverable application — implemented in PR #218.** The
+   [coding example](../examples/coding-agent.md) stages inputs, replaces its
+   worker, independently verifies the result, and uploads/downloads Files.
+   Runtime/recovery tests remain independent of the tutorial. Automatic mounts
+   and output publication were explicit non-goals and remain operator-owned.
 
 Additional providers and equivalent Python/TypeScript worker composition should
 follow a demonstrated operator need. They are not prerequisites for validating

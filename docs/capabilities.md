@@ -75,9 +75,12 @@ access still depends on the sandbox boundary.
   startup only checks the migration ledger. Local Compose orders application
   startup after successful migration. Versioned distribution upgrades and
   rollback procedures remain open.
-- **Scaling and recovery:** API and orchestration roles can scale independently.
-  Worker Versioning, heterogeneous-worker routing, distributed Files
-  reconciliation, backup, audit, and observability still need work.
+- **Scaling and recovery:** API and orchestration roles can run separately.
+  Multi-replica API rollout with Files/Skills is not established: startup
+  reconciliation does not distinguish another process's active uploads from
+  crash leftovers. See the [current assessment](architecture/self-hosted-workers.md#remaining-work-and-evidence-limits).
+  Worker Versioning, heterogeneous-worker routing, distributed reconciliation,
+  backup, audit, and observability still need work.
 - **Docker ownership:** the operator-run supervisor has Docker daemon authority;
   keep it outside untrusted Session containers and apply ordinary Docker host
   hardening.
