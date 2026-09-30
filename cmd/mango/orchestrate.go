@@ -28,8 +28,8 @@ const (
 	envAPIKey            = "MANGO_API_KEY"
 )
 
-// runOrchestrate boots the Temporal execution role: it runs PostgreSQL
-// migrations, starts the SessionWorkflow worker, and runs the outbox relay.
+// runOrchestrate boots the Temporal execution role: it checks the PostgreSQL
+// schema, starts the SessionWorkflow worker, and runs the outbox relay.
 // HTTP is served by a separate `serve` process so API and worker capacity can be
 // scaled independently.
 func runOrchestrate() {
@@ -45,10 +45,10 @@ func runOrchestrate() {
 		log.Fatalf("orchestrate: postgres: %v", err)
 	}
 	defer pool.Close()
-	if err := pg.Migrate(ctx, pool); err != nil {
-		log.Fatalf("orchestrate: migrate: %v", err)
+	if err := pg.CheckSchema(ctx, pool); err != nil {
+		log.Fatalf("orchestrate: schema: %v", err)
 	}
-	log.Printf("orchestrate: postgres connected and migrated")
+	log.Printf("orchestrate: postgres connected and schema current")
 
 	ids := domain.NewRandomIDGen()
 	store := pg.NewSystemStore(pool, ids, realClock{})

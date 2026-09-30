@@ -33,7 +33,8 @@ keep the offline deterministic model.
 
 For an explicitly offline startup that bypasses the development file, use the
 command in [Getting started](../../docs/getting-started.md#run-the-server).
-Compose starts Mango's API and Temporal orchestration worker, but it does not
+Compose first runs the one-shot `migrate` service against PostgreSQL, then
+starts Mango's API and Temporal orchestration worker. It does not
 start an operator-owned Environment worker. To execute shell or file tools in a
 default `self_hosted` Environment, separately start the
 [Docker self-hosted worker](../self-hosted/docker/README.md) for that Environment.
@@ -85,6 +86,20 @@ export MANGO_VAULT_KEYRING_FILE="$PWD/deployments/local/vault-keyring.json"
 ```
 
 The `default` Temporal namespace is created automatically by `auto-setup`.
+
+For commands run directly on the host, initialize the Mango schema before
+creating Workspaces or API keys:
+
+```sh
+go run ./cmd/mango migrate
+```
+
+Only `MANGO_DATABASE_URL` is required. Normal commands refuse an uninitialized
+or mismatched migration ledger; they never create the schema as a startup side
+effect. Compose performs this step automatically, and its completed migration
+container is expected to show `Exited (0)` in `docker compose ps -a`.
+See the [development database baseline](../../docs/deployment.md#development-database-baseline)
+when moving from the old migration chain; migration does not reset old data.
 
 ## Service conformance tests
 

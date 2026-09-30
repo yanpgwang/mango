@@ -2,10 +2,10 @@ package pg
 
 import (
 	"context"
+	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/yanpgwang/mango/internal/app"
 )
 
@@ -46,13 +46,12 @@ func TestMigrateDownAndReinitialize(t *testing.T) {
 	if _, err := store.CreateSession(ctx, newSession("sesn_migration_down"), nil); err != nil {
 		t.Fatal(err)
 	}
-	goose.SetBaseFS(migrationsFS)
-	if err := goose.SetDialect("postgres"); err != nil {
+	provider, err := migrationProvider(ctx, store.pool)
+	if err != nil {
 		t.Fatal(err)
 	}
-	db := stdlib.OpenDBFromPool(store.pool)
-	defer func() { _ = db.Close() }()
-	if err := goose.DownToContext(ctx, db, "migrations", 0); err != nil {
+	defer func() { _ = provider.Close() }()
+	if _, err := provider.DownTo(ctx, 0); err != nil {
 		t.Fatal(err)
 	}
 	var tables int
@@ -68,5 +67,34 @@ func TestMigrateDownAndReinitialize(t *testing.T) {
 	}
 	if _, err := store.CreateSession(ctx, newSession("sesn_migration_reinitialized"), nil); err != nil {
 		t.Fatalf("create Session after reinitialization: %v", err)
+	}
+}
+
+// Even read-only connections can validate an initialized schema. Startup must
+// never try to initialize the migration ledger as a side effect of checking it.
+func TestCheckSchemaReadOnlyAndRolledBack(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	config := store.pool.Config()
+	config.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := CheckSchema(ctx, pool); err != nil {
+		t.Fatalf("read-only schema check: %v", err)
+	}
+	if _, err := store.pool.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (1, false)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckSchema(ctx, pool); err == nil || !strings.Contains(err.Error(), "mango migrate") {
+		t.Fatalf("rolled-back baseline was accepted: %v", err)
+	}
+	if _, err := store.pool.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (1, true)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckSchema(ctx, pool); err != nil {
+		t.Fatalf("reapplied baseline was rejected: %v", err)
 	}
 }

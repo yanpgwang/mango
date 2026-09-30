@@ -198,6 +198,12 @@ reapplication against real PostgreSQL and use the owning package's service
 tests to establish current persistence behavior. When editing the schema,
 regenerate the query bindings with sqlc and review the generated diff.
 
+`mango migrate` is the only binary command that applies schema migrations.
+`serve`, `orchestrate`, `workspace`, and `api-key` check the applied migration
+versions without changing the schema. Local Compose runs migration before
+starting application processes. Real PostgreSQL tests initialize their own
+isolated schemas explicitly; they must not rely on process startup to do so.
+
 ## Public API changes
 
 First-party SDKs are generated from the checked-in OpenAPI source. After an API

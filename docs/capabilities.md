@@ -71,7 +71,10 @@ access still depends on the sandbox boundary.
   production Compose and Kubernetes distributions are not available. The
   [development schema baseline](deployment.md#development-database-baseline)
   requires a fresh database when replacing the historical migration chain;
-  schema initialization still runs during process startup.
+  `mango migrate` performs explicit schema initialization, and normal process
+  startup only checks the migration ledger. Local Compose orders application
+  startup after successful migration. Versioned distribution upgrades and
+  rollback procedures remain open.
 - **Scaling and recovery:** API and orchestration roles can scale independently.
   Worker Versioning, heterogeneous-worker routing, distributed Files
   reconciliation, backup, audit, and observability still need work.

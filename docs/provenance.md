@@ -25,6 +25,28 @@ at the time of that work. On 2026-09-30, the pre-release migration chain was
 consolidated into the [current development schema baseline](deployment.md#development-database-baseline);
 those historical upgrade and downgrade paths are no longer shipped.
 
+## Explicit database migration role (2026-09-30)
+
+- Reviewed Mango's PostgreSQL initialization, command entry points, local
+  Compose startup, and schema tests alongside Goose v3.27.3's provider and
+  PostgreSQL session-lock APIs and its
+  [provider documentation](https://pressly.github.io/goose/documentation/provider/).
+  Adopted provider-local configuration and a per-schema advisory lock for
+  explicit, repeatable migration jobs; startup reads the ledger directly so
+  checking an empty database never initializes it.
+- Rechecked CMA's
+  [self-hosted sandbox boundary](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes).
+  CMA operates its orchestration and persistence; its public API/SDK exposes
+  no equivalent Mango operator database workflow. Mango owns its database and
+  process startup, so `mango migrate` is an independent operator decision.
+  No CMA route, field, SDK helper, hosted credential, or rollout requirement
+  was adopted for this slice.
+- API, orchestration, Workspace, and API-key commands require the binary's
+  applied migration versions without executing migrations. Local Compose runs
+  the one-shot role first. Existing historical databases still require a
+  rebuild; manual DDL validation and supported distribution upgrade/rollback
+  procedures remain separate work. HTTP/OpenAPI and SDK contracts are unchanged.
+
 ## Coding agent workflow (2026-09-08)
 
 - Reviewed the locally downloaded cookbook at

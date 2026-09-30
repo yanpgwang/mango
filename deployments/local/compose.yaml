@@ -6,6 +6,7 @@
 #   - Temporal     durable session orchestration (auto-setup + web UI)
 #   - NATS Core    ephemeral preview / SSE wakeup transport
 #   - MinIO        S3-compatible File bytes for local and service conformance
+#   - Migrate      one-shot schema initialization before application startup
 #   - API          PostgreSQL-backed Mango HTTP surface
 #   - Worker       Temporal worker plus PostgreSQL outbox relay
 #
@@ -110,16 +111,29 @@ services:
       timeout: 5s
       retries: 20
 
-  api:
+  migrate:
     build:
       context: ../..
       dockerfile: Dockerfile
     image: mango:local
+    container_name: mango-migrate
+    command: ["migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MANGO_DATABASE_URL: postgres://postgres:postgres@postgres:5432/mango?sslmode=disable
+
+  api:
+    image: mango:local
+    pull_policy: never
     container_name: mango-api
     command: ["serve", "-addr", ":8080"]
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       temporal:
         condition: service_healthy
       nats:
@@ -152,8 +166,8 @@ services:
 
   worker:
     image: mango:local
-    # The api service builds this shared image before Compose creates either
-    # application container. Never attempt to pull this intentionally local tag.
+    # The migrate service builds this shared image before application startup.
+    # Never attempt to pull this intentionally local tag.
     pull_policy: never
     container_name: mango-worker
     command: ["orchestrate"]
@@ -163,6 +177,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       temporal:
         condition: service_healthy
       nats:
