@@ -20,7 +20,7 @@ require (
 	github.com/yanpgwang/mango/sdk/go v0.0.0
 	go.temporal.io/api v1.63.4
 	go.temporal.io/sdk v1.48.0
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/text v0.41.0
 	google.golang.org/protobuf v1.36.12
