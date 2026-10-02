@@ -1260,3 +1260,27 @@ and cookbook `d7265d6ae994ccd8429db0594b000073b2f9ad43`. Mango source and tests 
 
 Earlier follow-up lists now identify delivered healthchecks, credentials, and
 the coding/deliverable example instead of presenting them as outstanding work.
+
+## Local object storage (2026-10-03)
+
+Reviewed the official [SeaweedFS 4.48 release](https://github.com/seaweedfs/seaweedfs/releases/tag/4.48),
+[Apache-2.0 license](https://github.com/seaweedfs/seaweedfs/blob/4.48/LICENSE),
+[pinned mini command](https://github.com/seaweedfs/seaweedfs/blob/4.48/weed/command/mini.go),
+[S3 route definitions](https://github.com/seaweedfs/seaweedfs/blob/4.48/weed/s3api/s3api_server.go),
+and [S3 API guide](https://github.com/seaweedfs/seaweedfs/wiki/Amazon-S3-API).
+The Compose image is pinned to the multi-platform manifest digest
+`sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d`.
+
+- Operator problem: the archived MinIO community source required a separate
+  image build and checksum-network dependency just to start local and CI tests.
+  Adopted the maintained SeaweedFS community image as that stack's default.
+- Adopted the single-process development topology, explicit volume sizing, S3
+  health probe, and a persistent `/data` containing Filer metadata and bytes.
+  Disabled unused Admin UI and WebDAV; only S3 is published to the host.
+- Kept Mango's generic S3 adapter, PostgreSQL resource ownership, and existing
+  HTTP/SDK contract. Files and Skills stay fully self-hosted. Memory remains in
+  PostgreSQL. No hosted agent service, vendor SDK, or enterprise feature is used.
+- Did not adopt SeaweedFS as a production requirement, promise complete AWS S3
+  parity, or add an automatic MinIO disk/data conversion. Existing state needs
+  an explicit transfer or a disposable-stack reset. Namespace metadata and
+  object bytes must both be covered by backups.

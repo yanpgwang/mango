@@ -20,7 +20,7 @@ hosted agent service. The fixture uses integer cents and Python `unittest`.
 
 Start a Mango deployment with a [real model](../guides/model-configuration.md)
 and [Files storage](../api/files.md). The [local stack](../getting-started.md)
-provides PostgreSQL, Temporal, NATS and MinIO. Run these commands from the repo
+provides PostgreSQL, Temporal, NATS and SeaweedFS. Run these commands from the repo
 root as your normal non-root user, with Go and a local Docker daemon available:
 
 ```bash

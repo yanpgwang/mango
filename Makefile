@@ -34,8 +34,8 @@ MANGO_TEST_TEMPORAL_HOSTPORT ?= localhost:7233
 MANGO_TEST_NATS_URL ?= nats://localhost:4222
 MANGO_TEST_S3_ENDPOINT ?= http://localhost:9000
 MANGO_TEST_S3_BUCKET ?= mango-test
-MANGO_TEST_S3_ACCESS_KEY ?= minioadmin
-MANGO_TEST_S3_SECRET_KEY ?= minioadmin
+MANGO_TEST_S3_ACCESS_KEY ?= mango-local
+MANGO_TEST_S3_SECRET_KEY ?= mango-local-development-only
 PYTHON ?= python3
 UV ?= uv
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
@@ -63,7 +63,7 @@ help:
 	@echo "  make lint           lint changes relative to $(LINT_BASE)"
 	@echo "  make test           run unit tests"
 	@echo "  make test-race      run tests with the race detector"
-	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, MinIO, and Docker"
+	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, SeaweedFS, and Docker"
 	@echo "  make test-service-core  run stateful service integration tests"
 	@echo "  make test-self-hosted-docker  run self-hosted Docker worker tests"
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"

@@ -15,7 +15,7 @@ Compose bundle or Kubernetes chart.
 | Asset | Status | Intended use |
 | --- | --- | --- |
 | Root `Dockerfile` | Buildable | Produce the API/worker image on Linux AMD64 or ARM64 |
-| `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, MinIO, API, and worker from the current checkout |
+| `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, SeaweedFS, API, and worker from the current checkout |
 | `deployments/self-hosted/docker` | Preview | Build and run the standalone Docker Environment Work supervisor and item image |
 | Production Docker Compose | Planned | Supported single-host installation using versioned release images |
 | Helm chart | Planned | Kubernetes API and worker deployments with external stateful dependencies |
@@ -89,7 +89,8 @@ Environment workers use Mango credentials instead.
 
 ## Object storage
 
-Files add an S3-compatible dependency beside PostgreSQL, Temporal, and NATS.
+Files and Skill bundles add an S3-compatible dependency beside PostgreSQL,
+Temporal, and NATS.
 Set `MANGO_FILE_S3_BUCKET` to enable the five Files routes; leaving it
 empty keeps the rest of the API available and makes Files requests return
 `422`. Failure to initialize or reconcile the configured object store also
@@ -106,7 +107,7 @@ operator-owned self-hosted concerns:
 | `MANGO_FILE_S3_REGION` | AWS region; defaults to `us-east-1` |
 | `MANGO_FILE_S3_ENDPOINT` | Optional S3-compatible endpoint |
 | `MANGO_FILE_S3_ACCESS_KEY` / `MANGO_FILE_S3_SECRET_KEY` | Optional static credentials; configure both together |
-| `MANGO_FILE_S3_PATH_STYLE` | Use path-style addressing for providers such as MinIO |
+| `MANGO_FILE_S3_PATH_STYLE` | Use path-style addressing for providers such as SeaweedFS |
 | `MANGO_FILE_S3_CREATE_BUCKET` | Development convenience; create a missing bucket |
 | `MANGO_FILE_UPLOAD_TEMP_DIR` | Directory for bounded upload spool files |
 
@@ -120,6 +121,12 @@ the standalone Environment worker where its selected Docker Engine is
 reachable. Configure a non-default daemon with `DOCKER_HOST` and standard
 Docker TLS variables on that worker only. Host-process execution is not a
 selectable runtime backend.
+
+The local and CI stack uses the SeaweedFS community image with persisted Filer
+metadata and object bytes. Production may use any suitable S3-compatible
+service; Mango does not require SeaweedFS. See the
+[local object-store guide](https://github.com/yanpgwang/mango/blob/main/deployments/local/README.md#development-object-store)
+for sizing, backup boundaries, and the transition from the old MinIO stack.
 
 ## Memory storage
 
@@ -206,7 +213,7 @@ check does not detect changes made within an already applied baseline.
 
 For a disposable local Compose stack, `make local-down VOLUMES=1` followed by
 `make local-up` rebuilds state from the baseline. **This deletes all local
-PostgreSQL data, Temporal history, and MinIO objects.** Back up anything you
+PostgreSQL data, Temporal history, and SeaweedFS objects.** Back up anything you
 need before using that reset. Contributor tests create isolated schemas and
 do not require resetting a running local stack.
 
@@ -230,7 +237,7 @@ make local-up
 make local-health
 ```
 
-Stop it while retaining PostgreSQL and MinIO data:
+Stop it while retaining PostgreSQL and SeaweedFS data:
 
 ```sh
 make local-down
