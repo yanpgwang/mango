@@ -9,7 +9,7 @@ infrastructure versions and health checks.
 | Temporal   | `temporalio/auto-setup:1.29.7` | `7233` (gRPC)               | Durable session/thread orchestration.                |
 | Temporal UI| `temporalio/ui:2.52.1`         | `8233` → container `8080`   | Workflow explorer at <http://localhost:8233>.        |
 | NATS Core  | `nats:2.11.17-alpine`          | `4222` (client), `8222` (monitoring) | Ephemeral previews and SSE wakeups; PostgreSQL cursor reads repair loss. |
-| MinIO      | Local source build (`RELEASE.2025-10-15T17-29-55Z`) | `9000` | S3-compatible File bytes for development and service conformance. |
+| SeaweedFS | `chrislusf/seaweedfs:4.48` (digest pinned) | `9000` → container `8333` | S3-compatible File and Skill bytes for development and service conformance. |
 | API        | `mango:local`        | `8080`                      | PostgreSQL-backed Mango HTTP API. |
 | Worker     | `mango:local`        | —                           | Temporal worker and PostgreSQL outbox relay. |
 
@@ -48,8 +48,8 @@ Override it with `MANGO_API_KEY` before `make local-up`; never reuse the
 bundled value outside local development.
 
 `make health` returns only once Postgres accepts connections, the Temporal
-frontend answers `cluster health`, NATS `/healthz` is green, MinIO answers its
-live probe, the API answers `/readyz`, and the worker process is alive.
+frontend answers `cluster health`, NATS `/healthz` is green, SeaweedFS answers its
+S3 `/healthz` probe, the API answers `/readyz`, and the worker process is alive.
 
 Without `make`:
 
@@ -76,8 +76,8 @@ export MANGO_NATS_URL="nats://localhost:4222"
 export MANGO_FILE_S3_ENDPOINT="http://localhost:9000"
 export MANGO_FILE_S3_REGION="us-east-1"
 export MANGO_FILE_S3_BUCKET="mango-files"
-export MANGO_FILE_S3_ACCESS_KEY="minioadmin"
-export MANGO_FILE_S3_SECRET_KEY="minioadmin"
+export MANGO_FILE_S3_ACCESS_KEY="mango-local"
+export MANGO_FILE_S3_SECRET_KEY="mango-local-development-only"
 export MANGO_FILE_S3_PATH_STYLE="true"
 export MANGO_FILE_S3_CREATE_BUCKET="true"
 
@@ -107,14 +107,14 @@ Start only the infrastructure dependencies, then run every test that can be
 executed without an external model or sandbox account:
 
 ```sh
-docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
+docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats seaweedfs
 make test-service
 ```
 
 This is the same suite run by CI. It covers real PostgreSQL migrations and
 transactions, Temporal workflows and Activities, NATS reconciliation and
-previews, the Files lifecycle through real MinIO, the HTTP-to-service vertical
-slice, and a Docker Environment-worker tool step. Each database test uses an
+previews, the Files and Skills lifecycles through real SeaweedFS, the
+HTTP-to-service vertical slice, and a Docker Environment-worker tool step. Each database test uses an
 isolated schema; workflow, object, and worker cleanup is part of the assertions.
 
 ## Health checks
@@ -124,7 +124,7 @@ Each service declares a Docker `healthcheck`:
 - **postgres** — `pg_isready -U postgres -d mango`
 - **temporal** — `tctl --address temporal:7233 cluster health`
 - **nats** — HTTP `GET /healthz` on the monitoring port
-- **minio** — HTTP `GET /minio/health/live`
+- **seaweedfs** — HTTP `GET /healthz` on S3 port `8333`
 - **api** — HTTP `GET /readyz`
 - **worker** — its long-running orchestration process is alive
 
@@ -134,7 +134,7 @@ Each service declares a Docker `healthcheck`:
 
 ```sh
 make local-down            # stop containers, keep data
-make local-down VOLUMES=1  # also delete the Postgres and MinIO volumes
+make local-down VOLUMES=1  # also delete the Postgres and SeaweedFS volumes
 ```
 
 ## Scope
@@ -143,31 +143,50 @@ This stack is for local development and integration tests only. It already
 keeps API and worker process roles separate, but it is not a production
 deployment manifest: end-user authorization, TLS, secrets, rolling worker versioning,
 managed persistence, observability, resource limits, and production object
-storage remain deployment work. The bundled MinIO credentials and deterministic
+storage remain deployment work. The bundled SeaweedFS credentials and deterministic
 Vault keyring are not a production recommendation. Files startup reconciliation
 also currently requires one Files-enabled API process. See
 [the deployment model](../../docs/deployment.md).
 
 
-### Development object-store image
+### Development object store
 
-The stack builds `mango-minio:local` from MinIO's public release
-`RELEASE.2025-10-15T17-29-55Z`, commit
-`9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`. The immutable Go module version is
-pinned in `minio/Dockerfile`; module downloads are verified by Go's checksum
-database. The image includes MinIO's AGPL license and source/revision labels.
-No vendor account or image-registry credential is required.
+The stack uses the official Apache-2.0 community image for
+[SeaweedFS 4.48](https://github.com/seaweedfs/seaweedfs/releases/tag/4.48), pinned
+by its multi-platform manifest digest in `compose.yaml`. No source build,
+enterprise license, or vendor account is required. The single-process `mini`
+server runs Master, Volume, Filer, and S3 components. Admin UI and WebDAV are
+disabled, and only the S3 port is published. Volume allocation is bounded to
+16 volumes with a 1 GiB growth limit per volume; data is not preallocated.
+These are development sizing choices, not a production capacity guarantee.
 
-This replaces the unavailable community image, which prevented both fresh local
-stacks and CI service tests from starting. The first Compose start builds the
-image and takes longer; later builds reuse Docker's build cache. Rebuild after
-changing its Dockerfile with
-`docker compose -f deployments/local/compose.yaml build minio` from the repository
-root. The `/data` volume,
-S3 endpoint, development credentials, and health probe remain the same.
+The `seaweedfs-data` volume persists both object bytes and Filer metadata under
+`/data`. Stop or recreate the container without deleting that volume to retain
+its namespace and contents. A backup must preserve the metadata and bytes
+consistently, as well as Mango's PostgreSQL metadata. Copying only SeaweedFS
+volume data files is not a complete backup. The bundled single-node stack is
+not a production HA or backup solution; production remains an operator-owned
+S3-compatible service configured through Mango's existing settings.
 
-MinIO's community repository is archived and its distribution is source-only;
-see the [upstream README](https://github.com/minio/minio/blob/master/README.md).
-This pinned service is a local test dependency, not a supported production
-object-store distribution. Mango's Files API continues to accept a separately
-operated S3-compatible service.
+### Moving from the old MinIO stack
+
+SeaweedFS uses a new data volume and new development credentials. It cannot
+read MinIO's on-disk format, and Mango does not automatically transfer objects.
+Do not start the new stack against retained PostgreSQL File/Skill records and
+an empty SeaweedFS bucket: those records would still point to the old objects.
+
+Stop the old stack with `make local-down` from its original checkout first.
+Keep its checkout and all data together if you need to return to it. For a
+**disposable** development stack, run the following from the new checkout:
+
+```sh
+docker compose -f deployments/local/compose.yaml down --volumes --remove-orphans
+make local-up
+```
+
+This resets the configured PostgreSQL/Temporal and SeaweedFS state and removes
+old containers. The old `mango-local_minio-data` volume is not declared in the
+new manifest and is retained; remove it separately only after deciding its data
+is no longer needed. If retaining Mango records, transfer all objects through
+S3 with their original bucket and keys before starting Mango on the new
+endpoint, and verify the transfer. There is no bundled data-migration command.

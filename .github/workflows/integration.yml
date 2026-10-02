@@ -25,8 +25,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Start PostgreSQL, Temporal, NATS, and MinIO
-        run: docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
+      - name: Start PostgreSQL, Temporal, NATS, and SeaweedFS
+        run: docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats seaweedfs
       - name: Run core service integration tests
         # Match the trusted root worker in Compose. Native Linux bind mounts
         # retain container UIDs, including root-owned nested output directories.
@@ -34,7 +34,7 @@ jobs:
         run: make test-service-core SERVICE_TEST_EXEC='sudo -n -E --'
       - name: Show dependency logs after failure
         if: failure()
-        run: docker compose -f deployments/local/compose.yaml logs --no-color postgres temporal nats minio
+        run: docker compose -f deployments/local/compose.yaml logs --no-color postgres temporal nats seaweedfs
       - name: Stop service dependencies
         if: always()
         run: docker compose -f deployments/local/compose.yaml down --volumes

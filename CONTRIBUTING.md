@@ -92,11 +92,11 @@ make local-config
 make image-smoke
 ```
 
-Run the same PostgreSQL, Temporal, NATS, MinIO, and Docker conformance suite as
+Run the same PostgreSQL, Temporal, NATS, SeaweedFS, and Docker conformance suite as
 CI:
 
 ```bash
-docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
+docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats seaweedfs
 make test-service
 ```
 
@@ -108,7 +108,7 @@ make test-service-core
 make test-self-hosted-docker
 ```
 
-`test-service-core` owns tests that require PostgreSQL, Temporal, NATS, MinIO,
+`test-service-core` owns tests that require PostgreSQL, Temporal, NATS, SeaweedFS,
 or a Docker-backed runtime. `test-self-hosted-docker` owns the reference
 launcher, worker filesystem, and container-boundary contracts. Keep new
 service-only packages in `SERVICE_CORE_PACKAGES`; keep launcher infrastructure

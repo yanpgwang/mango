@@ -5,7 +5,7 @@ level rather than by container technology.
 
 | Directory | Support level | Purpose |
 | --- | --- | --- |
-| [`local`](local/) | Development | Reproducible PostgreSQL, Temporal, NATS, MinIO, API, and worker stack for local development and integration tests |
+| [`local`](local/) | Development | Reproducible PostgreSQL, Temporal, NATS, SeaweedFS, API, and worker stack for local development and integration tests |
 | [`self-hosted/docker`](self-hosted/docker/) | Preview | Reference Docker image and supervisor for the `self_hosted` Environment Work boundary |
 
 `deployments/local` is the only complete deployment bundle today. The
