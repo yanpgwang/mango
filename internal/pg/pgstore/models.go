@@ -118,6 +118,7 @@ type Event struct {
 }
 
 type File struct {
+	SessionID      *string
 	ID             string
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz

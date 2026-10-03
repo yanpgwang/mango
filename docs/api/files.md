@@ -6,7 +6,7 @@ slug: /api/files
 
 # Files
 
-The Files API stores immutable client uploads in configured S3-compatible
+The Files API stores immutable client uploads and generated MCP text results in configured S3-compatible
 storage. PostgreSQL owns metadata and crash-recoverable upload/delete intents;
 the object store owns bytes.
 
@@ -35,9 +35,11 @@ cannot be combined.
 Every ready File can be downloaded with `GET /v1/files/{file_id}/content`
 using an API key for its Workspace. The response streams the immutable bytes
 with content type, length, `Content-Disposition: attachment`, and `nosniff`.
-There are no download-eligibility or Session-scope fields. Missing, deleting,
-and cross-Workspace Files return 404. Scoped Work credentials cannot use the
-Files API; the trusted application or operator performs explicit transfers.
+Metadata includes `checksum_sha256`, the hex SHA-256 of complete bytes.
+Missing, deleting, and cross-Workspace Files return 404. Active scoped Work
+credentials may GET metadata/content only for generated MCP output Files owned
+by their Session. They cannot list, upload, delete, or read other Files; ordinary
+input and workspace deliverable transfers remain application-owned.
 
 ```sh
 curl "$MANGO_BASE_URL/v1/files/$FILE_ID/content" \
@@ -84,6 +86,25 @@ to 262,144 characters. Empty, oversized, corrupt, non-UTF-8, non-text,
 missing, deleting, and cross-Workspace Files fail before the
 Session or event is committed. File-sourced images and File documents inside
 tool results remain unsupported.
+
+## Generated MCP output
+
+When projected MCP text exceeds 100,000 characters and fits within 32 MiB,
+Mango publishes it as a `text/plain` File. `agent.mcp_tool_result.file_id`
+references it, and the preview identifies `.mango-tool-results/{file_id}.txt`
+relative to the Session workspace root. Native Go workers verify and materialize
+it before dispatching local tools, including after reattachment. A custom worker
+can GET the File metadata and content with its active Work token and implement
+the same preparation step.
+
+A generated output File cannot be deleted while its Session exists: DELETE
+returns 409. Delete the Session first to release this pin, then delete the File
+normally. Session deletion preserves the ready File and its bytes for operators.
+This prevents storage retries from resurrecting deleted results. Generated
+pending uploads are recovered from their durable MCP receipt; startup cleanup
+waits until their owning Session is gone. Storage must be configured on both the
+API and orchestrator processes. Missing storage or projected text over 32 MiB
+produces an explicit tool error and preview.
 
 ## Worker files
 

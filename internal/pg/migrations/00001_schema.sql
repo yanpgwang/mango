@@ -306,6 +306,7 @@ CREATE TABLE mcp_discovery_snapshots (
 -- Files and immutable Skills.
 
 CREATE TABLE files (
+    session_id text REFERENCES sessions(id) ON DELETE SET NULL,
     id text NOT NULL,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,

@@ -14,10 +14,13 @@ let environment;
 let session;
 try {
   await client.system.health();
+  const mcpPage = await client.sessions.events.list("sesn_mcp_fixture");
+  assert.equal(mcpPage.data[0].type, "agent.mcp_tool_result");
+  assert.equal(mcpPage.data[0].file_id, "file_mcp_full");
   const payload = new Uint8Array([109, 97, 110, 103, 111, 0, 255]);
   const uploaded = await client.files.upload({ file: new File([payload], 'result.bin', { type: 'application/octet-stream' }) });
   try {
-    assert.deepEqual(Object.keys(uploaded).sort(), ['created_at', 'filename', 'id', 'mime_type', 'size_bytes', 'type']);
+    assert.deepEqual(Object.keys(uploaded).sort(), ['checksum_sha256', 'created_at', 'filename', 'id', 'mime_type', 'size_bytes', 'type']);
     assert.equal(uploaded.size_bytes, payload.length);
     const response = await client.files.download(uploaded.id);
     assert.deepEqual(new Uint8Array(await response.arrayBuffer()), payload);

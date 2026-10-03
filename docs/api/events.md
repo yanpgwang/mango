@@ -326,3 +326,11 @@ frames are ephemeral and can be lost. A replacement API process opens a new
 subscription after the latest committed event; listing history after that
 stream is open fills the process-restart gap without replaying old events on the
 stream itself.
+
+### Large MCP text results
+
+`agent.mcp_tool_result` may include `file_id`, referencing the complete projected
+text retained by the [Files API](files.md#generated-mcp-output). The ordinary
+`content` carries a bounded preview and a path relative to the Session workspace
+root. The native Go worker prepares the file before local tool dispatch. This
+reference is server-emitted; applications cannot submit MCP result events.

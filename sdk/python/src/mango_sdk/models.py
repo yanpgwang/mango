@@ -60,6 +60,7 @@ class AgentMCPToolResultEvent(TypedDict, total=False):
     processed_at: Required['NullableTimestamp']
     type: Required[Literal['agent.mcp_tool_result']]
     content: List['ResultContentInput']
+    file_id: str
     is_error: bool
     mcp_tool_use_id: Required[str]
 
@@ -519,6 +520,7 @@ EventStreamFrame: TypeAlias = Union['SessionEvent', 'EventStart', 'EventDelta']
 
 
 class File(TypedDict, total=False):
+    checksum_sha256: str
     created_at: Required[str]
     filename: Required[str]
     id: Required[str]

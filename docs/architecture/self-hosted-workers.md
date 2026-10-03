@@ -116,7 +116,7 @@ Mango's independently implemented storage and recovery are safe.
 | Cloud image contents and networking | The [cloud reference](https://platform.claude.com/docs/en/managed-agents/cloud-sandboxes-reference) applies to managed images. | Operators own the worker image and network policy. Cloud package catalogs, resource limits, and hosted network controls are not Mango acceptance criteria. |
 | Private MCP | [MCP tunnels](https://platform.claude.com/docs/en/agents-and-tools/mcp-tunnels/overview) can serve either sandbox mode. | Mango's direct remote connector enforces public-address egress. Operator-owned worker tools can already reach internal services under the operator's policy. A private remote connector is a separate possible need; design an explicit trusted policy rather than bypassing the existing SSRF boundary or copying a hosted tunnel service. |
 | Image/PDF message input | Shared Session request types include image/document blocks; these are distinct from sandbox resource mounts. | Mango currently accepts bounded UTF-8 File messages, not image/PDF File input. This is a real model-input limitation; provider support and admission/recovery need independent validation before adding it. |
-| Large MCP output | The general [MCP guide](https://platform.claude.com/docs/en/managed-agents/mcp-connector) describes file-backed full results. | Mango retains only bounded inline output. The reviewed general guide does not establish its full-result transfer path for external self-hosted workers, so no exact mode parity is claimed. Preserving complete results remains a Mango user problem when truncation loses needed data. |
+| Large MCP output | The general [MCP guide](https://platform.claude.com/docs/en/managed-agents/mcp-connector) describes file-backed full results. | Mango retains complete projected text through Files (32 MiB maximum) and native Go workers prepare it before local dispatch. The reviewed general guide does not establish its transfer path for external self-hosted workers; Mango owns its File reference, authorization, and retention contract. |
 | Session retries, approvals, Threads, budgets, and schedules | Control-plane workflows can accompany self-hosted execution. | These are not cloud-only features. Mango owns their runtime and tests. A Docker tool smoke alone does not verify every combined workflow. |
 
 The current official SDK references are Go v1.76.0
@@ -183,8 +183,9 @@ matched native SDK artifacts, and a demonstrated backup/restore procedure for
 database, objects, Memory, and encryption keys. Kubernetes distribution and
 worker rollout/versioning require their own operational acceptance; a Docker
 demo or CMA sandbox feature list does not prove them. Additional worker
-languages, private MCP, and complete large-result retention remain separately
-selectable product work. Cloud/OpenSandbox does not gate the current self-hosted
+languages and private MCP remain separately selectable product work. Complete
+large MCP text retention now follows the File lifecycle described above.
+Cloud/OpenSandbox does not gate the current self-hosted
 scope. [Capabilities](../capabilities.md) remains the product inventory.
 
 ## Lifecycle and security invariants

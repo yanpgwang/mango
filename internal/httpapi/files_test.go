@@ -40,7 +40,7 @@ func TestFilesHTTP_UploadShapeAndMultipartValidation(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &uploaded); err != nil {
 		t.Fatal(err)
 	}
-	if len(uploaded) != 6 {
+	if len(uploaded) != 7 {
 		t.Fatalf("File metadata contains unexpected fields: %s", rec.Body.Bytes())
 	}
 	assertRawObjectHasFields(t, rec.Body.String(), "id", "type", "created_at", "filename", "mime_type", "size_bytes")
@@ -205,7 +205,7 @@ func (s *testFileService) Upload(_ context.Context, input app.FileUploadInput) (
 		ID: id, CreatedAt: time.Date(2026, 8, 4, 0, 0, s.next, 0, time.UTC),
 		UpdatedAt: time.Date(2026, 8, 4, 0, 0, s.next, 0, time.UTC),
 		Filename:  input.Filename, MimeType: input.MimeType, SizeBytes: int64(len(data)),
-		BlobKey: "files/" + id, State: domain.FileStateReady,
+		BlobKey: "files/" + id, State: domain.FileStateReady, ChecksumSHA256: app.ComputeBlobInfo(data).ChecksumSHA256,
 	}
 	s.files[id], s.contents[id] = file, data
 	return file, nil

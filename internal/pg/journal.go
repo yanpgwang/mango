@@ -682,3 +682,16 @@ func (s *Store) ToolStepStateByEventID(ctx context.Context, toolUseEventID strin
 	}
 	return domain.ToolStepState(state), true, nil
 }
+
+// MarkToolOutputPublished removes the temporary full receipt after its File is
+// ready. Repeating publication is safe and can never rerun the remote tool.
+func (s *Store) MarkToolOutputPublished(ctx context.Context, stepID, fileID string) error {
+	result, err := s.pool.Exec(ctx, `UPDATE tool_steps SET result = result - 'full_output', updated_at = now() WHERE id = $1 AND state = 'completed' AND result->>'file_id' = $2`, stepID, fileID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return domain.Conflict("tool output publication does not match the completed receipt")
+	}
+	return nil
+}

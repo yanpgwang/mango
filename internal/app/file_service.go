@@ -146,6 +146,9 @@ func (s *FileService) publicFile(ctx context.Context, id string) (domain.File, e
 	if err != nil {
 		return domain.File{}, err
 	}
+	if scope, ok := workspace.FromContext(ctx); ok && scope.Session != nil && (file.SessionID == "" || file.SessionID != scope.Session.SessionID) {
+		return domain.File{}, domain.NotFound("file not found")
+	}
 	return file, nil
 }
 
@@ -308,7 +311,14 @@ func isTextMessageMediaType(mediaType string) bool {
 }
 
 func (s *FileService) Delete(ctx context.Context, id string) (domain.File, error) {
-	file, err := s.repo.BeginDelete(ctx, id)
+	file, err := s.publicFile(ctx, id)
+	if err != nil {
+		return domain.File{}, err
+	}
+	if file.SessionID != "" {
+		return domain.File{}, domain.Conflict("tool output File is pinned by its Session; delete the Session before deleting the File")
+	}
+	file, err = s.repo.BeginDelete(ctx, id)
 	if err != nil {
 		return domain.File{}, err
 	}

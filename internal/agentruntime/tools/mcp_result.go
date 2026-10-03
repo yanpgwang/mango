@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -95,9 +96,10 @@ func ProjectMCPResult(
 		textParts = append(textParts, "MCP tool returned no model-visible content.")
 	}
 	result = textResult(strings.Join(textParts, "\n\n"), input.IsError)
-	result = BoundInlineResult(result)
 
-	if len(input.Raw) <= MaxInlineResultChars {
+	// Raw is diagnostic-only. PostgreSQL JSONB cannot decode U+0000; the
+	// full textual output is retained separately as a base64 byte receipt.
+	if len(input.Raw) <= MaxInlineResultChars && !bytes.Contains(input.Raw, []byte(`\u0000`)) {
 		raw = append(json.RawMessage(nil), input.Raw...)
 	}
 	return result, raw, nil

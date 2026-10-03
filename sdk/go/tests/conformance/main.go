@@ -32,6 +32,17 @@ func run() (result error) {
 	if err := client.System.Health(ctx); err != nil {
 		return err
 	}
+	mcpPage, err := client.Sessions.Events.List(ctx, "sesn_mcp_fixture", mango.ListSessionEventsParams{})
+	if err != nil {
+		return err
+	}
+	if len(mcpPage.Data) != 1 || mcpPage.Data[0].AgentMCPToolResultEvent == nil {
+		return errors.New("MCP result variant lost")
+	}
+	fileID, ok := mcpPage.Data[0].AgentMCPToolResultEvent.FileID.Get()
+	if !ok || fileID != "file_mcp_full" {
+		return errors.New("MCP output File reference lost")
+	}
 	if err := checkFiles(ctx, client); err != nil {
 		return err
 	}

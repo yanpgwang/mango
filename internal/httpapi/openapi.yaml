@@ -3446,6 +3446,9 @@ components:
         - size_bytes
         - type
       properties:
+        checksum_sha256:
+          type: string
+          description: SHA-256 hex digest of the complete File bytes.
         id:
           type: string
           minLength: 1
@@ -5498,6 +5501,9 @@ components:
           properties:
             type: {type: string, const: agent.mcp_tool_result}
             mcp_tool_use_id: {type: string}
+            file_id:
+              type: string
+              description: Full projected UTF-8 text retained as a Mango File when output exceeds 100000 characters. Self-hosted workers materialize it at .mango-tool-results/{file_id}.txt before tool dispatch. The File is pinned until its Session is deleted.
             content:
               type: array
               items: {$ref: '#/components/schemas/ResultContentInput'}

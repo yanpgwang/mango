@@ -175,6 +175,7 @@ type RuntimeConfig struct {
 	RelayConfig       RelayConfig
 	TaskQueue         string
 	SkillInstructions SkillInstructionLoader
+	ToolOutputs       ToolOutputStore
 	MCPAuth           credentialruntime.AuthSource
 	PreviewPublisher  PreviewPublisher
 }
@@ -196,6 +197,7 @@ func NewRuntime(config RuntimeConfig) *Runtime {
 		config.PreviewPublisher,
 	)
 	acts.WithMCPAuthSource(config.MCPAuth)
+	acts.WithToolOutputStore(config.ToolOutputs)
 	if config.SkillInstructions != nil {
 		acts.WithSkillInstructionLoader(config.SkillInstructions)
 	}

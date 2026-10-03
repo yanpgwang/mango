@@ -191,7 +191,7 @@ func fileToJSON(file domain.File) map[string]any {
 	return map[string]any{
 		"id": file.ID, "created_at": file.CreatedAt.Format(timeFmt),
 		"filename": file.Filename, "mime_type": file.MimeType,
-		"size_bytes": file.SizeBytes, "type": "file",
+		"size_bytes": file.SizeBytes, "type": "file", "checksum_sha256": file.ChecksumSHA256,
 	}
 }
 
