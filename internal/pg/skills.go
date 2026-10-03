@@ -17,10 +17,11 @@ var _ app.SkillRepository = (*SkillRepository)(nil)
 
 type SkillRepository struct {
 	store *Store
+	*blobCleanupRepository
 }
 
 func NewSkillRepository(store *Store) *SkillRepository {
-	return &SkillRepository{store: store}
+	return &SkillRepository{store: store, blobCleanupRepository: &blobCleanupRepository{store: store, kind: "skill"}}
 }
 
 func (r *SkillRepository) BeginSkill(
@@ -85,14 +86,14 @@ func (r *SkillRepository) BeginVersion(ctx context.Context, version domain.Skill
 	tag, err := r.store.pool.Exec(ctx, `
 INSERT INTO skill_versions (
     skill_id, version, created_at, description, directory, name, blob_key,
-    size_bytes, uncompressed_size_bytes, checksum_sha256, state, initial
+    size_bytes, uncompressed_size_bytes, checksum_sha256, state, initial, upload_expires_at
 )
-SELECT $1, $2, $3, $4, $5, $6, $7, 0, $8, '', $9, $10
+SELECT $1, $2, $3, $4, $5, $6, $7, 0, $8, '', $9, $10, clock_timestamp() + $12 * interval '1 second'
 FROM skills
 WHERE id = $1 AND ($11 = '' OR workspace_id = $11) AND ready`,
 		version.SkillID, version.Version, version.CreatedAt, version.Description,
 		version.Directory, version.Name, version.BlobKey, version.UncompressedSizeBytes,
-		string(version.State), version.Initial, workspaceID,
+		string(version.State), version.Initial, workspaceID, app.UploadLeaseDuration.Seconds(),
 	)
 	if isUniqueViolation(err) {
 		return domain.Conflict("Skill Version already exists")
@@ -110,6 +111,7 @@ func (r *SkillRepository) CompleteVersion(
 	ctx context.Context,
 	skillID string,
 	version string,
+	blobKey string,
 	info app.BlobInfo,
 ) (domain.Skill, domain.SkillVersion, error) {
 	workspaceID, _, accessErr := r.store.workspaceForRead(ctx)
@@ -119,22 +121,28 @@ func (r *SkillRepository) CompleteVersion(
 	var skill domain.Skill
 	var item domain.SkillVersion
 	err := r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
+		if err := r.lockUpload(ctx, tx, skillID, version, blobKey, workspaceID); err != nil {
+			if errors.Is(err, app.ErrUploadLeaseLost) {
+				return errors.Join(err, domain.Conflict("Skill Version upload is no longer pending"))
+			}
+			return err
+		}
 		row := tx.QueryRow(ctx, `
 UPDATE skill_versions
-SET size_bytes = $3, checksum_sha256 = $4, state = 'ready'
-WHERE skill_id = $1 AND version = $2 AND state = 'uploading'
+SET size_bytes = $3, checksum_sha256 = $4, state = 'ready', upload_expires_at = NULL
+WHERE skill_id = $1 AND version = $2 AND state = 'uploading' AND upload_expires_at > clock_timestamp() AND blob_key = $6
   AND EXISTS (
       SELECT 1 FROM skills
       WHERE id = $1 AND ($5 = '' OR workspace_id = $5)
   )
 RETURNING skill_id, version, created_at, description, directory, name, blob_key,
           size_bytes, uncompressed_size_bytes, checksum_sha256, state, initial`,
-			skillID, version, info.SizeBytes, info.ChecksumSHA256, workspaceID,
+			skillID, version, info.SizeBytes, info.ChecksumSHA256, workspaceID, blobKey,
 		)
 		var err error
 		item, err = scanSkillVersion(row)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Conflict("Skill Version upload is no longer pending")
+			return errors.Join(app.ErrUploadLeaseLost, domain.Conflict("Skill Version upload is no longer pending"))
 		}
 		if err != nil {
 			return err
@@ -364,6 +372,7 @@ func (r *SkillRepository) RemoveIncompleteVersion(
 	ctx context.Context,
 	skillID string,
 	version string,
+	blobKey string,
 ) error {
 	workspaceID, _, accessErr := r.store.workspaceForRead(ctx)
 	if accessErr != nil {
@@ -376,7 +385,7 @@ WHERE version.skill_id = skill.id
   AND version.skill_id = $1
   AND version.version = $2
   AND ($3 = '' OR skill.workspace_id = $3)
-  AND version.state <> 'ready'`, skillID, version, workspaceID)
+  AND version.state <> 'ready' AND version.blob_key = $4`, skillID, version, workspaceID, blobKey)
 	return err
 }
 
@@ -532,12 +541,12 @@ func insertSkillVersion(ctx context.Context, tx pgx.Tx, item domain.SkillVersion
 	_, err := tx.Exec(ctx, `
 INSERT INTO skill_versions (
     skill_id, version, created_at, description, directory, name, blob_key,
-    size_bytes, uncompressed_size_bytes, checksum_sha256, state, initial
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    size_bytes, uncompressed_size_bytes, checksum_sha256, state, initial, upload_expires_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, clock_timestamp() + $13 * interval '1 second')`,
 		item.SkillID, item.Version, item.CreatedAt, item.Description, item.Directory,
 		item.Name, item.BlobKey, item.SizeBytes, item.UncompressedSizeBytes,
 		item.ChecksumSHA256,
-		string(item.State), item.Initial,
+		string(item.State), item.Initial, app.UploadLeaseDuration.Seconds(),
 	)
 	return err
 }

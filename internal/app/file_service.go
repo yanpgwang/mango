@@ -31,6 +31,10 @@ const (
 // beyond MaxFileBytes without buffering the complete upload.
 var ErrBlobTooLarge = errors.New("blob exceeds maximum size")
 
+// ErrBlobNotWritten positively identifies failure before any remote write.
+// Other storage errors may mean the caller stopped waiting for a commit.
+var ErrBlobNotWritten = errors.New("blob write did not start")
+
 type FileUploadInput struct {
 	Filename string
 	MimeType string
@@ -63,13 +67,17 @@ type FileDownload struct {
 // transition that makes a file visible. Get returns only ready Files, and
 // BeginDelete hides a file before object deletion begins.
 type FileRepository interface {
+	BlobCleanupRepository
 	BeginUpload(context.Context, domain.File) error
 	CompleteUpload(context.Context, string, BlobInfo) (domain.File, error)
+	RenewUpload(context.Context, string) error
+	ReleaseUpload(context.Context, string, string, bool) error
 	Get(context.Context, string) (domain.File, error)
 	List(context.Context, FileListQuery) (FileListPage, error)
 	BeginDelete(context.Context, string) (domain.File, error)
 	RemoveIncomplete(context.Context, string) error
 	ListIncomplete(context.Context) ([]domain.File, error)
+	ClaimIncomplete(context.Context, string) (domain.File, bool, error)
 }
 
 // BlobStore is intentionally small so S3-compatible storage can back Files
@@ -117,10 +125,16 @@ func (s *FileService) Upload(ctx context.Context, input FileUploadInput) (domain
 	if err := s.repo.BeginUpload(ctx, file); err != nil {
 		return domain.File{}, err
 	}
+	writeFinished := false
+	ctx, stopLease := startUploadLease(ctx, UploadLeaseDuration/3,
+		func(ctx context.Context) error { return s.repo.RenewUpload(ctx, id) },
+		func(ctx context.Context) error { return s.repo.ReleaseUpload(ctx, id, file.BlobKey, writeFinished) })
+	defer stopLease()
 
 	info, err := s.blobs.Put(ctx, file.BlobKey, mimeType, input.Body, MaxFileBytes)
+	writeFinished = err == nil || errors.Is(err, ErrBlobTooLarge) || errors.Is(err, ErrBlobNotWritten)
 	if err != nil {
-		s.cleanupIncomplete(ctx, file)
+		s.cleanupIncomplete(ctx, file, writeFinished)
 		if errors.Is(err, ErrBlobTooLarge) {
 			return domain.File{}, domain.TooLarge("file exceeds 500 MB limit")
 		}
@@ -128,6 +142,9 @@ func (s *FileService) Upload(ctx context.Context, input FileUploadInput) (domain
 	}
 	completed, err := s.repo.CompleteUpload(ctx, id, info)
 	if err != nil {
+		if errors.Is(err, ErrUploadLeaseLost) {
+			s.cleanupIncomplete(ctx, file, writeFinished)
+		}
 		// The database update may have committed even when the client observes a
 		// connection error. Deleting the blob here could leave a visible ready
 		// row with no bytes. Preserve both sides: a committed row remains valid,
@@ -331,14 +348,27 @@ func (s *FileService) Delete(ctx context.Context, id string) (domain.File, error
 	return file, nil
 }
 
-// Reconcile removes objects and rows left by an API-process crash during an
-// upload or delete. It runs before the HTTP server starts accepting requests.
+// Reconcile atomically claims ended/expired uploads and unfinished deletes.
+// Listing alone is not authority to delete: another process may still own the
+// upload or may have completed it since the list was read.
 func (s *FileService) Reconcile(ctx context.Context) error {
+	return reconcileBlobOperations(ctx, fileCleanupTimeout/2, s.repo, s.blobs, s.reconcileIncomplete)
+}
+
+func (s *FileService) reconcileIncomplete(ctx context.Context) error {
 	files, err := s.repo.ListIncomplete(ctx)
 	if err != nil {
 		return err
 	}
 	for _, file := range files {
+		claimed, ok, err := s.repo.ClaimIncomplete(ctx, file.ID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		file = claimed
 		if err := s.blobs.Delete(ctx, file.BlobKey); err != nil {
 			return err
 		}
@@ -349,10 +379,10 @@ func (s *FileService) Reconcile(ctx context.Context) error {
 	return nil
 }
 
-func (s *FileService) cleanupIncomplete(ctx context.Context, file domain.File) {
+func (s *FileService) cleanupIncomplete(ctx context.Context, file domain.File, writeFinished bool) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fileCleanupTimeout)
 	defer cancel()
-	if err := s.blobs.Delete(cleanupCtx, file.BlobKey); err != nil {
+	if err := cleanupBlob(cleanupCtx, s.repo, s.blobs, file.BlobKey, writeFinished); err != nil {
 		// A failed Put may have stored bytes before its response was lost.
 		// Keep the durable intent until reconciliation can delete those bytes.
 		return

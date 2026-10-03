@@ -29,7 +29,7 @@ func TestSkillRepository_ImmutableLifecyclePagingAndDeleteGuard(t *testing.T) {
 	if _, err := repo.GetSkill(ctx, skill.ID); err == nil {
 		t.Fatal("creating Skill became visible before its archive committed")
 	}
-	readySkill, readyFirst, err := repo.CompleteVersion(ctx, skill.ID, first.Version, app.BlobInfo{
+	readySkill, readyFirst, err := repo.CompleteVersion(ctx, skill.ID, first.Version, first.BlobKey, app.BlobInfo{
 		SizeBytes: 10, ChecksumSHA256: "first",
 	})
 	if err != nil {
@@ -58,7 +58,7 @@ func TestSkillRepository_ImmutableLifecyclePagingAndDeleteGuard(t *testing.T) {
 	// Complete the newer Version first and the older Version last. Completion
 	// order must not let an older upload steal latest_version.
 	for _, item := range []domain.SkillVersion{third, second} {
-		if _, _, err := repo.CompleteVersion(ctx, skill.ID, item.Version, app.BlobInfo{
+		if _, _, err := repo.CompleteVersion(ctx, skill.ID, item.Version, item.BlobKey, app.BlobInfo{
 			SizeBytes: 10, ChecksumSHA256: item.Version,
 		}); err != nil {
 			t.Fatalf("CompleteVersion %s: %v", item.Version, err)
@@ -102,7 +102,7 @@ func TestSkillRepository_ImmutableLifecyclePagingAndDeleteGuard(t *testing.T) {
 		if _, err := repo.GetVersion(ctx, skill.ID, version); err == nil {
 			t.Fatalf("deleting Version %s remains visible", version)
 		}
-		if err := repo.RemoveIncompleteVersion(ctx, skill.ID, version); err != nil {
+		if err := repo.RemoveIncompleteVersion(ctx, skill.ID, version, deleting.BlobKey); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -183,7 +183,7 @@ func TestAgentSkillPinsUseOneConnectionAndGuardDeletion(t *testing.T) {
 	if err := skillRepo.BeginSkill(ctx, skill, first); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, first.Version, app.BlobInfo{
+	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, first.Version, first.BlobKey, app.BlobInfo{
 		SizeBytes: 10, ChecksumSHA256: "first",
 	}); err != nil {
 		t.Fatal(err)
@@ -208,7 +208,7 @@ func TestAgentSkillPinsUseOneConnectionAndGuardDeletion(t *testing.T) {
 	if err := skillRepo.BeginVersion(ctx, second); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, second.Version, app.BlobInfo{
+	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, second.Version, second.BlobKey, app.BlobInfo{
 		SizeBytes: 10, ChecksumSHA256: "second",
 	}); err != nil {
 		t.Fatal(err)
@@ -226,7 +226,7 @@ func TestAgentSkillPinsUseOneConnectionAndGuardDeletion(t *testing.T) {
 	if _, err := skillRepo.BeginDeleteVersion(ctx, skill.ID, first.Version); err != nil {
 		t.Fatalf("delete released old Agent pin: %v", err)
 	}
-	if err := skillRepo.RemoveIncompleteVersion(ctx, skill.ID, first.Version); err != nil {
+	if err := skillRepo.RemoveIncompleteVersion(ctx, skill.ID, first.Version, first.BlobKey); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := agents.Archive(ctx, agent.ID); err != nil {
@@ -251,7 +251,7 @@ func TestAgentSkillPinAndVersionDeletionLinearize(t *testing.T) {
 	if err := skillRepo.BeginSkill(ctx, skill, version); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, version.Version, app.BlobInfo{
+	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, version.Version, version.BlobKey, app.BlobInfo{
 		SizeBytes: 10, ChecksumSHA256: "race",
 	}); err != nil {
 		t.Fatal(err)
@@ -292,7 +292,7 @@ func TestAgentSkillPinAndVersionDeletionLinearize(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := skillRepo.RemoveIncompleteVersion(ctx, skill.ID, version.Version); err != nil {
+	if err := skillRepo.RemoveIncompleteVersion(ctx, skill.ID, version.Version, version.BlobKey); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -312,7 +312,7 @@ func TestAgentArchiveSerializesWithVersionAndPinCreation(t *testing.T) {
 	if err := skillRepo.BeginSkill(ctx, skill, version); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, version.Version, app.BlobInfo{
+	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, version.Version, version.BlobKey, app.BlobInfo{
 		SizeBytes: 10, ChecksumSHA256: "archive-race",
 	}); err != nil {
 		t.Fatal(err)
@@ -445,7 +445,7 @@ func TestSessionSkillPinsGuardVersionDeletionAndRollbackMissingReferences(t *tes
 	if err := repo.BeginSkill(ctx, skill, version); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := repo.CompleteVersion(ctx, skill.ID, version.Version, app.BlobInfo{
+	if _, _, err := repo.CompleteVersion(ctx, skill.ID, version.Version, version.BlobKey, app.BlobInfo{
 		SizeBytes: 10, ChecksumSHA256: "pin",
 	}); err != nil {
 		t.Fatal(err)
@@ -487,7 +487,7 @@ func TestSessionSkillPinsGuardVersionDeletionAndRollbackMissingReferences(t *tes
 	if _, err := repo.BeginDeleteVersion(ctx, skill.ID, version.Version); err != nil {
 		t.Fatalf("delete Version after Session release: %v", err)
 	}
-	if err := repo.RemoveIncompleteVersion(ctx, skill.ID, version.Version); err != nil {
+	if err := repo.RemoveIncompleteVersion(ctx, skill.ID, version.Version, version.BlobKey); err != nil {
 		t.Fatal(err)
 	}
 
@@ -516,7 +516,7 @@ func TestSessionSkillPinsCoverResolvedRosterExecutionScopes(t *testing.T) {
 	if err := repo.BeginSkill(ctx, skill, primaryVersion); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := repo.CompleteVersion(ctx, skill.ID, primaryVersion.Version, app.BlobInfo{
+	if _, _, err := repo.CompleteVersion(ctx, skill.ID, primaryVersion.Version, primaryVersion.BlobKey, app.BlobInfo{
 		SizeBytes: 10, ChecksumSHA256: "primary",
 	}); err != nil {
 		t.Fatal(err)
@@ -527,7 +527,7 @@ func TestSessionSkillPinsCoverResolvedRosterExecutionScopes(t *testing.T) {
 	if err := repo.BeginVersion(ctx, childVersion); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := repo.CompleteVersion(ctx, skill.ID, childVersion.Version, app.BlobInfo{
+	if _, _, err := repo.CompleteVersion(ctx, skill.ID, childVersion.Version, childVersion.BlobKey, app.BlobInfo{
 		SizeBytes: 11, ChecksumSHA256: "child",
 	}); err != nil {
 		t.Fatal(err)
@@ -608,7 +608,7 @@ func TestSessionSkillPinAndVersionDeletionLinearize(t *testing.T) {
 	if err := repo.BeginSkill(ctx, skill, version); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := repo.CompleteVersion(ctx, skill.ID, version.Version, app.BlobInfo{
+	if _, _, err := repo.CompleteVersion(ctx, skill.ID, version.Version, version.BlobKey, app.BlobInfo{
 		SizeBytes: 10, ChecksumSHA256: "race",
 	}); err != nil {
 		t.Fatal(err)
@@ -648,7 +648,7 @@ func TestSessionSkillPinAndVersionDeletionLinearize(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := repo.RemoveIncompleteVersion(ctx, skill.ID, version.Version); err != nil {
+	if err := repo.RemoveIncompleteVersion(ctx, skill.ID, version.Version, version.BlobKey); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -761,7 +761,9 @@ paths:
       summary: Upload a File
       description: >-
         If cleanup after a failed object write also fails, a hidden upload
-        record is retained for deletion by startup reconciliation.
+        record is retained for deletion by startup and periodic reconciliation.
+        Renewable internal database leases protect active uploads from cleanup
+        by other API processes; completion requires current upload ownership.
       requestBody:
         required: true
         content:
@@ -853,7 +855,8 @@ paths:
       summary: Create a custom Skill and its first immutable Version
       description: >-
         Failed archive writes retain hidden cleanup records until object
-        deletion succeeds. Startup reconciliation retries pending cleanup.
+        deletion succeeds. Startup and periodic reconciliation retry ended or
+        expired uploads. Internal renewable leases protect active uploads.
       requestBody:
         required: true
         content:
@@ -928,8 +931,9 @@ paths:
       summary: Create an immutable Skill Version
       description: >-
         Failed archive writes retain hidden cleanup records until object
-        deletion succeeds. Startup reconciliation retries pending cleanup
-        without removing existing ready Versions.
+        deletion succeeds. Startup and periodic reconciliation retry ended or
+        expired uploads without removing existing ready Versions. Internal
+        renewable leases and per-upload archive identity protect active uploads.
       requestBody:
         required: true
         content:

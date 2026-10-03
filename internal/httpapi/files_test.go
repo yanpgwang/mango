@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -19,6 +20,78 @@ import (
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
 )
+
+func TestMultipartUploadSourceCloseInterruptsPartRead(t *testing.T) {
+	source, writer := io.Pipe()
+	defer func() { _ = source.Close() }()
+	defer func() { _ = writer.Close() }()
+	multipartWriter := multipart.NewWriter(writer)
+	go func() { _, _ = multipartWriter.CreateFormFile("file", "blocked.txt") }()
+	reader := multipart.NewReader(source, multipartWriter.Boundary())
+	part, err := reader.NextPart()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := &singleMultipartPartReader{source: source, part: part, multipart: reader}
+	finished := make(chan error, 1)
+	go func() { _, err := body.Read(make([]byte, 1)); finished <- err }()
+	if err := body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-finished:
+		if err == nil {
+			t.Fatal("closed HTTP source returned success")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("closing upload reader did not interrupt multipart Read")
+	}
+}
+
+type cancelHTTPUploadService struct {
+	FileService
+	started  chan struct{}
+	cancel   chan struct{}
+	finished chan error
+}
+
+func (s *cancelHTTPUploadService) Upload(_ context.Context, input app.FileUploadInput) (domain.File, error) {
+	go func() { <-s.cancel; _ = input.Body.(io.Closer).Close() }()
+	close(s.started)
+	_, err := io.ReadAll(input.Body)
+	s.finished <- err
+	return domain.File{}, err
+}
+
+func TestFilesHTTP_CancelInterruptsRealHTTP1Upload(t *testing.T) {
+	service := &cancelHTTPUploadService{started: make(chan struct{}), cancel: make(chan struct{}), finished: make(chan error, 1)}
+	server := httptest.NewServer(NewServer(Deps{Files: service}, Config{}).Handler())
+	defer server.Close()
+	conn, err := net.Dial("tcp", strings.TrimPrefix(server.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	prefix := "--stall\r\nContent-Disposition: form-data; name=\"file\"; filename=\"blocked.txt\"\r\nContent-Type: text/plain\r\n\r\n"
+	request := "POST /v1/files HTTP/1.1\r\nHost: localhost\r\nContent-Type: multipart/form-data; boundary=stall\r\nContent-Length: 1048576\r\n\r\n" + prefix
+	if _, err := io.WriteString(conn, request); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-service.started:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not start upload")
+	}
+	close(service.cancel)
+	select {
+	case err := <-service.finished:
+		if err == nil {
+			t.Fatal("canceled upload returned success")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("actual HTTP Body.Close left multipart Read blocked")
+	}
+}
 
 func TestFilesHTTP_UploadShapeAndMultipartValidation(t *testing.T) {
 	service := newTestFileService()

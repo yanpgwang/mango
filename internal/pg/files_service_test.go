@@ -82,6 +82,11 @@ func TestFileService_PostgresS3RestartReconciliation(t *testing.T) {
 		bytes.NewBufferString("orphan"), app.MaxFileBytes); err != nil {
 		t.Fatal(err)
 	}
+	// Simulate an owner's crash followed by lease expiry, independently of the
+	// API clock and without waiting a minute in this service test.
+	if _, err := store.pool.Exec(ctx, `UPDATE files SET upload_expires_at=now()-interval '1 second' WHERE id=$1`, pending.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	deleting, err := repo.BeginDelete(ctx, created.ID)
 	if err != nil || deleting.State != domain.FileStateDeleting {

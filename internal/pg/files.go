@@ -11,23 +11,25 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
+	"github.com/yanpgwang/mango/internal/pg/pgstore"
 )
 
 var _ app.FileRepository = (*FileRepository)(nil)
 
 type FileRepository struct {
 	store *Store
+	*blobCleanupRepository
 }
 
 const insertFileStatement = `
 INSERT INTO files (
     id, created_at, updated_at, filename, mime_type, size_bytes,
     blob_key, checksum_sha256, state,
-    workspace_id
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+    workspace_id, upload_expires_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, clock_timestamp() + $11 * interval '1 second')`
 
 func NewFileRepository(store *Store) *FileRepository {
-	return &FileRepository{store: store}
+	return &FileRepository{store: store, blobCleanupRepository: &blobCleanupRepository{store: store, kind: "file"}}
 }
 
 func (r *FileRepository) BeginUpload(ctx context.Context, file domain.File) error {
@@ -41,7 +43,7 @@ func (r *FileRepository) BeginUpload(ctx context.Context, file domain.File) erro
 		file.ID, file.CreatedAt, file.UpdatedAt, file.Filename, file.MimeType,
 		file.SizeBytes, file.BlobKey,
 		file.ChecksumSHA256, string(file.State),
-		workspaceID,
+		workspaceID, app.UploadLeaseDuration.Seconds(),
 	)
 	if isUniqueViolation(err) {
 		return domain.Conflict("file id already exists")
@@ -58,21 +60,34 @@ func (r *FileRepository) CompleteUpload(
 	if err != nil {
 		return domain.File{}, err
 	}
-	row := r.store.pool.QueryRow(ctx, `
+	var file domain.File
+	err = r.store.withPGXTx(ctx, func(tx pgx.Tx, _ *pgstore.Queries) error {
+		if err := r.lockUpload(ctx, tx, id, workspaceID); err != nil {
+			if errors.Is(err, app.ErrUploadLeaseLost) {
+				return errors.Join(err, domain.Conflict("file upload is no longer pending"))
+			}
+			return err
+		}
+		row := tx.QueryRow(ctx, `
 UPDATE files
 SET size_bytes = $2,
     checksum_sha256 = $3,
     state = 'ready',
+    upload_expires_at = NULL,
     updated_at = now()
 WHERE id = $1 AND ($4 = '' OR workspace_id = $4) AND state = 'uploading'
+  AND (session_id IS NOT NULL OR upload_expires_at > clock_timestamp())
 RETURNING id, created_at, updated_at, filename, mime_type, size_bytes,
           blob_key, checksum_sha256, state, COALESCE(session_id, '')`,
-		id, info.SizeBytes, info.ChecksumSHA256, workspaceID,
-	)
-	file, err := scanFile(row)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.File{}, domain.Conflict("file upload is no longer pending")
-	}
+			id, info.SizeBytes, info.ChecksumSHA256, workspaceID,
+		)
+		var err error
+		file, err = scanFile(row)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errors.Join(app.ErrUploadLeaseLost, domain.Conflict("file upload is no longer pending"))
+		}
+		return err
+	})
 	return file, err
 }
 
