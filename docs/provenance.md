@@ -1359,3 +1359,30 @@ history, public events, or model context. Generated Files remain pinned while
 their Session exists; Session deletion releases them for ordinary File deletion,
 preventing replay from resurrecting explicitly deleted output. Images, PDF,
 audio, general File mounts, and MCP resources/prompts are outside this slice.
+
+## Shared-storage upload recovery (2026-10-04)
+
+Reviewed the current official [Files workflow](https://platform.claude.com/docs/en/managed-agents/files)
+and [Skills workflow](https://platform.claude.com/docs/en/managed-agents/skills),
+paired with official Go SDK v1.78.0 (`c9ebe447ac92c91748af817c265398e5d81ca49f`)
+`betafile.go` and `betaskill.go`. The API/SDK pair describes upload, immutable
+resource reads, and deletion, but does not expose hosted reconciliation or
+upload-owner internals. No equivalent CMA internal implementation is claimed.
+References were read, not imported or executed.
+
+Mango keeps its existing API/SDK mapping. This work was selected because a
+second self-hosted API process could delete another process's live Files/Skills
+upload, independently reproduced against PostgreSQL and SeaweedFS. Adopted the
+resource visibility invariant: only completed immutable bytes become public;
+unknown completion responses cannot justify deleting published bytes.
+
+Mango owns the internal solution: renewable PostgreSQL wall-time leases, atomic
+cleanup claims, unique per-attempt Skill archive keys, and periodic recovery.
+Independent object cleanup guards are committed with cleanup claims and survive
+removal or reuse of upload metadata. Sequence revisions fence stale
+acknowledgements; unknown writers retain guards and bounded scans rotate fairly.
+Cancellation expires the actual HTTP connection read deadline before closing the
+upload source.
+No hosted credentials, beta headers, public lease wrappers, new API namespace,
+or synchronization obligation are introduced. See the
+[recovery design](design/blob-upload-recovery.md) for acceptance and evidence.

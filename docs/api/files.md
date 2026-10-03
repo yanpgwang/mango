@@ -118,16 +118,23 @@ not automatically mount inputs or publish outputs from a workspace.
 ## Lifecycle and limits
 
 - Metadata becomes visible only after the object write completes.
-- Delete hides metadata before deleting bytes; startup reconciliation finishes
+- Delete hides metadata before deleting bytes; startup and periodic reconciliation finish
   interrupted operations.
 - If an object write fails and its cleanup cannot delete the object, Mango
-  retains the hidden upload record. Startup reconciliation retries that
+  retains the hidden upload record. Reconciliation retries that
   deletion after storage recovers; failed cleanup does not discard the record.
+  Independent object cleanup guards retain late writes even after the
+  original upload metadata is gone. Unknown remote writes keep a guard until
+  writer completion can be confirmed.
 - Files are accepted as bounded UTF-8 outcome rubrics and text-only
   `user.message` document content.
 - Worker workspace files remain private to the operator unless an application
   uploads them explicitly.
-- File metadata and object keys are Workspace-scoped. Startup reconciliation
-  currently assumes one Files-enabled API process.
+- File metadata and object keys are Workspace-scoped. A one-minute internal
+  database lease, renewed every 20 seconds during ordinary uploads, protects
+  active requests from another API process's cleanup. Completion checks lease
+  ownership; cleanup atomically claims only ended or expired uploads. API
+  processes retry cleanup every 20 seconds, including after a restart before
+  lease expiry. Lease loss cancels the upload; applications may retry the request.
 
 See [Session Resources](session-resources.md) for supported Memory Store inputs.

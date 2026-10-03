@@ -38,6 +38,15 @@ type ApiKey struct {
 	EnvironmentID *string
 }
 
+type BlobCleanupIntent struct {
+	Kind           string
+	BlobKey        string
+	WorkspaceID    string
+	Revision       int64
+	WriterFinished bool
+	LastCheckedAt  pgtype.Timestamptz
+}
+
 type Deployment struct {
 	ID                 string
 	AgentID            string
@@ -118,17 +127,18 @@ type Event struct {
 }
 
 type File struct {
-	SessionID      *string
-	ID             string
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	Filename       string
-	MimeType       string
-	SizeBytes      int64
-	BlobKey        string
-	ChecksumSha256 string
-	State          string
-	WorkspaceID    string
+	UploadExpiresAt pgtype.Timestamptz
+	SessionID       *string
+	ID              string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	Filename        string
+	MimeType        string
+	SizeBytes       int64
+	BlobKey         string
+	ChecksumSha256  string
+	State           string
+	WorkspaceID     string
 }
 
 type McpDiscoverySnapshot struct {
@@ -297,6 +307,7 @@ type Skill struct {
 }
 
 type SkillVersion struct {
+	UploadExpiresAt       pgtype.Timestamptz
 	SkillID               string
 	Version               string
 	CreatedAt             pgtype.Timestamptz

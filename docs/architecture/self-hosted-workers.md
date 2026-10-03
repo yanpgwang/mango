@@ -145,6 +145,7 @@ requires the scoped item credential and keeps standing keys outside containers.
 | Bounded worker execution healthcheck | [PR #224](https://github.com/yanpgwang/mango/pull/224) and [healthcheck design](../design/environment-healthcheck.md). |
 | Retained failed-upload cleanup intent | [PR #225](https://github.com/yanpgwang/mango/pull/225); File and Skill tests cover storage failure followed by restart reconciliation. |
 | Approval application resume | [PR #226](https://github.com/yanpgwang/mango/pull/226), with the retry-history correction in [PR #230](https://github.com/yanpgwang/mango/pull/230). |
+| Complete MCP text retention | [PR #245](https://github.com/yanpgwang/mango/pull/245); durable File publication and native worker preparation, with HTTP/SDK, storage, recovery, and Docker coverage. |
 | Explicit database migration and typed Skills | PRs #228–#229. These consolidate the development contract; they are not newly added worker capabilities. |
 
 The approval bug was a missed application boundary. Model retry recovery and
@@ -158,27 +159,29 @@ the runtime's existing recovery.
 
 ### Remaining work and evidence limits
 
-The first storage follow-up is **active-upload ownership during API startup**,
-not a new Files API or another deliverable tutorial. `FileService.Reconcile`
-selects all non-ready rows and deletes their blobs; `serve` runs it at startup.
-There is no owner/staleness distinction from another API process's live upload.
-A temporary application-level probe paused one service in `BlobStore.Put`, ran
-a second service's reconciler over the shared repository, then released Put.
-Upload completion failed with `not pending`, and one object remained without
-metadata. This used controlled repository/blob doubles, not PostgreSQL/S3;
-the probe was not retained as a shipped test or presented as service coverage.
+The active-upload startup race identified in the September assessment is now
+addressed by [upload recovery across API processes](../design/blob-upload-recovery.md).
+Ordinary Files and Skills commit renewable database leases. Cleanup atomically
+claims only ended or expired uploads, and periodic scans collect crashes even
+when the replacement API started before lease expiry. Ready resources survive
+lost completion responses. Independent object cleanup guards retain late writes after the original
+metadata is gone, including writer crashes after publication. Non-reused
+revisions protect newer guards from stale acknowledgements. Unknown remote
+writes keep a guard and are revisited by bounded, rotating scans.
 
-Existing `TestFileService_PostgresS3ConcurrentLifecycle` proves concurrent
-uploads/deletes through one service. It does not cover this interleaving.
-`SkillService.Reconcile` has the analogous ownership question, which needs its
-own reproduction. PR #225's crash/outage cleanup remains useful; safe cleanup
-must preserve that behavior while protecting active operations. Acceptance for
-the next selected slice must include independent real-PostgreSQL, two-service
-upload-versus-reconcile coverage, lost-completion-response behavior, and eventual
-cleanup after a genuine crash. Until then, multi-replica API rollout with
-Files/Skills is not an established operating mode.
+Two independently pooled services sharing real PostgreSQL and SeaweedFS now
+exercise upload-versus-reconcile on both sides of object publication, expiry,
+reused time-based Skill Versions, deletion outages, and completion-response
+loss. The earlier one-service concurrent lifecycle test remains useful but
+cannot establish those interleavings alone. This resolves the selected storage
+boundary; broader multi-replica rollout and production operation remain separate
+evidence requirements.
 
-After that storage boundary, prioritize a versioned self-hosted alpha bundle,
+The next selected recovery slice is generated MCP File publication after an
+unknown object-write outcome: its workflow retries the same key, so prior remote
+attempts need tracking through ready publication and later deletion. This is
+separate from ordinary upload ownership above. After that, prioritize a
+versioned self-hosted alpha bundle,
 matched native SDK artifacts, and a demonstrated backup/restore procedure for
 database, objects, Memory, and encryption keys. Kubernetes distribution and
 worker rollout/versioning require their own operational acceptance; a Docker

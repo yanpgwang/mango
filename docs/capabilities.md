@@ -48,7 +48,7 @@ access still depends on the sandbox boundary.
 | [Model and context](architecture/storage-context-and-tools.md) | Limited | Durable transcripts, model-window profiles, usage-based estimates, request admission, and compaction. Exact provider token counts, complete request audit records, and equivalent Outcome/Advisor overflow recovery remain open. |
 | [Shell and file tools](guides/self-hosted-worker.md) | Limited | `bash`, `read`, `write`, `edit`, `glob`, and `grep`; `read` is capped at 64 KiB. No host-process fallback. See the execution-path table above. |
 | [MCP](architecture/storage-context-and-tools.md#mcp) | Limited | Streamable HTTP, permissions, journaled calls, and Vault bearer/OAuth authentication. Large textual results retain a complete File up to 32 MiB with Files storage configured; native Go workers prepare it before tool dispatch; binary content, private-network connectivity, deprecated SSE, MCP resources, and prompts are unsupported. |
-| [Files](api/files.md) | Limited | S3-compatible immutable upload/download, Workspace isolation, and lifecycle recovery, including retained cleanup records when failed-upload deletion must be retried. Applications explicitly transfer workspace deliverables. File-sourced images/PDFs and distributed reconciliation remain open. |
+| [Files](api/files.md) | Limited | S3-compatible immutable upload/download, Workspace isolation, and lifecycle recovery, including retained cleanup records when failed-upload deletion must be retried. Applications explicitly transfer workspace deliverables. File-sourced images/PDFs and broader multi-replica operating evidence remain open. Active-upload cleanup is fenced across API processes; unknown remote writes retain durable guards. |
 | [Session Resources](api/session-resources.md) | Limited | Create-time Memory Store attachments. File/Git staging is operator-owned. |
 | [Skills](api/skills.md) | Limited | Validated bundles, typed immutable references, exact expanded-size admission, Agent-scoped pins, and instruction loading. External catalogs and repository discovery are not implemented. |
 | [Memory](api/memory.md) | Limited | Versioned UTF-8 files, optimistic preconditions, and attached-Store synchronization. Automatic retention and non-Docker self-hosted launchers are not implemented. |
@@ -77,10 +77,11 @@ access still depends on the sandbox boundary.
   startup after successful migration. Versioned distribution upgrades and
   rollback procedures remain open.
 - **Scaling and recovery:** API and orchestration roles can run separately.
-  Multi-replica API rollout with Files/Skills is not established: startup
-  reconciliation does not distinguish another process's active uploads from
-  crash leftovers. See the [current assessment](architecture/self-hosted-workers.md#remaining-work-and-evidence-limits).
-  Worker Versioning, heterogeneous-worker routing, distributed reconciliation,
+  Files/Skills upload leases and atomic cleanup claims protect another API
+  process's active uploads, with two-service PostgreSQL/object-store tests.
+  This establishes that storage boundary, not a supported Kubernetes
+  distribution. See the [current assessment](architecture/self-hosted-workers.md#remaining-work-and-evidence-limits).
+  Worker Versioning, heterogeneous-worker routing, broader rollout evidence,
   backup, audit, and observability still need work.
 - **Docker ownership:** the operator-run supervisor has Docker daemon authority;
   keep it outside untrusted Session containers and apply ordinary Docker host

@@ -25,8 +25,6 @@ func baseURL() string {
 	return os.Getenv(testDatabaseURLEnv)
 }
 
-var schemaSeq atomic.Int64
-
 // testStore provisions an isolated PostgreSQL schema for one test, runs
 // migrations into it, and returns a Store bound to it. It skips the test when no
 // test database is configured. Each test gets its own schema so parallel tests
@@ -51,9 +49,9 @@ func testStoreWithOptions(t *testing.T, maxConns int32) *Store {
 	if err != nil {
 		t.Fatalf("parse url: %v", err)
 	}
-	// Isolate this test in its own schema via search_path so migrations and data
-	// never collide with another test's tables.
-	schema := "test_" + sanitize(t.Name()) + "_" + itoa(schemaSeq.Add(1))
+	// Put randomness before the readable name so PostgreSQL's 63-byte identifier
+	// truncation cannot erase it. Independent test processes may run the same case.
+	schema := "test_" + domain.NewRandomIDGen().NewID("")[:12] + "_" + sanitize(t.Name())
 	cfg.ConnConfig.RuntimeParams["search_path"] = schema
 	cfg.ConnConfig.RuntimeParams["application_name"] = schema
 	if maxConns > 0 {

@@ -9944,7 +9944,7 @@
         "x-sdk-resource": "files"
       },
       "post": {
-        "description": "If cleanup after a failed object write also fails, a hidden upload record is retained for deletion by startup reconciliation.",
+        "description": "If cleanup after a failed object write also fails, a hidden upload record is retained for deletion by startup and periodic reconciliation. Renewable internal database leases protect active uploads from cleanup by other API processes; completion requires current upload ownership.",
         "operationId": "uploadFile",
         "requestBody": {
           "content": {
@@ -11148,7 +11148,7 @@
         "x-sdk-resource": "skills"
       },
       "post": {
-        "description": "Failed archive writes retain hidden cleanup records until object deletion succeeds. Startup reconciliation retries pending cleanup.",
+        "description": "Failed archive writes retain hidden cleanup records until object deletion succeeds. Startup and periodic reconciliation retry ended or expired uploads. Internal renewable leases protect active uploads.",
         "operationId": "createSkill",
         "requestBody": {
           "content": {
@@ -11270,7 +11270,7 @@
         }
       ],
       "post": {
-        "description": "Failed archive writes retain hidden cleanup records until object deletion succeeds. Startup reconciliation retries pending cleanup without removing existing ready Versions.",
+        "description": "Failed archive writes retain hidden cleanup records until object deletion succeeds. Startup and periodic reconciliation retry ended or expired uploads without removing existing ready Versions. Internal renewable leases and per-upload archive identity protect active uploads.",
         "operationId": "createSkillVersion",
         "requestBody": {
           "content": {

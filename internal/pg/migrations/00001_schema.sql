@@ -305,7 +305,18 @@ CREATE TABLE mcp_discovery_snapshots (
 
 -- Files and immutable Skills.
 
+CREATE TABLE blob_cleanup_intents (
+    kind text NOT NULL CHECK (kind IN ('file', 'skill')),
+    blob_key text NOT NULL,
+    workspace_id text NOT NULL REFERENCES workspaces(id),
+    revision bigserial NOT NULL CHECK (revision > 0),
+    writer_finished boolean NOT NULL DEFAULT false,
+    last_checked_at timestamptz NOT NULL DEFAULT '-infinity',
+    PRIMARY KEY (kind, blob_key)
+);
+
 CREATE TABLE files (
+    upload_expires_at timestamptz,
     session_id text REFERENCES sessions(id) ON DELETE SET NULL,
     id text NOT NULL,
     created_at timestamptz NOT NULL,
@@ -350,6 +361,7 @@ CREATE INDEX skills_ready_list_idx ON skills USING btree (created_at DESC, id DE
 CREATE INDEX skills_workspace_list_idx ON skills USING btree (workspace_id, created_at DESC, id DESC);
 
 CREATE TABLE skill_versions (
+    upload_expires_at timestamptz,
     skill_id text NOT NULL,
     version text NOT NULL,
     created_at timestamptz NOT NULL,
@@ -942,6 +954,7 @@ DROP TABLE
     skill_versions,
     skills,
     files,
+    blob_cleanup_intents,
     mcp_discovery_snapshots,
     model_request_usage,
     thread_context_snapshots,

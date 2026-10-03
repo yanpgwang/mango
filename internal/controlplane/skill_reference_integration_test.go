@@ -24,7 +24,7 @@ func TestPostgresAgentAndSessionSkillVersionResolution(t *testing.T) {
 	if err := skillRepo.BeginSkill(ctx, skill, first); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, first.Version, app.BlobInfo{
+	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, first.Version, first.BlobKey, app.BlobInfo{
 		SizeBytes: 10, ChecksumSHA256: "first",
 	}); err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestPostgresAgentAndSessionSkillVersionResolution(t *testing.T) {
 	if err := skillRepo.BeginVersion(ctx, second); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, second.Version, app.BlobInfo{
+	if _, _, err := skillRepo.CompleteVersion(ctx, skill.ID, second.Version, second.BlobKey, app.BlobInfo{
 		SizeBytes: 20, ChecksumSHA256: "second",
 	}); err != nil {
 		t.Fatal(err)

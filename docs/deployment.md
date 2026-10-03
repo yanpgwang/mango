@@ -93,8 +93,9 @@ Files and Skill bundles add an S3-compatible dependency beside PostgreSQL,
 Temporal, and NATS.
 Set `MANGO_FILE_S3_BUCKET` to enable the five Files routes; leaving it
 empty keeps the rest of the API available and makes Files requests return
-`422`. Failure to initialize or reconcile the configured object store also
-disables only Files so the Mango core remains available. The API
+`422`. Failure to initialize the configured object store disables Files and Skills
+while the Mango core remains available. Once connected, a startup cleanup error
+is logged and retried periodically; it does not disable the resource APIs. The API
 process uses these settings for uploads and File-message admission. A worker
 that resolves File message content or File-backed outcome rubrics must use the
 same bucket, endpoint, region, and credentials (it does not run startup intent
@@ -111,10 +112,13 @@ operator-owned self-hosted concerns:
 | `MANGO_FILE_S3_CREATE_BUCKET` | Development convenience; create a missing bucket |
 | `MANGO_FILE_UPLOAD_TEMP_DIR` | Directory for bounded upload spool files |
 
-The first Files slice assumes one Files-enabled API process during startup
-reconciliation. It also needs temporary disk capacity up to 500 MB per
-concurrent upload. These are explicit limits until distributed intent leasing
-and direct multipart object-store operations are implemented.
+Files and Skills uploads use renewable database leases so another API process's
+startup cleanup preserves active uploads. Leases last one minute and renew
+every 20 seconds. Startup and periodic cleanup atomically claim ended or expired
+uploads; periodic scans retry every 20 seconds. PostgreSQL measures expiry,
+independently of API clocks. See the [recovery design](design/blob-upload-recovery.md)
+for failure and verification boundaries. Files still need temporary disk capacity
+up to 500 MB per concurrent upload.
 
 The API and Temporal orchestration worker do not need Docker credentials. Run
 the standalone Environment worker where its selected Docker Engine is
@@ -127,6 +131,12 @@ metadata and object bytes. Production may use any suitable S3-compatible
 service; Mango does not require SeaweedFS. See the
 [local object-store guide](https://github.com/yanpgwang/mango/blob/main/deployments/local/README.md#development-object-store)
 for sizing, backup boundaries, and the transition from the old MinIO stack.
+
+Unconfirmed abandoned-upload guards remain in PostgreSQL and are revisited by
+bounded periodic object cleanup. They preserve recovery when an old writer or
+remote request might still commit after metadata removal. They must not be
+removed based only on elapsed time. Queue scans rotate through old guards;
+general guard inventory and safe compaction remain future operator work.
 
 ## Memory storage
 
@@ -259,7 +269,7 @@ A supported Docker or Kubernetes bundle requires:
 4. repeatable live conformance for supported Environment launchers;
 5. real PostgreSQL, Temporal, NATS, S3-compatible storage, and worker
    integration tests in CI;
-6. distributed Files reconciliation and documented temporary-disk sizing;
+6. broader multi-replica recovery evidence and documented temporary-disk sizing;
 7. versioned images with upgrade and rollback documentation.
 
 Kubernetes packaging will use separate API and worker Deployments from the same
