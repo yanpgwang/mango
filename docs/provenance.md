@@ -1327,3 +1327,35 @@ SDK plus native command tests. PostgreSQL tests verify source references and
 resolution routing; HTTP/SDK tests and language typechecks verify the new field.
 Runtime execution and admission invariants remain
 owned by Mango's existing HTTP, workflow, persistence, and service tests.
+
+## MCP full textual output retention (2026-10-03)
+
+Reviewed the current official [MCP output handling](https://platform.claude.com/docs/en/managed-agents/mcp-connector#mcp-tool-output-handling)
+and [self-hosted sandbox](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+guides, paired with official Go SDK v1.78.0 (`c9ebe447ac92c91748af817c265398e5d81ca49f`),
+`betasessionevent.go` and `lib/environments/worker.go`. These are read-only
+clean-room references; no official SDK or cookbook executes as a Mango client.
+
+Adopted the useful lifecycle: MCP output above 100,000 characters gives the
+model a 2,000-character preview and a file path it can read later. Mango retains
+its projected model-visible UTF-8 text, including structured text, rather than
+protocol control metadata or binary contents. This solves lost information in
+large log, issue-list, and query results while bounding model context.
+
+Adapted transfer for Mango's independent self-hosted runtime: a completed tool
+receipt precedes object storage; a regular Mango File is published under a
+stable ID; native Go workers download it before local tool dispatch. The public
+`agent.mcp_tool_result.file_id` is a machine-readable Mango adaptation. The
+reviewed CMA event type has no equivalent top-level field, and the general CMA
+MCP guide does not establish how fallback files reach an external self-hosted
+worker. No exact wire parity or confirmed CMA self-hosted transfer is claimed.
+
+Mango limits retained projected text to 32 MiB. It requires configured Files
+storage, reports a tool error with a preview if retention is unavailable or
+oversized, and retries only File publication after a durable receipt. The
+private full byte receipt uses JSON base64 encoding to retain NUL losslessly in
+PostgreSQL JSONB, is removed after publication, and never enters Temporal
+history, public events, or model context. Generated Files remain pinned while
+their Session exists; Session deletion releases them for ordinary File deletion,
+preventing replay from resurrecting explicitly deleted output. Images, PDF,
+audio, general File mounts, and MCP resources/prompts are outside this slice.

@@ -66,7 +66,7 @@ SET size_bytes = $2,
     updated_at = now()
 WHERE id = $1 AND ($4 = '' OR workspace_id = $4) AND state = 'uploading'
 RETURNING id, created_at, updated_at, filename, mime_type, size_bytes,
-          blob_key, checksum_sha256, state`,
+          blob_key, checksum_sha256, state, COALESCE(session_id, '')`,
 		id, info.SizeBytes, info.ChecksumSHA256, workspaceID,
 	)
 	file, err := scanFile(row)
@@ -83,7 +83,7 @@ func (r *FileRepository) Get(ctx context.Context, id string) (domain.File, error
 	}
 	row := r.store.pool.QueryRow(ctx, `
 SELECT id, created_at, updated_at, filename, mime_type, size_bytes,
-       blob_key, checksum_sha256, state
+       blob_key, checksum_sha256, state, COALESCE(session_id, '')
 FROM files
 WHERE id = $1 AND ($2 = '' OR workspace_id = $2) AND state = 'ready'`, id, workspaceID)
 	file, err := scanFile(row)
@@ -134,7 +134,7 @@ func (r *FileRepository) List(
 	args = append(args, query.Limit+1)
 	statement := fmt.Sprintf(`
 SELECT id, created_at, updated_at, filename, mime_type, size_bytes,
-       blob_key, checksum_sha256, state
+       blob_key, checksum_sha256, state, COALESCE(session_id, '')
 FROM files
 WHERE %s
 ORDER BY %s
@@ -173,9 +173,9 @@ func (r *FileRepository) BeginDelete(ctx context.Context, id string) (domain.Fil
 	row := r.store.pool.QueryRow(ctx, `
 UPDATE files AS target
 SET state = 'deleting', updated_at = now()
-WHERE target.id = $1 AND ($2 = '' OR target.workspace_id = $2) AND target.state = 'ready'
+WHERE target.id = $1 AND ($2 = '' OR target.workspace_id = $2) AND target.state = 'ready' AND target.session_id IS NULL
 RETURNING id, created_at, updated_at, filename, mime_type, size_bytes,
-          blob_key, checksum_sha256, state`, id, workspaceID)
+          blob_key, checksum_sha256, state, COALESCE(session_id, '')`, id, workspaceID)
 	file, err := scanFile(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.File{}, domain.NotFound("file not found")
@@ -197,9 +197,9 @@ WHERE id = $1 AND ($2 = '' OR workspace_id = $2) AND state <> 'ready'`, id, work
 func (r *FileRepository) ListIncomplete(ctx context.Context) ([]domain.File, error) {
 	rows, err := r.store.pool.Query(ctx, `
 SELECT id, created_at, updated_at, filename, mime_type, size_bytes,
-       blob_key, checksum_sha256, state
+       blob_key, checksum_sha256, state, COALESCE(session_id, '')
 FROM files
-WHERE state <> 'ready'
+WHERE state <> 'ready' AND (state = 'deleting' OR session_id IS NULL)
 ORDER BY updated_at, id`)
 	if err != nil {
 		return nil, err
@@ -225,7 +225,7 @@ func scanFile(row fileScanner) (domain.File, error) {
 	err := row.Scan(
 		&file.ID, &file.CreatedAt, &file.UpdatedAt, &file.Filename,
 		&file.MimeType, &file.SizeBytes, &file.BlobKey, &file.ChecksumSHA256,
-		&file.State,
+		&file.State, &file.SessionID,
 	)
 	if err != nil {
 		return domain.File{}, err
@@ -233,4 +233,25 @@ func scanFile(row fileScanner) (domain.File, error) {
 	file.CreatedAt = file.CreatedAt.UTC()
 	file.UpdatedAt = file.UpdatedAt.UTC()
 	return file, nil
+}
+
+// EnsureToolOutputUpload recovers one immutable generated File upload. Unlike
+// user uploads, its bytes already have a durable tool receipt and are never
+// discarded by startup reconciliation while the owning Session exists.
+func (r *FileRepository) EnsureToolOutputUpload(ctx context.Context, file domain.File) (domain.File, error) {
+	workspaceID, err := r.store.workspaceForWrite(ctx)
+	if err != nil {
+		return domain.File{}, err
+	}
+	_, err = r.store.pool.Exec(ctx, `INSERT INTO files (id,created_at,updated_at,filename,mime_type,size_bytes,blob_key,checksum_sha256,state,workspace_id,session_id)
+ SELECT $1,$2,$3,$4,$5,$6,$7,$8,'uploading',$9,id FROM sessions WHERE id=$10 AND workspace_id=$9 AND deleting_at IS NULL
+ ON CONFLICT (id) DO NOTHING`, file.ID, file.CreatedAt, file.UpdatedAt, file.Filename, file.MimeType, file.SizeBytes, file.BlobKey, file.ChecksumSHA256, workspaceID, file.SessionID)
+	if err != nil {
+		return domain.File{}, err
+	}
+	stored, err := scanFile(r.store.pool.QueryRow(ctx, `SELECT id,created_at,updated_at,filename,mime_type,size_bytes,blob_key,checksum_sha256,state,COALESCE(session_id,'') FROM files WHERE id=$1 AND workspace_id=$2`, file.ID, workspaceID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.File{}, domain.NotFound("tool output owning Session or File not found")
+	}
+	return stored, err
 }

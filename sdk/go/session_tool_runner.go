@@ -56,7 +56,9 @@ type SessionTool interface {
 
 // SessionToolRunnerOptions configure a provider-neutral runner for one Session.
 type SessionToolRunnerOptions struct {
-	Tools []SessionTool
+	// Workdir enables preparation of full MCP output Files before local dispatch.
+	Workdir string
+	Tools   []SessionTool
 	// MaxIdle starts after session.status_idle{stop_reason:end_turn}. nil uses
 	// DefaultMaxIdle; a non-positive value disables it.
 	MaxIdle *time.Duration
@@ -112,8 +114,9 @@ type SessionToolRunner struct {
 	errMu sync.Mutex
 	err   error
 
-	state *sessionToolState
-	idle  *sessionIdleClock
+	outputs *sessionToolOutputs
+	state   *sessionToolState
+	idle    *sessionIdleClock
 
 	sleep      func(context.Context, time.Duration)
 	retryDelay func(int) time.Duration
@@ -305,6 +308,9 @@ func (r *SessionToolRunner) start() (<-chan DispatchedToolCall, bool) {
 				r.cancel(err)
 			}
 		}
+		if r.outputs != nil {
+			_ = r.outputs.root.Close()
+		}
 		r.setErr(terminal)
 		close(r.results)
 		close(r.done)
@@ -400,6 +406,17 @@ func (r *SessionToolRunner) ingest(ctx context.Context, queue chan<- pendingSess
 				if err := r.handleLiveEvent(ctx, queue, confirmations, awaiting, *item.event); err != nil {
 					stopStream()
 					_ = stream.Close()
+					var outputError *toolOutputPreparationError
+					if errors.As(err, &outputError) {
+						if terminal := classifySessionRequestError("prepare MCP output", err); terminal != nil {
+							return terminal
+						}
+						failures++
+						delay := r.retryDelay(failures)
+						r.logger.Warn("MCP output preparation failed; reconnecting", "delay", delay, "error", err)
+						r.sleep(ctx, delay)
+						goto reconnect
+					}
 					return err
 				}
 			}
@@ -461,6 +478,9 @@ func (r *SessionToolRunner) reconcile(
 	})
 	for pager.Next() {
 		event := pager.Value()
+		if err := r.prepareToolOutput(ctx, event); err != nil {
+			return err
+		}
 		last, hasLast = event, true
 		r.markSeen(sessionEventID(event))
 		switch {
@@ -508,6 +528,9 @@ func (r *SessionToolRunner) handleLiveEvent(
 	awaiting map[string]pendingSessionToolCall,
 	event SessionEvent,
 ) error {
+	if err := r.prepareToolOutput(ctx, event); err != nil {
+		return err
+	}
 	id := sessionEventID(event)
 	if id != "" && !r.markSeen(id) {
 		return nil
@@ -896,6 +919,10 @@ func classifySessionRequestError(action string, err error) error {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusPreconditionFailed:
 		return fmt.Errorf("%w: %s: %v", ErrSessionLeaseLost, action, err)
 	case http.StatusNotFound, http.StatusGone:
+		var outputError *toolOutputPreparationError
+		if errors.As(err, &outputError) {
+			return fmt.Errorf("mango: %s: %w", action, err)
+		}
 		return fmt.Errorf("%w: %s: %v", ErrSessionTerminated, action, err)
 	}
 	if apiError.StatusCode >= 400 && apiError.StatusCode < 500 &&

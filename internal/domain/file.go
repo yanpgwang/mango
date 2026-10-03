@@ -17,6 +17,8 @@ const (
 // BlobKey and ChecksumSHA256 are persistence/runtime fields and never cross
 // the public wire.
 type File struct {
+	// SessionID pins generated tool output while its owning Session exists.
+	SessionID      string
 	ID             string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

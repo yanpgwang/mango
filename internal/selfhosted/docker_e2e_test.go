@@ -71,6 +71,8 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 		}
 	}
 	skillArchive := dockerSkillArchive(t)
+	largeOutput := strings.Repeat("x", 100001) + "tail-proof"
+	largeOutputChecksum := fmt.Sprintf("%x", sha256.Sum256([]byte(largeOutput)))
 	var memoryMu sync.Mutex
 	memoryContent := "memory-initial"
 	var polls, acknowledgements, firstHeartbeats, renewals, streams, results, stops atomic.Int32
@@ -191,6 +193,12 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 			item := dockerMemoryFixture(memoryContent, true)
 			memoryMu.Unlock()
 			writeJSON(t, w, item)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/files/file_e2e_output":
+			assertItemAuthorization(t, r)
+			writeJSON(t, w, map[string]any{"id": "file_e2e_output", "type": "file", "created_at": "2026-10-03T00:00:00Z", "filename": "file_e2e_output.txt", "mime_type": "text/plain", "size_bytes": len(largeOutput), "checksum_sha256": largeOutputChecksum})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/files/file_e2e_output/content":
+			assertItemAuthorization(t, r)
+			_, _ = fmt.Fprint(w, largeOutput)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/events/stream"):
 			assertItemAuthorization(t, r)
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -200,6 +208,7 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 				return
 			}
 			activation := streams.Add(1)
+			_, _ = fmt.Fprintf(w, "event: agent.mcp_tool_result\ndata: {\"id\":\"mcp_output_%d\",\"type\":\"agent.mcp_tool_result\",\"processed_at\":null,\"mcp_tool_use_id\":\"mcp_use\",\"file_id\":\"file_e2e_output\",\"content\":[{\"type\":\"text\",\"text\":\"preview\"}]}\n\n", activation)
 			calls := []dockerBashCall{
 				{ID: "tool_e2e_resume", Input: map[string]any{"command": "cat proof.txt"}},
 				{ID: "tool_e2e_skill_resume", Input: map[string]any{"command": "grep -o self-hosted-skill skills/docker-skill/SKILL.md"}},
@@ -224,6 +233,7 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 					}
 				}
 			}
+			calls = append(calls, dockerBashCall{ID: "tool_e2e_mcp_output", Input: map[string]any{"command": "tail -c 10 /workspace/.mango-tool-results/file_e2e_output.txt"}})
 			for _, call := range calls {
 				if err := writeDockerBashEvent(w, call); err != nil {
 					t.Errorf("write tool event: %v", err)
@@ -248,6 +258,7 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 			encoded, _ := json.Marshal(body)
 			result := string(encoded)
 			expected := map[string]string{
+				"tool_e2e_mcp_output":          "tail-proof",
 				"tool_e2e_credential_boundary": "parent-protected",
 				"tool_e2e_state_1":             "ready",
 				"tool_e2e_state_2":             "docker-e2e|/workspace/state-dir",
@@ -368,9 +379,9 @@ func testDockerItemLifecycle(t *testing.T, cancelDuringFlush, bindWorkspace bool
 	if finalMemory != "memory-updated" {
 		t.Fatalf("final Memory = %q", finalMemory)
 	}
-	wantPolls, wantActivations, wantResults := int32(3), int32(2), int32(11)
+	wantPolls, wantActivations, wantResults := int32(3), int32(2), int32(13)
 	if cancelDuringFlush {
-		wantPolls, wantActivations, wantResults = 1, 1, 8
+		wantPolls, wantActivations, wantResults = 1, 1, 9
 		if !delayedFlush.Load() {
 			t.Fatal("shutdown did not overlap a Memory upload")
 		}

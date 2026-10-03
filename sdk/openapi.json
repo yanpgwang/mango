@@ -1795,6 +1795,10 @@
                 },
                 "type": "array"
               },
+              "file_id": {
+                "description": "Full projected UTF-8 text retained as a Mango File when output exceeds 100000 characters. Self-hosted workers materialize it at .mango-tool-results/{file_id}.txt before tool dispatch. The File is pinned until its Session is deleted.",
+                "type": "string"
+              },
               "is_error": {
                 "type": "boolean"
               },
@@ -3984,6 +3988,10 @@
       "File": {
         "additionalProperties": false,
         "properties": {
+          "checksum_sha256": {
+            "description": "SHA-256 hex digest of the complete File bytes.",
+            "type": "string"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -102,5 +103,27 @@ func TestSendEvents_RejectsMCPToolEventTypes(t *testing.T) {
 		`"tool_use_id":"sevt_x","result":"allow"}]}`
 	if rec := do(h, "POST", "/v1/sessions/"+id+"/events", confirmation); rec.Code == 400 {
 		t.Fatalf("tool_use_id must stay the confirmation field: %s", rec.Body)
+	}
+}
+
+func TestMCPOutputRawHTTPContract(t *testing.T) {
+	handler := NewServer(Deps{Events: mcpOutputContractEvents{}, Sessions: mcpOutputContractSessions{}}, Config{}).Handler()
+	result := do(handler, "GET", "/v1/sessions/sesn_mcp_fixture/events", "")
+	if result.Code != 200 {
+		t.Fatalf("status=%d %s", result.Code, result.Body.String())
+	}
+	var page struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(result.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Data) != 1 || len(page.Data[0]) != 7 || page.Data[0]["file_id"] != "file_mcp_full" || page.Data[0]["mcp_tool_use_id"] != "sevt_mcp_use" || page.Data[0]["type"] != "agent.mcp_tool_result" {
+		t.Fatalf("wire=%s", result.Body.String())
+	}
+	for _, key := range []string{"full_output", "raw", "path", "sequence", "session_id"} {
+		if _, ok := page.Data[0][key]; ok {
+			t.Fatalf("private field %s leaked", key)
+		}
 	}
 }

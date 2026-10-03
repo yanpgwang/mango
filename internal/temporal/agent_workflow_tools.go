@@ -785,6 +785,7 @@ func resumeWorkflowTurn(
 
 		content := action.Content
 		isError := action.IsError
+		outputFileID := ""
 		switch action.Kind {
 		case domain.PendingCustomToolResult:
 			if definition.Kind != TurnToolCustom {
@@ -861,6 +862,7 @@ func resumeWorkflowTurn(
 					), nil
 				}
 				turn.output = append(turn.output, executed.Events...)
+				outputFileID = executed.Result.FileID
 				content = executed.Result.Content
 				isError = executed.Result.IsError
 				if activityOutcome.Interrupted {
@@ -868,7 +870,7 @@ func resumeWorkflowTurn(
 						action.ActionEventType,
 						action.ActionEventID,
 						content,
-						isError,
+						isError, outputFileID,
 					))
 					return nil, true, "", nil
 				}
@@ -877,7 +879,7 @@ func resumeWorkflowTurn(
 				action.ActionEventType,
 				action.ActionEventID,
 				content,
-				isError,
+				isError, outputFileID,
 			))
 		default:
 			return nil, false, failTurn("unknown pending action kind"), nil
@@ -956,15 +958,16 @@ func toolResultDraft(
 	toolUseEventID string,
 	content []any,
 	isError bool,
+	fileIDs ...string,
 ) domain.EventDraft {
 	if domain.AgentToolResultTypeFor(toolUseEventType) == domain.EvAgentMcpToolResult {
+		payload := map[string]any{"mcp_tool_use_id": toolUseEventID, "content": content, "is_error": isError}
+		if len(fileIDs) > 0 && fileIDs[0] != "" {
+			payload["file_id"] = fileIDs[0]
+		}
 		return domain.EventDraft{
-			Type: domain.EvAgentMcpToolResult,
-			Payload: map[string]any{
-				"mcp_tool_use_id": toolUseEventID,
-				"content":         content,
-				"is_error":        isError,
-			},
+			Type:    domain.EvAgentMcpToolResult,
+			Payload: payload,
 		}
 	}
 	return domain.EventDraft{
@@ -1233,7 +1236,7 @@ func executeToolBatch(
 				planned.useEventType,
 				planned.publicEventID,
 				executed.Result.Content,
-				executed.Result.IsError,
+				executed.Result.IsError, executed.Result.FileID,
 			))
 		}
 		execution.resultBlocks = append(execution.resultBlocks, domain.ContentBlock{

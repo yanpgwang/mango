@@ -172,6 +172,11 @@ func sessionScopeAllows(r *http.Request, scope workspace.SessionScope) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
+	if parts[1] == "files" && (len(parts) == 3 || (len(parts) == 4 && parts[3] == "content")) {
+		// FileService checks the immutable Session association, in addition to
+		// this route-level read-only grant and authentication's live Work lease.
+		return true
+	}
 	if len(parts) >= 3 && parts[1] == "skills" {
 		if len(parts) == 3 {
 			for skill := range scope.Skills {

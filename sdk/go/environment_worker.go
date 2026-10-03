@@ -290,7 +290,7 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 			}
 		} else {
 			runner := NewSessionToolRunner(sessionCtx, itemClient, work.Data.SessionID(), SessionToolRunnerOptions{
-				Tools: inputs.tools, MaxIdle: w.opts.MaxIdle,
+				Tools: inputs.tools, Workdir: w.opts.Workdir, MaxIdle: w.opts.MaxIdle,
 				ToolTimeout: w.opts.ToolTimeout, SendTimeout: w.opts.SendTimeout,
 				SendRetryWindow: startup.ttl, Logger: log,
 			})

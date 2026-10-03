@@ -55,7 +55,12 @@ const (
 
 type ToolStepResult struct {
 	Content []any `json:"content"`
-	IsError bool  `json:"is_error"`
+	// FileID references a published textual result File. FullOutput is a private
+	// byte receipt retained only until publication; JSON encodes it as base64 so
+	// every UTF-8 byte (including NUL) survives PostgreSQL JSONB. It never enters Workflow history.
+	FileID     string `json:"file_id,omitempty"`
+	FullOutput []byte `json:"full_output,omitempty"`
+	IsError    bool   `json:"is_error"`
 	// InjectedContent is private provider-continuation content produced by an
 	// agent-runtime primitive after its ordinary tool_result. Skill activation
 	// uses it to persist the rendered SKILL.md as a sibling user content block,
@@ -67,8 +72,8 @@ type ToolStepResult struct {
 	// from the model-facing result projection.
 	Events []EventDraft `json:"events,omitempty"`
 	// Raw retains a bounded executor-native result for diagnostics/UI without
-	// placing it in model context. Large raw results are stored in the Session
-	// sandbox and referenced by RawPath instead.
+	// placing it in model context. Oversized native diagnostics are omitted;
+	// FileID retains only the projected model-visible textual result.
 	Raw     json.RawMessage `json:"raw,omitempty"`
 	RawPath string          `json:"raw_path,omitempty"`
 }

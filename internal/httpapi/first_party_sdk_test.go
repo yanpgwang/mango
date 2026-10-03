@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"github.com/yanpgwang/mango/internal/app"
+	"github.com/yanpgwang/mango/internal/domain"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -34,8 +36,13 @@ func TestFirstPartySDKHTTPConformance(t *testing.T) {
 	} {
 		t.Run(language.name, func(t *testing.T) {
 			baseHandler := newTestHandler(t, Config{RequireAuth: true}, false)
+			mcpHandler := NewServer(Deps{Events: mcpOutputContractEvents{}, Sessions: mcpOutputContractSessions{}}, Config{RequireAuth: true}).Handler()
 			workHandler := NewServer(Deps{EnvironmentWork: newSDKEnvironmentWorkService()}, Config{RequireAuth: true}).Handler()
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1/sessions/sesn_mcp_fixture/events" {
+					mcpHandler.ServeHTTP(w, r)
+					return
+				}
 				if strings.HasPrefix(r.URL.Path, "/v1/environments/") && strings.Contains(r.URL.Path, "/work") {
 					workHandler.ServeHTTP(w, r)
 					return
@@ -91,4 +98,20 @@ func TestFirstPartySDKHTTPConformance(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Independently authored expected output reference, passed through real DTOs.
+type mcpOutputContractEvents struct{}
+
+func (mcpOutputContractEvents) Query(_ context.Context, _ string, _ app.EventQuery) ([]domain.Event, error) {
+	return []domain.Event{{ID: "sevt_mcp_fixture", SessionID: "sesn_mcp_fixture", Sequence: 1, Type: domain.EvAgentMcpToolResult, Payload: map[string]any{"mcp_tool_use_id": "sevt_mcp_use", "file_id": "file_mcp_full", "content": []any{map[string]any{"type": "text", "text": "preview"}}, "is_error": false}}}, nil
+}
+
+type mcpOutputContractSessions struct{ SessionService }
+
+func (mcpOutputContractSessions) Get(_ context.Context, id string) (domain.Session, error) {
+	if id != "sesn_mcp_fixture" {
+		return domain.Session{}, domain.NotFound("Session not found")
+	}
+	return domain.Session{ID: id}, nil
 }

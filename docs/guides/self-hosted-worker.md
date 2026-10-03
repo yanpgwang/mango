@@ -193,3 +193,21 @@ multi-tenant boundary.
 See the [launcher reference](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
 for credential handling and [Go SDK helpers](../sdk/go.md#composed-environment-worker)
 for building your own isolated launcher.
+
+## Full MCP output files
+
+The native Go worker reads `agent.mcp_tool_result.file_id` during history replay
+and live event processing, downloads the File using its active Work credential,
+and verifies size and SHA-256 before writing
+`{Workdir}/.mango-tool-results/{file_id}.txt`. Subsequent owned tools run only
+after preparation succeeds. Paths in model previews are relative to the Session
+workspace root, independently of a persistent Bash shell's current directory.
+The worker accepts validated File IDs, not arbitrary server paths; filesystem
+symlinks cannot redirect downloads outside the prepared directory.
+
+Custom workers should prepare the same references before executing local tools.
+Use `GET /v1/files/{file_id}` for integrity metadata and
+`GET /v1/files/{file_id}/content` for bytes. Work tokens authorize only generated
+outputs associated with their own Session. Inputs and workspace deliverables
+still use operator-controlled transfers. See [Files](../api/files.md#generated-mcp-output)
+for size, retention, and deletion semantics.

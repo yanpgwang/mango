@@ -22,11 +22,16 @@ def main() -> None:
     }
     with Mango(base_url=url, api_key=key) as client:
         client.system.health()
+        mcp_page = client.sessions.events.list("sesn_mcp_fixture")
+        assert mcp_page["data"][0]["type"] == "agent.mcp_tool_result"
+        assert mcp_page["data"][0]["file_id"] == "file_mcp_full"
         payload = b"mango\x00\xff"
         uploaded = client.files.upload(file=Upload("result.bin", payload, "application/octet-stream"))
         try:
-            assert set(uploaded) == {"id", "type", "created_at", "filename", "mime_type", "size_bytes"}
+            assert set(uploaded) == {"id", "type", "created_at", "filename", "mime_type", "size_bytes", "checksum_sha256"}
             assert uploaded["size_bytes"] == len(payload)
+            import hashlib
+            assert uploaded["checksum_sha256"] == hashlib.sha256(payload).hexdigest()
             with client.files.download(uploaded["id"]) as stream:
                 assert b"".join(stream.iter_bytes()) == payload
         finally:

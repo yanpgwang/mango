@@ -492,3 +492,7 @@ func (s storeSource) CompleteToolStep(ctx context.Context, stepID string, result
 func (s storeSource) MarkToolStepAmbiguous(ctx context.Context, stepID string) error {
 	return s.store.MarkToolStepAmbiguous(ctx, stepID)
 }
+
+func (s storeSource) MarkToolOutputPublished(ctx context.Context, stepID, fileID string) error {
+	return s.store.MarkToolOutputPublished(ctx, stepID, fileID)
+}

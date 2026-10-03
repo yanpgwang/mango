@@ -51,6 +51,7 @@ type AgentList struct {
 
 type AgentMCPToolResultEvent struct {
 	Content      Optional[[]ResultContentInput] `json:"content,omitzero"`
+	FileID       Optional[string]               `json:"file_id,omitzero"`
 	ID           string                         `json:"id"`
 	IsError      Optional[bool]                 `json:"is_error,omitzero"`
 	MCPToolUseID string                         `json:"mcp_tool_use_id"`
@@ -864,12 +865,13 @@ func (value *EventStreamFrame) UnmarshalJSON(data []byte) error {
 }
 
 type File struct {
-	CreatedAt string `json:"created_at"`
-	Filename  string `json:"filename"`
-	ID        string `json:"id"`
-	MimeType  string `json:"mime_type"`
-	SizeBytes int64  `json:"size_bytes"`
-	Type      string `json:"type"`
+	ChecksumSHA256 Optional[string] `json:"checksum_sha256,omitzero"`
+	CreatedAt      string           `json:"created_at"`
+	Filename       string           `json:"filename"`
+	ID             string           `json:"id"`
+	MimeType       string           `json:"mime_type"`
+	SizeBytes      int64            `json:"size_bytes"`
+	Type           string           `json:"type"`
 }
 
 type FileDeleted struct {
