@@ -46,6 +46,13 @@ stream. The event reference is authoritative for routing; the hint is optional
 and a conflicting value is rejected. The persisted response and any companion
 `system.message` belong to the child Thread.
 
+Relayed `agent.tool_use`, `agent.mcp_tool_use`, and `agent.custom_tool_use`
+events have a distinct primary-stream `id`, `session_thread_id`, and
+`source_event_id` pointing to the original child action. Match confirmations
+and results against either action ID when reconciling the child ledger. A
+confirmation may reference the primary relay or the child-local action; both
+identify the same pending action. Direct primary actions omit the source field.
+
 ### Handle required client actions
 
 A model response may emit multiple custom tools or confirmation-gated tools in
@@ -194,7 +201,11 @@ Ordering, timestamp bounds, and cursors use `processed_at`, matching the public
 contract despite the current query name `created_at`. Ascending order
 places processed events first and unprocessed (`null`) events last; descending
 order reverses that placement. The internal receipt sequence is used only as a
-stable tie-breaker for equal or null timestamps and is never exposed.
+stable tie-breaker for equal or null timestamps and is never exposed. An input
+can move from the null section to the processed section during pagination.
+For complete reconciliation, repeat the full ascending pass and deduplicate IDs:
+`processed_at` is assigned once, so rows missed while moving during the first
+pass have a stable position by the second pass.
 
 ## Interpret lifecycle events
 

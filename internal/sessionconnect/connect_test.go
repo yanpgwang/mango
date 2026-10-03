@@ -383,3 +383,130 @@ func TestConnectCancellationDuringWriteReportsUncertainReceipt(t *testing.T) {
 		t.Fatalf("uncertain canceled write hidden: sends=%d, err=%v", sends.Load(), err)
 	}
 }
+
+func TestConnectInterruptPreservesPrimaryAndChildApprovals(t *testing.T) {
+	for _, child := range []bool{false, true} {
+		t.Run(fmt.Sprintf("child=%v", child), func(t *testing.T) {
+			var sent []map[string]any
+			action := map[string]any{"id": "sevt_wait", "type": "agent.tool_use", "name": "bash", "input": map[string]any{}, "evaluated_permission": "ask", "processed_at": nil}
+			if child {
+				action["session_thread_id"] = "sthr_child"
+				action["source_event_id"] = "sevt_local"
+			}
+			history, _ := json.Marshal(map[string]any{"data": []any{action, map[string]any{"id": "sevt_idle_interrupt", "type": "user.interrupt", "processed_at": nil}}, "next_page": nil})
+			output, err := runConnect(t, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/stream"):
+					streamHeaders(w)
+					<-r.Context().Done()
+				case r.Method == "POST":
+					var body struct {
+						Events []map[string]any `json:"events"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+					}
+					sent = append(sent, body.Events...)
+					body.Events[0]["id"] = fmt.Sprintf("sevt_receipt_%d", len(sent))
+					body.Events[0]["processed_at"] = nil
+					_ = json.NewEncoder(w).Encode(map[string]any{"data": body.Events})
+				case strings.Contains(r.URL.Path, "/threads/sthr_child/events"):
+					jsonReply(w, `{"data":[{"id":"sevt_local","type":"agent.tool_use","name":"bash","input":{},"evaluated_permission":"ask","processed_at":null},{"id":"sevt_child_idle_interrupt","type":"user.interrupt","processed_at":null}],"next_page":null}`)
+				case strings.HasSuffix(r.URL.Path, "/events"):
+					jsonReply(w, string(history))
+				default:
+					jsonReply(w, `{"id":"sesn_test","status":"idle"}`)
+				}
+			}, io.NopCloser(strings.NewReader("/interrupt\n/allow sevt_wait\n/quit\n")), nil)
+			if err != nil || len(sent) != 2 || sent[1]["tool_use_id"] != "sevt_wait" || sent[1]["result"] != "allow" {
+				t.Fatalf("interrupt hid pending approval: sent=%v, err=%v, output=%s", sent, err, output)
+			}
+		})
+	}
+}
+
+func TestConnectCorrelatesChildLocalApprovalWithRelayedAction(t *testing.T) {
+	var sends atomic.Int32
+	output, err := runConnect(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/stream"):
+			streamHeaders(w)
+			<-r.Context().Done()
+		case r.Method == "POST":
+			sends.Add(1)
+			jsonReply(w, `{"data":[]}`)
+		case strings.Contains(r.URL.Path, "/threads/sthr_child/events"):
+			jsonReply(w, `{"data":[{"id":"sevt_local","type":"agent.tool_use","name":"bash","input":{},"evaluated_permission":"ask","processed_at":null},{"id":"sevt_child_allow","type":"user.tool_confirmation","tool_use_id":"sevt_local","result":"allow","processed_at":null}],"next_page":null}`)
+		case strings.HasSuffix(r.URL.Path, "/events"):
+			jsonReply(w, `{"data":[{"id":"sevt_relay","type":"agent.tool_use","name":"bash","input":{},"evaluated_permission":"ask","session_thread_id":"sthr_child","source_event_id":"sevt_local","processed_at":null}],"next_page":null}`)
+		default:
+			jsonReply(w, `{"id":"sesn_test","status":"idle"}`)
+		}
+	}, io.NopCloser(strings.NewReader("/allow sevt_relay\n/quit\n")), nil)
+	if err != nil || sends.Load() != 0 || strings.Contains(output, "Approval pending: sevt_relay") {
+		t.Fatalf("local child confirmation not reconciled: sends=%d, err=%v, output=%s", sends.Load(), err, output)
+	}
+}
+
+func TestConnectReconcilesQueuedEventMovingBehindHistoryCursor(t *testing.T) {
+	var passes atomic.Int32
+	queued := func(id int) map[string]any {
+		return map[string]any{"id": fmt.Sprintf("sevt_%d", id), "type": "user.message", "content": []any{map[string]any{"type": "text", "text": fmt.Sprintf("queued-%d", id)}}, "processed_at": nil}
+	}
+	output, err := runConnect(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/stream"):
+			// All 1001 rows predate subscription; changing processed_at does not
+			// allocate a new sequence and therefore emits no live event for row 1001.
+			streamHeaders(w)
+			<-r.Context().Done()
+		case strings.HasSuffix(r.URL.Path, "/events"):
+			var data []any
+			var next any
+			if r.URL.Query().Get("page") == "" {
+				n := passes.Add(1)
+				if n > 1 {
+					event := queued(1001)
+					event["processed_at"] = "2026-10-03T00:00:00Z"
+					data = append(data, event)
+				}
+				for id := 1; len(data) < 1000; id++ {
+					data = append(data, queued(id))
+				}
+				next = "null-cursor"
+			} else if passes.Load() > 1 {
+				data = append(data, queued(1000))
+			}
+			if data == nil {
+				data = []any{}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": data, "next_page": next})
+		default:
+			jsonReply(w, `{"id":"sesn_test","status":"idle"}`)
+		}
+	}, io.NopCloser(strings.NewReader("/quit\n")), nil)
+	if err != nil || strings.Count(output, "queued-1001\n") != 1 || strings.Count(output, "[user.message]") != 1001 {
+		t.Fatalf("queued row missed or duplicated: passes=%d, err=%v, displayed=%d", passes.Load(), err, strings.Count(output, "[user.message]"))
+	}
+}
+
+func TestConnectAcceptsInterruptNoopReceipt(t *testing.T) {
+	var sends atomic.Int32
+	_, err := runConnect(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/stream"):
+			streamHeaders(w)
+			<-r.Context().Done()
+		case r.Method == "POST":
+			sends.Add(1)
+			jsonReply(w, `{"data":[]}`)
+		case strings.HasSuffix(r.URL.Path, "/events"):
+			jsonReply(w, `{"data":[],"next_page":null}`)
+		default:
+			jsonReply(w, `{"id":"sesn_test","status":"idle"}`)
+		}
+	}, io.NopCloser(strings.NewReader("/interrupt\n/quit\n")), nil)
+	if err != nil || sends.Load() != 1 {
+		t.Fatalf("valid interrupt no-op rejected: sends=%d,err=%v", sends.Load(), err)
+	}
+}

@@ -1301,7 +1301,9 @@ the optional reference checkout's tag rather than its older checked-out HEAD.
   a client application. Adopted this workflow and Ctrl+C detachment semantics.
 - Durable invariants: open the live stream before paginated history, deduplicate
   durable event IDs, reconcile history after read disconnects, and never retry
-  uncertain writes. Approval and execution remain separate; relayed child
+  uncertain writes. A second history pass covers the one-time movement of queued
+  inputs when `processed_at` is assigned. Idle interrupts preserve pending
+  approval barriers. Approval and execution remain separate; relayed child
   approvals are checked against child history and routed by the original action
   ID. Detaching never implicitly interrupts runtime work.
 - Hosted constraints: rejected the hosted Console/web viewer, vendor CLI,
@@ -1312,9 +1314,16 @@ the optional reference checkout's tag rather than its older checked-out HEAD.
   resources, Go SDK pagination and SSE decoding, and typed message,
   confirmation, and interrupt inputs. The CLI is a line interface with explicit
   `/allow`, `/deny`, and `/interrupt`, not a full-screen UI or sandbox terminal.
-  No HTTP schema, database migration, or generated SDK change is needed.
+  Added `source_event_id` to relayed tool, MCP, and custom actions because Mango
+  stores distinct child-local and primary-relay event IDs. This explicit event
+  reference lets clients correlate resolutions submitted through either current
+  view, without matching arguments, timestamps, or list positions. Go, Python,
+  and TypeScript SDK response types preserve it. No database migration or new
+  endpoint is needed.
 
 Official implementations were neither copied nor executed as Mango clients.
 Validation uses independently authored raw HTTP fixtures through the Mango Go
-SDK plus native command tests. Runtime execution and admission invariants remain
+SDK plus native command tests. PostgreSQL tests verify source references and
+resolution routing; HTTP/SDK tests and language typechecks verify the new field.
+Runtime execution and admission invariants remain
 owned by Mango's existing HTTP, workflow, persistence, and service tests.

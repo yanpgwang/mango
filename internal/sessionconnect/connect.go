@@ -49,6 +49,7 @@ type eventView struct {
 	Name                string          `json:"name"`
 	EvaluatedPermission string          `json:"evaluated_permission"`
 	SessionThreadID     string          `json:"session_thread_id"`
+	SourceEventID       string          `json:"source_event_id"`
 	ToolUseID           string          `json:"tool_use_id"`
 	MCPToolUseID        string          `json:"mcp_tool_use_id"`
 	CustomToolUseID     string          `json:"custom_tool_use_id"`
@@ -60,12 +61,13 @@ type eventView struct {
 }
 
 type view struct {
-	options    Options
-	seen       map[string]bool
-	pending    map[string]eventView
-	resolved   map[string]bool
-	terminated bool
-	announced  map[string]bool
+	options       Options
+	seen          map[string]bool
+	pending       map[string]eventView
+	resolved      map[string]bool
+	terminated    bool
+	announced     map[string]bool
+	closedThreads map[string]bool
 }
 
 // Run owns Input until it returns and closes it on detach. Read-only connections
@@ -82,7 +84,7 @@ func Run(ctx context.Context, options Options) error {
 	if options.ReconnectDelay <= 0 {
 		options.ReconnectDelay = time.Second
 	}
-	state := &view{options: options, seen: map[string]bool{}, pending: map[string]eventView{}, resolved: map[string]bool{}, announced: map[string]bool{}}
+	state := &view{options: options, seen: map[string]bool{}, pending: map[string]eventView{}, resolved: map[string]bool{}, announced: map[string]bool{}, closedThreads: map[string]bool{}}
 	session, err := options.Client.Sessions.Get(ctx, options.SessionID)
 	if err != nil {
 		return contextResult(ctx, err)
@@ -152,7 +154,7 @@ func (v *view) connection(ctx context.Context, input <-chan inputLine) error {
 	if v.terminated {
 		return errDetach
 	}
-	if err := v.refreshChildApprovals(ctx); err != nil {
+	if err := v.refreshChildApprovals(ctx, false); err != nil {
 		return err
 	}
 	if err := v.showApprovals(); err != nil {
@@ -182,7 +184,7 @@ func (v *view) connection(ctx context.Context, input <-chan inputLine) error {
 			if v.terminated {
 				return errDetach
 			}
-			if err := v.refreshChildApprovals(ctx); err != nil {
+			if err := v.refreshChildApprovals(ctx, true); err != nil {
 				return err
 			}
 			if err := v.showApprovals(); err != nil {
@@ -239,13 +241,22 @@ func readStream(ctx context.Context, stream *mango.EventStream, out chan<- strea
 }
 
 func (v *view) replay(ctx context.Context) error {
-	pager := v.options.Client.Sessions.Events.ListAutoPaging(ctx, v.options.SessionID, mango.ListSessionEventsParams{Order: mango.Some("asc"), Limit: mango.Some(int64(1000))})
-	for pager.Next() {
-		if err := v.apply(pager.Value()); err != nil {
+	// An unprocessed row can move behind an ascending cursor once processed_at
+	// is assigned. That timestamp is assigned only once. A second complete pass
+	// catches rows that moved during the first, including pre-subscription rows
+	// that will never arrive on the live stream. IDs suppress repeated rendering.
+	for pass := 0; pass < 2; pass++ {
+		pager := v.options.Client.Sessions.Events.ListAutoPaging(ctx, v.options.SessionID, mango.ListSessionEventsParams{Order: mango.Some("asc"), Limit: mango.Some(int64(1000))})
+		for pager.Next() {
+			if err := v.apply(pager.Value()); err != nil {
+				return err
+			}
+		}
+		if err := pager.Err(); err != nil {
 			return err
 		}
 	}
-	return pager.Err()
+	return nil
 }
 
 func decode(event any) (eventView, []byte, error) {
@@ -269,13 +280,7 @@ func (v *view) apply(event any) error {
 		return nil
 	}
 	v.seen[item.ID] = true
-	v.resolve(item)
-	if (item.Type == "agent.tool_use" || item.Type == "agent.mcp_tool_use") && item.EvaluatedPermission == "ask" && !v.resolved[item.ID] {
-		v.pending[item.ID] = item
-	}
-	if item.Type == "session.status_terminated" || item.Type == "session.deleted" {
-		v.terminated = true
-	}
+	v.note(item)
 	if err := v.print("[%s] %s %s\n", item.Type, item.ID, item.Name); err != nil {
 		return err
 	}
@@ -312,57 +317,81 @@ func (v *view) apply(event any) error {
 	return nil
 }
 
-func (v *view) resolve(item eventView) {
-	for _, id := range []string{item.ToolUseID, item.MCPToolUseID, item.CustomToolUseID} {
-		if id != "" {
-			delete(v.pending, id)
-			delete(v.announced, id)
-			v.resolved[id] = true
-		}
+func (v *view) note(item eventView) {
+	v.resolve(item)
+	if (item.Type == "agent.tool_use" || item.Type == "agent.mcp_tool_use") && item.EvaluatedPermission == "ask" && !v.resolved[item.ID] && !v.resolved[item.SourceEventID] && !v.terminated && !v.closedThreads[item.SessionThreadID] {
+		v.pending[item.ID] = item
 	}
-	if item.Type == "user.interrupt" || item.Type == "session.thread_status_terminated" {
+}
+
+func (v *view) resolve(item eventView) {
+	for _, ref := range []string{item.ToolUseID, item.MCPToolUseID, item.CustomToolUseID} {
+		if ref == "" {
+			continue
+		}
+		v.resolved[ref] = true
 		for id, pending := range v.pending {
-			if item.SessionThreadID == "" || pending.SessionThreadID == item.SessionThreadID {
+			if id == ref || pending.SourceEventID == ref {
 				delete(v.pending, id)
 				delete(v.announced, id)
 				v.resolved[id] = true
 			}
 		}
 	}
+	// An idle interrupt preserves Mango's action barrier. Only correlated
+	// decisions/results or a durable termination resolve an approval here.
+	if item.Type == "session.status_terminated" || item.Type == "session.deleted" {
+		v.terminated = true
+	}
+	if item.Type == "session.thread_status_terminated" && item.SessionThreadID != "" {
+		v.closedThreads[item.SessionThreadID] = true
+	}
+	for id, pending := range v.pending {
+		if v.terminated || v.closedThreads[pending.SessionThreadID] {
+			delete(v.pending, id)
+			delete(v.announced, id)
+			v.resolved[id] = true
+		}
+	}
 }
 
 // Child confirmations are persisted on the child, even when the action is
 // cross-posted to the primary stream. Read that ledger before offering approval.
-func (v *view) refreshChildApprovals(ctx context.Context) error {
+func (v *view) refreshChildApprovals(ctx context.Context, onlyNew bool) error {
+	if v.options.ReadOnly {
+		return nil
+	}
 	threads := map[string]bool{}
-	for _, pending := range v.pending {
-		if pending.SessionThreadID != "" {
+	for id, pending := range v.pending {
+		if pending.SessionThreadID != "" && (!onlyNew || !v.announced[id]) {
 			threads[pending.SessionThreadID] = true
 		}
 	}
 	for thread := range threads {
-		// Reduce each ledger in its own order. An interrupt from an older child turn
-		// must not cancel a later action that is already present in primary history.
-		child := &view{pending: map[string]eventView{}, resolved: map[string]bool{}}
-		pager := v.options.Client.Sessions.Threads.Events.ListAutoPaging(ctx, v.options.SessionID, thread, mango.ListSessionThreadEventsParams{Limit: mango.Some(int64(1000))})
-		for pager.Next() {
-			item, _, err := decode(pager.Value())
-			if err != nil {
+		child := &view{pending: map[string]eventView{}, resolved: map[string]bool{}, seen: map[string]bool{}, closedThreads: map[string]bool{}}
+		// Child history has the same mutable timestamp pagination as primary history.
+		for pass := 0; pass < 2; pass++ {
+			pager := v.options.Client.Sessions.Threads.Events.ListAutoPaging(ctx, v.options.SessionID, thread, mango.ListSessionThreadEventsParams{Limit: mango.Some(int64(1000))})
+			for pager.Next() {
+				item, _, err := decode(pager.Value())
+				if err != nil {
+					return err
+				}
+				if child.seen[item.ID] {
+					continue
+				}
+				child.seen[item.ID] = true
+				if item.SessionThreadID == "" {
+					item.SessionThreadID = thread
+				}
+				child.note(item)
+			}
+			if err := pager.Err(); err != nil {
 				return err
 			}
-			if item.SessionThreadID == "" {
-				item.SessionThreadID = thread
-			}
-			child.resolve(item)
-			if (item.Type == "agent.tool_use" || item.Type == "agent.mcp_tool_use") && item.EvaluatedPermission == "ask" && !child.resolved[item.ID] {
-				child.pending[item.ID] = item
-			}
 		}
-		if err := pager.Err(); err != nil {
-			return err
-		}
-		for id := range child.resolved {
-			if pending, ok := v.pending[id]; ok && pending.SessionThreadID == thread {
+		for id, pending := range v.pending {
+			if pending.SessionThreadID == thread && (child.terminated || child.closedThreads[thread] || child.resolved[id] || child.resolved[pending.SourceEventID]) {
 				delete(v.pending, id)
 				delete(v.announced, id)
 				v.resolved[id] = true
@@ -415,7 +444,7 @@ func (v *view) command(ctx context.Context, line string) error {
 		if v.terminated {
 			return errDetach
 		}
-		if err := v.refreshChildApprovals(ctx); err != nil {
+		if err := v.refreshChildApprovals(ctx, false); err != nil {
 			return err
 		}
 		pending, ok := v.pending[id]
@@ -446,6 +475,9 @@ func (v *view) command(ctx context.Context, line string) error {
 		// A lost response may follow a committed admission. Never reconnect and
 		// replay a write; the operator must inspect history before resubmitting.
 		return errors.Join(errUnconfirmedWrite, err)
+	}
+	if len(batch.Data) == 0 && event.UserInterruptEventInput != nil {
+		return v.print("Interrupt acknowledged without an event (idle no-op).\n")
 	}
 	if len(batch.Data) != 1 {
 		return errUnconfirmedWrite

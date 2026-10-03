@@ -40,6 +40,7 @@ type AgentCustomToolUseEvent struct {
 	Name            string                     `json:"name"`
 	ProcessedAt     NullableTimestamp          `json:"processed_at"`
 	SessionThreadID Optional[string]           `json:"session_thread_id,omitzero"`
+	SourceEventID   Optional[string]           `json:"source_event_id,omitzero"`
 	Type            string                     `json:"type"`
 }
 
@@ -65,6 +66,7 @@ type AgentMCPToolUseEvent struct {
 	Name                string                        `json:"name"`
 	ProcessedAt         NullableTimestamp             `json:"processed_at"`
 	SessionThreadID     Optional[string]              `json:"session_thread_id,omitzero"`
+	SourceEventID       Optional[string]              `json:"source_event_id,omitzero"`
 	Type                string                        `json:"type"`
 }
 
@@ -162,6 +164,7 @@ type AgentToolUseEvent struct {
 	Name                string                        `json:"name"`
 	ProcessedAt         NullableTimestamp             `json:"processed_at"`
 	SessionThreadID     Optional[string]              `json:"session_thread_id,omitzero"`
+	SourceEventID       Optional[string]              `json:"source_event_id,omitzero"`
 	Type                string                        `json:"type"`
 }
 

@@ -47,7 +47,7 @@ per line. Commands are:
 | --- | --- |
 | `/allow sevt_ACTION_ID` | Allow the pending tool or MCP action. |
 | `/deny sevt_ACTION_ID [reason]` | Deny that action, optionally explaining why. |
-| `/interrupt` | Explicitly interrupt every non-archived Session Thread. |
+| `/interrupt` | Interrupt active work across non-archived Threads; idle approval barriers stay pending. |
 | `/message TEXT` | Send text literally, including a message starting with `/`. |
 | `/help` | Print the available commands. |
 | `/quit` | Detach from the Session. |
@@ -63,7 +63,8 @@ Approval pending: sevt_ACTION_ID (bash). /allow sevt_ACTION_ID or /deny sevt_ACT
 Use the **action's event ID**, not the ID of a status or confirmation event.
 Before showing initial prompts and sending a decision, the command reconciles
 saved history. For relayed child actions, it also reads the owning child Thread's
-history and preserves its `session_thread_id` in the confirmation. Resolved or
+history, uses `source_event_id` to correlate the child-local action with its
+primary relay, and preserves `session_thread_id` in the confirmation. Resolved or
 unknown actions are not submitted; the API independently validates admission.
 Another operator can resolve an action after this check, in which case the API
 can reject the decision.
@@ -81,13 +82,14 @@ and follows until the Session terminates or you cancel the connection. An
 already terminated Session prints history and exits without opening a stream.
 
 After a lost stream or a retryable read failure, the command reconnects and
-rechecks every history page. Durable event IDs suppress overlap, including
+rechecks every history page twice. The second pass covers queued inputs whose
+`processed_at` changes during the first pass and moves them behind its cursor. Durable event IDs suppress overlap, including
 messages accepted during the disconnect. Mango's SSE endpoint does not replay
 history or interpret `Last-Event-ID`; recovery uses the persisted event ledger.
 Authentication and other non-retryable read errors end the connection.
 
 **Writes are never retried automatically.** If sending input returns an error or
-an invalid receipt, the command exits: the server might already have committed
+an invalid receipt (apart from an acknowledged interrupt no-op), the command exits: the server might already have committed
 the event. Reconnect in read-only mode and inspect history before deciding
 whether to resend. The command cannot establish receipt of a write after a lost
 response.

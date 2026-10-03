@@ -1743,6 +1743,11 @@
                 "pattern": "^sthr_",
                 "type": "string"
               },
+              "source_event_id": {
+                "description": "Original child action ID when this event is relayed onto the primary Thread.",
+                "pattern": "^sevt_",
+                "type": "string"
+              },
               "type": {
                 "const": "agent.custom_tool_use",
                 "type": "string"
@@ -1832,6 +1837,11 @@
               },
               "session_thread_id": {
                 "pattern": "^sthr_",
+                "type": "string"
+              },
+              "source_event_id": {
+                "description": "Original child action ID when this event is relayed onto the primary Thread.",
+                "pattern": "^sevt_",
                 "type": "string"
               },
               "type": {
@@ -2142,6 +2152,11 @@
               },
               "session_thread_id": {
                 "pattern": "^sthr_",
+                "type": "string"
+              },
+              "source_event_id": {
+                "description": "Original child action ID when this event is relayed onto the primary Thread.",
+                "pattern": "^sevt_",
                 "type": "string"
               },
               "type": {
