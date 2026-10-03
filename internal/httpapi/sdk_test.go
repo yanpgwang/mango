@@ -135,6 +135,9 @@ func TestMangoSDKLifecycleEventVariants(t *testing.T) {
 		{domain.EvSessionStatusRescheduling, map[string]any{}},
 		{domain.EvSessionStatusRunning, map[string]any{}},
 		{domain.EvAgentThinking, map[string]any{}},
+		{domain.EvAgentToolUse, map[string]any{"name": "bash", "input": map[string]any{}, "evaluated_permission": "ask", "session_thread_id": "sthr_child", "source_event_id": "sevt_child_source"}},
+		{domain.EvAgentMcpToolUse, map[string]any{"name": "lookup", "mcp_server_name": "catalog", "input": map[string]any{}, "evaluated_permission": "ask", "session_thread_id": "sthr_child", "source_event_id": "sevt_child_source"}},
+		{domain.EvAgentCustomToolUse, map[string]any{"name": "lookup", "input": map[string]any{}, "session_thread_id": "sthr_child", "source_event_id": "sevt_child_source"}},
 	} {
 		t.Run(item.typ, func(t *testing.T) {
 			client, server, sessions := sdkClientServerAndSessions(t)
@@ -146,6 +149,21 @@ func TestMangoSDKLifecycleEventVariants(t *testing.T) {
 			sessions.mu.Lock()
 			sessions.appendEventLocked(session.ID, domain.EventDraft{Type: item.typ, Payload: item.payload})
 			sessions.mu.Unlock()
+			if _, relayed := item.payload["source_event_id"]; relayed {
+				status, body := rawRequest(t, "GET", server.URL+"/v1/sessions/"+session.ID+"/events?types%5B%5D="+item.typ, "")
+				if status != 200 {
+					t.Fatalf("raw event history: %d %s", status, body)
+				}
+				var wire struct {
+					Data []map[string]any `json:"data"`
+				}
+				if err := json.Unmarshal(body, &wire); err != nil {
+					t.Fatal(err)
+				}
+				if len(wire.Data) != 1 || wire.Data[0]["type"] != item.typ || wire.Data[0]["source_event_id"] != "sevt_child_source" || wire.Data[0]["session_thread_id"] != "sthr_child" {
+					t.Fatalf("raw relayed action contract: %s", body)
+				}
+			}
 			page, err := client.Sessions.Events.List(context.Background(), session.ID, mango.ListSessionEventsParams{Types: mango.Some([]mango.CoreSessionEventType{mango.CoreSessionEventType(item.typ)})})
 			if err != nil || len(page.Data) != 1 {
 				t.Fatalf("events: %+v, %v", page, err)

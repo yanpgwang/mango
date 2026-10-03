@@ -47,6 +47,7 @@ class AgentCustomToolUseEvent(TypedDict, total=False):
     input: Required[Dict[str, Any]]
     name: Required[str]
     session_thread_id: str
+    source_event_id: str
 
 
 class AgentList(TypedDict, total=False):
@@ -72,6 +73,7 @@ class AgentMCPToolUseEvent(TypedDict, total=False):
     mcp_server_name: Required[str]
     name: Required[str]
     session_thread_id: str
+    source_event_id: str
 
 
 class AgentMessageEvent(TypedDict, total=False):
@@ -151,6 +153,7 @@ class AgentToolUseEvent(TypedDict, total=False):
     input: Required[Dict[str, Any]]
     name: Required[str]
     session_thread_id: str
+    source_event_id: str
 
 
 class AgentUpdateRequest(TypedDict, total=False):

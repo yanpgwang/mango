@@ -274,6 +274,7 @@ func (s *Store) CompleteThreadWorkflowTurn(
 			}
 			payload := cloneEventPayload(action.Payload)
 			payload["session_thread_id"] = threadID
+			payload["source_event_id"] = actionEventID
 			clientID := s.ids.NewID(domain.PrefixEvent)
 			clientActionEventIDs[actionEventID] = clientID
 			clientActionDrafts = append(clientActionDrafts, domain.EventDraft{

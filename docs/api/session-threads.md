@@ -55,6 +55,11 @@ Temporal termination until it succeeds. Session deletion installs the same
 intent for every child before stopping the primary Workflow and releasing the
 sandbox.
 
+Pending child actions are relayed onto the primary ledger with a distinct ID
+and a `source_event_id` pointing to the child-local action. Applications can
+join decisions and results across the two histories without guessing from tool
+arguments or event positions. See [Events and streaming](events.md).
+
 ## Coordinator execution
 
 A coordinator receives `list_agents` and `send_to_agent` as private model tools;

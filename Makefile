@@ -232,6 +232,7 @@ image:
 
 image-smoke: image
 	$(DOCKER) run --rm $(IMAGE) serve -h >/dev/null
+	$(DOCKER) run --rm $(IMAGE) sessions connect -h >/dev/null
 
 local-config:
 	$(MAKE) -C deployments/local config COMPOSE='$(COMPOSE)'

@@ -30,3 +30,8 @@ function eventContent(event: SessionEvent) {
   return undefined;
 }
 void eventContent;
+
+function relayedActionSource(event: Extract<SessionEvent, { type: 'agent.tool_use' | 'agent.mcp_tool_use' | 'agent.custom_tool_use' }>): string | undefined {
+  return event.source_event_id;
+}
+void relayedActionSource;

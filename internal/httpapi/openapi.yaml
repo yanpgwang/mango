@@ -5436,6 +5436,10 @@ components:
             input: {type: object, additionalProperties: true}
             name: {type: string}
             session_thread_id: {type: string, pattern: '^sthr_'}
+            source_event_id:
+              type: string
+              pattern: '^sevt_'
+              description: Original child action ID when this event is relayed onto the primary Thread.
       unevaluatedProperties: false
     EvaluatedPermission:
       type: string
@@ -5451,6 +5455,10 @@ components:
             name: {type: string}
             evaluated_permission: {$ref: '#/components/schemas/EvaluatedPermission'}
             session_thread_id: {type: string, pattern: '^sthr_'}
+            source_event_id:
+              type: string
+              pattern: '^sevt_'
+              description: Original child action ID when this event is relayed onto the primary Thread.
       unevaluatedProperties: false
     AgentMCPToolUseEvent:
       allOf:
@@ -5464,6 +5472,10 @@ components:
             name: {type: string}
             evaluated_permission: {$ref: '#/components/schemas/EvaluatedPermission'}
             session_thread_id: {type: string, pattern: '^sthr_'}
+            source_event_id:
+              type: string
+              pattern: '^sevt_'
+              description: Original child action ID when this event is relayed onto the primary Thread.
       unevaluatedProperties: false
     AgentToolResultEvent:
       allOf:

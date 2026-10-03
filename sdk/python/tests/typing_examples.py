@@ -46,3 +46,9 @@ async def async_types(client: AsyncMango) -> None:
     async with client.files.download("file_example") as download:
         data: bytes = await download.read()
         print(len(data))
+
+
+def relayed_action_source(
+    event: models.AgentToolUseEvent | models.AgentMCPToolUseEvent | models.AgentCustomToolUseEvent,
+) -> str | None:
+    return event.get("source_event_id")
