@@ -10,6 +10,7 @@ RUN --mount=type=cache,target=/go/pkg/mod GOPROXY=$GOPROXY go mod download
 
 COPY cmd ./cmd
 COPY internal ./internal
+COPY sdk/go ./sdk/go
 
 ARG TARGETOS
 ARG TARGETARCH

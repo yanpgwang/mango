@@ -145,7 +145,7 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key> [flags]")
+		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key|sessions> [flags]")
 	}
 	switch os.Args[1] {
 	case "migrate":
@@ -158,8 +158,10 @@ func main() {
 		runWorkspaceCommand()
 	case "api-key":
 		runAPIKeyCommand()
+	case "sessions":
+		runSessionsCommand()
 	default:
-		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key> [flags]")
+		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key|sessions> [flags]")
 	}
 }
 

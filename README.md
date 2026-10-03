@@ -85,6 +85,9 @@ Stop the stack while keeping its data:
 make local-down
 ```
 
+To follow an existing Session, send messages, and answer approvals from a terminal,
+see [`mango sessions connect`](docs/guides/session-connect.md).
+
 ## Explore Mango
 
 | I want to… | Start here |

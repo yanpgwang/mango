@@ -1284,3 +1284,37 @@ The Compose image is pinned to the multi-platform manifest digest
   parity, or add an automatic MinIO disk/data conversion. Existing state needs
   an explicit transfer or a disposable-stack reset. Namespace metadata and
   object bytes must both be covered by backups.
+
+## Terminal Session connection (2026-10-03)
+
+Reviewed Mango's current Session/Event/Thread HTTP handlers, OpenAPI, event
+admission and lifecycle tests, and Go SDK List/Send/Stream mapping alongside the
+official [Session terminal connection](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/sessions-connect)
+and [events and streaming](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
+guides. The CMA terminal workflow was introduced on September 10. Paired public
+Go SDK resource grouping, pagination, Send, and Stream source was reviewed at
+v1.78.0 (`c9ebe447ac92c91748af817c265398e5d81ca49f`, released September 30), using
+the optional reference checkout's tag rather than its older checked-out HEAD.
+
+- User problem: a self-hosted operator needs to join an existing Session, read
+  its history, send messages, and decide pending tool approvals without writing
+  a client application. Adopted this workflow and Ctrl+C detachment semantics.
+- Durable invariants: open the live stream before paginated history, deduplicate
+  durable event IDs, reconcile history after read disconnects, and never retry
+  uncertain writes. Approval and execution remain separate; relayed child
+  approvals are checked against child history and routed by the original action
+  ID. Detaching never implicitly interrupts runtime work.
+- Hosted constraints: rejected the hosted Console/web viewer, vendor CLI,
+  authentication and preview headers, hosted runtime execution, and release
+  version requirements. Mango's command connects directly to its operator's API
+  with a Workspace key; it does not need model or hosted-service credentials.
+- Wire and SDK choices: retained Mango's existing `/v1` Session/Event/Thread
+  resources, Go SDK pagination and SSE decoding, and typed message,
+  confirmation, and interrupt inputs. The CLI is a line interface with explicit
+  `/allow`, `/deny`, and `/interrupt`, not a full-screen UI or sandbox terminal.
+  No HTTP schema, database migration, or generated SDK change is needed.
+
+Official implementations were neither copied nor executed as Mango clients.
+Validation uses independently authored raw HTTP fixtures through the Mango Go
+SDK plus native command tests. Runtime execution and admission invariants remain
+owned by Mango's existing HTTP, workflow, persistence, and service tests.

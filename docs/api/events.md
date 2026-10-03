@@ -8,6 +8,9 @@ description: Send input, handle actions, and recover live event streams.
 Events are flat tagged-union objects. The `type` field selects the remaining
 shape; persisted events receive an `id` and `processed_at`.
 
+For an interactive operator client over these endpoints, use
+[`mango sessions connect`](../guides/session-connect.md).
+
 ## Send events
 
 `POST /v1/sessions/{id}/events`
