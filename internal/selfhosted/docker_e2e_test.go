@@ -414,7 +414,7 @@ func writeDockerBashEvent(writer http.ResponseWriter, call dockerBashCall) error
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(writer, "event: agent.tool_use\ndata: {\"id\":%q,\"type\":\"agent.tool_use\",\"processed_at\":null,\"input\":%s,\"name\":\"bash\",\"evaluated_permission\":\"allow\"}\n\n", call.ID, input)
+	_, err = fmt.Fprintf(writer, "event: agent.tool_use\ndata: {\"id\":%q,\"type\":\"agent.tool_use\",\"processed_at\":null,\"input\":%s,\"name\":\"bash\",\"evaluated_permission\":\"allow\",\"evaluation\":{\"type\":\"always_allow\"}}\n\n", call.ID, input)
 	return err
 }
 
@@ -456,7 +456,7 @@ func TestDockerLauncherCancellationPostsToolErrorBeforeStop(t *testing.T) {
 			w.Header().Set("Content-Type", "text/event-stream")
 			flusher := w.(http.Flusher)
 			command := fmt.Sprintf("printf 'GET /started HTTP/1.0\\r\\nHost: host.docker.internal\\r\\n\\r\\n' > /dev/tcp/host.docker.internal/%d; sleep 30", sandboxPort.Load())
-			if _, err := fmt.Fprintf(w, "event: agent.tool_use\ndata: {\"id\":\"tool_cancel\",\"type\":\"agent.tool_use\",\"processed_at\":null,\"input\":{\"command\":%q},\"name\":\"bash\",\"evaluated_permission\":\"allow\"}\n\n", command); err != nil {
+			if _, err := fmt.Fprintf(w, "event: agent.tool_use\ndata: {\"id\":\"tool_cancel\",\"type\":\"agent.tool_use\",\"processed_at\":null,\"input\":{\"command\":%q},\"name\":\"bash\",\"evaluated_permission\":\"allow\",\"evaluation\":{\"type\":\"always_allow\"}}\n\n", command); err != nil {
 				t.Errorf("write cancellation tool event: %v", err)
 				return
 			}
