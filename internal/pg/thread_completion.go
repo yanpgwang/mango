@@ -158,6 +158,10 @@ func (s *Store) CompleteThreadWorkflowTurn(
 		); err != nil {
 			return err
 		}
+		if err := s.validateToolPermissionDraftsLocked(ctx, tx, q, domain.ToolPermissionOwner{SessionID: sessionID, ThreadID: threadID, TriggerEventID: triggerEventID, AttemptID: attemptID}, outputDrafts); err != nil {
+			return err
+		}
+
 		if attemptID != "" {
 			if err := validateAttemptFinish(attemptState, attemptError); err != nil {
 				return err

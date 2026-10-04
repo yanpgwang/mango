@@ -46,7 +46,7 @@ func TestPlanToolBatch_ClassifiesWholeRoundBeforeExecution(t *testing.T) {
 		},
 	}
 
-	plan, failure := planToolBatch(uses, tools, steps, true)
+	plan, failure := planToolBatch(uses, tools, steps, true, nil)
 
 	require.Empty(t, failure)
 	require.Equal(t, []string{
@@ -88,6 +88,7 @@ func TestPlanToolBatch_KeepsCoordinatorToolsOutOfPublicToolEvents(t *testing.T) 
 			ToolStepID:        "tstep_delegate",
 		}},
 		true,
+		nil,
 	)
 
 	require.Empty(t, failure)
@@ -144,7 +145,7 @@ func TestPlanToolBatch_RejectsInvalidRoundBeforePlanning(t *testing.T) {
 				ToolUseEventID: "sevt_bash", ToolStepID: "tstep_bash",
 			}},
 			wantFailure: failTurn(
-				"built-in tool has unsupported permission policy: always_deny",
+				"tool has unsupported permission policy: always_deny",
 			),
 		},
 	}
@@ -156,6 +157,7 @@ func TestPlanToolBatch_RejectsInvalidRoundBeforePlanning(t *testing.T) {
 				indexTurnTools(tc.tools),
 				tc.steps,
 				true,
+				nil,
 			)
 			require.Equal(t, tc.wantFailure, failure)
 			require.Empty(t, plan.actionDrafts)
@@ -181,6 +183,7 @@ func TestPlanToolBatch_SelfHostedBuiltinParksForClientResult(t *testing.T) {
 			ToolStepID: "tstep_read",
 		}},
 		true,
+		nil,
 	)
 	require.Empty(t, failure)
 	require.Empty(t, plan.executable)
@@ -210,6 +213,7 @@ func TestPlanToolBatch_ExternalPermissionIsIndependentOfExecutionOwner(t *testin
 				indexTurnTools([]TurnTool{{Name: "read", Kind: TurnToolSelfHosted,
 					Permission: domain.PermissionPolicy{Type: policy}}}),
 				map[string]PlannedToolStep{"provider_read": {ToolUseEventID: "sevt_read", ToolStepID: "tstep_read"}}, true,
+				nil,
 			)
 			if policy == "unknown" {
 				require.NotEmpty(t, failure)

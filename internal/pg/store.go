@@ -1540,7 +1540,7 @@ func (s *Store) AppendWorkflowEvents(
 	}
 
 	applied := false
-	err := s.withTx(ctx, func(q *pgstore.Queries) error {
+	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
 		row, err := q.LockSession(ctx, sessionID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.NotFound("session not found")
@@ -1592,6 +1592,10 @@ func (s *Store) AppendWorkflowEvents(
 		}
 		if existing != 0 {
 			return domain.Conflict("workflow progress batch is only partially present")
+		}
+
+		if err := s.validateToolPermissionDraftsLocked(ctx, tx, q, domain.ToolPermissionOwner{SessionID: sessionID, ThreadID: trigger.ThreadID, TriggerEventID: triggerEventID}, drafts); err != nil {
+			return err
 		}
 
 		maxSeq, err := q.MaxEventSeq(ctx, sessionID)
@@ -2346,6 +2350,10 @@ func (s *Store) completeTurn(
 		); err != nil {
 			return err
 		}
+		if err := s.validateToolPermissionDraftsLocked(ctx, tx, q, domain.ToolPermissionOwner{SessionID: sessionID, ThreadID: trigger.ThreadID, TriggerEventID: triggerEventID, AttemptID: attemptID}, outputDrafts); err != nil {
+			return err
+		}
+
 		if attemptID != "" {
 			if err := s.finishAttemptLocked(
 				ctx,

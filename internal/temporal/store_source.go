@@ -496,3 +496,23 @@ func (s storeSource) MarkToolStepAmbiguous(ctx context.Context, stepID string) e
 func (s storeSource) MarkToolOutputPublished(ctx context.Context, stepID, fileID string) error {
 	return s.store.MarkToolOutputPublished(ctx, stepID, fileID)
 }
+
+func (s storeSource) EnsureToolPermissionAttempt(ctx context.Context, owner domain.ToolPermissionOwner) error {
+	_, err := s.store.EnsureToolPermissionAttempt(ctx, owner)
+	return err
+}
+func (s storeSource) PermissionIntentThrough(ctx context.Context, sessionID, triggerID string) (domain.PermissionIntent, error) {
+	return s.store.PermissionIntentThrough(ctx, sessionID, triggerID)
+}
+func (s storeSource) GetToolPermissionReceipt(ctx context.Context, candidate domain.ToolPermissionReceipt) (*domain.ToolPermissionReceipt, error) {
+	return s.store.GetToolPermissionReceipt(ctx, candidate)
+}
+func (s storeSource) AdmitToolPermissionEvaluation(ctx context.Context, candidate domain.ToolPermissionReceipt) (bool, error) {
+	return s.store.AdmitToolPermissionEvaluation(ctx, candidate)
+}
+func (s storeSource) RecordToolPermissionReceipt(ctx context.Context, candidate domain.ToolPermissionReceipt) (domain.ToolPermissionReceipt, error) {
+	return s.store.RecordToolPermissionReceipt(ctx, candidate)
+}
+func (s storeSource) StartToolStepWithPermission(ctx context.Context, stepID, toolUseID string) error {
+	return s.store.StartToolStepWithPermission(ctx, stepID, toolUseID)
+}

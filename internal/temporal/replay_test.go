@@ -631,14 +631,15 @@ func TestReplay_LegacyParkResumedByExecutionWithMCPEventTypesGate(t *testing.T) 
 	prepared.Tools = []TurnTool{mcpTurnTool("always_ask")}
 	prepared.Request.Messages = nil
 	prepared.ResumeActions = []ResumeAction{{
-		ActionEventID:     "sevt_legacy_park",
-		ActionEventType:   domain.EvAgentToolUse,
-		Kind:              domain.PendingToolConfirmation,
-		ToolName:          "mcp__github__list_issues",
-		Input:             map[string]any{"repo": "mango"},
-		ResolutionEventID: "sevt_confirmation",
-		Confirmation:      "allow",
-		ToolStepID:        "tstep_legacy_resume",
+		ActionEventID:       "sevt_legacy_park",
+		ActionEventType:     domain.EvAgentToolUse,
+		Kind:                domain.PendingToolConfirmation,
+		EvaluatedPermission: "ask",
+		ToolName:            "mcp__github__list_issues",
+		Input:               map[string]any{"repo": "mango"},
+		ResolutionEventID:   "sevt_confirmation",
+		Confirmation:        "allow",
+		ToolStepID:          "tstep_legacy_resume",
 	}}
 	input := PrepareTurnInput{
 		SessionID:          "sess_replay_legacy_resume",

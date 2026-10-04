@@ -9,6 +9,7 @@ import (
 	"github.com/yanpgwang/mango/internal/credentialruntime"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/model"
+	"github.com/yanpgwang/mango/internal/permission"
 	"github.com/yanpgwang/mango/internal/pg"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -168,16 +169,18 @@ type Runtime struct {
 // empty; the remaining optional interfaces may be nil when their capability is
 // disabled.
 type RuntimeConfig struct {
-	TemporalClient    client.Client
-	Store             *pg.Store
-	ModelClient       model.Client
-	IDGenerator       domain.IDGenerator
-	RelayConfig       RelayConfig
-	TaskQueue         string
-	SkillInstructions SkillInstructionLoader
-	ToolOutputs       ToolOutputStore
-	MCPAuth           credentialruntime.AuthSource
-	PreviewPublisher  PreviewPublisher
+	TemporalClient client.Client
+	Store          *pg.Store
+	ModelClient    model.Client
+	// PermissionEvaluator defaults to the configured model adapter.
+	PermissionEvaluator permission.Evaluator
+	IDGenerator         domain.IDGenerator
+	RelayConfig         RelayConfig
+	TaskQueue           string
+	SkillInstructions   SkillInstructionLoader
+	ToolOutputs         ToolOutputStore
+	MCPAuth             credentialruntime.AuthSource
+	PreviewPublisher    PreviewPublisher
 }
 
 // NewRuntime wires the full Temporal execution plane. The store is both the
@@ -196,6 +199,9 @@ func NewRuntime(config RuntimeConfig) *Runtime {
 		config.IDGenerator,
 		config.PreviewPublisher,
 	)
+	if config.PermissionEvaluator != nil {
+		acts.WithPermissionEvaluator(config.PermissionEvaluator)
+	}
 	acts.WithMCPAuthSource(config.MCPAuth)
 	acts.WithToolOutputStore(config.ToolOutputs)
 	if config.SkillInstructions != nil {

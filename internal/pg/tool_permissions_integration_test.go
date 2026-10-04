@@ -444,3 +444,46 @@ func TestToolPermissionLateUsagePreservesTerminalProjection(t *testing.T) {
 	_, err = store.AdmitToolPermissionEvaluation(ctx, receipt)
 	requirePermissionConflict(t, err)
 }
+
+func automaticPermissionDraft(receipt domain.ToolPermissionReceipt) domain.EventDraft {
+	return domain.EventDraft{ID: receipt.ToolUseEventID, Type: domain.EvAgentToolUse, Payload: map[string]any{"name": receipt.ToolName, "input": map[string]any{"path": "README.md"}, "evaluated_permission": receipt.Decision.Type, "evaluation": domain.ToolPermissionEvaluation{Type: "auto", EvaluatedPermission: &receipt.Decision}, domain.InternalToolExecutionOwner: "self_hosted", domain.InternalPermissionToolName: receipt.ToolName}}
+}
+func TestToolPermissionPublicationRequiresExactCommittedJudgment(t *testing.T) {
+	for _, scenario := range []string{"valid", "missing", "input", "outcome", "owner"} {
+		t.Run(scenario, func(t *testing.T) {
+			store := testStore(t)
+			ctx := context.Background()
+			receipt := permissionReceipt(t, store, "sesn_permission_publication")
+			if scenario != "missing" {
+				if _, err := store.RecordToolPermissionReceipt(ctx, receipt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			draft := automaticPermissionDraft(receipt)
+			switch scenario {
+			case "input":
+				draft.Payload["input"] = map[string]any{"path": "secrets.env"}
+			case "outcome":
+				draft.Payload["evaluated_permission"] = "ask"
+			case "owner":
+				draft.ID = "sevt_unassessed"
+			}
+			_, err := store.CompleteWorkflowTurn(ctx, receipt.SessionID, receipt.TriggerEventID, []domain.EventDraft{draft, requiresActionDraft([]string{draft.ID})}, domain.StatusIdle, receipt.AttemptID, domain.RunAttemptCompleted, nil, []string{draft.ID}, nil)
+			if scenario == "valid" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				pending, err := store.UnresolvedPendingActions(ctx, receipt.SessionID)
+				if err != nil || len(pending) != 1 || pending[0].Kind != domain.PendingToolResult {
+					t.Fatalf("pending=%+v, %v", pending, err)
+				}
+			} else {
+				requirePermissionConflict(t, err)
+				pending, err := store.UnresolvedPendingActions(ctx, receipt.SessionID)
+				if err != nil || len(pending) != 0 {
+					t.Fatalf("unassessed Work published: %+v, %v", pending, err)
+				}
+			}
+		})
+	}
+}

@@ -64,7 +64,8 @@ func TestResumeWorkflowTurn_ExternalConfirmationNeverExecutesOnServer(t *testing
 			turn := &workflowTurnState{}
 			messages, interrupted, failure, err := resumeWorkflowTurn(turn, PrepareTurnResult{
 				ResumeActions: []ResumeAction{{ActionEventID: "sevt_tool", ActionEventType: domain.EvAgentToolUse,
-					Kind: domain.PendingToolConfirmation, ToolName: "read", Confirmation: verdict, DenyMessage: "not permitted"}},
+					Kind:                domain.PendingToolConfirmation,
+					EvaluatedPermission: "ask", ToolName: "read", Confirmation: verdict, DenyMessage: "not permitted"}},
 			}, tools, nil)
 			require.NoError(t, err)
 			require.False(t, interrupted)

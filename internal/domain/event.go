@@ -63,6 +63,8 @@ const (
 	InternalCompanionSystemEventID = "__companion_system_event_id"
 	InternalCompanionSystemContent = "__companion_system_content"
 	InternalOriginTriggerEventID   = "__origin_trigger_event_id"
+	// InternalPermissionToolName correlates MCP wire names with the evaluated model alias.
+	InternalPermissionToolName     = "__permission_tool_name"
 	InternalToolExecutionOwner     = "__tool_execution_owner"
 	InternalOutcomeEvaluationStart = "__outcome_evaluation_start_id"
 	InternalOutcomeIteration       = "__outcome_evaluation_iteration"

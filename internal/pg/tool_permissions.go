@@ -331,3 +331,81 @@ func (s *Store) StartToolStepWithPermission(ctx context.Context, stepID, toolUse
 		return nil
 	})
 }
+
+// validateToolPermissionDraftsLocked binds published auto outcomes to the
+// immutable judgment before completion closes the owner or exposes a Work
+// barrier. The caller holds the Session lock, shared with interrupt admission.
+func (s *Store) validateToolPermissionDraftsLocked(ctx context.Context, tx pgx.Tx, q *pgstore.Queries, owner domain.ToolPermissionOwner, drafts []domain.EventDraft) error {
+	for _, draft := range drafts {
+		if draft.Type != domain.EvAgentToolUse && draft.Type != domain.EvAgentMcpToolUse {
+			continue
+		}
+		raw, err := json.Marshal(draft.Payload["evaluation"])
+		if err != nil {
+			return err
+		}
+		var evaluation domain.ToolPermissionEvaluation
+		if err := json.Unmarshal(raw, &evaluation); err != nil {
+			return domain.Conflict("invalid tool permission evaluation")
+		}
+		if evaluation.Type != "auto" {
+			continue
+		}
+		if evaluation.EvaluatedPermission == nil || !evaluation.EvaluatedPermission.Valid() || draft.Payload["evaluated_permission"] != evaluation.EvaluatedPermission.Type {
+			return domain.Conflict("automatic tool outcome disagrees with its evaluation")
+		}
+		var body []byte
+		err = tx.QueryRow(ctx, `SELECT body FROM tool_permission_evaluations WHERE session_id=$1 AND tool_use_event_id=$2`, owner.SessionID, draft.ID).Scan(&body)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Conflict("automatic tool action has no committed judgment")
+		}
+		if err != nil {
+			return err
+		}
+		var receipt domain.ToolPermissionReceipt
+		if err := json.Unmarshal(body, &receipt); err != nil {
+			return err
+		}
+		if owner.AttemptID == "" {
+			owner.AttemptID = receipt.AttemptID
+		}
+		if receipt.ToolPermissionOwner != owner || receipt.Decision != *evaluation.EvaluatedPermission {
+			return domain.Conflict("automatic tool action belongs to another judgment")
+		}
+		session, thread, err := s.lockPermissionOwner(ctx, tx, q, owner, false)
+		if err != nil {
+			return err
+		}
+		if session.ArchivedAt != nil || session.Status == domain.StatusTerminated || thread.ArchivedAt != nil || thread.Status == domain.StatusTerminated {
+			return domain.Conflict("automatic tool action owner is no longer runnable")
+		}
+		if _, pending := domain.PendingActionKindForEvent(draft.Type, draft.Payload); pending {
+			if _, _, err := s.lockPermissionOwner(ctx, tx, q, owner, true); err != nil {
+				return err
+			}
+		}
+		attempt, err := q.GetTurnAttempt(ctx, owner.AttemptID)
+		if err != nil {
+			return err
+		}
+		if attempt.State != string(domain.RunAttemptActive) {
+			return domain.Conflict("automatic tool action owner is no longer active")
+		}
+		name, _ := draft.Payload[domain.InternalPermissionToolName].(string)
+		input, ok := draft.Payload["input"].(map[string]any)
+		if !ok || name != receipt.ToolName {
+			return domain.Conflict("automatic tool action has a different invocation")
+		}
+		if _, mcp := draft.Payload["mcp_server_name"]; !mcp && draft.Payload["name"] != name {
+			return domain.Conflict("automatic local tool name differs from its judgment")
+		}
+		hash, err := permission.FingerprintInvocation(name, input)
+		if err != nil {
+			return err
+		}
+		if hash != receipt.InvocationHash {
+			return domain.Conflict("automatic tool action input differs from its judgment")
+		}
+	}
+	return nil
+}
