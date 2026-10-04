@@ -149,77 +149,76 @@ FOR UPDATE OF thread`, sessionID, triggerEventID).Scan(
 // It still refuses a turn that has crossed a tool side-effect boundary in a
 // non-active prior attempt. Only the live durable Workflow may reuse an active
 // attempt; an abandoned turn is never silently restarted.
-func (s *Store) EnsureAttempt(
-	ctx context.Context,
-	sessionID string,
-	triggerEventID string,
-	attemptID string,
-) (TurnAttempt, error) {
+func (s *Store) EnsureAttempt(ctx context.Context, sessionID, triggerEventID, attemptID string) (TurnAttempt, error) {
 	if attemptID == "" {
 		return TurnAttempt{}, domain.Validation("turn attempt id is required")
 	}
 	var attempt TurnAttempt
 	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
-		if err := s.lockTurnExecutionOwner(
-			ctx, tx, q, sessionID, triggerEventID,
-		); err != nil {
-			return err
-		}
-		activeID, err := q.ActiveAttemptForTurn(ctx, pgstore.ActiveAttemptForTurnParams{
-			SessionID: sessionID, TriggerEventID: triggerEventID,
-		})
-		if err == nil {
-			if activeID != attemptID {
-				return domain.Conflict("turn already has a different active attempt")
-			}
-			row, err := q.GetTurnAttempt(ctx, activeID)
-			if err != nil {
-				return err
-			}
-			attempt = turnAttemptFromRow(row)
-			return nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
+		return s.ensureAttemptLocked(ctx, tx, q, sessionID, triggerEventID, attemptID, &attempt)
+	})
+	return attempt, err
+}
 
-		prior, err := q.PriorToolExecutionForTurn(ctx, pgstore.PriorToolExecutionForTurnParams{
-			SessionID: sessionID, TriggerEventID: triggerEventID,
-		})
+func (s *Store) ensureAttemptLocked(
+	ctx context.Context, tx pgx.Tx, q *pgstore.Queries,
+	sessionID, triggerEventID, attemptID string, attempt *TurnAttempt,
+) error {
+	if err := s.lockTurnExecutionOwner(
+		ctx, tx, q, sessionID, triggerEventID,
+	); err != nil {
+		return err
+	}
+	activeID, err := q.ActiveAttemptForTurn(ctx, pgstore.ActiveAttemptForTurnParams{
+		SessionID: sessionID, TriggerEventID: triggerEventID,
+	})
+	if err == nil {
+		if activeID != attemptID {
+			return domain.Conflict("turn already has a different active attempt")
+		}
+		row, err := q.GetTurnAttempt(ctx, activeID)
 		if err != nil {
 			return err
 		}
-		if prior {
-			return domain.Conflict("turn has prior tool execution without an active workflow attempt")
-		}
-		next, err := q.NextAttemptNo(ctx, pgstore.NextAttemptNoParams{
-			SessionID: sessionID, TriggerEventID: triggerEventID,
-		})
-		if err != nil {
-			return err
-		}
-		now := s.clock.Now().UTC()
-		attempt = TurnAttempt{
-			ID:             attemptID,
-			SessionID:      sessionID,
-			TriggerEventID: triggerEventID,
-			AttemptNo:      int(next),
-			State:          domain.RunAttemptActive,
-		}
-		return q.InsertTurnAttempt(ctx, pgstore.InsertTurnAttemptParams{
-			ID:             attempt.ID,
-			SessionID:      sessionID,
-			TriggerEventID: triggerEventID,
-			AttemptNo:      next,
-			State:          string(domain.RunAttemptActive),
-			CreatedAt:      tsUTC(now),
-			UpdatedAt:      tsUTC(now),
-		})
+		*attempt = turnAttemptFromRow(row)
+		return nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+
+	prior, err := q.PriorToolExecutionForTurn(ctx, pgstore.PriorToolExecutionForTurnParams{
+		SessionID: sessionID, TriggerEventID: triggerEventID,
 	})
 	if err != nil {
-		return TurnAttempt{}, err
+		return err
 	}
-	return attempt, nil
+	if prior {
+		return domain.Conflict("turn has prior tool execution without an active workflow attempt")
+	}
+	next, err := q.NextAttemptNo(ctx, pgstore.NextAttemptNoParams{
+		SessionID: sessionID, TriggerEventID: triggerEventID,
+	})
+	if err != nil {
+		return err
+	}
+	now := s.clock.Now().UTC()
+	*attempt = TurnAttempt{
+		ID:             attemptID,
+		SessionID:      sessionID,
+		TriggerEventID: triggerEventID,
+		AttemptNo:      int(next),
+		State:          domain.RunAttemptActive,
+	}
+	return q.InsertTurnAttempt(ctx, pgstore.InsertTurnAttemptParams{
+		ID:             attempt.ID,
+		SessionID:      sessionID,
+		TriggerEventID: triggerEventID,
+		AttemptNo:      next,
+		State:          string(domain.RunAttemptActive),
+		CreatedAt:      tsUTC(now),
+		UpdatedAt:      tsUTC(now),
+	})
 }
 
 // FinishAttempt closes an active attempt. A completed attempt requires every step

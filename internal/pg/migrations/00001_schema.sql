@@ -196,6 +196,17 @@ CREATE TABLE turn_attempts (
 
 CREATE UNIQUE INDEX turn_attempts_one_active ON turn_attempts USING btree (session_id, trigger_event_id) WHERE (state = 'active'::text);
 
+CREATE TABLE tool_permission_evaluations (
+    session_id text NOT NULL,
+    tool_use_event_id text NOT NULL,
+    thread_id text NOT NULL,
+    trigger_event_id text NOT NULL,
+    attempt_id text NOT NULL,
+    body jsonb NOT NULL,
+    created_at timestamptz NOT NULL,
+    PRIMARY KEY (session_id, tool_use_event_id)
+);
+
 CREATE TABLE tool_steps (
     id text NOT NULL,
     attempt_id text NOT NULL,
@@ -902,6 +913,11 @@ ALTER TABLE thread_orchestration_outbox
 ALTER TABLE tool_steps
     ADD CONSTRAINT tool_steps_attempt_id_fkey FOREIGN KEY (attempt_id) REFERENCES turn_attempts(id) ON DELETE CASCADE;
 
+ALTER TABLE tool_permission_evaluations
+    ADD CONSTRAINT tool_permission_session_fkey FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    ADD CONSTRAINT tool_permission_trigger_fkey FOREIGN KEY (session_id, thread_id, trigger_event_id) REFERENCES events(session_id, thread_id, id) ON DELETE CASCADE,
+    ADD CONSTRAINT tool_permission_attempt_fkey FOREIGN KEY (attempt_id) REFERENCES turn_attempts(id) ON DELETE CASCADE;
+
 ALTER TABLE turn_attempts
     ADD CONSTRAINT turn_attempts_session_id_fkey FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE;
 
@@ -960,6 +976,7 @@ DROP TABLE
     thread_context_snapshots,
     provider_transcript_turns,
     pending_actions,
+    tool_permission_evaluations,
     tool_steps,
     turn_attempts,
     thread_orchestration_outbox,

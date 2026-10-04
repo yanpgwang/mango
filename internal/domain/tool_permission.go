@@ -39,3 +39,25 @@ type PermissionIntentEntry struct {
 	Type     string `json:"type"`
 	Text     string `json:"text"`
 }
+
+// ToolPermissionOwner identifies one already-established durable turn. A
+// judgment receipt never creates or revives this execution owner.
+type ToolPermissionOwner struct {
+	SessionID      string `json:"session_id"`
+	ThreadID       string `json:"thread_id"`
+	TriggerEventID string `json:"trigger_event_id"`
+	AttemptID      string `json:"attempt_id"`
+}
+
+type ToolPermissionReceipt struct {
+	ToolPermissionOwner
+	ToolUseEventID   string                 `json:"tool_use_event_id"`
+	ToolName         string                 `json:"tool_name"`
+	InvocationHash   string                 `json:"invocation_hash"`
+	ContextHash      string                 `json:"context_hash"`
+	Decision         ToolPermissionDecision `json:"decision"`
+	Model            Model                  `json:"model"`
+	Usage            TokenUsage             `json:"usage"`
+	StopReason       string                 `json:"stop_reason"`
+	ResponseReceived bool                   `json:"response_received"`
+}

@@ -38,7 +38,7 @@
 - Produces `domain.ToolPermissionDecision{Type, ReasonCode string}` and `domain.ToolPermissionEvaluation{Type string, EvaluatedPermission *ToolPermissionDecision}`.
 - Produces `domain.PermissionIntent{AgentSystem string, Entries []PermissionIntentEntry, Complete bool}`; each entry identifies event, Thread, event type, and client text.
 - Produces `permission.Input{Intent domain.PermissionIntent, Tool model.ToolSchema, Call domain.ContentBlock, Conversation []domain.Message}`.
-- Produces `permission.Result{Decision domain.ToolPermissionDecision, Usage domain.TokenUsage, StopReason string}`.
+- Produces `permission.Result{Decision domain.ToolPermissionDecision, Usage domain.TokenUsage, StopReason string, ResponseReceived bool}`.
 - Produces `permission.Evaluator.Evaluate(context.Context, domain.Model, Input) (Result, error)` and `permission.NewModelEvaluator(model.Client) Evaluator`.
 - Produces canonical input and invocation fingerprints for immutable receipt checks.
 
@@ -56,7 +56,8 @@
 **Interfaces:**
 - Produces `domain.ToolPermissionReceipt` with Session, Thread, trigger, attempt, tool-use event, model-facing tool name, invocation/context hashes, decision, model, usage, and stop reason.
 - Produces `Store.GetToolPermissionReceipt(ctx, candidate) (*domain.ToolPermissionReceipt, error)` and `Store.RecordToolPermissionReceipt(ctx, candidate) (domain.ToolPermissionReceipt, error)`.
-- Produces `Store.AdmitToolPermissionEvaluation(ctx, owner) (bool, error)`; owner includes Session, Thread, trigger, and explicit attempt ID.
+- Produces `Store.EnsureToolPermissionAttempt(ctx, owner domain.ToolPermissionOwner) (TurnAttempt, error)` for a short, non-inference Activity before cancellation can interrupt the model call.
+- Produces `Store.AdmitToolPermissionEvaluation(ctx, candidate domain.ToolPermissionReceipt) (bool, error)`; candidate includes the owner and exact cached operation identity, allowing atomic owner checking with budget bypass for already-accounted facts.
 - Produces `Store.StartToolStepWithPermission(ctx, stepID, toolUseEventID string) error` for automatic server execution.
 - Extracts an internal transaction-level accounting helper consumed by existing `AccountModelRequest` and receipt insertion, preserving current pricing and lifecycle projections.
 
@@ -84,7 +85,7 @@
 
 **Interfaces:**
 - Consumes Tasks 1–3. `PrepareTurnResult` records original permission intent when an auto tool is enabled.
-- Produces a permission Activity which establishes the attempt, checks cache, performs owner-aware budget admission, invokes the evaluator, and durably records response facts.
+- Produces a short owner-establishment Activity, followed by an interruptible permission Activity which checks cache, performs owner-aware budget admission, invokes the evaluator, and durably records response facts. Workflow records the established attempt before scheduling inference, including all-ask/all-deny turns.
 - Produces deterministic Workflow evaluation before action publication or tool dispatch. Budget-paused outcomes wait for durable wakeups with interrupt checks; network evaluation uses existing heartbeat cancellation.
 - Batch planning takes per-call committed judgments; server auto-allow passes receipt identity into atomic executor admission. Resume uses the recorded `ask` outcome, retaining ordinary confirmation and Work flows.
 

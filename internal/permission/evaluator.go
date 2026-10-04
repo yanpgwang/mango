@@ -27,9 +27,10 @@ type Input struct {
 }
 
 type Result struct {
-	Decision   domain.ToolPermissionDecision `json:"decision"`
-	Usage      domain.TokenUsage             `json:"usage"`
-	StopReason string                        `json:"stop_reason"`
+	Decision         domain.ToolPermissionDecision `json:"decision"`
+	Usage            domain.TokenUsage             `json:"usage"`
+	StopReason       string                        `json:"stop_reason"`
+	ResponseReceived bool                          `json:"response_received"`
 }
 
 type Evaluator interface {
@@ -73,6 +74,7 @@ func (e modelEvaluator) Evaluate(ctx context.Context, agentModel domain.Model, i
 		Messages: []domain.Message{{Role: domain.RoleUser, Content: []domain.ContentBlock{{Type: "text", Text: string(payload)}}}},
 	})
 	out.Usage, out.StopReason = response.Usage, response.StopReason
+	out.ResponseReceived = callErr == nil
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}

@@ -740,9 +740,15 @@ func (s *Store) admitLocked(
 			if err != nil {
 				return Admission{}, err
 			}
-			if len(pendingIDs) == 0 {
+			var activeAttempt bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (
+    SELECT 1 FROM turn_attempts WHERE session_id=$1 AND state='active'
+)`, session.ID).Scan(&activeAttempt); err != nil {
+				return Admission{}, err
+			}
+			if len(pendingIDs) == 0 && !activeAttempt {
 				// A budget-idle Session with no requires_action barrier has no
-				// active provider/tool work to cancel. Accept the control request
+				// active provider/tool/permission work to cancel. Accept the control request
 				// as an eventless no-op. Pending actions remain interruptible.
 				return Admission{Session: session}, nil
 			}
@@ -2585,6 +2591,9 @@ func (s *Store) completeTurn(
 		applyOutcomeResults(&session, drafts, now)
 		session.TransitionStatus(effectiveStatus, now)
 		if independentPrimary {
+			if interrupt != nil || effectiveStatus == domain.StatusTerminated {
+				primaryThread.BudgetPaused = false
+			}
 			primaryThread.Usage.Add(usage)
 			primaryThread.TransitionStatus(ownerStatus, now)
 			if err := putPrimaryThreadProjection(ctx, q, primaryThread); err != nil {
@@ -2600,8 +2609,20 @@ func (s *Store) completeTurn(
 			}); err != nil {
 				return err
 			}
-		} else if err := s.putProjection(ctx, q, session); err != nil {
-			return err
+		} else {
+			if interrupt != nil || effectiveStatus == domain.StatusTerminated {
+				thread, err := loadSessionThreadForUpdate(ctx, tx, sessionID, trigger.ThreadID)
+				if err != nil {
+					return err
+				}
+				thread.BudgetPaused = false
+				if err := putSessionThreadTx(ctx, tx, thread); err != nil {
+					return err
+				}
+			}
+			if err := s.putProjection(ctx, q, session); err != nil {
+				return err
+			}
 		}
 		// Messages admitted while the barrier was open intentionally wrote no
 		// wakeup. When this transaction clears the last row and exposes queued

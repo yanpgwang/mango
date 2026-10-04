@@ -348,6 +348,16 @@ type ThreadOrchestrationOutbox struct {
 	Intent        string
 }
 
+type ToolPermissionEvaluation struct {
+	SessionID      string
+	ToolUseEventID string
+	ThreadID       string
+	TriggerEventID string
+	AttemptID      string
+	Body           []byte
+	CreatedAt      pgtype.Timestamptz
+}
+
 type ToolStep struct {
 	ID             string
 	AttemptID      string

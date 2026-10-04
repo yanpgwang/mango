@@ -117,13 +117,24 @@ FOR UPDATE`, session.ID)
 // AccountModelRequest records one provider response exactly once and updates
 // the owning Thread plus the shared Session projection in the same transaction.
 func (s *Store) AccountModelRequest(
-	ctx context.Context,
-	sessionID string,
-	threadID string,
-	requestEventID string,
-	model domain.Model,
-	usage domain.TokenUsage,
-	stopReason string,
+	ctx context.Context, sessionID, threadID, requestEventID string,
+	model domain.Model, usage domain.TokenUsage, stopReason string,
+) error {
+	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
+		return s.accountModelRequestLocked(ctx, tx, q, sessionID, threadID, requestEventID, model, usage, stopReason)
+	})
+	if err == nil {
+		s.notifySession(ctx, sessionID)
+	}
+	return err
+}
+
+// accountModelRequestLocked is shared by ordinary responses and permission
+// facts so the receipt and its billing projection can commit atomically.
+func (s *Store) accountModelRequestLocked(
+	ctx context.Context, tx pgx.Tx, q *pgstore.Queries,
+	sessionID, threadID, requestEventID string,
+	model domain.Model, usage domain.TokenUsage, stopReason string,
 ) error {
 	if requestEventID == "" {
 		return domain.Validation("model request event id is required")
@@ -138,69 +149,63 @@ func (s *Store) AccountModelRequest(
 		model, usage, stopReason, pricedAt,
 	)
 	known := priceErr == nil
-	err = s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
-		row, err := q.LockSession(ctx, sessionID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.NotFound("session not found")
-		}
+	row, err := q.LockSession(ctx, sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.NotFound("session not found")
+	}
+	if err != nil {
+		return err
+	}
+	session, err := sessionFromLockRow(row)
+	if err != nil {
+		return err
+	}
+	if threadID == "" {
+		threadID, err = q.GetPrimarySessionThreadID(ctx, sessionID)
 		if err != nil {
 			return err
 		}
-		session, err := sessionFromLockRow(row)
-		if err != nil {
-			return err
-		}
-		if threadID == "" {
-			threadID, err = q.GetPrimarySessionThreadID(ctx, sessionID)
-			if err != nil {
-				return err
-			}
-		}
-		thread, err := loadSessionThreadForUpdate(ctx, tx, sessionID, threadID)
-		if err != nil {
-			return err
-		}
-		var storedCost any
-		if known {
-			storedCost = listCost
-		}
-		command, err := tx.Exec(ctx, `
+	}
+	thread, err := loadSessionThreadForUpdate(ctx, tx, sessionID, threadID)
+	if err != nil {
+		return err
+	}
+	var storedCost any
+	if known {
+		storedCost = listCost
+	}
+	command, err := tx.Exec(ctx, `
 INSERT INTO model_request_usage (
     session_id, thread_id, request_event_id, model_id, stop_reason,
     usage, list_cost_nano_usd, created_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (session_id, request_event_id) DO NOTHING`,
-			sessionID, threadID, requestEventID, model.ID, stopReason,
-			usageJSON, storedCost, pricedAt,
-		)
-		if err != nil {
-			return err
-		}
-		if command.RowsAffected() == 0 {
-			return nil
-		}
-
-		session.Usage.Add(usage)
-		thread.Usage.Add(usage)
-		if known {
-			session.ModelListCostNanoUSD += listCost
-			thread.ModelListCostNanoUSD += listCost
-		} else {
-			session.ListCostKnown = false
-			thread.ListCostKnown = false
-		}
-		now := s.clock.Now().UTC().Truncate(time.Microsecond)
-		session.UpdatedAt = now
-		thread.UpdatedAt = now
-		if err := putSessionThreadTx(ctx, tx, thread); err != nil {
-			return err
-		}
-		return putSessionOnlyTx(ctx, tx, session)
-	})
-	if err == nil {
-		s.notifySession(ctx, sessionID)
+		sessionID, threadID, requestEventID, model.ID, stopReason,
+		usageJSON, storedCost, pricedAt,
+	)
+	if err != nil {
+		return err
 	}
-	return err
+	if command.RowsAffected() == 0 {
+		return nil
+	}
+
+	session.Usage.Add(usage)
+	thread.Usage.Add(usage)
+	if known {
+		session.ModelListCostNanoUSD += listCost
+		thread.ModelListCostNanoUSD += listCost
+	} else {
+		session.ListCostKnown = false
+		thread.ListCostKnown = false
+	}
+	now := s.clock.Now().UTC().Truncate(time.Microsecond)
+	session.UpdatedAt = now
+	thread.UpdatedAt = now
+	if err := putSessionThreadTx(ctx, tx, thread); err != nil {
+		return err
+	}
+	return putSessionOnlyTx(ctx, tx, session)
 }
 
 func normalizedUsageSpeed(speed string) string {
@@ -213,56 +218,74 @@ func normalizedUsageSpeed(speed string) string {
 // AdmitModelRequest checks the shared Session ceiling under the Session row
 // lock. Once reached, the owning Thread becomes durably budget-paused; a later
 // budget update wakes this same in-flight Workflow turn to retry admission.
-func (s *Store) AdmitModelRequest(
-	ctx context.Context,
-	sessionID string,
-	threadID string,
-) (bool, error) {
+func (s *Store) AdmitModelRequest(ctx context.Context, sessionID, threadID string) (bool, error) {
 	allowed := false
 	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
-		row, err := q.LockSession(ctx, sessionID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.NotFound("session not found")
-		}
-		if err != nil {
-			return err
-		}
-		session, err := sessionFromLockRow(row)
-		if err != nil {
-			return err
-		}
-		now := s.clock.Now().UTC().Truncate(time.Microsecond)
-		if !session.BudgetReached(now) {
-			allowed = true
-			return nil
-		}
-		if threadID == "" {
-			threadID, err = q.GetPrimarySessionThreadID(ctx, sessionID)
-			if err != nil {
-				return err
-			}
-		}
-		thread, err := loadSessionThreadForUpdate(ctx, tx, sessionID, threadID)
-		if err != nil {
-			return err
-		}
-		if thread.BudgetPaused {
-			return nil
-		}
+		return s.admitModelRequestLocked(ctx, tx, q, sessionID, threadID, &allowed)
+	})
+	if err == nil && !allowed {
+		s.notifySession(ctx, sessionID)
+	}
+	return allowed, err
+}
 
-		thread.BudgetPaused = true
-		thread.TransitionStatus(domain.StatusIdle, now)
-		if err := putSessionThreadTx(ctx, tx, thread); err != nil {
-			return err
-		}
-		maxSeq, err := q.MaxEventSeq(ctx, sessionID)
+func (s *Store) admitModelRequestLocked(
+	ctx context.Context, tx pgx.Tx, q *pgstore.Queries,
+	sessionID, threadID string, allowed *bool,
+) error {
+	row, err := q.LockSession(ctx, sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.NotFound("session not found")
+	}
+	if err != nil {
+		return err
+	}
+	session, err := sessionFromLockRow(row)
+	if err != nil {
+		return err
+	}
+	now := s.clock.Now().UTC().Truncate(time.Microsecond)
+	if !session.BudgetReached(now) {
+		*allowed = true
+		return nil
+	}
+	if threadID == "" {
+		threadID, err = q.GetPrimarySessionThreadID(ctx, sessionID)
 		if err != nil {
 			return err
 		}
-		threadPayload := threadLifecyclePayload(thread)
-		threadPayload["stop_reason"] = map[string]any{"type": "budget_reached"}
+	}
+	thread, err := loadSessionThreadForUpdate(ctx, tx, sessionID, threadID)
+	if err != nil {
+		return err
+	}
+	if thread.BudgetPaused {
+		return nil
+	}
+
+	thread.BudgetPaused = true
+	thread.TransitionStatus(domain.StatusIdle, now)
+	if err := putSessionThreadTx(ctx, tx, thread); err != nil {
+		return err
+	}
+	maxSeq, err := q.MaxEventSeq(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	threadPayload := threadLifecyclePayload(thread)
+	threadPayload["stop_reason"] = map[string]any{"type": "budget_reached"}
+	_, maxSeq, err = s.appendThreadDrafts(
+		ctx, q, sessionID, thread.ID,
+		[]domain.EventDraft{{
+			Type: domain.EvSessionThreadStatusIdle, Payload: threadPayload,
+		}}, maxSeq, nil,
+	)
+	if err != nil {
+		return err
+	}
+	if thread.ParentThreadID != nil {
 		_, maxSeq, err = s.appendThreadDrafts(
-			ctx, q, sessionID, thread.ID,
+			ctx, q, sessionID, *thread.ParentThreadID,
 			[]domain.EventDraft{{
 				Type: domain.EvSessionThreadStatusIdle, Payload: threadPayload,
 			}}, maxSeq, nil,
@@ -270,57 +293,42 @@ func (s *Store) AdmitModelRequest(
 		if err != nil {
 			return err
 		}
-		if thread.ParentThreadID != nil {
-			_, maxSeq, err = s.appendThreadDrafts(
-				ctx, q, sessionID, *thread.ParentThreadID,
-				[]domain.EventDraft{{
-					Type: domain.EvSessionThreadStatusIdle, Payload: threadPayload,
-				}}, maxSeq, nil,
+	}
+
+	aggregated, err := aggregateSessionThreadStatus(ctx, tx, sessionID)
+	if err != nil {
+		return err
+	}
+	if aggregated != session.Status {
+		session.TransitionStatus(aggregated, now)
+		if aggregated == domain.StatusIdle {
+			pendingIDs, err := q.SessionPendingClientActionEventIDs(ctx, sessionID)
+			if err != nil {
+				return err
+			}
+			stopReason := map[string]any{"type": "budget_reached"}
+			drafts := []domain.EventDraft(nil)
+			if len(pendingIDs) > 0 {
+				stopReason = map[string]any{
+					"type": "requires_action", "event_ids": pendingIDs,
+				}
+			} else {
+				drafts = append(drafts, domain.EventDraft{
+					Type:    domain.EvSessionUsage,
+					Payload: session.UsageEventPayload(now),
+				})
+			}
+			drafts = append(drafts, domain.EventDraft{
+				Type:    domain.EvSessionStatusIdle,
+				Payload: map[string]any{"stop_reason": stopReason},
+			})
+			_, _, err = s.appendDrafts(
+				ctx, q, sessionID, drafts, maxSeq, nil,
 			)
 			if err != nil {
 				return err
 			}
 		}
-
-		aggregated, err := aggregateSessionThreadStatus(ctx, tx, sessionID)
-		if err != nil {
-			return err
-		}
-		if aggregated != session.Status {
-			session.TransitionStatus(aggregated, now)
-			if aggregated == domain.StatusIdle {
-				pendingIDs, err := q.SessionPendingClientActionEventIDs(ctx, sessionID)
-				if err != nil {
-					return err
-				}
-				stopReason := map[string]any{"type": "budget_reached"}
-				drafts := []domain.EventDraft(nil)
-				if len(pendingIDs) > 0 {
-					stopReason = map[string]any{
-						"type": "requires_action", "event_ids": pendingIDs,
-					}
-				} else {
-					drafts = append(drafts, domain.EventDraft{
-						Type:    domain.EvSessionUsage,
-						Payload: session.UsageEventPayload(now),
-					})
-				}
-				drafts = append(drafts, domain.EventDraft{
-					Type:    domain.EvSessionStatusIdle,
-					Payload: map[string]any{"stop_reason": stopReason},
-				})
-				_, _, err = s.appendDrafts(
-					ctx, q, sessionID, drafts, maxSeq, nil,
-				)
-				if err != nil {
-					return err
-				}
-			}
-		}
-		return putSessionOnlyTx(ctx, tx, session)
-	})
-	if err == nil && !allowed {
-		s.notifySession(ctx, sessionID)
 	}
-	return allowed, err
+	return putSessionOnlyTx(ctx, tx, session)
 }

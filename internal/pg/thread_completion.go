@@ -393,6 +393,9 @@ func (s *Store) CompleteThreadWorkflowTurn(
 			}
 		}
 
+		if interrupt != nil || effectiveStatus == domain.StatusTerminated {
+			thread.BudgetPaused = false
+		}
 		thread.Usage.Add(usage)
 		thread.TransitionStatus(effectiveStatus, now)
 		if err := putSessionThreadTx(ctx, tx, thread); err != nil {
