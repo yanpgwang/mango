@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/yanpgwang/mango/internal/domain"
@@ -16,7 +17,8 @@ const ToolOutputDirectory = ".mango-tool-results"
 func ToolOutputPath(fileID string) string { return ToolOutputDirectory + "/" + fileID + ".txt" }
 
 type toolOutputFileRepository interface {
-	EnsureToolOutputUpload(context.Context, domain.File) (domain.File, error)
+	BeginToolOutputUpload(context.Context, domain.File) (domain.File, error)
+	CompleteToolOutputUpload(context.Context, domain.File) (domain.File, error)
 }
 
 // StoreToolOutput publishes a journaled MCP receipt as a regular File. The ID
@@ -32,37 +34,61 @@ func (s *FileService) StoreToolOutput(ctx context.Context, sessionID, fileID, te
 	}
 	info := ComputeBlobInfo([]byte(text))
 	now := s.clock.Now().UTC()
-	expected := domain.File{ID: fileID, SessionID: sessionID, Filename: fileID + ".txt", MimeType: "text/plain", SizeBytes: info.SizeBytes, ChecksumSHA256: info.ChecksumSHA256, BlobKey: workspace.BlobKey(ctx, "files/"+fileID), State: domain.FileStateUploading, CreatedAt: now, UpdatedAt: now}
-	file, err := repo.EnsureToolOutputUpload(ctx, expected)
+	// The public identity comes from the durable receipt. Physical write keys
+	// must never be reused, even when a process restarts with a fresh ID source.
+	key := workspace.BlobKey(ctx, "files/"+fileID+"/"+domain.NewRandomIDGen().NewID("upload_"))
+	expected := domain.File{ID: fileID, SessionID: sessionID, Filename: fileID + ".txt", MimeType: "text/plain", SizeBytes: info.SizeBytes, ChecksumSHA256: info.ChecksumSHA256, BlobKey: key, State: domain.FileStateUploading, CreatedAt: now, UpdatedAt: now}
+	file, err := repo.BeginToolOutputUpload(ctx, expected)
 	if err != nil {
 		return err
 	}
-	if file.SessionID != expected.SessionID || file.Filename != expected.Filename || file.MimeType != expected.MimeType || file.BlobKey != expected.BlobKey || file.SizeBytes != expected.SizeBytes || file.ChecksumSHA256 != expected.ChecksumSHA256 {
+	if !sameToolOutputFile(file, expected) {
 		return domain.Conflict("tool output File identity differs from its durable receipt")
 	}
 	if file.State == domain.FileStateReady {
 		return nil
 	}
-	if file.State != domain.FileStateUploading {
+	if file.State != domain.FileStateUploading || file.BlobKey != expected.BlobKey {
 		return domain.Conflict("tool output File is no longer uploading")
 	}
 	stored, err := s.blobs.Put(ctx, file.BlobKey, file.MimeType, strings.NewReader(text), MaxToolOutputBytes)
 	if err != nil {
+		if errors.Is(err, ErrBlobNotWritten) || errors.Is(err, ErrBlobTooLarge) {
+			s.acknowledgeToolOutputWrite(ctx, file.BlobKey)
+		}
 		return err
-	} // Keep the intent; the durable receipt can resume it.
+	} // Unknown writers keep their pre-I/O guard; the receipt can resume storage.
 	if stored != info {
+		s.acknowledgeToolOutputWrite(ctx, file.BlobKey)
 		return errors.New("tool output blob failed integrity verification")
 	}
-	_, err = s.repo.CompleteUpload(ctx, fileID, stored)
+	_, err = repo.CompleteToolOutputUpload(ctx, file)
 	if err == nil {
 		return nil
 	}
+	// Put definitely finished, but a completion error may be a lost commit
+	// acknowledgement. Never delete here: uploading/ready references exclude
+	// this key from reconciliation. A superseded key can be collected safely.
+	s.acknowledgeToolOutputWrite(ctx, file.BlobKey)
 	// A concurrent writer or lost acknowledgement may already have published it.
 	ready, readErr := s.repo.Get(ctx, fileID)
-	if readErr == nil && ready.State == domain.FileStateReady && ready.ChecksumSHA256 == info.ChecksumSHA256 && ready.SessionID == sessionID && ready.SizeBytes == info.SizeBytes {
+	if readErr == nil && ready.State == domain.FileStateReady && sameToolOutputFile(ready, expected) {
 		return nil
 	}
 	return err
+}
+
+func sameToolOutputFile(file, expected domain.File) bool {
+	return file.ID == expected.ID && file.SessionID == expected.SessionID && file.Filename == expected.Filename && file.MimeType == expected.MimeType &&
+		file.SizeBytes == expected.SizeBytes && file.ChecksumSHA256 == expected.ChecksumSHA256
+}
+
+func (s *FileService) acknowledgeToolOutputWrite(ctx context.Context, key string) {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	// Failure keeps the existing unknown guard. It must not justify deleting
+	// bytes or removing File metadata after an uncertain database response.
+	_, _ = s.repo.RetainBlobCleanup(cleanup, key, true)
 }
 
 func validToolOutputID(id string) bool {

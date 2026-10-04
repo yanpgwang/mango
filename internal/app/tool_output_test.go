@@ -11,17 +11,55 @@ import (
 
 type outputFileRepository struct{ *memoryFileRepository }
 
-func (r outputFileRepository) EnsureToolOutputUpload(ctx context.Context, file domain.File) (domain.File, error) {
+func (r outputFileRepository) BeginToolOutputUpload(ctx context.Context, file domain.File) (domain.File, error) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	existing, ok := r.files[file.ID]
-	r.mu.Unlock()
 	if ok {
-		return existing, nil
+		if existing.SessionID != file.SessionID || existing.SizeBytes != file.SizeBytes || existing.ChecksumSHA256 != file.ChecksumSHA256 {
+			return domain.File{}, domain.Conflict("receipt differs")
+		}
+		if existing.State == domain.FileStateReady {
+			return existing, nil
+		}
 	}
-	if err := r.BeginUpload(ctx, file); err != nil {
+	if _, err := r.RetainBlobCleanup(ctx, file.BlobKey, false); err != nil {
 		return domain.File{}, err
 	}
+	r.files[file.ID] = file
 	return file, nil
+}
+
+func (r outputFileRepository) CompleteToolOutputUpload(_ context.Context, expected domain.File) (domain.File, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	file, ok := r.files[expected.ID]
+	if !ok || file.State != domain.FileStateUploading || file.BlobKey != expected.BlobKey {
+		return domain.File{}, ErrUploadLeaseLost
+	}
+	file.State = domain.FileStateReady
+	r.files[file.ID] = file
+	r.memoryBlobCleanupRepository.mu.Lock()
+	delete(r.intents, file.BlobKey)
+	r.memoryBlobCleanupRepository.mu.Unlock()
+	return file, r.completeErrAfterCommit
+}
+
+func (r outputFileRepository) ListBlobCleanup(ctx context.Context) ([]BlobCleanupIntent, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	intents, err := r.memoryBlobCleanupRepository.ListBlobCleanup(ctx)
+	var eligible []BlobCleanupIntent
+	for _, intent := range intents {
+		current := false
+		for _, file := range r.files {
+			current = current || (file.BlobKey == intent.BlobKey && file.State != domain.FileStateDeleting)
+		}
+		if !current {
+			eligible = append(eligible, intent)
+		}
+	}
+	return eligible, err
 }
 func TestToolOutputStorage_ResumesAndPinsImmutableFile(t *testing.T) {
 	ctx := workspace.WithScope(context.Background(), workspace.DefaultID)
