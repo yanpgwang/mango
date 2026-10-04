@@ -36,9 +36,14 @@ func TestFirstPartySDKHTTPConformance(t *testing.T) {
 	} {
 		t.Run(language.name, func(t *testing.T) {
 			baseHandler := newTestHandler(t, Config{RequireAuth: true}, false)
+			autoHandler := NewServer(Deps{Events: automaticPermissionContractEvents{}, Sessions: automaticPermissionContractSessions{}}, Config{RequireAuth: true}).Handler()
 			mcpHandler := NewServer(Deps{Events: mcpOutputContractEvents{}, Sessions: mcpOutputContractSessions{}}, Config{RequireAuth: true}).Handler()
 			workHandler := NewServer(Deps{EnvironmentWork: newSDKEnvironmentWorkService()}, Config{RequireAuth: true}).Handler()
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1/sessions/sesn_auto_fixture/events" {
+					autoHandler.ServeHTTP(w, r)
+					return
+				}
 				if r.URL.Path == "/v1/sessions/sesn_mcp_fixture/events" {
 					mcpHandler.ServeHTTP(w, r)
 					return

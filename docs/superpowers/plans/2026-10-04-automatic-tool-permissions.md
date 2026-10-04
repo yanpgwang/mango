@@ -1,6 +1,11 @@
+---
+title: Automatic permissions implementation plan
+description: Implementation tasks and acceptance checks for invocation-specific tool permissions.
+---
+
 # Automatic Tool Permissions Implementation Plan
 
-> **For agentic workers:** Use superpowers:executing-plans to implement this plan task by task. Steps use checkbox syntax for tracking.
+> **For agentic workers:** Use `superpowers:executing-plans` to implement this plan task by task. Steps use checkbox syntax for tracking.
 
 **Goal:** Let Mango evaluate each supported local or MCP invocation, persist the result, and safely allow, ask, or deny it without inventing a second execution lifecycle.
 

@@ -35,7 +35,7 @@ The PostgreSQL/Temporal control plane currently accepts:
 | `user.interrupt` | Cancels active work, or is acknowledged as an idle no-op; omit `session_thread_id` to interrupt every non-archived Thread, or provide it to target one Thread |
 | `user.custom_tool_result` | Supplies a result for a pending custom tool call |
 | `user.tool_result` | Supplies a client-executed built-in result for a `self_hosted` environment |
-| `user.tool_confirmation` | Allows or denies a pending `always_ask` built-in |
+| `user.tool_confirmation` | Allows or denies a recorded `ask` tool call |
 | `user.define_outcome` | Starts outcome work and independent evaluation/revision cycles |
 | `system.message` | Text-only companion context; must be the final event immediately after a message or tool result |
 
@@ -89,10 +89,27 @@ result returns `409` and commits none of the failing request. If a client loses
 the HTTP response, it should list persisted events and correlate the action ID
 before retrying rather than assuming the result was rejected.
 
+### Automatic permission events
+
+Built-in and MCP tool-use events carry both `evaluated_permission` (`allow`,
+`ask`, or `deny`) and typed `evaluation`. Fixed policies expose
+`{"type":"always_allow"}` or `{"type":"always_ask"}`. An automatic evaluation
+exposes `{"type":"auto","evaluated_permission":{"type":"allow"}}`,
+`{"type":"auto","evaluated_permission":{"type":"ask","reason_code":"indeterminate"}}`,
+or `{"type":"auto","evaluated_permission":{"type":"deny","reason_code":"high_risk"}}`.
+The top-level and nested outcomes agree. Custom tool-use events have neither
+permission field.
+
+An automatic denial produces a matching error tool result with
+`Permission to use {tool_name} has been denied.`; the Agent continues without
+executing that invocation. A confirmation for an allow or deny is rejected
+with `400`. See [Tool permissions](../guides/tool-permissions.md) for examples
+and evaluation limits.
+
 ### Approve externally executed tools
 
 Execution location does not change permission policy. A self-hosted built-in
-with `always_ask` emits `agent.tool_use` with `evaluated_permission: "ask"` and
+with a recorded `ask` outcome (`always_ask` or `auto`) emits `agent.tool_use` and
 waits for `user.tool_confirmation` referencing that original event ID.
 
 - `allow` authorizes the external worker to execute the original call. Mango

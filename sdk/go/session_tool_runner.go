@@ -576,9 +576,9 @@ func (r *SessionToolRunner) route(
 		r.enqueue(ctx, queue, call)
 		return
 	}
-	permission, present := call.toolUse.EvaluatedPermission.Get()
+	permission := call.toolUse.EvaluatedPermission
 	switch {
-	case !present || permission == EvaluatedPermissionAllow:
+	case permission == EvaluatedPermissionAllow:
 		r.enqueue(ctx, queue, call)
 	case permission == EvaluatedPermissionDeny:
 		r.deny(ctx, call)

@@ -1405,3 +1405,47 @@ primitive without introducing a public resource or provider-specific wrapper.
 Unknown write guards remain persistent because a timeout does not prove that a
 remote request cannot commit later. Mango's own PostgreSQL/S3 recovery and
 HTTP/SDK tests validate this lifecycle; public third-party schemas do not.
+
+
+## Automatic tool permissions (2026-10-04)
+
+- Reviewed current official CMA [permission policies](https://platform.claude.com/docs/en/managed-agents/permission-policies)
+  and their paired public SDK types: Go `v1.78.0` at
+  `c9ebe447ac92c91748af817c265398e5d81ca49f`, Python `v1.11.0` at
+  `18f25547f20cf5f01da69ac611e700e3bc9ebf21`, and TypeScript
+  `sdk-v0.131.0` at `d49bdab458000bcdffe77bd84b03293f31824fb3`.
+  Research included Go `BetaAutoPolicy` and Session evaluation types, Python
+  managed-agent auto policy and Session types, TypeScript
+  `resources/beta/sessions/events.ts`, and cookbook commit
+  `d7265d6ae994ccd8429db0594b000073b2f9ad43` for the surrounding workflows.
+  Reference code was not copied, executed, or added as a dependency.
+- Mango's user problem is repetitive human approval for routine local/MCP
+  calls, while preserving human review when an invocation is uncertain. Adopted
+  `auto`, recorded allow/ask/deny, typed event evaluations, ask/indeterminate and
+  deny/high_risk reasons, unchanged defaults, denial-as-tool-error, and the
+  principle that untrusted tool and inter-Thread text cannot grant authority.
+  The first-party SDKs map those wire types coherently; the Go runner consumes
+  the recorded outcome rather than reinterpreting the configured policy.
+- Mango independently implemented a replaceable, tool-free evaluator using the
+  configured Messages adapter, bounded input/output/deadline, strict decoding,
+  and fail-safe asking. Its risk criteria and qualification cases are Mango
+  design decisions; the reviewed documentation does not disclose CMA's prompt,
+  model-selection algorithm, full taxonomy, or judgment quality.
+- Adapted execution to self-hosted Work and the existing PostgreSQL/Temporal
+  journal. Immutable receipt plus known usage commit atomically; active turn
+  ownership independently fences Work publication and MCP dispatch. Original
+  client intent is read before compaction; private server-authored task links
+  preserve child delegation/report/follow-up provenance. Those links and model
+  aliases stay off public DTOs. Budget-paused interruption consumes the old
+  round so a budget increase cannot revive it.
+- Rejected hosted rollout identifiers, Anthropic authentication/beta headers,
+  CMA runtime delegation, and a blanket rule that every consequential action
+  must ask. Enabled provider-native Web still requires `always_allow` because
+  Mango cannot intercept it before execution. Custom tools remain owned by the
+  application. No security-sandbox guarantee, exactly-once provider billing,
+  or equivalence to CMA judgment quality is claimed.
+- Validation separates raw Mango HTTP and first-party SDK conformance from
+  evaluator tests, real PostgreSQL ownership/accounting tests, Temporal tests,
+  and a real-service HTTP/worker-restart lifecycle test. See
+  [the design](design/automatic-tool-permissions.md) and
+  [the user guide](guides/tool-permissions.md).

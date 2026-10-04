@@ -5,14 +5,12 @@ description: Evaluate self-hosted and MCP calls before admitting execution.
 
 # Automatic tool permissions
 
-Status: proposed implementation design. The maintainer selected a replaceable
-model evaluator, with focused validation before release, on 2026-10-04. This
-document does not claim the capability is implemented or equivalent in quality
-to CMA's unpublished evaluator. The maintainer asked which decisions are
-already established by public CMA behavior and which need independent Mango
-implementation. The distinction below is explicit: intent provenance is an
-engineering responsibility, while risk classification needs independently
-specified Mango criteria and validation rather than an inferred CMA algorithm.
+Status: first implementation completed; model qualification and independent
+review precede integration. The maintainer selected a replaceable model
+evaluator and authorized a first version with subsequent tuning. Mango adopts
+the public permission lifecycle and trust distinction below, and independently
+implements the evaluator and self-hosted durability. No equivalent quality to
+CMA's unpublished evaluator is claimed.
 
 ## User problem and scope
 
@@ -105,7 +103,7 @@ client intent can change a judgment; some calls remain high-risk regardless of
 who asks. The reviewed documentation and SDK types do not give a complete risk
 taxonomy or the algorithm used to reach these judgments.
 
-The following are proposed Mango evaluation criteria and test examples, not a
+The following are first-version Mango evaluation criteria and test examples, not a
 published CMA category list:
 
 | Situation | Outcome |

@@ -3745,7 +3745,7 @@ components:
       properties:
         type:
           type: string
-          enum: [always_allow, always_ask]
+          enum: [always_allow, always_ask, auto]
     ToolDefaultConfig:
       type: object
       additionalProperties: false
@@ -5456,16 +5456,71 @@ components:
     EvaluatedPermission:
       type: string
       enum: [allow, ask, deny]
+    AutomaticPermissionAllow:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, const: allow}
+    AutomaticPermissionAsk:
+      type: object
+      additionalProperties: false
+      required: [type, reason_code]
+      properties:
+        type: {type: string, const: ask}
+        reason_code: {type: string, const: indeterminate}
+    AutomaticPermissionDeny:
+      type: object
+      additionalProperties: false
+      required: [type, reason_code]
+      properties:
+        type: {type: string, const: deny}
+        reason_code: {type: string, const: high_risk}
+    AutomaticPermissionDecision:
+      oneOf:
+        - $ref: '#/components/schemas/AutomaticPermissionAllow'
+        - $ref: '#/components/schemas/AutomaticPermissionAsk'
+        - $ref: '#/components/schemas/AutomaticPermissionDeny'
+      discriminator:
+        propertyName: type
+    AlwaysAllowEvaluation:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, const: always_allow}
+    AlwaysAskEvaluation:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, const: always_ask}
+    AutoEvaluation:
+      type: object
+      additionalProperties: false
+      required: [type, evaluated_permission]
+      properties:
+        type: {type: string, const: auto}
+        evaluated_permission: {$ref: '#/components/schemas/AutomaticPermissionDecision'}
+    ToolPermissionEvaluation:
+      description: The applied policy. For auto, its nested decision agrees with the event's evaluated_permission; no private provider reasoning is exposed.
+      oneOf:
+        - $ref: '#/components/schemas/AlwaysAllowEvaluation'
+        - $ref: '#/components/schemas/AlwaysAskEvaluation'
+        - $ref: '#/components/schemas/AutoEvaluation'
+      discriminator:
+        propertyName: type
     AgentToolUseEvent:
       allOf:
         - $ref: '#/components/schemas/PersistedSessionEventBase'
         - type: object
-          required: [type, input, name]
+          required: [type, input, name, evaluated_permission, evaluation]
           properties:
             type: {type: string, const: agent.tool_use}
             input: {type: object, additionalProperties: true}
             name: {type: string}
             evaluated_permission: {$ref: '#/components/schemas/EvaluatedPermission'}
+            evaluation: {$ref: '#/components/schemas/ToolPermissionEvaluation'}
             session_thread_id: {type: string, pattern: '^sthr_'}
             source_event_id:
               type: string
@@ -5476,13 +5531,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/PersistedSessionEventBase'
         - type: object
-          required: [type, input, mcp_server_name, name]
+          required: [type, input, mcp_server_name, name, evaluated_permission, evaluation]
           properties:
             type: {type: string, const: agent.mcp_tool_use}
             input: {type: object, additionalProperties: true}
             mcp_server_name: {type: string}
             name: {type: string}
             evaluated_permission: {$ref: '#/components/schemas/EvaluatedPermission'}
+            evaluation: {$ref: '#/components/schemas/ToolPermissionEvaluation'}
             session_thread_id: {type: string, pattern: '^sthr_'}
             source_event_id:
               type: string

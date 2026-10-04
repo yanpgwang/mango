@@ -35,3 +35,12 @@ function relayedActionSource(event: Extract<SessionEvent, { type: 'agent.tool_us
   return event.source_event_id;
 }
 void relayedActionSource;
+
+function automaticPermissionReason(event: Extract<SessionEvent, { type: 'agent.tool_use' | 'agent.mcp_tool_use' }>): string | undefined {
+  if (event.evaluation.type === 'auto') {
+    const decision = event.evaluation.evaluated_permission;
+    if (decision.type === 'ask' || decision.type === 'deny') return decision.reason_code;
+  }
+  return undefined;
+}
+void automaticPermissionReason;

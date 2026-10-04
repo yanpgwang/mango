@@ -40,6 +40,7 @@ Mango keeps these runtime requirements:
   secrets. Provider and connector credentials belong to deployment/worker
   configuration, not Agent or Session resources.
 - MCP tools default to `always_ask`; built-in tools default to `always_allow`.
+  Both support opt-in `auto` for interceptable calls; see [Tool permissions](../guides/tool-permissions.md).
   A running Session keeps the tool configuration snapshot with which it began.
 - Local tool output follows the operator worker's limits. Control-plane MCP
   output above 100,000 characters becomes a preview and a complete File up to
@@ -301,7 +302,7 @@ pause between the model requesting the tool and the provider executing it.
 Therefore:
 
 - `provider_native + always_allow` is supported;
-- `provider_native + always_ask` is rejected during capability resolution;
+- `provider_native + always_ask` and `provider_native + auto` are rejected during capability resolution;
 - an interceptable `platform_managed` executor can support `always_ask` by
   durably parking before execution;
 - `client_self_hosted` built-ins preserve the permission gate: first wait for a
@@ -390,7 +391,7 @@ running.
 An MCP tool call uses the normal operation journal:
 
 1. persist `prepared` with normalized input and discovery snapshot ID;
-2. enforce `always_ask`, parking the Session before network execution;
+2. enforce the recorded permission outcome, parking on `ask`, returning a tool error on automatic `deny`, or admitting execution on `allow`;
 3. mark `started`;
 4. invoke the remote server with deadlines;
 5. retain raw MCP JSON in the private journal only when it fits the
@@ -529,7 +530,7 @@ tool boundaries needed for native web and unauthenticated MCP:
 4. Local tools enforce worker-side output limits; oversized MCP projections
    use a bounded preview and do not create a sandbox file.
 5. Native Web Search/Fetch declarations go to the configured Messages API
-   `base_url`; provider-native web rejects `always_ask`.
+   `base_url`; provider-native web rejects `always_ask` and `auto`.
 6. Remote MCP tools use the official Go SDK, Session-pinned discovery, normal
    permission policies, and the operation journal. Discovery connection
    failures emit a recoverable `session.error`, omit that server's tools for

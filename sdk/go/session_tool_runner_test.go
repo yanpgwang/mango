@@ -123,7 +123,7 @@ func TestSessionToolRunnerHonorsPermissionsAndDispatchesCustomTools(t *testing.T
 		sessionToolUseJSON("tool_unknown", "echo", "future_policy", ""),
 		json.RawMessage(`{"id":"custom_one","type":"agent.custom_tool_use","processed_at":null,"name":"custom","input":{"count":2},"session_thread_id":"sthr_custom"}`),
 		json.RawMessage(`{"id":"custom_external","type":"agent.custom_tool_use","processed_at":null,"name":"external_owner","input":{}}`),
-		json.RawMessage(`{"id":"mcp_one","type":"agent.mcp_tool_use","processed_at":null,"name":"remote","mcp_server_name":"server","input":{},"evaluated_permission":"allow"}`),
+		json.RawMessage(`{"id":"mcp_one","type":"agent.mcp_tool_use","processed_at":null,"name":"remote","mcp_server_name":"server","input":{},"evaluated_permission":"allow","evaluation":{"type":"always_allow"}}`),
 	}
 	var postMu sync.Mutex
 	var posted []map[string]any
@@ -613,8 +613,17 @@ func sessionToolUseJSON(id, name, permission, threadID string) json.RawMessage {
 		"id": id, "type": "agent.tool_use", "processed_at": nil,
 		"name": name, "input": map[string]any{"value": "hello"},
 	}
-	if permission != "" {
-		event["evaluated_permission"] = permission
+	if permission == "" {
+		permission = "allow"
+	}
+	event["evaluated_permission"] = permission
+	policy := "always_allow"
+	if permission == "ask" {
+		policy = "always_ask"
+	}
+	event["evaluation"] = map[string]any{"type": policy}
+	if permission == "deny" {
+		event["evaluation"] = map[string]any{"type": "auto", "evaluated_permission": map[string]any{"type": "deny", "reason_code": "high_risk"}}
 	}
 	if threadID != "" {
 		event["session_thread_id"] = threadID
@@ -641,3 +650,47 @@ func writeSessionToolRunnerJSON(t *testing.T, w http.ResponseWriter, value any) 
 }
 
 func durationPointer(value time.Duration) *time.Duration { return &value }
+
+func TestSessionToolRunnerUsesRecordedAutomaticOutcomes(t *testing.T) {
+	t.Parallel()
+	history := []json.RawMessage{
+		json.RawMessage(`{"id":"auto_allow","type":"agent.tool_use","processed_at":null,"name":"echo","input":{},"evaluated_permission":"allow","evaluation":{"type":"auto","evaluated_permission":{"type":"allow"}}}`),
+		json.RawMessage(`{"id":"auto_ask","type":"agent.tool_use","processed_at":null,"name":"echo","input":{},"evaluated_permission":"ask","evaluation":{"type":"auto","evaluated_permission":{"type":"ask","reason_code":"indeterminate"}}}`),
+		json.RawMessage(`{"id":"auto_deny","type":"agent.tool_use","processed_at":null,"name":"echo","input":{},"evaluated_permission":"deny","evaluation":{"type":"auto","evaluated_permission":{"type":"deny","reason_code":"high_risk"}}}`),
+		json.RawMessage(`{"id":"approved","type":"user.tool_confirmation","processed_at":null,"tool_use_id":"auto_ask","result":"allow"}`),
+	}
+	var posts atomic.Int32
+	server := sessionToolRunnerHistoryServer(t, history, func(w http.ResponseWriter, request *http.Request) {
+		posts.Add(1)
+		writeSessionToolRunnerJSON(t, w, map[string]any{"data": []any{}})
+	})
+	defer server.Close()
+	var executedMu sync.Mutex
+	executed := make(map[string]int)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	runner := NewSessionToolRunner(ctx, newSessionToolRunnerClient(t, server.URL), "session_auto", SessionToolRunnerOptions{
+		Tools: []SessionTool{sessionToolFunc{name: "echo", run: func(_ context.Context, call SessionToolCall) ([]ResultContentInput, error) {
+			executedMu.Lock()
+			executed[call.ToolUseID]++
+			executedMu.Unlock()
+			return textSessionToolResult("done"), nil
+		}}}, MaxIdle: durationPointer(0),
+	})
+	defer runner.Close()
+	calls := make(map[string]DispatchedToolCall)
+	for len(calls) < 3 && runner.Next() {
+		calls[runner.Current().ToolUseID] = runner.Current()
+	}
+	if len(calls) != 3 || !calls["auto_allow"].Posted || !calls["auto_ask"].Posted || calls["auto_ask"].Confirmation != "allow" {
+		t.Fatalf("automatic dispatch = %#v, err=%v", calls, runner.Err())
+	}
+	if calls["auto_deny"].Posted || calls["auto_deny"].Confirmation != "deny" {
+		t.Fatalf("automatic denial = %#v", calls["auto_deny"])
+	}
+	executedMu.Lock()
+	defer executedMu.Unlock()
+	if executed["auto_allow"] != 1 || executed["auto_ask"] != 1 || executed["auto_deny"] != 0 || posts.Load() != 2 {
+		t.Fatalf("effects = %v, posts=%d", executed, posts.Load())
+	}
+}

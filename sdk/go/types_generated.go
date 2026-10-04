@@ -60,15 +60,16 @@ type AgentMCPToolResultEvent struct {
 }
 
 type AgentMCPToolUseEvent struct {
-	EvaluatedPermission Optional[EvaluatedPermission] `json:"evaluated_permission,omitzero"`
-	ID                  string                        `json:"id"`
-	Input               map[string]json.RawMessage    `json:"input"`
-	MCPServerName       string                        `json:"mcp_server_name"`
-	Name                string                        `json:"name"`
-	ProcessedAt         NullableTimestamp             `json:"processed_at"`
-	SessionThreadID     Optional[string]              `json:"session_thread_id,omitzero"`
-	SourceEventID       Optional[string]              `json:"source_event_id,omitzero"`
-	Type                string                        `json:"type"`
+	EvaluatedPermission EvaluatedPermission        `json:"evaluated_permission"`
+	Evaluation          ToolPermissionEvaluation   `json:"evaluation"`
+	ID                  string                     `json:"id"`
+	Input               map[string]json.RawMessage `json:"input"`
+	MCPServerName       string                     `json:"mcp_server_name"`
+	Name                string                     `json:"name"`
+	ProcessedAt         NullableTimestamp          `json:"processed_at"`
+	SessionThreadID     Optional[string]           `json:"session_thread_id,omitzero"`
+	SourceEventID       Optional[string]           `json:"source_event_id,omitzero"`
+	Type                string                     `json:"type"`
 }
 
 type AgentMessageEvent struct {
@@ -159,14 +160,15 @@ type AgentToolResultEvent struct {
 }
 
 type AgentToolUseEvent struct {
-	EvaluatedPermission Optional[EvaluatedPermission] `json:"evaluated_permission,omitzero"`
-	ID                  string                        `json:"id"`
-	Input               map[string]json.RawMessage    `json:"input"`
-	Name                string                        `json:"name"`
-	ProcessedAt         NullableTimestamp             `json:"processed_at"`
-	SessionThreadID     Optional[string]              `json:"session_thread_id,omitzero"`
-	SourceEventID       Optional[string]              `json:"source_event_id,omitzero"`
-	Type                string                        `json:"type"`
+	EvaluatedPermission EvaluatedPermission        `json:"evaluated_permission"`
+	Evaluation          ToolPermissionEvaluation   `json:"evaluation"`
+	ID                  string                     `json:"id"`
+	Input               map[string]json.RawMessage `json:"input"`
+	Name                string                     `json:"name"`
+	ProcessedAt         NullableTimestamp          `json:"processed_at"`
+	SessionThreadID     Optional[string]           `json:"session_thread_id,omitzero"`
+	SourceEventID       Optional[string]           `json:"source_event_id,omitzero"`
+	Type                string                     `json:"type"`
 }
 
 type AgentUpdateRequest struct {
@@ -193,10 +195,58 @@ type AgentWithOverrides struct {
 	Version    Optional[int64]                  `json:"version,omitzero"`
 }
 
+type AlwaysAllowEvaluation struct {
+	Type string `json:"type"`
+}
+
+type AlwaysAskEvaluation struct {
+	Type string `json:"type"`
+}
+
 type AnthropicSkillReferenceInput struct {
 	SkillID string           `json:"skill_id"`
 	Type    string           `json:"type"`
 	Version Optional[string] `json:"version,omitzero"`
+}
+
+type AutoEvaluation struct {
+	EvaluatedPermission AutomaticPermissionDecision `json:"evaluated_permission"`
+	Type                string                      `json:"type"`
+}
+
+type AutomaticPermissionAllow struct {
+	Type string `json:"type"`
+}
+
+type AutomaticPermissionAsk struct {
+	ReasonCode string `json:"reason_code"`
+	Type       string `json:"type"`
+}
+
+// AutomaticPermissionDecision is a wire union. Set exactly one variant when constructing it.
+// Raw preserves an unknown variant received from the server.
+type AutomaticPermissionDecision struct {
+	Raw                      json.RawMessage           `json:"-"`
+	AutomaticPermissionAllow *AutomaticPermissionAllow `json:"-"`
+	AutomaticPermissionAsk   *AutomaticPermissionAsk   `json:"-"`
+	AutomaticPermissionDeny  *AutomaticPermissionDeny  `json:"-"`
+}
+
+func (value AutomaticPermissionDecision) MarshalJSON() ([]byte, error) {
+	return marshalUnion(value.Raw, value.AutomaticPermissionAllow, value.AutomaticPermissionAsk, value.AutomaticPermissionDeny)
+}
+func (value *AutomaticPermissionDecision) UnmarshalJSON(data []byte) error {
+	*value = AutomaticPermissionDecision{}
+	return unmarshalUnion(data, &value.Raw,
+		unionChoice{target: &value.AutomaticPermissionAllow, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"allow\""}},
+		unionChoice{target: &value.AutomaticPermissionAsk, kind: "object", required: []string{"type", "reason_code"}, constants: map[string]string{"reason_code": "\"indeterminate\"", "type": "\"ask\""}},
+		unionChoice{target: &value.AutomaticPermissionDeny, kind: "object", required: []string{"type", "reason_code"}, constants: map[string]string{"reason_code": "\"high_risk\"", "type": "\"deny\""}},
+	)
+}
+
+type AutomaticPermissionDeny struct {
+	ReasonCode string `json:"reason_code"`
+	Type       string `json:"type"`
 }
 
 type Base64DocumentSourceInput struct {
@@ -834,9 +884,9 @@ func (value *EventStreamFrame) UnmarshalJSON(data []byte) error {
 		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at", "content"}, constants: map[string]string{"type": "\"agent.message\""}},
 		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at"}, constants: map[string]string{"type": "\"agent.thinking\""}},
 		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "name"}, constants: map[string]string{"type": "\"agent.custom_tool_use\""}},
-		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "name"}, constants: map[string]string{"type": "\"agent.tool_use\""}},
+		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "name", "evaluated_permission", "evaluation"}, constants: map[string]string{"type": "\"agent.tool_use\""}},
 		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at", "tool_use_id"}, constants: map[string]string{"type": "\"agent.tool_result\""}},
-		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "mcp_server_name", "name"}, constants: map[string]string{"type": "\"agent.mcp_tool_use\""}},
+		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "mcp_server_name", "name", "evaluated_permission", "evaluation"}, constants: map[string]string{"type": "\"agent.mcp_tool_use\""}},
 		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at", "mcp_tool_use_id"}, constants: map[string]string{"type": "\"agent.mcp_tool_result\""}},
 		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at", "stop_reason"}, constants: map[string]string{"type": "\"session.status_idle\""}},
 		unionChoice{target: &value.SessionEvent, kind: "object", required: []string{"id", "type", "processed_at"}, constants: map[string]string{"type": "\"session.status_running\""}},
@@ -1916,9 +1966,9 @@ func (value *SessionEvent) UnmarshalJSON(data []byte) error {
 		unionChoice{target: &value.AgentMessageEvent, kind: "object", required: []string{"id", "type", "processed_at", "content"}, constants: map[string]string{"type": "\"agent.message\""}},
 		unionChoice{target: &value.AgentThinkingEvent, kind: "object", required: []string{"id", "type", "processed_at"}, constants: map[string]string{"type": "\"agent.thinking\""}},
 		unionChoice{target: &value.AgentCustomToolUseEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "name"}, constants: map[string]string{"type": "\"agent.custom_tool_use\""}},
-		unionChoice{target: &value.AgentToolUseEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "name"}, constants: map[string]string{"type": "\"agent.tool_use\""}},
+		unionChoice{target: &value.AgentToolUseEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "name", "evaluated_permission", "evaluation"}, constants: map[string]string{"type": "\"agent.tool_use\""}},
 		unionChoice{target: &value.AgentToolResultEvent, kind: "object", required: []string{"id", "type", "processed_at", "tool_use_id"}, constants: map[string]string{"type": "\"agent.tool_result\""}},
-		unionChoice{target: &value.AgentMCPToolUseEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "mcp_server_name", "name"}, constants: map[string]string{"type": "\"agent.mcp_tool_use\""}},
+		unionChoice{target: &value.AgentMCPToolUseEvent, kind: "object", required: []string{"id", "type", "processed_at", "input", "mcp_server_name", "name", "evaluated_permission", "evaluation"}, constants: map[string]string{"type": "\"agent.mcp_tool_use\""}},
 		unionChoice{target: &value.AgentMCPToolResultEvent, kind: "object", required: []string{"id", "type", "processed_at", "mcp_tool_use_id"}, constants: map[string]string{"type": "\"agent.mcp_tool_result\""}},
 		unionChoice{target: &value.SessionStatusIdleEvent, kind: "object", required: []string{"id", "type", "processed_at", "stop_reason"}, constants: map[string]string{"type": "\"session.status_idle\""}},
 		unionChoice{target: &value.SessionStatusRunningEvent, kind: "object", required: []string{"id", "type", "processed_at"}, constants: map[string]string{"type": "\"session.status_running\""}},
@@ -2428,6 +2478,27 @@ type ToolConfig struct {
 type ToolDefaultConfig struct {
 	Enabled          Optional[bool]             `json:"enabled,omitzero"`
 	PermissionPolicy Optional[PermissionPolicy] `json:"permission_policy,omitzero"`
+}
+
+// ToolPermissionEvaluation is a wire union. Set exactly one variant when constructing it.
+// Raw preserves an unknown variant received from the server.
+type ToolPermissionEvaluation struct {
+	Raw                   json.RawMessage        `json:"-"`
+	AlwaysAllowEvaluation *AlwaysAllowEvaluation `json:"-"`
+	AlwaysAskEvaluation   *AlwaysAskEvaluation   `json:"-"`
+	AutoEvaluation        *AutoEvaluation        `json:"-"`
+}
+
+func (value ToolPermissionEvaluation) MarshalJSON() ([]byte, error) {
+	return marshalUnion(value.Raw, value.AlwaysAllowEvaluation, value.AlwaysAskEvaluation, value.AutoEvaluation)
+}
+func (value *ToolPermissionEvaluation) UnmarshalJSON(data []byte) error {
+	*value = ToolPermissionEvaluation{}
+	return unmarshalUnion(data, &value.Raw,
+		unionChoice{target: &value.AlwaysAllowEvaluation, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"always_allow\""}},
+		unionChoice{target: &value.AlwaysAskEvaluation, kind: "object", required: []string{"type"}, constants: map[string]string{"type": "\"always_ask\""}},
+		unionChoice{target: &value.AutoEvaluation, kind: "object", required: []string{"type", "evaluated_permission"}, constants: map[string]string{"type": "\"auto\""}},
+	)
 }
 
 type URLDocumentSourceInput struct {

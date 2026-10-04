@@ -69,7 +69,8 @@ class AgentMCPToolUseEvent(TypedDict, total=False):
     id: Required[str]
     processed_at: Required['NullableTimestamp']
     type: Required[Literal['agent.mcp_tool_use']]
-    evaluated_permission: 'EvaluatedPermission'
+    evaluated_permission: Required['EvaluatedPermission']
+    evaluation: Required['ToolPermissionEvaluation']
     input: Required[Dict[str, Any]]
     mcp_server_name: Required[str]
     name: Required[str]
@@ -150,7 +151,8 @@ class AgentToolUseEvent(TypedDict, total=False):
     id: Required[str]
     processed_at: Required['NullableTimestamp']
     type: Required[Literal['agent.tool_use']]
-    evaluated_permission: 'EvaluatedPermission'
+    evaluated_permission: Required['EvaluatedPermission']
+    evaluation: Required['ToolPermissionEvaluation']
     input: Required[Dict[str, Any]]
     name: Required[str]
     session_thread_id: str
@@ -181,10 +183,40 @@ class AgentWithOverrides(TypedDict, total=False):
     version: int
 
 
+class AlwaysAllowEvaluation(TypedDict, total=False):
+    type: Required[Literal['always_allow']]
+
+
+class AlwaysAskEvaluation(TypedDict, total=False):
+    type: Required[Literal['always_ask']]
+
+
 class AnthropicSkillReferenceInput(TypedDict, total=False):
     skill_id: Required[str]
     type: Required[Literal['anthropic']]
     version: str
+
+
+class AutoEvaluation(TypedDict, total=False):
+    evaluated_permission: Required['AutomaticPermissionDecision']
+    type: Required[Literal['auto']]
+
+
+class AutomaticPermissionAllow(TypedDict, total=False):
+    type: Required[Literal['allow']]
+
+
+class AutomaticPermissionAsk(TypedDict, total=False):
+    reason_code: Required[Literal['indeterminate']]
+    type: Required[Literal['ask']]
+
+
+AutomaticPermissionDecision: TypeAlias = Union['AutomaticPermissionAllow', 'AutomaticPermissionAsk', 'AutomaticPermissionDeny']
+
+
+class AutomaticPermissionDeny(TypedDict, total=False):
+    reason_code: Required[Literal['high_risk']]
+    type: Required[Literal['deny']]
 
 
 class Base64DocumentSourceInput(TypedDict, total=False):
@@ -897,7 +929,7 @@ OutcomeRubric: TypeAlias = Union['TextRubric', 'FileRubric']
 
 
 class PermissionPolicy(TypedDict, total=False):
-    type: Required[Literal['always_allow', 'always_ask']]
+    type: Required[Literal['always_allow', 'always_ask', 'auto']]
 
 
 class PersistedSessionEventBase(TypedDict, total=False):
@@ -1429,6 +1461,9 @@ class ToolDefaultConfig(TypedDict, total=False):
     permission_policy: 'PermissionPolicy'
 
 
+ToolPermissionEvaluation: TypeAlias = Union['AlwaysAllowEvaluation', 'AlwaysAskEvaluation', 'AutoEvaluation']
+
+
 class URLDocumentSourceInput(TypedDict, total=False):
     type: Required[Literal['url']]
     url: Required[str]
@@ -1755,7 +1790,14 @@ __all__ = ['Agent',
  'AgentToolUseEvent',
  'AgentUpdateRequest',
  'AgentWithOverrides',
+ 'AlwaysAllowEvaluation',
+ 'AlwaysAskEvaluation',
  'AnthropicSkillReferenceInput',
+ 'AutoEvaluation',
+ 'AutomaticPermissionAllow',
+ 'AutomaticPermissionAsk',
+ 'AutomaticPermissionDecision',
+ 'AutomaticPermissionDeny',
  'Base64DocumentSourceInput',
  'Base64ImageSourceInput',
  'BuiltinToolset',
@@ -1983,6 +2025,7 @@ __all__ = ['Agent',
  'TextRubric',
  'ToolConfig',
  'ToolDefaultConfig',
+ 'ToolPermissionEvaluation',
  'URLDocumentSourceInput',
  'URLImageSourceInput',
  'UserCustomToolResultEventInput',
