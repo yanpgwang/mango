@@ -370,9 +370,10 @@ WHERE session_id = $1 AND kind != 'advisor'
 		[]domain.EventDraft{{
 			Type: domain.EvAgentThreadMessageReceived,
 			Payload: map[string]any{
-				"from_session_thread_id": parentThreadID,
-				"from_agent_name":        session.AgentSnapshot.Name,
-				"content":                content,
+				"from_session_thread_id":            parentThreadID,
+				"from_agent_name":                   session.AgentSnapshot.Name,
+				"content":                           content,
+				domain.InternalOriginTriggerEventID: triggerEventID,
 			},
 		}}, maxSeq, nil,
 	)

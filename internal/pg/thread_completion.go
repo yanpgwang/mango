@@ -305,9 +305,10 @@ func (s *Store) CompleteThreadWorkflowTurn(
 				[]domain.EventDraft{{
 					Type: domain.EvAgentThreadMessageReceived,
 					Payload: map[string]any{
-						"from_session_thread_id": threadID,
-						"from_agent_name":        thread.Agent.Name,
-						"content":                coordinatorReport,
+						"from_session_thread_id":            threadID,
+						"from_agent_name":                   thread.Agent.Name,
+						"content":                           coordinatorReport,
+						domain.InternalOriginTriggerEventID: triggerEventID,
 					},
 				}}, maxSeq, nil, now,
 			)
