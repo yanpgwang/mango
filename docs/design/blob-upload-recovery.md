@@ -21,6 +21,10 @@ already written archive.
   a restart before a crashed upload's lease expires and temporary storage outages.
 - An expired writer cannot renew or publish. A late completed object write is
   cleaned without affecting a new upload with the same time-based Skill Version.
+- Generated MCP output keeps its stable receipt/File ID while each storage
+  attempt gets a unique object key. A superseded attempt cannot publish or
+  damage the winner, including after an unknown write, restart, or Session/File
+  deletion. Recovery retries publication, not the MCP call.
 - Workspace authorization and generated MCP File pins retain their existing
   contract. Public API types and first-party SDK operation grouping stay intact.
 
@@ -90,13 +94,38 @@ multipart part drains more input and can block too. Arbitrary embedded
 non-closable readers are checked between reads; callers must supply an
 interruptible closer if a read can stall indefinitely.
 
+## Generated MCP publication
+
 Generated MCP output uses its completed durable receipt and Session pin instead
 of an ordinary request lease. It remains resumable while its Session exists;
-Session deletion makes an abandoned pending result eligible for cleanup. The
-existing generated-output workflow may retry a File key after an unknown remote
-write; tracking prior attempts through ready publication and later deletion is
-a separate follow-up. This slice establishes ordinary File/Skill upload ownership
-and does not claim that broader MCP retry boundary.
+Session deletion makes an abandoned pending result eligible for cleanup.
+Previously publication retries reused an object key. A remote request with an
+unknown outcome could arrive after a replacement published the File or after
+File deletion, leaving bytes without a cleanup record.
+
+Each attempt now gets a fresh internal object key under the stable File ID.
+A short transaction checks the owning Session and immutable receipt, assigns
+the new key, and records an unknown-writer cleanup guard before object I/O.
+Publication verifies the same key and receipt, marks the File ready, and removes
+that attempt's guard atomically. Both transactions lock Session before File,
+matching Session deletion. A prepared deletion fences admission and publication;
+there is no object I/O under either lock.
+
+Guard scanning excludes keys currently referenced by uploading or ready Files.
+An uncertain database response therefore cannot cause cleanup to delete a
+committed File or its pending current attempt. Once superseded, an attempt key
+is never referenced again; a stale scan cannot race with key reuse. The old guard
+survives successful replacement publication and removal of all File metadata.
+Unknown remote requests keep their guards even after successful cleanup, so a
+later write is collected by another scan. A positively completed superseded
+writer confirms only its own guard. It cannot remove the replacement File row.
+
+A ready retry performs no object write and creates no new guard. If publication
+commits but its response and fallback read are lost, the caller may see an error;
+the next retry discovers the ready immutable File. Stable IDs, checksums,
+events, worker paths, and Work-token authorization retain their contract. The
+ordinary upload completion method cannot publish generated output by ID alone.
+No new public resource, schema migration, or hosted dependency is required.
 
 ## Scope and evidence
 
@@ -111,7 +140,13 @@ Independent PostgreSQL and SeaweedFS tests use two pools in one isolated schema.
 They cover live uploads on both sides of object publication, expiry, stale
 writers and reused Versions, ready-byte preservation after lost responses, and
 crash cleanup, late-write cleanup after a deletion outage, writer crashes after
-late publication, non-reused acknowledgements, and fair bounded guard scans. Package tests
+late publication, non-reused acknowledgements, and fair bounded guard scans.
+Generated-output tests additionally delay a real accepted S3 request until after
+replacement publication or Session/File deletion, then restart reconciliation
+through an object deletion outage. They verify superseded writers, current-key
+protection, lost commit/read responses, no-write ready retries, immutable receipt
+and Workspace fences, and publication waiting on a Session deletion lock.
+Package tests
 cover renewal cancellation, pipe and real HTTP/1 source cancellation, and periodic retry/
 shutdown. Existing HTTP/SDK, pin, authorization, persistence, workflow, and
 Docker suites remain separate checks.

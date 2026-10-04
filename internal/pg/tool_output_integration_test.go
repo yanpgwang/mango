@@ -37,7 +37,7 @@ func TestToolOutput_PostgresS3RecoveryScopeAndSessionRelease(t *testing.T) {
 	id := domain.NewRandomIDGen().NewID(domain.PrefixFile)
 	defer func() { _ = blobs.Delete(ctx, workspace.BlobKey(ctx, "files/"+id)) }()
 	pending := domain.File{ID: id, SessionID: "sesn_output", Filename: id + ".txt", MimeType: "text/plain", SizeBytes: info.SizeBytes, ChecksumSHA256: info.ChecksumSHA256, BlobKey: workspace.BlobKey(ctx, "files/"+id), State: domain.FileStateUploading}
-	if _, err := repo.EnsureToolOutputUpload(ctx, pending); err != nil {
+	if _, err := repo.BeginToolOutputUpload(ctx, pending); err != nil {
 		t.Fatal(err)
 	}
 	// Startup reconciliation must leave the orchestrator's resumable intent alone.
@@ -80,6 +80,11 @@ func TestToolOutput_PostgresS3RecoveryScopeAndSessionRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ready, err := repo.Get(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = blobs.Delete(context.Background(), ready.BlobKey) })
 	sum, ok := metadata.ChecksumSHA256.Get()
 	if !ok || sum != fmt.Sprintf("%x", sha256.Sum256([]byte(text))) {
 		t.Fatal("SDK lost File checksum")

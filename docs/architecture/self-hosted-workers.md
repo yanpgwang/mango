@@ -177,11 +177,13 @@ cannot establish those interleavings alone. This resolves the selected storage
 boundary; broader multi-replica rollout and production operation remain separate
 evidence requirements.
 
-The next selected recovery slice is generated MCP File publication after an
-unknown object-write outcome: its workflow retries the same key, so prior remote
-attempts need tracking through ready publication and later deletion. This is
-separate from ordinary upload ownership above. After that, prioritize a
-versioned self-hosted alpha bundle,
+Generated MCP File publication now uses unique internal write keys under the
+stable File ID. Atomic receipt/key checks fence stale publication; independent
+guards track unknown writes through ready publication, Session/File deletion,
+and restart. Two-pool PostgreSQL/SeaweedFS tests cover delayed accepted requests,
+superseded writers, lost commit/read responses, and deletion outages. This
+extends the storage recovery evidence without establishing broader rollout
+readiness. Next, prioritize a versioned self-hosted alpha bundle,
 matched native SDK artifacts, and a demonstrated backup/restore procedure for
 database, objects, Memory, and encryption keys. Kubernetes distribution and
 worker rollout/versioning require their own operational acceptance; a Docker

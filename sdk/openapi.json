@@ -3987,6 +3987,7 @@
       },
       "File": {
         "additionalProperties": false,
+        "description": "Immutable completed bytes. Generated MCP output retains a stable File ID across publication retries, with private per-attempt object keys and durable cleanup of superseded writes. Unknown remote writes remain tracked through publication and deletion; current File bytes are protected.",
         "properties": {
           "checksum_sha256": {
             "description": "SHA-256 hex digest of the complete File bytes.",

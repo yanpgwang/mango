@@ -1386,3 +1386,22 @@ upload source.
 No hosted credentials, beta headers, public lease wrappers, new API namespace,
 or synchronization obligation are introduced. See the
 [recovery design](design/blob-upload-recovery.md) for acceptance and evidence.
+
+## Generated MCP File publication recovery (2026-10-04)
+
+Re-reviewed the official [MCP output handling](https://platform.claude.com/docs/en/managed-agents/mcp-connector#mcp-tool-output-handling)
+guide alongside Go SDK v1.78.0 (`c9ebe447ac92c91748af817c265398e5d81ca49f`),
+`betasessionevent.go` and `betafile.go`. The paired references establish the
+file-backed result workflow and File resource operations, not the hosted
+service's object-write transactions or unknown-outcome recovery. No CMA internal
+implementation is claimed, imported, or executed.
+
+Kept Mango's existing stable File/event identity, immutable complete-text
+receipt, checksum, worker path, and scoped download mapping. The selected Mango
+problem was a late S3 request surviving replacement publication or File deletion.
+Adapted internal publication to unique physical attempt keys, pre-I/O cleanup
+guards, and atomic receipt/key validation. This reuses Mango's existing cleanup
+primitive without introducing a public resource or provider-specific wrapper.
+Unknown write guards remain persistent because a timeout does not prove that a
+remote request cannot commit later. Mango's own PostgreSQL/S3 recovery and
+HTTP/SDK tests validate this lifecycle; public third-party schemas do not.

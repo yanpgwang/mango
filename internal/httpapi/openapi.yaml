@@ -3441,6 +3441,11 @@ components:
           format: binary
     File:
       type: object
+      description: >-
+        Immutable completed bytes. Generated MCP output retains a stable File ID
+        across publication retries, with private per-attempt object keys and
+        durable cleanup of superseded writes. Unknown remote writes remain
+        tracked through publication and deletion; current File bytes are protected.
       additionalProperties: false
       required:
         - id

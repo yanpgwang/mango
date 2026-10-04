@@ -28,7 +28,10 @@ func (r *blobCleanupRepository) ListBlobCleanup(ctx context.Context) ([]app.Blob
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.store.pool.Query(ctx, `SELECT blob_key,revision FROM blob_cleanup_intents WHERE kind=$1 AND ($2='' OR workspace_id=$2) ORDER BY last_checked_at,blob_key LIMIT 100`, r.kind, workspaceID)
+	rows, err := r.store.pool.Query(ctx, `SELECT guard.blob_key,guard.revision FROM blob_cleanup_intents AS guard
+WHERE guard.kind=$1 AND ($2='' OR guard.workspace_id=$2)
+ AND ($1<>'file' OR NOT EXISTS (SELECT 1 FROM files WHERE files.blob_key=guard.blob_key AND files.state IN ('uploading','ready')))
+ORDER BY guard.last_checked_at,guard.blob_key LIMIT 100`, r.kind, workspaceID)
 	if err != nil {
 		return nil, err
 	}

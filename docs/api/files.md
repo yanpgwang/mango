@@ -106,6 +106,13 @@ waits until their owning Session is gone. Storage must be configured on both the
 API and orchestrator processes. Missing storage or projected text over 32 MiB
 produces an explicit tool error and preview.
 
+Publication retries keep the same File ID and immutable receipt but use separate
+internal object keys. An older write cannot publish over a replacement. Durable
+cleanup records collect superseded writes across process restarts and after
+Session/File deletion; an unknown remote outcome keeps its record for later
+scans. The current uploading or ready File's bytes are protected from cleanup.
+Recovery retries File publication without repeating the completed MCP call.
+
 ## Worker files
 
 Files created in a self-hosted sandbox remain in the operator-owned workspace.
