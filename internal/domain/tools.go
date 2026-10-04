@@ -88,7 +88,7 @@ func MCPAddressAllowed(address netip.Addr) bool {
 }
 
 func validPermissionPolicy(policy PermissionPolicy) bool {
-	return policy.Type == "always_allow" || policy.Type == "always_ask"
+	return policy.Type == "always_allow" || policy.Type == "always_ask" || policy.Type == "auto"
 }
 
 var (
@@ -289,7 +289,7 @@ func ParseTools(raw []any) (ToolSet, error) {
 				if rawPolicy, present := dc["permission_policy"]; present {
 					p := parsePolicy(rawPolicy)
 					if p == nil || !validPermissionPolicy(*p) {
-						return ToolSet{}, fmt.Errorf("built-in default permission_policy must be always_allow or always_ask")
+						return ToolSet{}, fmt.Errorf("built-in default permission_policy must be always_allow, always_ask, or auto")
 					}
 					bt.DefaultPolicy = *p
 				}
@@ -316,7 +316,7 @@ func ParseTools(raw []any) (ToolSet, error) {
 					if rawPolicy, present := cm["permission_policy"]; present {
 						p := parsePolicy(rawPolicy)
 						if p == nil || !validPermissionPolicy(*p) {
-							return ToolSet{}, fmt.Errorf("built-in tool %q permission_policy must be always_allow or always_ask", name)
+							return ToolSet{}, fmt.Errorf("built-in tool %q permission_policy must be always_allow, always_ask, or auto", name)
 						}
 						bc.Policy = p
 					}
@@ -369,7 +369,7 @@ func ParseTools(raw []any) (ToolSet, error) {
 				if rawPolicy, present := dc["permission_policy"]; present {
 					p := parsePolicy(rawPolicy)
 					if p == nil || !validPermissionPolicy(*p) {
-						return ToolSet{}, fmt.Errorf("mcp server %q default permission_policy must be always_allow or always_ask", sn)
+						return ToolSet{}, fmt.Errorf("mcp server %q default permission_policy must be always_allow, always_ask, or auto", sn)
 					}
 					mt.DefaultPolicy = *p
 				}
@@ -393,7 +393,7 @@ func ParseTools(raw []any) (ToolSet, error) {
 					if rawPolicy, present := cm["permission_policy"]; present {
 						p := parsePolicy(rawPolicy)
 						if p == nil || !validPermissionPolicy(*p) {
-							return ToolSet{}, fmt.Errorf("mcp tool %s/%s permission_policy must be always_allow or always_ask", sn, name)
+							return ToolSet{}, fmt.Errorf("mcp tool %s/%s permission_policy must be always_allow, always_ask, or auto", sn, name)
 						}
 						cfg.Policy = p
 					}

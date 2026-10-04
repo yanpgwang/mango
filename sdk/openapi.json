@@ -1829,6 +1829,9 @@
               "evaluated_permission": {
                 "$ref": "#/components/schemas/EvaluatedPermission"
               },
+              "evaluation": {
+                "$ref": "#/components/schemas/ToolPermissionEvaluation"
+              },
               "input": {
                 "additionalProperties": true,
                 "type": "object"
@@ -1857,7 +1860,9 @@
               "type",
               "input",
               "mcp_server_name",
-              "name"
+              "name",
+              "evaluated_permission",
+              "evaluation"
             ],
             "type": "object"
           }
@@ -2147,6 +2152,9 @@
               "evaluated_permission": {
                 "$ref": "#/components/schemas/EvaluatedPermission"
               },
+              "evaluation": {
+                "$ref": "#/components/schemas/ToolPermissionEvaluation"
+              },
               "input": {
                 "additionalProperties": true,
                 "type": "object"
@@ -2171,7 +2179,9 @@
             "required": [
               "type",
               "input",
-              "name"
+              "name",
+              "evaluated_permission",
+              "evaluation"
             ],
             "type": "object"
           }
@@ -2328,6 +2338,32 @@
         ],
         "type": "object"
       },
+      "AlwaysAllowEvaluation": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "always_allow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "AlwaysAskEvaluation": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "always_ask",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
       "AnthropicSkillReferenceInput": {
         "additionalProperties": false,
         "description": "Upstream Managed Agents union variant. This implementation does not mirror Anthropic-managed archives and returns 422 when it is attached.",
@@ -2350,6 +2386,88 @@
         "required": [
           "type",
           "skill_id"
+        ],
+        "type": "object"
+      },
+      "AutoEvaluation": {
+        "additionalProperties": false,
+        "properties": {
+          "evaluated_permission": {
+            "$ref": "#/components/schemas/AutomaticPermissionDecision"
+          },
+          "type": {
+            "const": "auto",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "evaluated_permission"
+        ],
+        "type": "object"
+      },
+      "AutomaticPermissionAllow": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "allow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "AutomaticPermissionAsk": {
+        "additionalProperties": false,
+        "properties": {
+          "reason_code": {
+            "const": "indeterminate",
+            "type": "string"
+          },
+          "type": {
+            "const": "ask",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "reason_code"
+        ],
+        "type": "object"
+      },
+      "AutomaticPermissionDecision": {
+        "discriminator": {
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AutomaticPermissionAllow"
+          },
+          {
+            "$ref": "#/components/schemas/AutomaticPermissionAsk"
+          },
+          {
+            "$ref": "#/components/schemas/AutomaticPermissionDeny"
+          }
+        ]
+      },
+      "AutomaticPermissionDeny": {
+        "additionalProperties": false,
+        "properties": {
+          "reason_code": {
+            "const": "high_risk",
+            "type": "string"
+          },
+          "type": {
+            "const": "deny",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "reason_code"
         ],
         "type": "object"
       },
@@ -5585,7 +5703,8 @@
           "type": {
             "enum": [
               "always_allow",
-              "always_ask"
+              "always_ask",
+              "auto"
             ],
             "type": "string"
           }
@@ -7829,6 +7948,23 @@
           }
         },
         "type": "object"
+      },
+      "ToolPermissionEvaluation": {
+        "description": "The applied policy. For auto, its nested decision agrees with the event's evaluated_permission; no private provider reasoning is exposed.",
+        "discriminator": {
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AlwaysAllowEvaluation"
+          },
+          {
+            "$ref": "#/components/schemas/AlwaysAskEvaluation"
+          },
+          {
+            "$ref": "#/components/schemas/AutoEvaluation"
+          }
+        ]
       },
       "URLDocumentSourceInput": {
         "additionalProperties": false,

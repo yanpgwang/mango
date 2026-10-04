@@ -80,6 +80,20 @@ func TestEventToJSON_RedactsResolvedFileContent(t *testing.T) {
 	}
 }
 
+func TestEventToJSON_RedactsPermissionIntentOrigin(t *testing.T) {
+	event := eventToJSON(domain.Event{ID: "sevt_child", Type: domain.EvAgentThreadMessageReceived,
+		Payload: map[string]any{"from_session_thread_id": "sthr_primary", "message": "review", domain.InternalOriginTriggerEventID: "sevt_original_task", domain.InternalOriginPermissionIntent: map[string]any{"agent_system": "private intent", "complete": true}}})
+	if _, present := event[domain.InternalOriginTriggerEventID]; present {
+		t.Fatalf("private authorization provenance leaked: %#v", event)
+	}
+	if _, present := event[domain.InternalOriginPermissionIntent]; present {
+		t.Fatal("private originating intent leaked through public event")
+	}
+	if event["message"] != "review" || event["from_session_thread_id"] != "sthr_primary" {
+		t.Fatalf("public Thread message = %#v", event)
+	}
+}
+
 // The new server-emitted types are not accepted from callers.
 func TestSendEvents_RejectsMCPToolEventTypes(t *testing.T) {
 	h := NewTestHandler(t)

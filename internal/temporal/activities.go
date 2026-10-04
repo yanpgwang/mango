@@ -21,6 +21,7 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/mcpclient"
 	"github.com/yanpgwang/mango/internal/model"
+	"github.com/yanpgwang/mango/internal/permission"
 	"github.com/yanpgwang/mango/internal/workspace"
 )
 
@@ -387,16 +388,17 @@ const toolResultWriteAttempts = 3
 // built-ins execute through Environment Work; only control-plane tools such as
 // MCP, coordinator, Advisor, and Skill activation execute here.
 type Activities struct {
-	modelClient        model.Client
-	source             EventSource
-	journal            JournalStore
-	ids                domain.IDGenerator
-	previews           PreviewPublisher
-	mcp                mcpclient.Client
-	mcpAuth            mcpclient.AuthSource
-	contextTokenBudget int
-	skillInstructions  SkillInstructionLoader
-	toolOutputs        ToolOutputStore
+	modelClient         model.Client
+	permissionEvaluator permission.Evaluator
+	source              EventSource
+	journal             JournalStore
+	ids                 domain.IDGenerator
+	previews            PreviewPublisher
+	mcp                 mcpclient.Client
+	mcpAuth             mcpclient.AuthSource
+	contextTokenBudget  int
+	skillInstructions   SkillInstructionLoader
+	toolOutputs         ToolOutputStore
 }
 
 func NewActivities(
@@ -407,7 +409,7 @@ func NewActivities(
 	previewPublisher ...PreviewPublisher,
 ) *Activities {
 	activities := &Activities{
-		modelClient: modelClient, source: source,
+		modelClient: modelClient, permissionEvaluator: permission.NewModelEvaluator(modelClient), source: source,
 		journal: journal, ids: ids,
 		mcp: mcpclient.NewRemote(nil),
 	}
@@ -763,6 +765,17 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 	if err != nil {
 		return PrepareTurnResult{FatalError: "invalid toolset: " + err.Error()}, nil
 	}
+	var originalIntent domain.PermissionIntent
+	if configuredAutoPermission(toolSet) {
+		source, ok := a.source.(PermissionSource)
+		if !ok {
+			return PrepareTurnResult{FatalError: "automatic permissions require durable permission storage"}, nil
+		}
+		originalIntent, err = source.PermissionIntentThrough(ctx, in.SessionID, trigger.ID)
+		if err != nil {
+			return PrepareTurnResult{}, err
+		}
+	}
 	if err := domain.ValidateStoredToolConfiguration(
 		executionAgent.Tools,
 		executionAgent.MCPServers,
@@ -833,6 +846,7 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 		toolSchemas = append(toolSchemas, agentruntime.RuntimeSkillToolSchema())
 	}
 	result := PrepareTurnResult{
+		PermissionIntent: originalIntent,
 		AttemptID:        a.ids.NewID(domain.PrefixRunAttempt),
 		ThreadID:         trigger.ThreadID,
 		IsChild:          executionThread != nil && executionThread.ParentThreadID != nil,
@@ -1197,7 +1211,7 @@ func (a *Activities) addMCPTools(
 			if !enabled {
 				continue
 			}
-			if policy.Type != "always_allow" && policy.Type != "always_ask" {
+			if policy.Type != "always_allow" && policy.Type != "always_ask" && policy.Type != "auto" {
 				return nil, domain.Validation(fmt.Sprintf(
 					"mcp tool %s/%s has unsupported permission %q",
 					server.Name,
@@ -1592,8 +1606,10 @@ func (a *Activities) prepareResumeActions(
 			return nil, domain.Validation("client result names the wrong session Thread")
 		}
 
+		evaluatedPermission, _ := action.Payload["evaluated_permission"].(string)
 		resume := ResumeAction{
-			ActionEventID: action.ID,
+			EvaluatedPermission: evaluatedPermission,
+			ActionEventID:       action.ID,
 			// Carry the durable type forward: the result event that answers this
 			// park must pair with what the ledger actually holds, whatever naming
 			// scheme the resuming Workflow execution would choose for a new call.
@@ -2000,7 +2016,16 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 	ctx = workspace.WithScope(ctx, session.WorkspaceID)
 	if !retrySafeStarted {
 		dctx, cancel := durableCtx(ctx)
-		err = a.journal.StartToolStep(dctx, step.ID)
+		if in.PermissionReceiptID != "" {
+			source, ok := a.source.(PermissionSource)
+			if !ok {
+				cancel()
+				return ExecuteToolResult{}, fmt.Errorf("temporal: automatic execution requires durable permission storage")
+			}
+			err = source.StartToolStepWithPermission(dctx, step.ID, in.PermissionReceiptID)
+		} else {
+			err = a.journal.StartToolStep(dctx, step.ID)
+		}
 		cancel()
 		if err != nil {
 			return ExecuteToolResult{}, err

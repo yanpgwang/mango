@@ -9,7 +9,7 @@ const client = new Mango({ baseURL, apiKey, timeoutMs: 10_000 });
 const agents = [];
 const skillInput = { type: 'custom', skill_id: 'skill_reports', version: 'latest' };
 const resolvedSkill = { type: 'custom', skill_id: 'skill_reports', version: '1759178010641129' };
-const skillConfig = { skills: [skillInput], tools: [{ type: 'agent_toolset_20260401' }] };
+const skillConfig = { skills: [skillInput], tools: [{ type: 'agent_toolset_20260401', default_config: { enabled: false }, configs: [{ name: 'read', enabled: true, permission_policy: { type: 'auto' } }] }] };
 let environment;
 let session;
 try {
@@ -17,6 +17,16 @@ try {
   const mcpPage = await client.sessions.events.list("sesn_mcp_fixture");
   assert.equal(mcpPage.data[0].type, "agent.mcp_tool_result");
   assert.equal(mcpPage.data[0].file_id, "file_mcp_full");
+  const autoPage = await client.sessions.events.list("sesn_auto_fixture");
+  assert.equal(autoPage.data.length, 6);
+  for (const [index, event] of autoPage.data.entries()) {
+    assert.equal(event.type, index < 3 ? "agent.tool_use" : "agent.mcp_tool_use");
+    const expected = ["allow", "ask", "deny"][index % 3];
+    assert.equal(event.evaluated_permission, expected);
+    assert.equal(event.evaluation.type, "auto");
+    assert.equal(event.evaluation.evaluated_permission.type, expected);
+    if (expected !== "allow") assert.equal(event.evaluation.evaluated_permission.reason_code, expected === "ask" ? "indeterminate" : "high_risk");
+  }
   const payload = new Uint8Array([109, 97, 110, 103, 111, 0, 255]);
   const uploaded = await client.files.upload({ file: new File([payload], 'result.bin', { type: 'application/octet-stream' }) });
   try {
@@ -36,6 +46,7 @@ try {
   assert.deepEqual(checks.data[0].data, { type: 'healthcheck' });
   for (let index = 0; index < 2; index++) agents.push(await client.agents.create({ name: `TypeScript conformance ${index}`, model: 'sdk-conformance', ...skillConfig }));
   assert.equal((await client.agents.retrieve(agents[0].id)).id, agents[0].id);
+  assert.deepEqual(agents[0].tools[0].configs[0].permission_policy, { type: "auto" });
   for (const agent of agents) {
     assert.deepEqual(agent.skills, [resolvedSkill]);
     assert.deepEqual((await client.agents.retrieve(agent.id)).skills, [resolvedSkill]);

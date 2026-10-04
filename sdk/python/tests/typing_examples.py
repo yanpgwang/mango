@@ -52,3 +52,12 @@ def relayed_action_source(
     event: models.AgentToolUseEvent | models.AgentMCPToolUseEvent | models.AgentCustomToolUseEvent,
 ) -> str | None:
     return event.get("source_event_id")
+
+
+def automatic_permission_reason(event: models.AgentToolUseEvent | models.AgentMCPToolUseEvent) -> str | None:
+    evaluation = event["evaluation"]
+    if evaluation["type"] == "auto":
+        decision = evaluation["evaluated_permission"]
+        if decision["type"] == "ask" or decision["type"] == "deny":
+            return decision["reason_code"]
+    return None

@@ -121,7 +121,8 @@ type PrepareTurnResult struct {
 	// PreludeEvents are recoverable setup diagnostics, such as one unavailable
 	// MCP server. The Workflow commits them with the turn while continuing with
 	// the remaining tool surface.
-	PreludeEvents []domain.EventDraft `json:"prelude_events,omitempty"`
+	PermissionIntent domain.PermissionIntent `json:"permission_intent"`
+	PreludeEvents    []domain.EventDraft     `json:"prelude_events,omitempty"`
 	// UsesProviderTranscript is true when Request.Messages came from the
 	// lossless private transcript rather than the legacy public-event
 	// projection. TranscriptDelta contains only the new input represented by
@@ -169,17 +170,18 @@ type ResumeAction struct {
 	// so the answering execution may run newer code than the one that wrote the
 	// call. An empty value predates this field and means the legacy
 	// agent.tool_use spelling.
-	ActionEventType   string                   `json:"action_event_type,omitempty"`
-	Kind              domain.PendingActionKind `json:"kind"`
-	ToolName          string                   `json:"tool_name"`
-	Input             map[string]any           `json:"input"`
-	ResolutionEventID string                   `json:"resolution_event_id"`
-	Content           []any                    `json:"content,omitempty"`
-	IsError           bool                     `json:"is_error,omitempty"`
-	Confirmation      string                   `json:"confirmation,omitempty"`
-	DenyMessage       string                   `json:"deny_message,omitempty"`
-	ToolStepID        string                   `json:"tool_step_id,omitempty"`
-	ProviderToolUseID string                   `json:"provider_tool_use_id,omitempty"`
+	ActionEventType     string                   `json:"action_event_type,omitempty"`
+	EvaluatedPermission string                   `json:"evaluated_permission,omitempty"`
+	Kind                domain.PendingActionKind `json:"kind"`
+	ToolName            string                   `json:"tool_name"`
+	Input               map[string]any           `json:"input"`
+	ResolutionEventID   string                   `json:"resolution_event_id"`
+	Content             []any                    `json:"content,omitempty"`
+	IsError             bool                     `json:"is_error,omitempty"`
+	Confirmation        string                   `json:"confirmation,omitempty"`
+	DenyMessage         string                   `json:"deny_message,omitempty"`
+	ToolStepID          string                   `json:"tool_step_id,omitempty"`
+	ProviderToolUseID   string                   `json:"provider_tool_use_id,omitempty"`
 }
 
 // StartModelRequestInput identifies one logical provider request span. The
@@ -295,6 +297,7 @@ type ExecuteToolInput struct {
 	ToolUseEventID      string                     `json:"tool_use_event_id"`
 	ToolStepID          string                     `json:"tool_step_id"`
 	ToolName            string                     `json:"tool_name"`
+	PermissionReceiptID string                     `json:"permission_receipt_id,omitempty"`
 	ToolKind            TurnToolKind               `json:"tool_kind,omitempty"`
 	MCPServer           domain.MCPServer           `json:"mcp_server,omitempty"`
 	MCPToolName         string                     `json:"mcp_tool_name,omitempty"`

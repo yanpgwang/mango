@@ -135,8 +135,8 @@ func TestMangoSDKLifecycleEventVariants(t *testing.T) {
 		{domain.EvSessionStatusRescheduling, map[string]any{}},
 		{domain.EvSessionStatusRunning, map[string]any{}},
 		{domain.EvAgentThinking, map[string]any{}},
-		{domain.EvAgentToolUse, map[string]any{"name": "bash", "input": map[string]any{}, "evaluated_permission": "ask", "session_thread_id": "sthr_child", "source_event_id": "sevt_child_source"}},
-		{domain.EvAgentMcpToolUse, map[string]any{"name": "lookup", "mcp_server_name": "catalog", "input": map[string]any{}, "evaluated_permission": "ask", "session_thread_id": "sthr_child", "source_event_id": "sevt_child_source"}},
+		{domain.EvAgentToolUse, map[string]any{"name": "bash", "input": map[string]any{}, "evaluated_permission": "ask", "evaluation": map[string]any{"type": "always_ask"}, "session_thread_id": "sthr_child", "source_event_id": "sevt_child_source"}},
+		{domain.EvAgentMcpToolUse, map[string]any{"name": "lookup", "mcp_server_name": "catalog", "input": map[string]any{}, "evaluated_permission": "ask", "evaluation": map[string]any{"type": "always_ask"}, "session_thread_id": "sthr_child", "source_event_id": "sevt_child_source"}},
 		{domain.EvAgentCustomToolUse, map[string]any{"name": "lookup", "input": map[string]any{}, "session_thread_id": "sthr_child", "source_event_id": "sevt_child_source"}},
 	} {
 		t.Run(item.typ, func(t *testing.T) {

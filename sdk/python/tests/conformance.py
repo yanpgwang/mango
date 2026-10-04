@@ -25,6 +25,17 @@ def main() -> None:
         mcp_page = client.sessions.events.list("sesn_mcp_fixture")
         assert mcp_page["data"][0]["type"] == "agent.mcp_tool_result"
         assert mcp_page["data"][0]["file_id"] == "file_mcp_full"
+        auto_page = client.sessions.events.list("sesn_auto_fixture")
+        assert len(auto_page["data"]) == 6
+        for index, event in enumerate(auto_page["data"]):
+            assert event["type"] == ("agent.tool_use" if index < 3 else "agent.mcp_tool_use")
+            expected = ("allow", "ask", "deny")[index % 3]
+            assert event["evaluated_permission"] == expected
+            evaluation = event["evaluation"]
+            assert evaluation["type"] == "auto"
+            assert evaluation["evaluated_permission"]["type"] == expected
+            if expected != "allow":
+                assert evaluation["evaluated_permission"]["reason_code"] == ("indeterminate" if expected == "ask" else "high_risk")
         payload = b"mango\x00\xff"
         uploaded = client.files.upload(file=Upload("result.bin", payload, "application/octet-stream"))
         try:
@@ -50,10 +61,11 @@ def main() -> None:
                 agent = client.agents.create(name="python-sdk-" + suffix, model="sdk-conformance", skills=[skill_input], tools=[{
                         "type": "custom", "name": "lookup", "description": "Look up a record",
                         "input_schema": input_schema,
-                    }, {"type": "agent_toolset_20260401"}])
+                    }, {"type": "agent_toolset_20260401", "default_config": {"enabled": False}, "configs": [{"name": "read", "enabled": True, "permission_policy": {"type": "auto"}}]}])
                 agents.append(agent["id"])
                 assert client.agents.retrieve(agent["id"])["name"] == "python-sdk-" + suffix
                 assert agent["tools"][0]["input_schema"] == input_schema
+                assert agent["tools"][1]["configs"][0]["permission_policy"] == {"type": "auto"}
                 assert agent["skills"] == [resolved_skill]
                 assert client.agents.retrieve(agent["id"])["skills"] == [resolved_skill]
             page = client.agents.list(limit=1)

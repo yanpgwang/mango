@@ -56,7 +56,7 @@ func TestPrepareTurnWebToolsCannotBecomeSandboxOrExternalCalls(t *testing.T) {
 					Input: map[string]any{"query": "report"},
 				}}, tools, map[string]PlannedToolStep{
 					"provider_web": {ToolStepID: "step_web", ToolUseEventID: "sevt_web"},
-				}, false)
+				}, false, nil)
 				require.Contains(t, failure, "not enabled: "+name)
 				require.Empty(t, plan.actionDrafts)
 				require.Empty(t, plan.executable)

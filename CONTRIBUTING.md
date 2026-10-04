@@ -143,6 +143,7 @@ because it uses a credentialed network call and may incur cost:
 
 ```bash
 make test-model-live
+make test-tool-permissions-live
 make test-self-hosted-live
 make test-platform-live
 ```

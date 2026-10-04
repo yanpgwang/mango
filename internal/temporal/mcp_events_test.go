@@ -237,14 +237,15 @@ func TestWorkflowTurn_AllowedMCPConfirmationEmitsMcpToolResult(t *testing.T) {
 			Request:   model.Request{Model: "test-model"},
 			Tools:     []TurnTool{mcpTurnTool("always_ask")},
 			ResumeActions: []ResumeAction{{
-				ActionEventID:     "sevt_mcp_ask",
-				ActionEventType:   domain.EvAgentMcpToolUse,
-				Kind:              domain.PendingToolConfirmation,
-				ToolName:          "mcp__github__list_issues",
-				Input:             map[string]any{"repo": "mango"},
-				ResolutionEventID: "sevt_confirmation",
-				Confirmation:      "allow",
-				ToolStepID:        "tstep_mcp_resume",
+				ActionEventID:       "sevt_mcp_ask",
+				ActionEventType:     domain.EvAgentMcpToolUse,
+				Kind:                domain.PendingToolConfirmation,
+				EvaluatedPermission: "ask",
+				ToolName:            "mcp__github__list_issues",
+				Input:               map[string]any{"repo": "mango"},
+				ResolutionEventID:   "sevt_confirmation",
+				Confirmation:        "allow",
+				ToolStepID:          "tstep_mcp_resume",
 			}},
 		}, nil
 	}
@@ -301,14 +302,15 @@ func TestWorkflowTurn_DeniedMCPConfirmationEmitsMcpToolResult(t *testing.T) {
 			Request: model.Request{Model: "test-model"},
 			Tools:   []TurnTool{mcpTurnTool("always_ask")},
 			ResumeActions: []ResumeAction{{
-				ActionEventID:     "sevt_mcp_ask",
-				ActionEventType:   domain.EvAgentMcpToolUse,
-				Kind:              domain.PendingToolConfirmation,
-				ToolName:          "mcp__github__list_issues",
-				Input:             map[string]any{"repo": "mango"},
-				ResolutionEventID: "sevt_confirmation",
-				Confirmation:      "deny",
-				DenyMessage:       "not this repo",
+				ActionEventID:       "sevt_mcp_ask",
+				ActionEventType:     domain.EvAgentMcpToolUse,
+				Kind:                domain.PendingToolConfirmation,
+				EvaluatedPermission: "ask",
+				ToolName:            "mcp__github__list_issues",
+				Input:               map[string]any{"repo": "mango"},
+				ResolutionEventID:   "sevt_confirmation",
+				Confirmation:        "deny",
+				DenyMessage:         "not this repo",
 			}},
 		}, nil
 	}
@@ -484,7 +486,7 @@ func TestPlanToolBatch_LegacyHistoryKeepsMCPOnToolUse(t *testing.T) {
 		ToolStepID: "tstep_mcp",
 	}}
 
-	legacy, failure := planToolBatch(uses, tools, steps, false)
+	legacy, failure := planToolBatch(uses, tools, steps, false, nil)
 	require.Empty(t, failure)
 	require.Equal(t, domain.EvAgentToolUse, legacy.actionDrafts[0].Type)
 	require.Equal(t, "list_issues", legacy.actionDrafts[0].Payload["name"])
@@ -493,7 +495,7 @@ func TestPlanToolBatch_LegacyHistoryKeepsMCPOnToolUse(t *testing.T) {
 	// same round produces cannot drift from the use event.
 	require.Equal(t, domain.EvAgentToolUse, legacy.executable[0].useEventType)
 
-	current, failure := planToolBatch(uses, tools, steps, true)
+	current, failure := planToolBatch(uses, tools, steps, true, nil)
 	require.Empty(t, failure)
 	require.Equal(t, domain.EvAgentMcpToolUse, current.actionDrafts[0].Type)
 	require.Equal(t, domain.EvAgentMcpToolUse, current.executable[0].useEventType)

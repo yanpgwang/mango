@@ -53,9 +53,16 @@ The `agent_toolset_20260401` toolset includes six sandbox tools (`bash`, `read`,
 `write`, `edit`, `glob`, `grep`) plus provider-native `web_search` and
 `web_fetch`. Web execution stays on the configured model endpoint even for a
 `self_hosted` Environment. An enabled Web tool requires `always_allow`; an
-`always_ask` configuration returns `400 invalid_request_error` because Mango
+`always_ask` or `auto` configuration returns `400 invalid_request_error` because Mango
 cannot pause a provider-native call for approval. Disable Web tools when the
 endpoint does not support them. The external worker needs no model credentials.
+
+For local tools and MCP, `permission_policy.type` accepts `always_allow`,
+`always_ask`, and opt-in `auto`. Automatic evaluation records an allow, ask, or
+deny for the exact invocation before execution. It uses the configured Agent
+model and preserves the existing human confirmation and Work lifecycles.
+See [Tool permissions](../guides/tool-permissions.md) for configuration,
+recorded events, costs, and first-version judgment limits.
 
 Coordinators declare a roster with the documented `multiagent` topology:
 

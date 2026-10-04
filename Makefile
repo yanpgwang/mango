@@ -49,7 +49,7 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help build lint test test-race test-service test-service-core \
-	worker-test-image test-self-hosted-docker test-model-live test-self-hosted-live test-platform-live \
+	worker-test-image test-self-hosted-docker test-model-live test-tool-permissions-live test-self-hosted-live test-platform-live \
 	test-custom-tool-barrier demo-hitl-gate \
 	demo-multi-agent-team demo-coding-agent \
 	vet verify security docs-check image image-smoke dev-env-init \
@@ -67,6 +67,7 @@ help:
 	@echo "  make test-service-core  run stateful service integration tests"
 	@echo "  make test-self-hosted-docker  run self-hosted Docker worker tests"
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"
+	@echo "  make test-tool-permissions-live  qualify automatic permissions with the configured model"
 	@echo "  make test-self-hosted-live  run one real-model turn through a self-hosted Docker worker"
 	@echo "  make test-platform-live  alias for the self-hosted live smoke"
 	@echo "  make test-custom-tool-barrier  test custom-tool results across a worker restart"
@@ -139,6 +140,10 @@ test-self-hosted-docker: worker-test-image
 test-model-live:
 	MANGO_TEST_LIVE_MODEL=1 \
 	$(GO) test ./internal/model -run '^TestAnthropic_LiveMessagesConformance$$' -count=1
+
+test-tool-permissions-live:
+	MANGO_TEST_PERMISSION_MODEL=1 \
+	$(GO) test -timeout 5m ./internal/permission -run '^TestEvaluatorLiveQualification$$' -count=1 -v
 
 test-self-hosted-live: worker-test-image
 	MANGO_TEST_DOCKER=1 \
