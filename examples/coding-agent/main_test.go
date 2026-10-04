@@ -18,7 +18,7 @@ func TestTurnRequiresWorkerExecution(t *testing.T) {
 		t.Fatal("accepted an end_turn without execution")
 	}
 	call := mango.SessionEvent{AgentToolUseEvent: &mango.AgentToolUseEvent{
-		ID: "bash-current", Name: "bash", EvaluatedPermission: mango.Some(mango.EvaluatedPermission("allow")),
+		ID: "bash-current", Name: "bash", EvaluatedPermission: "allow",
 	}}
 	if _, err := p.observe(call); err != nil {
 		t.Fatal(err)

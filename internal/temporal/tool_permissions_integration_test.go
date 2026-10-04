@@ -121,7 +121,7 @@ type automaticPermissionProbe struct {
 }
 
 func (p *automaticPermissionProbe) CreateMessage(_ context.Context, request model.Request) (model.Response, error) {
-	if request.MaxTokens == 256 && len(request.Tools) == 0 {
+	if request.MaxTokens == 1024 && len(request.Tools) == 0 {
 		p.evaluations.Add(1)
 		var envelope struct {
 			Intent domain.PermissionIntent `json:"intent"`

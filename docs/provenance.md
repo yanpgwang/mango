@@ -1449,3 +1449,15 @@ HTTP/SDK tests validate this lifecycle; public third-party schemas do not.
   and a real-service HTTP/worker-restart lifecycle test. See
   [the design](design/automatic-tool-permissions.md) and
   [the user guide](guides/tool-permissions.md).
+
+
+Automatic-permission qualification refinement (2026-10-04): Mango freezes client
+intent privately at child delegation and validates its trigger identity, rather
+than deriving a child's authority from mutable processed flags later. Primary
+reports include already processed client changes, complete barrier companion
+instructions, and terminal outcome descriptions. This is independently designed
+self-hosted persistence, not a claim about CMA internals. The configured
+`deepseek-flash` endpoint passed 15 authored allow/ask/deny cases after opaque
+reasoning was excluded from parsing and the response cap became 1,024 tokens;
+20-second timeouts and strict final JSON remain. This supplies limited workload
+evidence rather than a general evaluator-quality guarantee.

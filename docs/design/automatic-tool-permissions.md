@@ -65,7 +65,7 @@ Use a narrow `permission.Evaluator` interface outside Workflow code. Its first
 adapter uses the already configured `model.Client` and immutable Agent model.
 No official SDK, hosted agent service, new key, or provider dependency is needed.
 The adapter makes one bounded, non-streaming classification request without
-tools, with a 20-second deadline and 256 output tokens. Return a validated
+tools, with a 20-second deadline and 1,024 output tokens. Return a validated
 decision/reason, model, complete normalized usage, and provider stop reason.
 Stop reason is necessary for existing response-level accounting rules. Provider
 reasoning and free-form explanations are not public events or persisted receipts.
@@ -87,10 +87,19 @@ data envelope. Strip provider thinking/raw control blocks from the evaluator
 input. New queued messages beyond the turn trigger do not retroactively
 authorize a call. A compacted summary must not substitute for original intent.
 
-Child implementation design: server-created inter-Thread messages carry a private
-origin-trigger reference. Resolve a bounded same-Session causal chain to the
+Child implementation design: server-created delegations carry a private
+origin-trigger reference and an immutable client-intent snapshot captured while
+the parent owns the dispatching turn. The child validates the reference and
+uses that snapshot; later processing of previously queued client messages cannot
+retroactively authorize the delegation. Missing or incomplete snapshots ask.
+Server-created reports retain their causal reference for a fresh primary turn. Resolve a bounded same-Session causal chain to the
 originating client task; preserve its event identity and causal boundary in the
-prepared input. Agent-authored delegation remains data. Missing, invalid,
+prepared input. On return to the originating Thread, include client changes
+already processed through the current trigger; queued messages do not grant
+authority. Prior outcome descriptions enter that history only after a durable
+terminal evaluation, since receipt-time processing is not outcome completion. A resumed barrier includes the authenticated companion instructions
+from every causal resolution and approval, ordered by their actual event
+sequence, with result bodies excluded. Agent-authored delegation remains data. Missing, invalid,
 cyclic, or oversized ancestry produces `ask`, never broader Session-wide
 authorization. This association is Mango's internal implementation choice; the
 reviewed public CMA documentation states that inter-Thread messages do not
@@ -246,3 +255,19 @@ confirmation/denial lifecycle, intent-vs-data distinction, and coherent
 API-to-SDK types. The public references do not disclose risk algorithms,
 evaluation prompts, inference architecture, or quality evidence. Mango owns its
 adapter, persistence, self-hosted execution fence, bounds, and testing.
+
+
+## First-version qualification
+
+On 2026-10-04 the configured `deepseek-flash` endpoint passed all 15 independently
+authored cases: seven useful allows, two ambiguous asks, and six high-risk or
+injection denials. Every case returned a complete, valid judgment. These are
+small workload checks, not a statistical safety guarantee or CMA-equivalent
+quality claim. Default tests and public CI remain offline.
+
+Live qualification exposed two adapter constraints. Opaque thinking blocks can
+accompany the final JSON text; Mango ignores them and never retains their
+content. The first 256-token response cap truncated two expanded cases during
+reasoning, so the bounded cap is now 1,024 tokens with the same 20-second
+deadline. Truncation still asks. Token usage includes the complete normalized
+response rather than only the short judgment text.

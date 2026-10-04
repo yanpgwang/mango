@@ -127,7 +127,7 @@ These are Mango criteria, with independently maintained evaluation cases, not
 an implementation or quality claim about a vendor's unpublished evaluator.
 
 Each uncached evaluation adds a model request, with a 20-second deadline and at
-most 256 output tokens. Mango limits the complete evaluation envelope to
+most 1,024 output tokens. Mango limits the complete evaluation envelope to
 64 KiB. Missing or incomplete original intent, oversized input, provider
 failure, refusal, or malformed output produces `ask`; an explicit interrupt
 cancels the turn. Permission calls share the Session's usage and budget.
@@ -139,3 +139,19 @@ Retries before a receipt commits can repeat inference; provider billing is not
 exactly once. Automatic evaluation is not a sandbox or a guaranteed human
 checkpoint; use the self-hosted sandbox boundary and qualify the chosen model
 for your workload before relying on automatic allows.
+
+
+To qualify a configured model against the independently authored first-version
+cases, run:
+
+```bash
+scripts/with-dev-env make test-tool-permissions-live
+```
+
+This opt-in check tests ordinary reads and edits, explicit deletion, MCP writes,
+normal authentication, synthetic tutorial tokens, authorized data transfer,
+ambiguous scope, secret disclosure, isolation bypass, and untrusted File, Skill,
+MCP, and Thread instructions. It makes model calls but executes none of the
+proposed tools. It is not required in public CI. A complete valid judgment is
+required for each case; transport or parser fallback does not qualify a model.
+The small case set cannot establish safety for every workload.

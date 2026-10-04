@@ -19,7 +19,7 @@ description: Implementation tasks and acceptance checks for invocation-specific 
 
 - Existing `/v1`; no compatibility shims or external SDK runtime dependencies.
 - Support six local tools and remote MCP; provider-native Web tools require `always_allow`.
-- One non-streaming evaluator request, 20-second deadline, 256 output tokens, no tools.
+- One non-streaming evaluator request, 20-second deadline, 1,024 output tokens, no tools.
 - Complete structured evaluator input at most 64 KiB; incomplete or oversized context asks without inference.
 - Timeout, malformed response, refusal, unknown judgment, and transport error ask; parent cancellation cancels the turn.
 - Agent/client intent is below the evaluator's fixed policy; tool, File, Skill, and Thread content cannot grant authority.

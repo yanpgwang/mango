@@ -70,7 +70,7 @@ func (e modelEvaluator) Evaluate(ctx context.Context, agentModel domain.Model, i
 	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	response, callErr := e.client.CreateMessage(bounded, model.Request{
-		Model: agentModel.ID, System: evaluatorPolicy, MaxTokens: 256,
+		Model: agentModel.ID, System: evaluatorPolicy, MaxTokens: 1024,
 		Messages: []domain.Message{{Role: domain.RoleUser, Content: []domain.ContentBlock{{Type: "text", Text: string(payload)}}}},
 	})
 	out.Usage, out.StopReason = response.Usage, response.StopReason
@@ -78,11 +78,28 @@ func (e modelEvaluator) Evaluate(ctx context.Context, agentModel domain.Model, i
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
-	if callErr != nil || response.StopReason != "end_turn" ||
-		len(response.Content) != 1 || response.Content[0].Type != "text" {
+	if callErr != nil || response.StopReason != "end_turn" {
 		return out, nil
 	}
-	if decision, err := parseDecision(response.Content[0].Text); err == nil {
+	// Providers may emit opaque reasoning alongside their final text. Ignore
+	// reasoning without storing or parsing it; require exactly one decision
+	// text and reject any execution/control content, even with valid JSON.
+	var text string
+	found := false
+	for _, block := range response.Content {
+		switch block.Type {
+		case "thinking", "redacted_thinking":
+			continue
+		case "text":
+			if found {
+				return out, nil
+			}
+			text, found = block.Text, true
+		default:
+			return out, nil
+		}
+	}
+	if decision, err := parseDecision(text); found && err == nil {
 		out.Decision = decision
 	}
 	return out, nil

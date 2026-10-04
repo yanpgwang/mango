@@ -1210,7 +1210,8 @@ func executeToolBatch(
 				assistantContent,
 			)
 			if err != nil {
-				return toolBatchExecution{}, false, failTurn(err.Error()), nil
+				execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
+				return execution, false, failTurn(err.Error()), nil
 			}
 			ids := advisorConsultationIDs(planned.stepID)
 			consultation.ThreadID = ids.ThreadID
@@ -1239,18 +1240,18 @@ func executeToolBatch(
 			return execution, true, "", nil
 		}
 		if executed.FatalError != "" {
+			execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
 			if activityOutcome.Interrupted {
-				execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
 				return execution, true, "", nil
 			}
-			return toolBatchExecution{}, false, failTurn(executed.FatalError), nil
+			return execution, false, failTurn(executed.FatalError), nil
 		}
 		if executed.Ambiguous {
+			execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
 			if activityOutcome.Interrupted {
-				execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
 				return execution, true, "", nil
 			}
-			return toolBatchExecution{}, false, failTurn(
+			return execution, false, failTurn(
 				"a tool began executing but no trustworthy result was recorded; " +
 					"the side effect will not be retried",
 			), nil

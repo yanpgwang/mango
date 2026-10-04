@@ -264,3 +264,60 @@ func TestWorkflowOwnedBudgetPauseCannotReviveInterruptedRound(t *testing.T) {
 	require.True(t, interrupted)
 	require.Equal(t, 1, admissions)
 }
+
+func TestAutomaticDenialPreservesKnownResultsOnSiblingFailure(t *testing.T) {
+	for _, failure := range []string{"ambiguous", "fatal"} {
+		t.Run(failure, func(t *testing.T) {
+			var suite testsuite.WorkflowTestSuite
+			env := suite.NewTestWorkflowEnvironment()
+			env.RegisterWorkflow(workflowTurnHarness)
+			tools := []TurnTool{
+				{Name: "read", Kind: TurnToolSelfHosted, Permission: domain.PermissionPolicy{Type: "auto"}},
+				{Name: "mcp__svc__write", Kind: TurnToolMCP, Permission: domain.PermissionPolicy{Type: "always_allow"}, MCPServer: domain.MCPServer{Name: "svc"}, MCPToolName: "write"},
+				{Name: "mcp__svc__remove", Kind: TurnToolMCP, Permission: domain.PermissionPolicy{Type: "always_allow"}, MCPServer: domain.MCPServer{Name: "svc"}, MCPToolName: "remove"},
+			}
+			prepare := func(context.Context, PrepareTurnInput) (PrepareTurnResult, error) {
+				return PrepareTurnResult{AttemptID: "ratm_review", ThreadID: "sthr_review", Request: model.Request{Model: "model", Tools: []model.ToolSchema{{Name: "read"}, {Name: "mcp__svc__write"}, {Name: "mcp__svc__remove"}}}, Tools: tools}, nil
+			}
+			call := func(context.Context, CallModelInput) (CallModelResult, error) {
+				return CallModelResult{Response: model.Response{StopReason: "tool_use", Content: []domain.ContentBlock{
+					{Type: "tool_use", ToolUseID: "deny", ToolName: "read", Input: map[string]any{}},
+					{Type: "tool_use", ToolUseID: "done", ToolName: "mcp__svc__write", Input: map[string]any{}},
+					{Type: "tool_use", ToolUseID: "ambig", ToolName: "mcp__svc__remove", Input: map[string]any{}},
+				}}, ToolSteps: []PlannedToolStep{{ProviderToolUseID: "deny", ToolUseEventID: "sevt_deny", ToolStepID: "step_deny"}, {ProviderToolUseID: "done", ToolUseEventID: "sevt_done", ToolStepID: "step_done"}, {ProviderToolUseID: "ambig", ToolUseEventID: "sevt_ambig", ToolStepID: "step_ambig"}}}, nil
+			}
+			execute := func(_ context.Context, in ExecuteToolInput) (ExecuteToolResult, error) {
+				if in.ToolName == "mcp__svc__remove" {
+					if failure == "fatal" {
+						return ExecuteToolResult{FatalError: "fatal execution failure"}, nil
+					}
+					return ExecuteToolResult{Ambiguous: true}, nil
+				}
+				return ExecuteToolResult{Result: domain.ToolStepResult{Content: []any{map[string]any{"type": "text", "text": "written"}}}}, nil
+			}
+			var completed CompleteWorkflowTurnInput
+			registerWorkflowTurnActivities(env, prepare, call, execute, func(_ context.Context, in CompleteWorkflowTurnInput) (RunTurnResult, error) {
+				completed = in
+				return RunTurnResult{}, nil
+			})
+			env.RegisterActivityWithOptions(func(context.Context, domain.ToolPermissionOwner) (EnsureToolPermissionAttemptResult, error) {
+				return EnsureToolPermissionAttemptResult{Established: true}, nil
+			}, activity.RegisterOptions{Name: ActivityEnsureToolPermissionAttempt})
+			env.RegisterActivityWithOptions(func(context.Context, EvaluateToolPermissionInput) (EvaluateToolPermissionResult, error) {
+				return EvaluateToolPermissionResult{Decision: domain.ToolPermissionDecision{Type: "deny", ReasonCode: "high_risk"}}, nil
+			}, activity.RegisterOptions{Name: ActivityEvaluateToolPermission})
+			env.ExecuteWorkflow(workflowTurnHarness, PrepareTurnInput{SessionID: "sesn_review", TriggerEventID: "sevt_review"})
+			require.NoError(t, env.GetWorkflowError())
+			require.Equal(t, domain.StatusTerminated, completed.Status)
+			results := map[string]bool{}
+			for _, draft := range completed.Output {
+				if id, ok := domain.AgentToolResultReference(draft.Type, draft.Payload); ok {
+					results[id] = true
+				}
+			}
+			require.True(t, results["sevt_deny"], "an automatic denial must retain its matching error result after sibling ambiguity")
+			require.True(t, results["sevt_done"], "the sibling's known completed side effect must retain its matching result")
+
+		})
+	}
+}

@@ -37,6 +37,19 @@ func (s *Store) ExecuteCoordinatorToolStep(
 	toolName string,
 	input map[string]any,
 ) (CoordinatorToolExecution, error) {
+	var permissionIntent domain.PermissionIntent
+	if toolName == agentruntime.SendToAgentToolName {
+		// Freeze client intent while the originating Thread owns this turn;
+		// later processing of queued work cannot authorize this delegation.
+		var err error
+		permissionIntent, err = s.PermissionIntentThrough(ctx, sessionID, triggerEventID)
+		if err != nil {
+			return CoordinatorToolExecution{}, err
+		}
+		if !permissionIntent.Complete {
+			permissionIntent = domain.PermissionIntent{}
+		}
+	}
 	var execution CoordinatorToolExecution
 	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
 		row, err := q.LockSession(ctx, sessionID)
@@ -98,7 +111,7 @@ func (s *Store) ExecuteCoordinatorToolStep(
 			execution.Result, execution.WakeThreadID, err =
 				s.executeSendToAgentLocked(
 					ctx, tx, q, session, parentThreadID,
-					triggerEventID, parsed,
+					triggerEventID, parsed, permissionIntent,
 				)
 		default:
 			return domain.Validation("unknown coordinator tool: " + toolName)
@@ -253,6 +266,7 @@ func (s *Store) executeSendToAgentLocked(
 	parentThreadID string,
 	triggerEventID string,
 	input agentruntime.SendToAgentInput,
+	permissionIntent domain.PermissionIntent,
 ) (domain.ToolStepResult, string, error) {
 	if session.ArchivedAt != nil || session.Status == domain.StatusTerminated {
 		return domain.ToolStepResult{}, "", domain.Conflict("cannot delegate in a terminated Session")
@@ -370,10 +384,11 @@ WHERE session_id = $1 AND kind != 'advisor'
 		[]domain.EventDraft{{
 			Type: domain.EvAgentThreadMessageReceived,
 			Payload: map[string]any{
-				"from_session_thread_id":            parentThreadID,
-				"from_agent_name":                   session.AgentSnapshot.Name,
-				"content":                           content,
-				domain.InternalOriginTriggerEventID: triggerEventID,
+				"from_session_thread_id":              parentThreadID,
+				"from_agent_name":                     session.AgentSnapshot.Name,
+				"content":                             content,
+				domain.InternalOriginTriggerEventID:   triggerEventID,
+				domain.InternalOriginPermissionIntent: map[string]any{"trigger_event_id": triggerEventID, "intent": permissionIntent},
 			},
 		}}, maxSeq, nil,
 	)

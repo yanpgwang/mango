@@ -52,7 +52,7 @@ func TestEvaluatorSafeResponseAndTrustEnvelope(t *testing.T) {
 		{Type: "text", Text: "visible text", Raw: []byte(`{"type":"text","hidden":"provider control"}`)},
 	}}}
 	client := classifierClient{call: func(ctx context.Context, req model.Request) (model.Response, error) {
-		if req.Model != "test-model" || len(req.Tools) != 0 || req.MaxTokens != 256 {
+		if req.Model != "test-model" || len(req.Tools) != 0 || req.MaxTokens != 1024 {
 			t.Fatalf("unbounded or tool-enabled classifier request: %+v", req)
 		}
 		deadline, ok := ctx.Deadline()
@@ -122,6 +122,33 @@ func TestEvaluatorValidAskAndDeny(t *testing.T) {
 		if err != nil || got.Decision.Type != choice.decision || got.Decision.ReasonCode != choice.reason {
 			t.Fatalf("judgment = %+v, err=%v", got, err)
 		}
+	}
+}
+
+func TestEvaluatorResponseContentBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content []domain.ContentBlock
+		want    string
+	}{
+		{"private thinking and decision", []domain.ContentBlock{{Type: "thinking", Text: "private provider reasoning"}, {Type: "text", Text: `{"type":"allow"}`}}, "allow"},
+		{"redacted thinking and decision", []domain.ContentBlock{{Type: "redacted_thinking", Raw: []byte(`{"data":"opaque"}`)}, {Type: "text", Text: `{"type":"deny","reason_code":"high_risk"}`}}, "deny"},
+		{"thinking without decision", []domain.ContentBlock{{Type: "thinking", Text: "allow"}}, "ask"},
+		{"tool call and decision", []domain.ContentBlock{{Type: "tool_use", ToolName: "read"}, {Type: "text", Text: `{"type":"allow"}`}}, "ask"},
+		{"unknown content and decision", []domain.ContentBlock{{Type: "future_control"}, {Type: "text", Text: `{"type":"allow"}`}}, "ask"},
+		{"multiple decisions", []domain.ContentBlock{{Type: "text", Text: `{"type":"allow"}`}, {Type: "text", Text: `{"type":"deny","reason_code":"high_risk"}`}}, "ask"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := classifierClient{call: func(context.Context, model.Request) (model.Response, error) {
+				out := response("")
+				out.Content = tc.content
+				return out, nil
+			}}
+			got, err := NewModelEvaluator(client).Evaluate(context.Background(), domain.Model{ID: "test-model"}, evaluationInput())
+			if err != nil || got.Decision.Type != tc.want || !got.ResponseReceived || got.Usage.OutputTokens != 5 {
+				t.Fatalf("judgment=%+v err=%v want=%s", got, err, tc.want)
+			}
+		})
 	}
 }
 
