@@ -5,12 +5,14 @@ current `/v1` OpenAPI contract, including health/readiness and the OpenAPI route
 It does not depend on Mango server packages, Temporal, or a hosted agent service.
 Go **1.24+** is required for the JSON omission semantics used by typed inputs.
 
-The SDK is pre-release and has not been published to a package registry or tagged
-for independent releases. To use this checkout from another Go module:
+The SDK is pre-release. Select a version matching your server from the
+[release record](https://github.com/yanpgwang/mango/releases); it identifies the
+published Go tag and inspected package artifacts. Before publication, or for
+development against this checkout, use a local module replacement:
 
 ```sh
 go mod edit -require=github.com/yanpgwang/mango/sdk/go@v0.0.0
-go mod edit -replace=github.com/yanpgwang/mango/sdk/go=/absolute/path/to/managed-agent-go/sdk/go
+go mod edit -replace=github.com/yanpgwang/mango/sdk/go=/absolute/path/to/mango/sdk/go
 go mod tidy
 ```
 
