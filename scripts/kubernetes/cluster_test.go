@@ -229,13 +229,20 @@ func (s *stateFixture) compose(input []byte, args ...string) []byte {
 func (c *clusterFixture) startState(suffix string) *stateFixture {
 	c.t.Helper()
 	s := &stateFixture{cluster: c, project: c.name + "-" + suffix, addresses: map[string]string{}}
+	network := s.project + "_default"
+	connected := false
 	c.t.Cleanup(func() {
+		if c.t.Failed() {
+			s.logDependencyStates()
+		}
+		if connected {
+			c.cleanup("docker", "network", "disconnect", network, c.node)
+		}
 		c.cleanup("docker", "compose", "--project-name", s.project, "-f", "scripts/kubernetes/fixtures/compose.yaml", "down", "--volumes", "--remove-orphans")
 	})
 	s.compose(nil, "up", "-d", "--wait", "--wait-timeout", "240", "postgres", "nats", "seaweedfs", "model")
-	network := s.project + "_default"
 	c.command(nil, nil, "docker", "network", "connect", network, c.node)
-	c.t.Cleanup(func() { c.cleanup("docker", "network", "disconnect", network, c.node) })
+	connected = true
 	for _, service := range []string{"postgres", "nats", "seaweedfs", "model"} {
 		s.addresses[service] = s.containerIP(service, network)
 	}
