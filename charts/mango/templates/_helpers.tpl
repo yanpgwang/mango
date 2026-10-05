@@ -1,5 +1,8 @@
 {{- define "mango.resourceName" -}}
 {{- $name := printf "%s-%s" (default .root.Release.Name .root.Values.fullnameOverride) .suffix -}}
+{{- if not (regexMatch "^[a-z]" $name) -}}
+{{- $name = printf "mango-%s" $name -}}
+{{- end -}}
 {{- if gt (len $name) 63 -}}
 {{- printf "%s-%s" ($name | trunc 54 | trimSuffix "-") ($name | sha256sum | trunc 8) -}}
 {{- else -}}{{ $name }}{{- end -}}

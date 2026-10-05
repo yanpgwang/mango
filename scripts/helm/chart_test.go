@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -286,6 +287,35 @@ func TestChartDigestAndLongResourceNames(t *testing.T) {
 				t.Fatal("image digest did not override the tag")
 			}
 		}
+	}
+}
+
+func TestChartServiceNamesStartWithLetter(t *testing.T) {
+	dns1035 := regexp.MustCompile(`^[a-z]([-a-z0-9]*[a-z0-9])?$`)
+	for _, tc := range []struct {
+		release  string
+		override string
+	}{
+		{release: "1alpha"},
+		{release: "alpha", override: "2custom"},
+		{release: "alpha", override: "3" + strings.Repeat("x", 62)},
+	} {
+		t.Run(tc.release+tc.override, func(t *testing.T) {
+			objects := render(t, tc.release, "--set", "fullnameOverride="+tc.override)
+			for _, object := range objects {
+				if object["kind"] != "Service" {
+					continue
+				}
+				name := field(t, object, "metadata")["name"].(string)
+				if len(name) > 63 || !dns1035.MatchString(name) {
+					t.Fatalf("Service name violates default Kubernetes DNS1035 rules: %q", name)
+				}
+				selector := field(t, object, "spec", "selector")
+				if !reflect.DeepEqual(selector, field(t, objects["Deployment/"+name], "spec", "selector", "matchLabels")) {
+					t.Fatal("renamed Service selector does not map to API Deployment")
+				}
+			}
+		})
 	}
 }
 

@@ -33,6 +33,10 @@ pre-install hook. `latest` is rejected. All roles use UID/GID/fsGroup 65532, a
 read-only root, bounded writable `/tmp`, resource requests/limits, dropped
 capabilities and no mounted service-account token.
 
+Resource names follow the release name or `fullnameOverride`. A digit-leading
+name receives a `mango-` prefix, and long names are bounded with a hash suffix;
+no relaxed Kubernetes Service naming feature gate is required.
+
 The migration hook initializes the fresh timestamp baseline `20261005000001`;
 old development version `1` is rejected without data reset. Same-release
 retries preserve data. `migration.enabled=false` is available for an initialized

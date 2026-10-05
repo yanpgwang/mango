@@ -1495,6 +1495,12 @@ evidence rather than a general evaluator-quality guarantee.
 
 ## Kubernetes chart candidate (2026-10-05)
 
+Kubernetes [object naming rules](https://kubernetes.io/docs/concepts/overview/working-with-objects/names/)
+require Service names to start with a letter by default. Mango prefixes
+digit-leading Helm release names or overrides with `mango-` before bounded
+hashing, rather than requiring the optional relaxed naming gate. Independent
+rendered Service tests cover both input paths and maximum-length overrides.
+
 The maintainer-selected alpha topology is mapped directly onto existing Mango
 commands and configuration in `charts/mango`. Reviewed current official
 [Helm chart](https://helm.sh/docs/topics/charts/) and

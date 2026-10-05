@@ -82,7 +82,9 @@ Independent rendered-manifest tests must prove required configuration failures,
 role-specific secret selection, equal image identity, migration-hook order,
 read-only filesystem/writable temporary storage, probes, namespace/selector
 consistency and bounded lifecycle. Digest selection and long resource names
-must remain valid. Package/lint checks must include only chart distribution
+must remain valid. Digit-leading release names or overrides receive a `mango-`
+prefix before bounded name hashing, preserving default Kubernetes Service naming
+rules without requiring a feature gate. Package/lint checks must include only chart distribution
 inputs. Add a required CI check using Helm 4.3.0.
 
 The documentation provides explicit existing-Secret configuration, an initial
