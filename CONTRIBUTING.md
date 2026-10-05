@@ -115,6 +115,10 @@ kind 0.33.0/Kubernetes 1.37.0 state and the external Docker worker. It owns
 installation, process replacement and quiesced independent restore. Default
 tests skip this tier; explicit invocation must fail if tooling is unavailable.
 On native Linux use `SERVICE_TEST_EXEC='sudo -n -E --'`, as for service tests.
+If this fixture fails, it records each owned source/restore dependency's
+running, OOM, exit-code and health status before network and volume teardown.
+Inspect and healthcheck payloads remain private. These facts aid diagnosis;
+an intentionally stopped source dependency normally has exit code zero.
 
 Run the same PostgreSQL, Temporal, NATS, SeaweedFS, and Docker conformance suite as
 CI:
