@@ -193,7 +193,7 @@ never present it as a real third-party integration.
 
 ## Development schema changes
 
-`internal/pg/migrations/00001_schema.sql` initializes the current development
+`internal/pg/migrations/20261005000001_schema.sql` initializes the initial alpha
 schema and is also sqlc's schema input. Historical pre-release migrations have
 been consolidated; development databases from the old chain must be rebuilt.
 See the [database baseline notes](docs/deployment.md#development-database-baseline)

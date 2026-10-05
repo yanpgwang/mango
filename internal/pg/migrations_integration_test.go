@@ -38,6 +38,48 @@ func TestMigrateReapplyPreservesSessionAndWorkspace(t *testing.T) {
 	}
 }
 
+// An old development ledger must not be accepted as the initial alpha schema,
+// even if its applied baseline was also the single version numbered 1.
+func TestMigrateRejectsPreAlphaBaselineLedger(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	session := newSession("sesn_pre_alpha_schema")
+	if _, err := store.CreateSession(ctx, session, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, `UPDATE workspaces SET name = 'Keep operator data' WHERE id = 'wrkspc_default'; UPDATE goose_db_version SET version_id = 1 WHERE version_id <> 0`); err != nil {
+		t.Fatal(err)
+	}
+	for name, check := range map[string]func(context.Context, *pgxpool.Pool) error{"migrate": Migrate, "startup": CheckSchema} {
+		if err := check(ctx, store.pool); err == nil || !strings.Contains(err.Error(), "version 1 is not supported") {
+			t.Errorf("%s accepted pre-alpha ledger: %v", name, err)
+		}
+	}
+	var name string
+	if err := store.pool.QueryRow(ctx, `SELECT name FROM workspaces WHERE id = 'wrkspc_default'`).Scan(&name); err != nil || name != "Keep operator data" {
+		t.Fatalf("operator Workspace was changed: %q, %v", name, err)
+	}
+	if got, err := store.GetSession(ctx, session.ID); err != nil || got.ID != session.ID {
+		t.Fatalf("operator Session was changed: %+v, %v", got, err)
+	}
+	var versions []int64
+	rows, err := store.pool.Query(ctx, `SELECT version_id FROM goose_db_version ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var version int64
+		if err := rows.Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		versions = append(versions, version)
+	}
+	if err := rows.Err(); err != nil || len(versions) != 2 || versions[0] != 0 || versions[1] != 1 {
+		t.Fatalf("old ledger was modified: %v, %v", versions, err)
+	}
+}
+
 // The development schema can be removed and initialized again without leaving
 // foreign keys or application tables behind, even after a Session is created.
 func TestMigrateDownAndReinitialize(t *testing.T) {
@@ -85,13 +127,13 @@ func TestCheckSchemaReadOnlyAndRolledBack(t *testing.T) {
 	if err := CheckSchema(ctx, pool); err != nil {
 		t.Fatalf("read-only schema check: %v", err)
 	}
-	if _, err := store.pool.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (1, false)`); err != nil {
+	if _, err := store.pool.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (20261005000001, false)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := CheckSchema(ctx, pool); err == nil || !strings.Contains(err.Error(), "mango migrate") {
 		t.Fatalf("rolled-back baseline was accepted: %v", err)
 	}
-	if _, err := store.pool.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (1, true)`); err != nil {
+	if _, err := store.pool.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (20261005000001, true)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := CheckSchema(ctx, pool); err != nil {

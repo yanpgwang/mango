@@ -214,10 +214,15 @@ the schema check, but the API's `/readyz` still rejects read-only PostgreSQL.
 
 ### Development database baseline
 
-The current schema starts from `internal/pg/migrations/00001_schema.sql`.
+The current schema starts from `internal/pg/migrations/20261005000001_schema.sql`.
 Historical pre-release migrations have been squashed into this baseline;
 their old-row backfills and downgrade paths are no longer supported. Mango
 has no supported stable release or customer database migration requirement.
+The first runtime alpha uses the distinct Goose version `20261005000001`, so
+the prior development baseline numbered `1` is rejected by migration and
+startup without modifying its state. Retrying initialization or restoring this
+same release's database preserves its existing data; this is not an upgrade
+path from an older checkout.
 
 Use a fresh development database when moving from a checkout that used the
 historical migration chain. Do not edit Goose's version table to make an old
