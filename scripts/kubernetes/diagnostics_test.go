@@ -1,17 +1,26 @@
 package kubernetes_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func dependencyProbeOutput(cmd *exec.Cmd) ([]byte, error) {
+	// Compose plugins can retain their parent's pipes after it is cancelled.
+	cmd.WaitDelay = 250 * time.Millisecond
+	return cmd.Output()
+}
 
 func dependencyStateSummary(raw []byte) (string, error) {
 	var state struct {
@@ -37,13 +46,14 @@ func (s *stateFixture) logDependencyStates() {
 	s.cluster.t.Helper()
 	// Bound diagnostics as a whole and keep command output private. A failed
 	// probe must never prevent network/volume teardown or hide the first error.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Reserve time for the bounded pipe drain inside the ten-second budget.
+	ctx, cancel := context.WithTimeout(context.Background(), 9*time.Second)
 	defer cancel()
 	probe := func(args ...string) ([]byte, error) {
 		cmd := exec.CommandContext(ctx, "docker", args...)
 		cmd.Dir = s.cluster.root
 		cmd.Env = append(os.Environ(), "MANGO_KUBERNETES_MODEL_IMAGE="+s.cluster.model)
-		return cmd.Output()
+		return dependencyProbeOutput(cmd)
 	}
 	for _, service := range []string{"postgres", "temporal", "nats", "seaweedfs", "model"} {
 		ids, err := probe("compose", "--project-name", s.project, "-f", "scripts/kubernetes/fixtures/compose.yaml", "ps", "--all", "--quiet", service)
@@ -58,6 +68,42 @@ func (s *stateFixture) logDependencyStates() {
 			}
 		}
 		s.cluster.t.Logf("fixture dependency state project=%s service=%s unavailable", s.project, service)
+	}
+}
+
+func TestDependencyProbeBoundsInheritedOutputPipe(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	pidFile := filepath.Join(t.TempDir(), "child-pid")
+	// The Compose CLI plugin also inherits its parent's output descriptors.
+	// Wait for a real child to hold the pipe before cancelling the parent.
+	cmd := exec.CommandContext(ctx, "sh", "-c", `sleep 5 & echo $! > "$1"; wait`, "fixture", pidFile)
+	done := make(chan error, 1)
+	go func() {
+		_, err := dependencyProbeOutput(cmd)
+		done <- err
+	}()
+	var pid []byte
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		var err error
+		pid, err = os.ReadFile(pidFile)
+		if err == nil && len(bytes.TrimSpace(pid)) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	childPID, err := strconv.Atoi(strings.TrimSpace(string(pid)))
+	require.NoError(t, err)
+	child, err := os.FindProcess(childPID)
+	require.NoError(t, err)
+	defer func() { _ = child.Kill() }()
+	cancel()
+	select {
+	case err := <-done:
+		require.Error(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("diagnostic command waited for the inherited output pipe after cancellation")
 	}
 }
 
