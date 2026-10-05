@@ -6,6 +6,7 @@
     "self-hosted-worker",
     "multi-agent",
     "session-connect",
-    "session-troubleshooting"
+    "session-troubleshooting",
+    "release-candidates"
   ]
 }

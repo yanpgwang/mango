@@ -3,7 +3,9 @@ FROM --platform=$BUILDPLATFORM golang:1.26.6-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY sdk/go/go.mod ./sdk/go/go.mod
-COPY . .
+COPY cmd ./cmd
+COPY internal ./internal
+COPY sdk/go ./sdk/go
 ARG VERSION=dev
 ARG REVISION=unknown
 ARG TARGETOS

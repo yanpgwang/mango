@@ -1461,3 +1461,34 @@ self-hosted persistence, not a claim about CMA internals. The configured
 reasoning was excluded from parsing and the response cap became 1,024 tokens;
 20-second timeouts and strict final JSON remain. This supplies limited workload
 evidence rather than a general evaluator-quality guarantee.
+
+## Kubernetes alpha release artifacts (2026-10-05)
+
+- The maintainer selected a versioned Kubernetes control-plane alpha with
+  external state services and operator-owned sandbox execution. Cloud sandbox
+  support and Agent/Deployment archive propagation are independent work. The
+  [delivery design](design/kubernetes-alpha.md) states the installation,
+  recovery and publication acceptance; candidate building alone does not meet it.
+- Reviewed current [CMA overview](https://platform.claude.com/docs/en/managed-agents/overview)
+  and [self-hosted guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes).
+  Adopted the useful separation of control-plane behavior from Environment
+  execution. Rejected a hosted cloud sandbox, vendor rollout, beta headers or
+  exact endpoint parity as prerequisites for Mango's independently owned release.
+- OCI image index/layout v1.1.1, official Docker Buildx OCI export, Helm chart
+  conventions and Kubernetes Job/probe documentation inform distribution.
+  The image checker verifies Mango's own exported platforms/config identity,
+  with independently constructed fixtures; it is not a general OCI validator.
+- Runtime and SDK candidates use the same clean tracked source revision,
+  immutable snapshot inputs, package versions, manifest and checksums. Shared
+  build info replaces the worker Dockerfile's ineffective `main.version` and
+  `main.revision` linker flags. Both images use numeric UID/GID 65532. The
+  worker build copies only required Go source, excluding broad local context.
+- Verified public tool releases: Helm v4.3.0 and kind v0.33.0 for subsequent
+  cluster work, Docker setup-buildx v4.4.1, setup-qemu v4.4.0 and build-push
+  v7.4.0 for candidate CI. Candidate workflows have read-only repository
+  permissions, no registry login, and no automatic publishing trigger.
+- Packaging reuses Mango's existing generated resource clients and standard
+  npm/uv tooling. No official external SDK implementation or runtime dependency
+  was added. SDK source and raw HTTP conformance remain separate from fresh
+  installed-artifact checks against a named simulated HTTP boundary. Public
+  package status remains unchanged until actual publication is verified.

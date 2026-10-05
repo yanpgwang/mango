@@ -10,6 +10,13 @@ Mango currently publishes a reproducible local stack and builds a multi-role
 application image. It does not yet publish a supported production Docker
 Compose bundle or Kubernetes chart.
 
+Maintainers can build [matched release candidates](guides/release-candidates.md)
+with versioned commands, SDK packages and multi-platform OCI archives. Candidate
+builds do not publish a runtime release or establish a supported installation.
+The [Kubernetes alpha delivery](design/kubernetes-alpha.md) limits the first
+distribution to fresh installation with external state services and an
+operator-owned sandbox worker; cloud execution is an independent future option.
+
 ## Supported assets
 
 | Asset | Status | Intended use |
