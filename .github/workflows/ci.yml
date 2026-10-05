@@ -87,6 +87,33 @@ jobs:
       - run: make release-build
       - run: make release-check
 
+  chart:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install verified official Helm 4.3.0
+        env:
+          HELM_VERSION: v4.3.0
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+            -o "helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" \
+            -o helm.sha256sum
+          sha256sum --check helm.sha256sum
+          tar -xzf "helm-${HELM_VERSION}-linux-amd64.tar.gz"
+      - run: make chart-check HELM="$RUNNER_TEMP/linux-amd64/helm"
+
   security:
     name: Security checks
     runs-on: ubuntu-latest

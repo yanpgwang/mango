@@ -1492,3 +1492,34 @@ evidence rather than a general evaluator-quality guarantee.
   was added. SDK source and raw HTTP conformance remain separate from fresh
   installed-artifact checks against a named simulated HTTP boundary. Public
   package status remains unchanged until actual publication is verified.
+
+## Kubernetes chart candidate (2026-10-05)
+
+The maintainer-selected alpha topology is mapped directly onto existing Mango
+commands and configuration in `charts/mango`. Reviewed current official
+[Helm chart](https://helm.sh/docs/topics/charts/) and
+[hook](https://helm.sh/docs/topics/charts_hooks/) documentation, Kubernetes
+probe/security-context documentation and [Goose SQL migration conventions](https://github.com/pressly/goose#sql-migrations).
+Helm 4.3.0 is the tested CLI; executable Mango-owned manifest tests, not
+third-party schemas or SDK execution, validate the selected mapping.
+
+Adopted standard chart resources, values validation, existing Secret/key
+references and a pre-install migration Job. The hook needs no uncreated chart
+ConfigMap/ServiceAccount. Model credentials are selected only for orchestration;
+migration receives only DB credentials. Read-only roots, UID/GID/fsGroup 65532,
+selected group-readable keyring projection and bounded `/tmp` are verified.
+Orchestration does not claim provider readiness from a process probe.
+
+The first-runtime-alpha baseline uses distinct Goose timestamp version
+`20261005000001`, with byte-identical consolidated SQL. This adapts the existing
+version check to reject known older development version `1` without new checksum
+state, compatibility readers, automatic reset or a non-idempotent fresh-only
+initializer. Same-release migration retry and old-ledger refusal are tested with
+real PostgreSQL. It does not detect arbitrary manual schema edits.
+
+CMA's hosted control plane does not supply a Mango database or chart lifecycle.
+Its self-hosted Environment boundary remains a useful execution separation;
+Mango's sandbox worker stays operator-owned outside this chart. Bundled state
+services, Session Pods, cloud execution and vendor rollout/authentication are
+rejected as chart dependencies. Cluster restart/restore and publication remain
+the next deliveries in the [alpha design](design/kubernetes-alpha.md).
