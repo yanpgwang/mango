@@ -57,7 +57,9 @@ own implementation plan and acceptance evidence.
 
 The candidate builder rejects an invalid version, mismatched SDK version,
 dirty source checkout, revision mismatch or existing output directory. Its
-manifest identifies the source revision and every archive's SHA-256. Archives
+manifest identifies the source revision and every archive's SHA-256. Builds use
+an isolated snapshot of tracked Git content, excluding even ignored source
+files that could otherwise affect a local compiler. Archives
 contain allowlisted distribution contents; local credentials, build caches,
 test environments and cookbook data are not distribution inputs.
 

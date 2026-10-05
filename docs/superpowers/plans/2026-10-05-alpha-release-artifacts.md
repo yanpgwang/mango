@@ -11,7 +11,7 @@ description: Build matched runtime and SDK candidates from a reviewed source rev
 
 **Architecture:** A small shared build-info package supplies CLI/OCI identity. A standalone distribution builder invokes existing Go/npm/uv tools, allowlists archives and writes a version/revision manifest with checksums. A manual CI workflow builds candidates from clean source; final publication follows the later chart and cluster acceptance PRs.
 
-**Tech Stack:** Go, Python 3.11+ standard library, npm, uv, Docker Buildx and GitHub Actions.
+**Tech Stack:** Go, Python 3.12+ standard library, npm, uv, Docker Buildx and GitHub Actions.
 
 **Spec:** `docs/design/kubernetes-alpha.md`, release-artifact section. This plan covers delivery 1 only; chart, cluster/restore and final publication have separate plans.
 

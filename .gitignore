@@ -15,6 +15,7 @@
 # Go
 /vendor/
 /bin/
+/dist/
 /website/node_modules/
 /website/out/
 /website/.next/
