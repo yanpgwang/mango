@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-from build import build, pack_binaries, pack_go_sdk, publish, snapshot_source, validate_source, write_manifest
+from build import build, pack_binaries, pack_go_sdk, publish, python_packages, snapshot_source, validate_source, write_manifest
 
 
 VERSION = "0.1.0-alpha.2"
@@ -143,6 +143,18 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             write_manifest(self.output, VERSION, REVISION, {}, [{"name": "absent.zip", "kind": "go-sdk"}])
         self.assertFalse((self.output / "manifest.json").exists())
+
+    def test_python_package_collection_ignores_uv_marker_and_rejects_partial_output(self):
+        folder = self.folder / "python"
+        folder.mkdir()
+        names = ["mango_sdk-0.1.0a2-py3-none-any.whl", "mango_sdk-0.1.0a2.tar.gz"]
+        for name in names:
+            (folder / name).write_bytes(b"package")
+        (folder / ".gitignore").write_text("*\n")
+        self.assertEqual(python_packages(folder, "0.1.0a2"), names)
+        (folder / names[0]).unlink()
+        with self.assertRaises(ValueError):
+            python_packages(folder, "0.1.0a2")
 
     def test_failed_compiler_leaves_no_candidate_or_staging_directory(self):
         tools = self.folder / "tools"

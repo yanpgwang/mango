@@ -133,6 +133,15 @@ def run(arguments, root, env=None):
     subprocess.run(arguments, cwd=root, env=env, check=True)
 
 
+def python_packages(folder, version):
+    expected = {f"mango_sdk-{version}-py3-none-any.whl", f"mango_sdk-{version}.tar.gz"}
+    # uv adds an output-directory marker; it is not a distribution artifact.
+    produced = {path.name for path in folder.iterdir() if path.name != ".gitignore"}
+    if produced != expected or any(not (folder / name).is_file() for name in expected):
+        raise ValueError("Python build did not produce exactly the expected wheel and sdist")
+    return sorted(expected)
+
+
 def build_payloads(root, stage, version, platforms, revision):
     artifacts = []
     flags = f"-s -w -X github.com/yanpgwang/mango/internal/buildinfo.Version={version} -X github.com/yanpgwang/mango/internal/buildinfo.Revision={revision}"
@@ -153,10 +162,7 @@ def build_payloads(root, stage, version, platforms, revision):
     with tempfile.TemporaryDirectory(prefix="mango-python-") as folder:
         run(["uv", "build", "--project", str(root / "sdk/python"), "--no-sources", "--out-dir", folder], root)
         python_version = tomllib.loads((root / "sdk/python/pyproject.toml").read_text())["project"]["version"]
-        expected = {f"mango_sdk-{python_version}-py3-none-any.whl", f"mango_sdk-{python_version}.tar.gz"}
-        if {path.name for path in Path(folder).iterdir()} != expected:
-            raise ValueError("Python build did not produce exactly the expected wheel and sdist")
-        for name in sorted(expected):
+        for name in python_packages(Path(folder), python_version):
             shutil.copyfile(Path(folder) / name, stage / name)
             artifacts.append({"name": name, "kind": "python-sdk"})
     run(["npm", "ci"], root / "sdk/typescript")
