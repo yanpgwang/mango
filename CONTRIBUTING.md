@@ -92,6 +92,13 @@ make local-config
 make image-smoke
 ```
 
+Verify release packaging with `make release-unit`, then build from a clean
+committed checkout using `make release-build` and `make release-check`. The
+required **Release artifacts** job installs the actual wheel, source package,
+npm tarball and Go source archive outside the checkout. This complements the
+independent HTTP SDK contract tier. See the
+[candidate guide](docs/guides/release-candidates.md); these targets never publish.
+
 Run the same PostgreSQL, Temporal, NATS, SeaweedFS, and Docker conformance suite as
 CI:
 

@@ -10,7 +10,8 @@ BIN_DIR ?= bin
 BINARY ?= $(BIN_DIR)/mango
 IMAGE ?= mango:local
 VERSION ?= dev
-REVISION ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+REVISION ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BUILD_LDFLAGS := -s -w -X github.com/yanpgwang/mango/internal/buildinfo.Version=$(VERSION) -X github.com/yanpgwang/mango/internal/buildinfo.Revision=$(REVISION)
 GOPROXY ?=
 LINT_BASE ?= origin/main
 # Optional test-binary wrapper; compilation and Go caches keep the caller's UID.
@@ -38,6 +39,10 @@ MANGO_TEST_S3_ACCESS_KEY ?= mango-local
 MANGO_TEST_S3_SECRET_KEY ?= mango-local-development-only
 PYTHON ?= python3
 UV ?= uv
+RELEASE_PYTHON ?= $(UV) run --python 3.12 python
+RELEASE_VERSION ?= 0.1.0-alpha.2
+RELEASE_DIR ?= dist/release/$(RELEASE_VERSION)
+RELEASE_PLATFORMS ?=
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
 MANGO_EXAMPLE_ADVISOR_MODEL_ID ?= $(MANGO_EXAMPLE_MODEL_ID)
 HITL_ARGS ?= start
@@ -56,6 +61,7 @@ endif
 	local-config local-up local-down local-health local-ps local-logs
 
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
+.PHONY: release-unit release-build release-check
 
 help:
 	@echo "Development"
@@ -81,6 +87,8 @@ help:
 	@echo "  make sdk-check      reject stale SDK bindings or contract snapshots"
 	@echo "  make sdk-test       test/typecheck/build Go, Python and TypeScript SDKs"
 	@echo "  make sdk-conformance  exercise language clients against Mango HTTP handlers"
+	@echo "  make release-build  build matched runtime/SDK candidates without publication"
+	@echo "  make release-check  inspect and freshly install candidate packages"
 	@echo "  make security       scan reachable Go code and high-severity npm issues"
 	@echo "  make docs-check     install and verify documentation dependencies"
 	@echo "  make dev-env-init   create ~/.config/mango/dev.env with mode 0600"
@@ -98,7 +106,7 @@ help:
 
 build:
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -trimpath -o $(BINARY) ./cmd/mango
+	$(GO) build -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(BINARY) ./cmd/mango
 
 lint:
 	$(GOLANGCI_LINT) run --new-from-rev=$(LINT_BASE) ./...
@@ -191,6 +199,15 @@ verify: lint test test-race vet
 sdk-install:
 	$(UV) sync --project sdk/python --frozen --group dev
 	npm --prefix sdk/typescript ci
+
+release-unit:
+	$(RELEASE_PYTHON) -m unittest discover -s scripts/release -p 'test_*.py'
+
+release-build:
+	$(RELEASE_PYTHON) scripts/release/build.py --version '$(RELEASE_VERSION)' --output '$(RELEASE_DIR)' $(foreach target,$(RELEASE_PLATFORMS),--platform '$(target)')
+
+release-check:
+	$(RELEASE_PYTHON) scripts/release/smoke.py '$(RELEASE_DIR)'
 
 sdk-generate:
 	$(GO) run ./scripts/sdk-contract
