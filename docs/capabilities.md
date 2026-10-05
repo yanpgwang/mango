@@ -72,8 +72,9 @@ access still depends on the sandbox boundary.
 - **Deployment:** the local Compose stack is reproducible, but supported
   production Compose and Kubernetes distributions are not available. The
   [Helm candidate](guides/kubernetes.md) has role-separated Secrets, an initial
-  schema hook, probes and bounded temporary storage; cluster/recovery acceptance
-  and publication remain pending. The
+  schema hook, probes and bounded temporary storage. Isolated Kubernetes 1.37.0
+  install, pending-action replacement, external Docker execution and same-release
+  quiesced restore are tested; artifact publication remains pending. The
   [development schema baseline](deployment.md#development-database-baseline)
   requires a fresh database when replacing the historical chain or version-1
   development baseline;
@@ -84,10 +85,12 @@ access still depends on the sandbox boundary.
 - **Scaling and recovery:** API and orchestration roles can run separately.
   Files/Skills upload leases and atomic cleanup claims protect another API
   process's active uploads, with two-service PostgreSQL/object-store tests.
-  This establishes that storage boundary, not a supported Kubernetes
-  distribution. See the [current assessment](architecture/self-hosted-workers.md#remaining-work-and-evidence-limits).
+  Quiesced restore tests additionally cover Mango/Temporal databases, File/Skill
+  bytes, Memory Versions and the original encryption keyring on one isolated
+  Kubernetes topology. See [operator recovery](guides/kubernetes.md#consistent-same-release-backup-and-restore)
+  and the [current assessment](architecture/self-hosted-workers.md#remaining-work-and-evidence-limits).
   Worker Versioning, heterogeneous-worker routing, broader rollout evidence,
-  backup, audit, and observability still need work.
+  automated backup, audit, and observability still need work.
 - **Docker ownership:** the operator-run supervisor has Docker daemon authority;
   keep it outside untrusted Session containers and apply ordinary Docker host
   hardening.

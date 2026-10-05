@@ -5,9 +5,10 @@ description: Configure the Helm candidate with your state services and connect y
 
 # Kubernetes control plane
 
-The Helm chart is a **candidate**. It has offline configuration and packaging
-tests; isolated cluster, restart/restore acceptance and public artifact
-publication are still pending. Use an inspected candidate image from your own
+The Helm chart is a **candidate**. Offline configuration/packaging and isolated
+Kubernetes 1.37.0 installation, control-plane replacement and same-release
+quiesced restore are tested. Public artifact publication is still pending.
+Use an inspected candidate image from your own
 registry for now. The default `ghcr.io/yanpgwang/mango:0.1.0-alpha.2` image and
 chart are not yet published. See [release candidates](release-candidates.md).
 
@@ -184,6 +185,81 @@ Removing the chart does not remove external PostgreSQL, Temporal history, S3
 bytes or user sandbox directories. Keep all of those plus original encryption
 keys for recovery. An initialized same-release restore may use
 `migration.enabled=false`; both process roles still check the schema. Actual
-cluster restart and consistent, quiesced restore acceptance remain pending in
-the [alpha delivery](../design/kubernetes-alpha.md). Cross-version upgrades,
-rollback and live multi-store snapshots are not supported.
+cluster evidence and operator responsibilities are described below.
+Cross-version upgrades, rollback and live multi-store snapshots are not supported.
+
+## Tested lifecycle
+
+The independent test installs the real chart on a single-node kind 0.33.0
+cluster using Kubernetes 1.37.0, kubectl 1.37.0 and Helm 4.3.0. External
+PostgreSQL 17.5, Temporal 1.29.7, NATS 2.11.17 and SeaweedFS 4.48 run in
+separately owned fixtures. Model inference is explicitly simulated; sandbox
+execution uses the real external Docker supervisor and item image.
+
+The test verifies authenticated HTTP, File/Skill bytes and checksums, Memory
+updates, a pending confirmation surviving API/orchestration replacement,
+duplicate rejection, and a second Work activation that reloads workspace,
+Skills and Memory. Short transport interruptions are expected with one API
+replica: applications should retry reads and reconcile an uncertain event
+submission from history before retrying it.
+
+It also restores Mango and Temporal state plus object bytes into independent
+stores with the original random keyring. Public IDs, Memory Versions and
+encrypted Credential integrity checks survive; the original pending custom
+action then resumes the restored Workflow. Read-only Temporal queries verify
+the original Run ID and complete history prefix, and confirm that same execution
+advances after the result; rebuilding an execution from Mango rows cannot pass.
+The fixture also checks paused orphan cleanup without touching an unrelated
+item. This evidence covers one topology
+and same-release recovery, not general HA.
+
+Contributors run the same required **Kubernetes lifecycle** CI tier:
+
+```sh
+make test-kubernetes KIND=kind KUBECTL=kubectl HELM=helm
+```
+
+It creates its own kubeconfig, cluster and fixture projects and cleans them up.
+It does not execute cookbook examples or access real provider credentials.
+On native Linux, add `SERVICE_TEST_EXEC='sudo -n -E --'` for
+trusted test-binary execution and container-owned volume cleanup.
+
+## Consistent same-release backup and restore
+
+PostgreSQL metadata alone is insufficient. Preserve all of these together:
+
+| State | Responsibility |
+| --- | --- |
+| Mango PostgreSQL database | Resource metadata, events, Memory Versions, credential envelopes and coordination facts |
+| Temporal persistence and visibility databases | Workflow histories and Temporal schema/cluster metadata |
+| S3 bucket objects | Exact File/Skill bytes with their original object keys and required metadata |
+| Original keyring and deployment Secrets | Decryption keys and access to the restored dependencies |
+| User sandbox workspace storage | Operator-owned volumes/directories, backed up independently of the control plane |
+
+For the validated path, first stop admitting new work and complete or reconcile
+active uploads, external operations and tool executions. Shut down the external
+supervisor while its API remains reachable so it can flush Memory and release
+Work. Then stop both Mango roles and wait for their Pods to terminate. Stop all
+Temporal writers before backing up either persistence store.
+
+Capture logical backups of Mango, Temporal and Temporal visibility databases;
+copy the quiesced bucket's bytes, keys and required metadata, and retain the
+original keyring in protected backup storage. The fixture uses `pg_dump
+--format=custom`/`pg_restore` on all three databases and copies objects
+through the S3 API. Production database roles/grants, extensions, object-storage
+encryption/versioning and backup access policy belong to the operator. The test's
+single PostgreSQL role does not certify those provider-specific procedures.
+
+Restore into empty, independent stores on the same service/runtime versions.
+Provision database roles and access, restore all three databases and object
+bytes, configure Secrets with the original keyring, and start Temporal in its
+restored namespace. Install the same chart/image with
+`migration.enabled=false`; runtime startup still validates the schema.
+Verify authenticated HTTP and byte checksums and resolve an existing pending
+action before reconnecting sandbox workers. Preserve their workspace volumes;
+the control-plane backups cannot recreate them.
+
+Do not run original and restored writers against the same sandbox workspace or
+state stores simultaneously. Retain backups and the quiesced original until
+restored behavior is verified. Automation of backups, online multi-store
+snapshots, cross-version restore and general failover are outside this alpha.

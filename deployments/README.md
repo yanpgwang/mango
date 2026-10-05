@@ -7,7 +7,7 @@ level rather than by container technology.
 | --- | --- | --- |
 | [`local`](local/) | Development | Reproducible PostgreSQL, Temporal, NATS, SeaweedFS, API, and worker stack for local development and integration tests |
 | [`self-hosted/docker`](self-hosted/docker/) | Preview | Reference Docker image and supervisor for the `self_hosted` Environment Work boundary |
-| [`../charts/mango`](../charts/mango/) | Candidate | Control-plane Helm chart with external state services and existing Secrets; cluster/recovery acceptance and publication pending |
+| [`../charts/mango`](../charts/mango/) | Candidate | Control-plane chart with external state and Secrets; isolated Kubernetes 1.37.0 restart/quiesced restore tested, publication pending |
 
 `deployments/local` is the only complete deployment bundle today. The
 self-hosted Docker directory is a worker component, not a full Mango stack or a

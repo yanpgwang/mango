@@ -102,8 +102,12 @@ independent HTTP SDK contract tier. See the
 The Helm candidate has an independent offline manifest tier:
 `make chart-check HELM=helm` with Helm 4.3.0. Required **Helm chart** CI validates
 configuration failure, secret-role selection, hook/probe/security invariants and
-package allowlists. Actual cluster lifecycle and recovery are separate acceptance
-work; successful template rendering does not establish Kubernetes support.
+package allowlists. Required **Kubernetes lifecycle** CI runs
+`make test-kubernetes KIND=kind KUBECTL=kubectl HELM=helm` against isolated
+kind 0.33.0/Kubernetes 1.37.0 state and the external Docker worker. It owns
+installation, process replacement and quiesced independent restore. Default
+tests skip this tier; explicit invocation must fail if tooling is unavailable.
+On native Linux use `SERVICE_TEST_EXEC='sudo -n -E --'`, as for service tests.
 
 Run the same PostgreSQL, Temporal, NATS, SeaweedFS, and Docker conformance suite as
 CI:

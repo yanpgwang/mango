@@ -57,10 +57,41 @@ jobs:
         if: failure()
         run: docker ps --all --no-trunc
 
+  kubernetes:
+    name: Kubernetes lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install pinned verified Kubernetes tools
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/kind" https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+          printf '%s  %s\n' aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d "$RUNNER_TEMP/kind" | sha256sum --check
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/kubectl" https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl
+          printf '%s  %s\n' 6129359f4e1f3848a5572ccb0b26cf28b8ca08cef38c95a765b2f64a2c961a2f "$RUNNER_TEMP/kubectl" | sha256sum --check
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/helm.tgz" https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz
+          printf '%s  %s\n' 86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb "$RUNNER_TEMP/helm.tgz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/helm.tgz" -C "$RUNNER_TEMP"
+          chmod +x "$RUNNER_TEMP/kind" "$RUNNER_TEMP/kubectl"
+      - name: Exercise isolated install, replacement and quiesced restore
+        run: >-
+          make test-kubernetes
+          KIND="$RUNNER_TEMP/kind"
+          KUBECTL="$RUNNER_TEMP/kubectl"
+          HELM="$RUNNER_TEMP/linux-amd64/helm"
+          SERVICE_TEST_EXEC='sudo -n -E --'
+
   required:
     name: Required
     if: always()
-    needs: [service_core, self_hosted_docker]
+    needs: [service_core, self_hosted_docker, kubernetes]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -68,9 +99,11 @@ jobs:
         env:
           CORE_RESULT: ${{ needs.service_core.result }}
           WORKER_RESULT: ${{ needs.self_hosted_docker.result }}
+          KUBERNETES_RESULT: ${{ needs.kubernetes.result }}
         run: |
-          if [ "$CORE_RESULT" != "success" ] || [ "$WORKER_RESULT" != "success" ]; then
+          if [ "$CORE_RESULT" != "success" ] || [ "$WORKER_RESULT" != "success" ] || [ "$KUBERNETES_RESULT" != "success" ]; then
             echo "Core services: $CORE_RESULT"
             echo "Self-hosted Docker worker: $WORKER_RESULT"
+            echo "Kubernetes lifecycle: $KUBERNETES_RESULT"
             exit 1
           fi

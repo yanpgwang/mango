@@ -1529,3 +1529,36 @@ Mango's sandbox worker stays operator-owned outside this chart. Bundled state
 services, Session Pods, cloud execution and vendor rollout/authentication are
 rejected as chart dependencies. Cluster restart/restore and publication remain
 the next deliveries in the [alpha design](design/kubernetes-alpha.md).
+
+## Kubernetes lifecycle and quiesced restore (2026-10-05)
+
+Mango-owned cluster tests exercise the current chart, commands and raw HTTP
+contract against isolated external state. Reviewed official
+[kind installation/isolation guidance](https://kind.sigs.k8s.io/docs/user/quick-start/),
+[kubectl installation checksums](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/)
+and PostgreSQL custom-format logical backup/restore conventions. The tested
+versions are kind0.33.0, Kubernetes/kubectl1.37.0 and Helm4.3.0, with
+PostgreSQL17.5, Temporal1.29.7, NATS2.11.17 and SeaweedFS4.48. Official
+Linux AMD64 tool digests are pinned and verified in required CI; the kind node
+image is pinned by digest.
+
+Adopted explicit fixture ownership/kubeconfig, standard Deployment replacement
+and complete quiescence before copying Mango and both Temporal databases plus
+S3 bytes. Rejected live multi-store snapshot, HA and cross-version guarantees.
+Restored HTTP retains File/Skill bytes/checksums, Memory Versions and original
+action IDs; completing the original custom action resumes restored Workflow
+history. Existing Vault GET decrypts/verifies the restored envelope using the
+original random keyring before returning public metadata. Sandbox workspace
+volumes remain independently operator-owned.
+
+The Messages endpoint is explicitly simulated and stateless, derived from its
+supplied transcript; actual Docker sandbox execution and Mango HTTP are used.
+It is test infrastructure, outside runtime images and cookbook applications.
+Read-only probes may retry transport errors during single-replica replacement;
+POST admission is never automatically retried by this harness. Mango's own
+HTTP/SDK/service tests remain the contract and durability authorities.
+
+No new CMA API/SDK mapping is adopted by this slice. A hosted control plane does
+not define operator backup, key preservation or Kubernetes lifecycle policy;
+Mango owns these self-hosted invariants. Publication remains a distinct alpha
+acceptance delivery.
