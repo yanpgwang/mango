@@ -15,6 +15,7 @@ import (
 
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/blob"
+	"github.com/yanpgwang/mango/internal/buildinfo"
 	"github.com/yanpgwang/mango/internal/controlplane"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
@@ -145,9 +146,16 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key|sessions> [flags]")
+		log.Fatal("usage: mango <version|migrate|serve|orchestrate|workspace|api-key|sessions> [flags]")
 	}
 	switch os.Args[1] {
+	case "version":
+		if len(os.Args) != 2 {
+			log.Fatal("usage: mango version")
+		}
+		if err := buildinfo.Write(os.Stdout); err != nil {
+			log.Fatal(err)
+		}
 	case "migrate":
 		runMigrate()
 	case "serve":
@@ -161,7 +169,7 @@ func main() {
 	case "sessions":
 		runSessionsCommand()
 	default:
-		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key|sessions> [flags]")
+		log.Fatal("usage: mango <version|migrate|serve|orchestrate|workspace|api-key|sessions> [flags]")
 	}
 }
 

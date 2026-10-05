@@ -1,0 +1,31 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+)
+
+func TestVersionCommandReportsLinkedIdentityWithoutServices(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "mango")
+	flags := "-X github.com/yanpgwang/mango/internal/buildinfo.Version=0.1.0-alpha.2 -X github.com/yanpgwang/mango/internal/buildinfo.Revision=0123456789abcdef0123456789abcdef01234567"
+	build := exec.Command("go", "build", "-ldflags", flags, "-o", binary, ".")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, output)
+	}
+	command := exec.Command(binary, "version")
+	command.Env = append(os.Environ(), "MANGO_DATABASE_URL=not-a-database-url", "MANGO_MODEL_BASE_URL=not-an-http-url", "MANGO_MODEL_API_KEY=synthetic-test-key")
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("version: %v", err)
+	}
+	var info map[string]string
+	if err := json.Unmarshal(output, &info); err != nil {
+		t.Fatal(err)
+	}
+	if len(info) != 2 || info["version"] != "0.1.0-alpha.2" || info["revision"] != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("release identity = %#v", info)
+	}
+}

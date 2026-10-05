@@ -10,7 +10,8 @@ BIN_DIR ?= bin
 BINARY ?= $(BIN_DIR)/mango
 IMAGE ?= mango:local
 VERSION ?= dev
-REVISION ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+REVISION ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BUILD_LDFLAGS := -s -w -X github.com/yanpgwang/mango/internal/buildinfo.Version=$(VERSION) -X github.com/yanpgwang/mango/internal/buildinfo.Revision=$(REVISION)
 GOPROXY ?=
 LINT_BASE ?= origin/main
 # Optional test-binary wrapper; compilation and Go caches keep the caller's UID.
@@ -98,7 +99,7 @@ help:
 
 build:
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -trimpath -o $(BINARY) ./cmd/mango
+	$(GO) build -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(BINARY) ./cmd/mango
 
 lint:
 	$(GOLANGCI_LINT) run --new-from-rev=$(LINT_BASE) ./...

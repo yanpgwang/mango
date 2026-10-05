@@ -1,4 +1,4 @@
-FROM golang:1.26.6-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.6-bookworm AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -6,11 +6,21 @@ COPY sdk/go/go.mod ./sdk/go/go.mod
 COPY . .
 ARG VERSION=dev
 ARG REVISION=unknown
-RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags "-s -w -X main.version=${VERSION} -X main.revision=${REVISION}" \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
+    -ldflags "-s -w -X github.com/yanpgwang/mango/internal/buildinfo.Version=${VERSION} -X github.com/yanpgwang/mango/internal/buildinfo.Revision=${REVISION}" \
     -o /out/mango-worker ./cmd/mango-worker
 
 FROM debian:12-slim
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="Mango self-hosted worker" \
+      org.opencontainers.image.description="Operator-run reference worker for Mango Environment Work" \
+      org.opencontainers.image.source="https://github.com/yanpgwang/mango" \
+      org.opencontainers.image.version=$VERSION \
+      org.opencontainers.image.revision=$REVISION \
+      org.opencontainers.image.licenses="Apache-2.0"
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bash ca-certificates coreutils findutils git grep python3 \
     && rm -rf /var/lib/apt/lists/* \
