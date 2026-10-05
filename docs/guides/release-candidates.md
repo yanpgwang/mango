@@ -16,7 +16,9 @@ chart, cluster/recovery and publication acceptance.
 Use Go 1.26+, Node.js 22+, uv, Git and a Linux or macOS builder. The Make targets
 select Python 3.12 through uv. Start from a clean checkout whose SDK versions
 match the requested alpha; local changes and existing output directories are
-rejected. Source is copied from the tracked commit into an isolated build tree,
+rejected. Choose an output directory outside the checkout or inside an ignored
+parent directory such as `dist/release`; other in-checkout paths fail before building.
+Source is copied from the tracked commit into an isolated build tree,
 so ignored local files cannot affect compilation or packaging.
 
 ```sh

@@ -32,6 +32,12 @@ def validate_source(root, version, output, revision=None):
         raise ValueError("version must be canonical X.Y.Z-alpha.N")
     if os.path.lexists(output):
         raise ValueError(f"candidate destination already exists: {output}")
+    if output.resolve().is_relative_to(root.resolve()):
+        # Staging is a sibling, so ignoring only the final leaf is insufficient.
+        for path in (str(output.resolve()), str(output.parent.resolve()) + "/"):
+            ignored = subprocess.run(["git", "-C", str(root), "check-ignore", "--quiet", "--no-index", path])
+            if ignored.returncode != 0:
+                raise ValueError("candidate output and its parent inside the checkout must be ignored (for example dist/release)")
     python_version = ".".join(match.group(1, 2, 3)) + "a" + match.group(4)
     typescript = json.loads((root / "sdk/typescript/package.json").read_text())
     if typescript.get("name") != "mango-sdk" or typescript.get("version") != version:

@@ -93,6 +93,24 @@ class ReleaseTests(unittest.TestCase):
             validate_source(self.root, VERSION, self.output)
         self.assertEqual(marker.read_text(), "keep me")
 
+    def test_in_checkout_output_must_be_ignored_before_building(self):
+        output = self.root / "candidate"
+        with patch("build.build_payloads") as compiler:
+            with self.assertRaisesRegex(ValueError, "output.*ignored"):
+                build(self.root, output, VERSION, ["linux/arm64"])
+            compiler.assert_not_called()
+        self.assertFalse(output.exists())
+        self.assertEqual(list(self.root.glob(".candidate-*")), [])
+        (self.root / ".gitignore").write_text("/candidate\n")
+        self.commit()
+        with patch("build.build_payloads") as compiler:
+            with self.assertRaisesRegex(ValueError, "output.*ignored"):
+                build(self.root, output, VERSION, ["linux/arm64"])
+            compiler.assert_not_called()
+        (self.root / ".gitignore").write_text("/dist/\n")
+        self.commit()
+        validate_source(self.root, VERSION, self.root / "dist/candidate")
+
     def test_publish_never_replaces_even_an_empty_directory(self):
         stage = self.folder / "stage"
         stage.mkdir()
