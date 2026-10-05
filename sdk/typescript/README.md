@@ -13,9 +13,11 @@ capability that the operator has not configured.
 
 ## Install
 
-This checkout prepares `0.1.0-alpha.2`, which is **not published**. Build from
-source to use the resource-based API below. Published alpha 1 uses the previous
-interface; match SDK source to your server checkout.
+This checkout prepares `0.1.0-alpha.2`. Select a matching version or inspected npm
+tarball from the [release record](https://github.com/yanpgwang/mango/releases),
+which confirms registry availability. Published alpha 1 uses the previous
+interface. Before publication or during development, build from the matching
+server checkout as shown below.
 
 ### Build and install from source
 

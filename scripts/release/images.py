@@ -54,11 +54,14 @@ def inspect_oci(path, version, revision):
         index = archive.getmember("index.json")
         if not index.isfile():
             raise ValueError("invalid OCI index")
-        for descriptor in json.load(archive.extractfile(index))["manifests"]:
+        roots = json.load(archive.extractfile(index))["manifests"]
+        if len(roots) != 1 or roots[0].get("mediaType") != "application/vnd.oci.image.index.v1+json":
+            raise ValueError("candidate requires the single Buildx multi-platform index")
+        for descriptor in roots:
             visit(descriptor)
     if set(platforms) != {"linux/amd64", "linux/arm64"}:
         raise ValueError("OCI candidate must contain both supported Linux platforms")
-    return sorted(platforms)
+    return {"platforms": sorted(platforms), "digest": roots[0]["digest"]}
 
 
 def finalize(folder):
@@ -71,8 +74,8 @@ def finalize(folder):
         path = folder / name
         if path.is_symlink():
             raise ValueError("OCI candidate archives must not be symbolic links")
-        platforms = inspect_oci(path, manifest["version"], manifest["revision"])
-        records.append({"name": name, "kind": "oci-image", "image": image, "platforms": platforms})
+        identity = inspect_oci(path, manifest["version"], manifest["revision"])
+        records.append({"name": name, "kind": "oci-image", "image": image, **identity})
     write_manifest(folder, manifest["version"], manifest["revision"], manifest["sdk_versions"], records)
     print("PASS: both multi-platform OCI archives share the command/SDK identity; manifest/checksums finalized")
 

@@ -26,6 +26,15 @@ def git(root, *arguments):
     return subprocess.check_output(["git", "-C", str(root), *arguments], text=True).strip()
 
 
+def validate_chart_metadata(text, version):
+    # Check only Mango's fixed scalar identity. Helm remains the YAML/chart
+    # parser and packager; unsupported/duplicate identity forms fail closed.
+    for key, expected in {"apiVersion": "v2", "name": "mango", "type": "application", "version": version, "appVersion": version}.items():
+        values = re.findall(rf"^{key}:[ \t]*([^\n]*)$", text, re.MULTILINE)
+        if len(values) != 1 or values[0].strip() not in {expected, f'"{expected}"', f"'{expected}'"}:
+            raise ValueError(f"chart {key} does not match the candidate")
+
+
 def validate_source(root, version, output, revision=None):
     match = VERSION_PATTERN.fullmatch(version)
     if not match:
@@ -49,6 +58,7 @@ def validate_source(root, version, output, revision=None):
     go_source = (root / "sdk/go/version.go").read_text()
     if not re.search(rf'^const Version = "{re.escape(version)}"$', go_source, re.MULTILINE):
         raise ValueError("Go SDK source version does not match the candidate")
+    validate_chart_metadata((root / "charts/mango/Chart.yaml").read_text(), version)
     actual_revision = git(root, "rev-parse", "HEAD")
     if revision is not None and revision != actual_revision:
         raise ValueError("revision must match the checked-out Git commit")
@@ -148,7 +158,7 @@ def python_packages(folder, version):
     return sorted(expected)
 
 
-def build_payloads(root, stage, version, platforms, revision):
+def build_payloads(root, stage, version, platforms, revision, helm):
     artifacts = []
     flags = f"-s -w -X github.com/yanpgwang/mango/internal/buildinfo.Version={version} -X github.com/yanpgwang/mango/internal/buildinfo.Revision={revision}"
     for platform in platforms:
@@ -177,10 +187,18 @@ def build_payloads(root, stage, version, platforms, revision):
     if not (stage / name).is_file():
         raise ValueError("npm did not produce the expected package")
     artifacts.append({"name": name, "kind": "typescript-sdk"})
+    run([helm, "package", str(root / "charts/mango"), "--destination", str(stage)], root)
+    name = f"mango-{version}.tgz"
+    with tarfile.open(stage / name) as package:
+        metadata = package.getmember("mango/Chart.yaml")
+        if not metadata.isfile():
+            raise ValueError("packaged chart metadata must be an ordinary file")
+        validate_chart_metadata(package.extractfile(metadata).read().decode(), version)
+    artifacts.append({"name": name, "kind": "helm-chart"})
     return artifacts
 
 
-def build(root, output, version, platforms, revision=None):
+def build(root, output, version, platforms, revision=None, helm="helm"):
     root, output = root.resolve(), output.absolute()
     if not platforms or len(set(platforms)) != len(platforms) or any(platform not in PLATFORMS for platform in platforms):
         raise ValueError("platforms must be unique supported OS/architecture pairs")
@@ -191,7 +209,7 @@ def build(root, output, version, platforms, revision=None):
         with tempfile.TemporaryDirectory(prefix="mango-release-source-") as temporary:
             snapshot = Path(temporary) / "source"
             snapshot_source(root, snapshot, revision)
-            artifacts = build_payloads(snapshot, stage, version, platforms, revision)
+            artifacts = build_payloads(snapshot, stage, version, platforms, revision, helm)
         # A source edit or commit during a long build must never publish mixed bytes.
         validate_source(root, version, output, revision)
         write_manifest(stage, version, revision, sdk_versions, artifacts)
@@ -208,9 +226,10 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--platform", action="append", choices=PLATFORMS)
     parser.add_argument("--revision")
+    parser.add_argument("--helm", default="helm", help="official Helm executable used to package the chart")
     args = parser.parse_args()
     try:
-        build(Path(__file__).resolve().parents[2], args.output, args.version, args.platform or list(PLATFORMS), args.revision)
+        build(Path(__file__).resolve().parents[2], args.output, args.version, args.platform or list(PLATFORMS), args.revision, args.helm)
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"release candidate failed: {error}\n")
 

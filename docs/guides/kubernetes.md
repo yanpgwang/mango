@@ -219,6 +219,21 @@ Contributors run the same required **Kubernetes lifecycle** CI tier:
 make test-kubernetes KIND=kind KUBECTL=kubectl HELM=helm
 ```
 
+Release acceptance also runs this journey with the actual candidate inputs:
+
+```sh
+MANGO_RELEASE_CANDIDATE=/absolute/path/to/verified-candidate \
+  make test-kubernetes KIND=kind KUBECTL=kubectl HELM=helm
+```
+
+That mode checks every payload's source identity and bytes, installs the packaged
+chart, and uses the archived native supervisor and both OCI images. Only the
+explicit model fixture is source-built. It requires the matching source checkout
+and Docker 28+ containerd image store for OCI import. The
+[candidate guide](release-candidates.md#install-and-recover-the-actual-candidate)
+describes the full build and inspection sequence. Public image/chart availability
+remains pending until a verified release is published.
+
 It creates its own kubeconfig, cluster and fixture projects and cleans them up.
 It does not execute cookbook examples or access real provider credentials.
 On native Linux, add `SERVICE_TEST_EXEC='sudo -n -E --'` for

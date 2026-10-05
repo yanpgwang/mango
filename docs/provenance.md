@@ -1562,3 +1562,28 @@ No new CMA API/SDK mapping is adopted by this slice. A hosted control plane does
 not define operator backup, key preservation or Kubernetes lifecycle policy;
 Mango owns these self-hosted invariants. Publication remains a distinct alpha
 acceptance delivery.
+
+## Matched alpha distribution acceptance (2026-10-05)
+
+Mango's own release contract binds runtime commands, chart, first-party SDKs and
+both images to one reviewed source revision. Reviewed official
+[Helm 4.3.0 package behavior](https://helm.sh/docs/helm/helm_package/),
+[Docker containerd image-store guidance](https://docs.docker.com/engine/storage/containerd/)
+and [docker/setup-docker-action v5](https://github.com/docker/setup-docker-action)
+for the candidate builder. The shared CI installers verify the already reviewed
+Helm4.3.0, kind0.33.0 and kubectl1.37.0 Linux AMD64 digests; Docker28.1.1 matches
+the actually exercised containerd import boundary.
+
+Adopted standard Helm archives and standard Docker OCI loading addressed by the
+validated Buildx top-level image index digest. Both command/package and image
+builds use tracked Git snapshots; rejected ignored local compiler inputs,
+metadata version overrides and rebuilding runtime images during artifact acceptance.
+Only the explicit test-model fixture remains source-built. Independent checksum,
+identity, archive-path and ownership tests precede actual chart/native worker/OCI
+installation, restart and original-Temporal-history restore.
+
+Candidate CI remains read-only and requires no provider or publishing credential.
+Publication is a distinct maintainer action after the reviewed revision and its
+acceptance pass; registry availability is not inferred from successful builds.
+No new CMA API/SDK mapping is adopted: hosted rollout, beta identifiers and SDK
+publication policy do not define Mango's independently owned distribution.
