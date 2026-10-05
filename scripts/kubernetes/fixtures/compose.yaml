@@ -30,7 +30,7 @@ services:
     cpus: 1
     mem_limit: 1g
     healthcheck:
-      test: [CMD, tctl, --address, "127.0.0.1:7233", cluster, health]
+      test: [CMD, tctl, --address, "temporal:7233", cluster, health]
       interval: 3s
       timeout: 5s
       retries: 80

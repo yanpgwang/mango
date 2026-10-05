@@ -58,7 +58,7 @@ description: Exercise the real chart and external worker in isolated state store
 
 - [ ] Extend the test with pending custom action, captured immutable bytes/Memory Versions and encrypted fixture credential; observe missing restore failure.
 - [ ] Quiesce all writers, dump/copy state, start independent stores and same-version Temporal, install second chart.
-- [ ] Verify identities, bytes/checksums, history and resumed pending custom action; verify original keyring decryptability through a scoped outbound fixture workflow.
+- [ ] Verify identities, bytes/checksums, history and resumed pending custom action; GET the restored encrypted Credential, whose existing Vault service checks the envelope with the original keyring before returning secret-free metadata.
 - [ ] Run the full cluster tier and relevant package/service checks; commit.
 
 ## Task 4: Required CI and honest operator evidence

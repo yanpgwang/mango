@@ -53,8 +53,9 @@ The test never uses hosted agent or real provider credentials.
 5. Verify File bytes/checksum, canonical Skill bytes/checksum, Memory content
    and Version history and original pending event IDs from restored HTTP. Submit
    the outstanding custom result and observe a resumed model turn from restored
-   Workflow history. A fixture encrypted credential remains usable with its
-   original keyring; no secret is returned by HTTP.
+   Workflow history. GET of a restored fixture credential must succeed with its
+   original keyring: the existing Vault service decrypts and verifies the stored
+   envelope before returning public metadata. No secret is returned by HTTP.
 6. Remove only fixture-owned containers, volumes, images and cluster, including
    failed runs. Commands are bounded, credentials are passed through private
    environment/stdin, and no key or plaintext backup appears in logs.
