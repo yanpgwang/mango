@@ -99,6 +99,12 @@ npm tarball and Go source archive outside the checkout. This complements the
 independent HTTP SDK contract tier. See the
 [candidate guide](docs/guides/release-candidates.md); these targets never publish.
 
+The Helm candidate has an independent offline manifest tier:
+`make chart-check HELM=helm` with Helm 4.3.0. Required **Helm chart** CI validates
+configuration failure, secret-role selection, hook/probe/security invariants and
+package allowlists. Actual cluster lifecycle and recovery are separate acceptance
+work; successful template rendering does not establish Kubernetes support.
+
 Run the same PostgreSQL, Temporal, NATS, SeaweedFS, and Docker conformance suite as
 CI:
 
@@ -193,7 +199,7 @@ never present it as a real third-party integration.
 
 ## Development schema changes
 
-`internal/pg/migrations/00001_schema.sql` initializes the current development
+`internal/pg/migrations/20261005000001_schema.sql` initializes the initial alpha
 schema and is also sqlc's schema input. Historical pre-release migrations have
 been consolidated; development databases from the old chain must be rebuilt.
 See the [database baseline notes](docs/deployment.md#development-database-baseline)

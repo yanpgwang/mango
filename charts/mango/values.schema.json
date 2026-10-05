@@ -1,0 +1,433 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "fullnameOverride": {
+      "type": "string",
+      "minLength": 0,
+      "pattern": "^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+      "maxLength": 63
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S+$"
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128,
+          "pattern": "^$|^[A-Za-z0-9_][A-Za-z0-9_.-]*$",
+          "not": {
+            "const": "latest"
+          }
+        },
+        "digest": {
+          "type": "string",
+          "minLength": 0,
+          "pattern": "^$|^sha256:[0-9a-f]{64}$"
+        },
+        "pullPolicy": {
+          "enum": [
+            "IfNotPresent",
+            "Always",
+            "Never"
+          ]
+        },
+        "pullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$",
+                "maxLength": 253
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        }
+      },
+      "required": [
+        "repository",
+        "tag",
+        "digest",
+        "pullPolicy",
+        "pullSecrets"
+      ]
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": {
+          "$ref": "#/definitions/secretReference"
+        },
+        "migrationSecret": {
+          "$ref": "#/definitions/optionalSecretReference"
+        }
+      },
+      "required": [
+        "existingSecret",
+        "migrationSecret"
+      ]
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": {
+          "$ref": "#/definitions/secretReference"
+        }
+      },
+      "required": [
+        "existingSecret"
+      ]
+    },
+    "temporal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S+:\\d+$"
+        },
+        "namespace": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S+$"
+        }
+      },
+      "required": [
+        "address",
+        "namespace"
+      ]
+    },
+    "nats": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": {
+          "$ref": "#/definitions/secretReference"
+        }
+      },
+      "required": [
+        "existingSecret"
+      ]
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^https?://\\S+$"
+        },
+        "region": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bucket": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pathStyle": {
+          "type": "boolean"
+        },
+        "existingSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$",
+              "maxLength": 253
+            },
+            "accessKey": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._-]+$",
+              "maxLength": 253
+            },
+            "secretKey": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._-]+$",
+              "maxLength": 253
+            }
+          },
+          "required": [
+            "name",
+            "accessKey",
+            "secretKey"
+          ]
+        }
+      },
+      "required": [
+        "endpoint",
+        "region",
+        "bucket",
+        "pathStyle",
+        "existingSecret"
+      ]
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "baseURL": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^https?://\\S+$"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auth": {
+          "enum": [
+            "x-api-key",
+            "bearer"
+          ]
+        },
+        "existingSecret": {
+          "$ref": "#/definitions/secretReference"
+        }
+      },
+      "required": [
+        "baseURL",
+        "id",
+        "auth",
+        "existingSecret"
+      ]
+    },
+    "vault": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "existingSecret": {
+          "$ref": "#/definitions/optionalSecretReference"
+        }
+      },
+      "required": [
+        "enabled",
+        "existingSecret"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "existingSecret": {
+                "$ref": "#/definitions/secretReference"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      },
+      "required": [
+        "port"
+      ]
+    },
+    "api": {
+      "$ref": "#/definitions/role"
+    },
+    "orchestration": {
+      "$ref": "#/definitions/role"
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "resources": {
+          "$ref": "#/definitions/resources"
+        },
+        "temporaryStorage": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "enabled",
+        "resources",
+        "temporaryStorage"
+      ]
+    }
+  },
+  "required": [
+    "fullnameOverride",
+    "image",
+    "database",
+    "auth",
+    "temporal",
+    "nats",
+    "files",
+    "model",
+    "vault",
+    "service",
+    "api",
+    "orchestration",
+    "migration"
+  ],
+  "definitions": {
+    "secretReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$",
+          "maxLength": 253
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "maxLength": 253
+        }
+      },
+      "required": [
+        "name",
+        "key"
+      ]
+    },
+    "optionalSecretReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 0,
+          "pattern": "^$|^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$",
+          "maxLength": 253
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "maxLength": 253
+        }
+      },
+      "required": [
+        "name",
+        "key"
+      ]
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resources": {
+          "$ref": "#/definitions/resources"
+        },
+        "temporaryStorage": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "resources",
+        "temporaryStorage"
+      ]
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/quantity"
+          },
+          "properties": {
+            "cpu": {
+              "$ref": "#/definitions/quantity"
+            },
+            "memory": {
+              "$ref": "#/definitions/quantity"
+            },
+            "ephemeral-storage": {
+              "$ref": "#/definitions/quantity"
+            }
+          },
+          "required": [
+            "cpu",
+            "memory",
+            "ephemeral-storage"
+          ]
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/quantity"
+          },
+          "properties": {
+            "cpu": {
+              "$ref": "#/definitions/quantity"
+            },
+            "memory": {
+              "$ref": "#/definitions/quantity"
+            },
+            "ephemeral-storage": {
+              "$ref": "#/definitions/quantity"
+            }
+          },
+          "required": [
+            "cpu",
+            "memory",
+            "ephemeral-storage"
+          ]
+        }
+      },
+      "required": [
+        "requests",
+        "limits"
+      ]
+    },
+    "quantity": {
+      "type": [
+        "string",
+        "number"
+      ],
+      "minLength": 1,
+      "exclusiveMinimum": 0
+    }
+  }
+}

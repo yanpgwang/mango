@@ -8,7 +8,9 @@ slug: /deployment
 
 Mango currently publishes a reproducible local stack and builds a multi-role
 application image. It does not yet publish a supported production Docker
-Compose bundle or Kubernetes chart.
+Compose bundle or Kubernetes distribution. A
+[Helm chart candidate](guides/kubernetes.md) is available in source; cluster
+recovery acceptance and publication remain pending.
 
 Maintainers can build [matched release candidates](guides/release-candidates.md)
 with versioned commands, SDK packages and multi-platform OCI archives. Candidate
@@ -25,7 +27,7 @@ operator-owned sandbox worker; cloud execution is an independent future option.
 | `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, SeaweedFS, API, and worker from the current checkout |
 | `deployments/self-hosted/docker` | Preview | Build and run the standalone Docker Environment Work supervisor and item image |
 | Production Docker Compose | Planned | Supported single-host installation using versioned release images |
-| Helm chart | Planned | Kubernetes API and worker deployments with external stateful dependencies |
+| Helm chart | Candidate | Source chart for API/orchestration with external state services; cluster/recovery and publication pending |
 
 The local stack is intentionally complete so contributors can exercise the
 durable path without installing each dependency. It contains development
@@ -214,10 +216,15 @@ the schema check, but the API's `/readyz` still rejects read-only PostgreSQL.
 
 ### Development database baseline
 
-The current schema starts from `internal/pg/migrations/00001_schema.sql`.
+The current schema starts from `internal/pg/migrations/20261005000001_schema.sql`.
 Historical pre-release migrations have been squashed into this baseline;
 their old-row backfills and downgrade paths are no longer supported. Mango
 has no supported stable release or customer database migration requirement.
+The first runtime alpha uses the distinct Goose version `20261005000001`, so
+the prior development baseline numbered `1` is rejected by migration and
+startup without modifying its state. Retrying initialization or restoring this
+same release's database preserves its existing data; this is not an upgrade
+path from an older checkout.
 
 Use a fresh development database when moving from a checkout that used the
 historical migration chain. Do not edit Goose's version table to make an old

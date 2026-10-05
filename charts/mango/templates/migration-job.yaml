@@ -1,0 +1,54 @@
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "mango.resourceName" (dict "root" . "suffix" "migrate") }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "mango.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "mango.selector" (dict "root" . "role" "migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        {{- include "mango.podSecurity" . | nindent 8 }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "mango.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [migrate]
+          securityContext:
+            {{- include "mango.containerSecurity" . | nindent 12 }}
+          env:
+            - name: MANGO_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  {{- $secret := .Values.database.existingSecret }}
+                  {{- if .Values.database.migrationSecret.name }}
+                  {{- $secret = .Values.database.migrationSecret }}
+                  {{- end }}
+                  name: {{ $secret.name | quote }}
+                  key: {{ $secret.key | quote }}
+          resources: {{- toYaml .Values.migration.resources | nindent 12 }}
+          volumeMounts:
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: temporary
+          emptyDir: {sizeLimit: {{ .Values.migration.temporaryStorage | quote }}}
+{{- end }}

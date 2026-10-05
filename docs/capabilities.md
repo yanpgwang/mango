@@ -71,8 +71,12 @@ access still depends on the sandbox boundary.
   Docker daemon authority; network egress policy is operator-owned.
 - **Deployment:** the local Compose stack is reproducible, but supported
   production Compose and Kubernetes distributions are not available. The
+  [Helm candidate](guides/kubernetes.md) has role-separated Secrets, an initial
+  schema hook, probes and bounded temporary storage; cluster/recovery acceptance
+  and publication remain pending. The
   [development schema baseline](deployment.md#development-database-baseline)
-  requires a fresh database when replacing the historical migration chain;
+  requires a fresh database when replacing the historical chain or version-1
+  development baseline;
   `mango migrate` performs explicit schema initialization, and normal process
   startup only checks the migration ledger. Local Compose orders application
   startup after successful migration. Versioned distribution upgrades and

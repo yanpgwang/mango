@@ -39,6 +39,7 @@ MANGO_TEST_S3_ACCESS_KEY ?= mango-local
 MANGO_TEST_S3_SECRET_KEY ?= mango-local-development-only
 PYTHON ?= python3
 UV ?= uv
+HELM ?= helm
 RELEASE_PYTHON ?= $(UV) run --python 3.12 python
 RELEASE_VERSION ?= 0.1.0-alpha.2
 RELEASE_DIR ?= dist/release/$(RELEASE_VERSION)
@@ -62,6 +63,7 @@ endif
 
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
 .PHONY: release-unit release-build release-check
+.PHONY: chart-check
 
 help:
 	@echo "Development"
@@ -89,6 +91,7 @@ help:
 	@echo "  make sdk-conformance  exercise language clients against Mango HTTP handlers"
 	@echo "  make release-build  build matched runtime/SDK candidates without publication"
 	@echo "  make release-check  inspect and freshly install candidate packages"
+	@echo "  make chart-check    lint/render/package the Helm candidate without a cluster"
 	@echo "  make security       scan reachable Go code and high-severity npm issues"
 	@echo "  make docs-check     install and verify documentation dependencies"
 	@echo "  make dev-env-init   create ~/.config/mango/dev.env with mode 0600"
@@ -195,6 +198,9 @@ vet:
 	$(GO) vet ./...
 
 verify: lint test test-race vet
+
+chart-check:
+	MANGO_TEST_HELM=1 MANGO_HELM_PATH='$(HELM)' $(GO) test ./scripts/helm -count=1
 
 sdk-install:
 	$(UV) sync --project sdk/python --frozen --group dev
