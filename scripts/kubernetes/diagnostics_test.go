@@ -88,13 +88,15 @@ func TestDependencyProbeBoundsInheritedOutputPipe(t *testing.T) {
 	for time.Now().Before(deadline) {
 		var err error
 		pid, err = os.ReadFile(pidFile)
-		if err == nil && len(bytes.TrimSpace(pid)) > 0 {
+		if err == nil && bytes.HasSuffix(pid, []byte("\n")) {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	require.True(t, bytes.HasSuffix(pid, []byte("\n")), "child PID was not fully published")
 	childPID, err := strconv.Atoi(strings.TrimSpace(string(pid)))
 	require.NoError(t, err)
+	require.Greater(t, childPID, 1)
 	child, err := os.FindProcess(childPID)
 	require.NoError(t, err)
 	defer func() { _ = child.Kill() }()
