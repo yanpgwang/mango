@@ -18,7 +18,8 @@ func TestVersionCommandReportsLinkedIdentityWithoutServices(t *testing.T) {
 	t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
 	binary := filepath.Join(t.TempDir(), "mango")
 	flags := "-X github.com/yanpgwang/mango/internal/buildinfo.Version=0.1.0-alpha.2 -X github.com/yanpgwang/mango/internal/buildinfo.Revision=0123456789abcdef0123456789abcdef01234567"
-	build := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-ldflags", flags, "-o", binary, ".")
+	// This test binary runs on its build host, so the build-time compiler path is intentional.
+	build := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-ldflags", flags, "-o", binary, ".") //nolint:staticcheck // GOROOT's relocation caveat does not apply to local test builds.
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, output)
 	}
