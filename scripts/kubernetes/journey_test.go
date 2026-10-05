@@ -28,7 +28,12 @@ func TestKubernetesAlpha(t *testing.T) {
 	cluster := newCluster(t)
 	source := cluster.startState("source")
 	cluster.install(source, "alpha", false)
-	source.verifyRestartJourney()
+	evidence := source.verifyRestartJourney()
+	source.verifyQuiescedRestore(evidence)
+}
+
+type journeyEvidence struct {
+	fileID, skillID, skillVersion, storeID, environment string
 }
 
 func (s *stateFixture) request(method, path, contentType string, body []byte, status int, authenticated bool) []byte {
@@ -41,7 +46,19 @@ func (s *stateFixture) request(method, path, contentType string, body []byte, st
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	response, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	client := &http.Client{Timeout: 15 * time.Second}
+	var response *http.Response
+	if method == "GET" {
+		// Single-replica replacement permits transient transport failure while
+		// EndpointSlice/proxy state catches up. Retry only reads; POST admission
+		// must retain its unknown-outcome semantics and is never retried here.
+		s.cluster.await(15*time.Second, func() bool {
+			response, err = client.Do(req)
+			return err == nil
+		})
+	} else {
+		response, err = client.Do(req)
+	}
 	require.NoError(s.cluster.t, err)
 	defer func() { require.NoError(s.cluster.t, response.Body.Close()) }()
 	data, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
@@ -248,7 +265,7 @@ func (s *stateFixture) waitStoppedWork(environment string, count int) {
 	})
 }
 
-func (s *stateFixture) verifyRestartJourney() {
+func (s *stateFixture) verifyRestartJourney() journeyEvidence {
 	c, t := s.cluster, s.cluster.t
 	t.Helper()
 	s.request("GET", "/healthz", "", nil, 200, false)
@@ -321,4 +338,6 @@ func (s *stateFixture) verifyRestartJourney() {
 	stop()
 	require.Equal(t, []byte("alpha-file-bytes"), s.request("GET", "/v1/files/"+fileID+"/content", "", nil, 200, true))
 	t.Log("Authenticated install, external Bash/Skill/Memory, pending confirmation replacement and reactivation passed")
+	return journeyEvidence{fileID: fileID, skillID: skill["id"].(string), skillVersion: skill["latest_version"].(string),
+		storeID: storeID, environment: environment}
 }
