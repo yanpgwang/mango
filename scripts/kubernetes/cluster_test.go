@@ -34,6 +34,7 @@ type clusterFixture struct {
 	kind, kubectl, helm       string
 	image, workerImage, model string
 	workerBinary, revision    string
+	chart                     string
 	kubeconfig, keyring       string
 	ports                     [2]int
 	builtImages               []string
@@ -153,6 +154,7 @@ func newCluster(t *testing.T) *clusterFixture {
 	}
 	c.image, c.workerImage, c.model = "mango:"+name, "mango-self-hosted-worker:"+name, "mango-alpha-model:"+name
 	c.workerBinary = filepath.Join(c.temp, "mango-worker")
+	c.chart = "charts/mango"
 	c.revision = strings.TrimSpace(string(c.command(nil, nil, "git", "rev-parse", "HEAD")))
 	keyBytes := make([]byte, 32)
 	_, err = rand.Read(keyBytes)
@@ -163,30 +165,39 @@ func newCluster(t *testing.T) *clusterFixture {
 		require.NoError(t, err, "required Kubernetes test tool missing")
 	}
 	c.command(nil, nil, "docker", "info", "--format", "{{.ServerVersion}}")
-	t.Log("Building exact-revision test images for control plane and external worker")
-	// Names are unique to this run; cleanup cannot remove another run's images.
+	// Register before any import/build, and remove unique aliases only once.
 	t.Cleanup(func() {
 		if len(c.builtImages) != 0 {
 			c.cleanup("docker", append([]string{"image", "rm"}, c.builtImages...)...)
 		}
 	})
+	inputs := []struct{ file, image string }{{"scripts/kubernetes/model/Dockerfile", c.model}}
+	if candidateFolder := os.Getenv("MANGO_RELEASE_CANDIDATE"); candidateFolder != "" {
+		if !filepath.IsAbs(candidateFolder) {
+			candidateFolder = filepath.Join(c.root, candidateFolder)
+		}
+		candidate, err := readCandidate(candidateFolder, c.revision)
+		require.NoError(t, err)
+		t.Log("Using actual release archives, packaged chart and OCI images:", candidate.Revision)
+		c.installCandidateInputs(candidateFolder, candidate)
+	} else {
+		inputs = append([]struct{ file, image string }{{"Dockerfile", c.image}, {"deployments/self-hosted/docker/Dockerfile", c.workerImage}}, inputs...)
+		// Same-host source-test execution retains the compiling toolchain even
+		// when sudo's secure_path selects an older Go. Never distributed.
+		//nolint:staticcheck // SA1019: intentional same-host test toolchain selection.
+		c.command(nil, nil, filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", c.workerBinary, "./cmd/mango-worker")
+	}
+	t.Log("Building explicit source fixture inputs")
 	builder := []string{"buildx", "build", "--load"}
 	if name := os.Getenv("MANGO_KUBERNETES_BUILDER"); name != "" {
 		builder = append(builder, "--builder", name)
 	}
-	for _, item := range []struct{ file, image string }{
-		{"Dockerfile", c.image}, {"deployments/self-hosted/docker/Dockerfile", c.workerImage},
-		{"scripts/kubernetes/model/Dockerfile", c.model},
-	} {
+	for _, item := range inputs {
 		args := append(append([]string{}, builder...), "-f", item.file, "-t", item.image,
 			"--build-arg", "VERSION=0.1.0-alpha.2", "--build-arg", "REVISION="+c.revision, ".")
 		c.command(nil, nil, "docker", args...)
 		c.builtImages = append(c.builtImages, item.image)
 	}
-	// Same-host test execution must retain the compiling toolchain even when
-	// sudo's secure_path selects an older Go. This binary is never relocated.
-	//nolint:staticcheck // SA1019: intentional same-host test toolchain selection.
-	c.command(nil, nil, filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", c.workerBinary, "./cmd/mango-worker")
 	config := fmt.Sprintf("kind: Cluster\napiVersion: kind.x-k8s.io/v1alpha4\nnodes:\n- role: control-plane\n  extraPortMappings:\n  - containerPort: 30080\n    hostPort: %d\n    listenAddress: 127.0.0.1\n  - containerPort: 30081\n    hostPort: %d\n    listenAddress: 127.0.0.1\n", c.ports[0], c.ports[1])
 	configPath := filepath.Join(c.temp, "kind.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0600))
@@ -266,7 +277,7 @@ func (c *clusterFixture) install(s *stateFixture, namespace string, restore bool
 	valuesPath := filepath.Join(c.temp, namespace+"-values.yaml")
 	require.NoError(c.t, os.WriteFile(valuesPath, []byte(values), 0600))
 	c.t.Log("Installing real chart with existing Secrets and external state:", namespace)
-	c.command(nil, nil, c.helm, "install", namespace, "charts/mango", "--namespace", namespace, "--kubeconfig", c.kubeconfig, "--values", valuesPath, "--wait", "--timeout", "5m")
+	c.command(nil, nil, c.helm, "install", namespace, c.chart, "--namespace", namespace, "--kubeconfig", c.kubeconfig, "--values", valuesPath, "--wait", "--timeout", "5m")
 	index := 0
 	if restore {
 		index = 1
