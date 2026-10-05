@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mango.resourceName" (dict "root" . "suffix" "orchestrator") }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "mango.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      {{- include "mango.selector" (dict "root" . "role" "orchestrator") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mango.selector" (dict "root" . "role" "orchestrator") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        {{- include "mango.podSecurity" . | nindent 8 }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: orchestrator
+          image: {{ include "mango.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [orchestrate]
+          securityContext:
+            {{- include "mango.containerSecurity" . | nindent 12 }}
+          env:
+            {{- include "mango.runtimeEnv" . | nindent 12 }}
+            - name: MANGO_MODEL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.model.existingSecret.name | quote }}
+                  key: {{ .Values.model.existingSecret.key | quote }}
+            {{- $config := include "mango.resourceName" (dict "root" . "suffix" "config") }}
+            {{- range $key := list "MANGO_MODEL_BASE_URL" "MANGO_MODEL_ID" "MANGO_MODEL_AUTH" }}
+            - name: {{ $key }}
+              valueFrom:
+                configMapKeyRef: {name: {{ $config | quote }}, key: {{ $key | quote }}}
+            {{- end }}
+          resources: {{- toYaml .Values.orchestration.resources | nindent 12 }}
+          volumeMounts:
+            - name: temporary
+              mountPath: /tmp
+            {{- include "mango.keyringMount" . | nindent 12 }}
+      volumes:
+        - name: temporary
+          emptyDir: {sizeLimit: {{ .Values.orchestration.temporaryStorage | quote }}}
+        {{- include "mango.keyringVolume" . | nindent 8 }}

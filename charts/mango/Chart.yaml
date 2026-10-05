@@ -1,0 +1,9 @@
+apiVersion: v2
+name: mango
+description: Mango self-hosted durable agent control plane (alpha candidate)
+type: application
+version: 0.1.0-alpha.2
+appVersion: "0.1.0-alpha.2"
+home: https://github.com/yanpgwang/mango
+sources:
+  - https://github.com/yanpgwang/mango

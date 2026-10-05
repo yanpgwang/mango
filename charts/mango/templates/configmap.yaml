@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mango.resourceName" (dict "root" . "suffix" "config") }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "mango.labels" . | nindent 4 }}
+data:
+  MANGO_TEMPORAL_HOSTPORT: {{ .Values.temporal.address | quote }}
+  MANGO_TEMPORAL_NAMESPACE: {{ .Values.temporal.namespace | quote }}
+  MANGO_FILE_S3_ENDPOINT: {{ .Values.files.endpoint | quote }}
+  MANGO_FILE_S3_REGION: {{ .Values.files.region | quote }}
+  MANGO_FILE_S3_BUCKET: {{ .Values.files.bucket | quote }}
+  MANGO_FILE_S3_PATH_STYLE: {{ .Values.files.pathStyle | toString | quote }}
+  MANGO_FILE_S3_CREATE_BUCKET: "false"
+  MANGO_FILE_UPLOAD_TEMP_DIR: /tmp
+  MANGO_MODEL_BASE_URL: {{ .Values.model.baseURL | quote }}
+  MANGO_MODEL_ID: {{ .Values.model.id | quote }}
+  MANGO_MODEL_AUTH: {{ .Values.model.auth | quote }}
