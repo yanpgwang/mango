@@ -15,6 +15,8 @@ import tempfile
 import threading
 import zipfile
 
+from build import validate_chart_metadata
+
 
 def read_candidate(folder):
     manifest_bytes = (folder / "manifest.json").read_bytes()
@@ -182,12 +184,45 @@ func main() {
     run(["go", "run", "."], app, {**os.environ, "FIXTURE_URL": url, "SDK_VERSION": manifest["sdk_versions"]["go"]})
 
 
-def smoke(root, folder):
+def inspect_chart(folder, manifest, destination, helm):
+    records = [item for item in manifest["artifacts"] if item["kind"] == "helm-chart"]
+    if len(records) != 1:
+        raise ValueError("candidate must contain exactly one chart")
+    chart = folder / records[0]["name"]
+    metadata = subprocess.check_output([helm, "show", "chart", str(chart)], text=True)
+    validate_chart_metadata(metadata, manifest["version"])
+    # Independently authored operator inputs; no secrets or generated fixtures.
+    values = destination / "chart-values.yaml"
+    values.write_text('''database:
+  existingSecret: {name: operator-db, key: url}
+auth:
+  existingSecret: {name: operator-auth, key: token}
+temporal:
+  address: temporal.operator.test:7233
+nats:
+  existingSecret: {name: operator-nats, key: url}
+files:
+  endpoint: http://s3.operator.test:8333
+  bucket: operator-bucket
+  existingSecret: {name: operator-s3}
+model:
+  baseURL: https://model.operator.test
+  id: operator-model
+  existingSecret: {name: operator-model, key: token}
+''')
+    run([helm, "lint", "--strict", str(chart), "--values", str(values)], destination)
+    rendered = subprocess.check_output([helm, "template", "alpha", str(chart), "--values", str(values)], text=True)
+    if rendered.count("kind: Deployment\n") != 2 or "kind: Job\n" not in rendered or f'ghcr.io/yanpgwang/mango:{manifest["version"]}' not in rendered:
+        raise ValueError("packaged chart does not render the expected control-plane install")
+
+
+def smoke(root, folder, helm="helm"):
     folder = folder.resolve()
     manifest = read_candidate(folder)
     with tempfile.TemporaryDirectory(prefix="mango-installed-release-") as temporary:
         destination = Path(temporary)
         inspect_commands(folder, manifest, destination)
+        inspect_chart(folder, manifest, destination, helm)
         server = ThreadingHTTPServer(("127.0.0.1", 0), Fixture)
         Fixture.failures, Fixture.calls = [], 0
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -203,11 +238,12 @@ def smoke(root, folder):
             server.shutdown()
             server.server_close()
             thread.join()
-    print(f"PASS: {manifest['version']} commands, checksums, wheel/sdist/npm/Go-source fresh installs and six fixture requests")
+    print(f"PASS: {manifest['version']} commands/chart, checksums, wheel/sdist/npm/Go-source fresh installs and six fixture requests")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
+    parser.add_argument("--helm", default="helm")
     arguments = parser.parse_args()
-    smoke(Path(__file__).resolve().parents[2], arguments.candidate)
+    smoke(Path(__file__).resolve().parents[2], arguments.candidate, arguments.helm)

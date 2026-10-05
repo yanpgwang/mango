@@ -218,10 +218,10 @@ release-unit:
 	$(RELEASE_PYTHON) -m unittest discover -s scripts/release -p 'test_*.py'
 
 release-build:
-	$(RELEASE_PYTHON) scripts/release/build.py --version '$(RELEASE_VERSION)' --output '$(RELEASE_DIR)' $(foreach target,$(RELEASE_PLATFORMS),--platform '$(target)')
+	$(RELEASE_PYTHON) scripts/release/build.py --version '$(RELEASE_VERSION)' --output '$(RELEASE_DIR)' --helm '$(HELM)' $(foreach target,$(RELEASE_PLATFORMS),--platform '$(target)')
 
 release-check:
-	$(RELEASE_PYTHON) scripts/release/smoke.py '$(RELEASE_DIR)'
+	$(RELEASE_PYTHON) scripts/release/smoke.py '$(RELEASE_DIR)' --helm '$(HELM)'
 
 sdk-generate:
 	$(GO) run ./scripts/sdk-contract

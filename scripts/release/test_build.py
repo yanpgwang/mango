@@ -33,6 +33,7 @@ class ReleaseTests(unittest.TestCase):
             "sdk/go/go.mod": 'module github.com/yanpgwang/mango/sdk/go\n\ngo 1.24.0\n',
             "sdk/go/LICENSE": "test license\n",
             "LICENSE": "test license\n",
+            "charts/mango/Chart.yaml": 'apiVersion: v2\nname: mango\ntype: application\nversion: 0.1.0-alpha.2\nappVersion: "0.1.0-alpha.2"\n',
         }
         for name, content in files.items():
             path = self.root / name
@@ -64,6 +65,23 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Python"):
             validate_source(self.root, VERSION, self.output)
         self.assertFalse(self.output.exists())
+
+    def test_chart_version_and_app_version_must_match_before_building(self):
+        chart = self.root / "charts/mango/Chart.yaml"
+        original = chart.read_text()
+        for index, changed in enumerate([
+            original.replace("version: 0.1.0-alpha.2", "version: 0.1.0-alpha.1"),
+            original.replace('appVersion: "0.1.0-alpha.2"', 'appVersion: "0.1.0-alpha.1"'),
+            original + "version: 0.1.0-alpha.2\n",
+        ]):
+            with self.subTest(chart=changed):
+                chart.write_text(changed)
+                self.commit()
+                with patch("build.build_payloads") as compiler:
+                    with self.assertRaisesRegex(ValueError, "chart"):
+                        build(self.root, self.folder / f"candidate-{index}", VERSION, ["linux/arm64"])
+                    compiler.assert_not_called()
+                self.assertFalse(self.output.exists())
 
     def test_dirty_tracked_or_untracked_source_is_rejected(self):
         path = self.root / "LICENSE"

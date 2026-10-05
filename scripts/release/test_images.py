@@ -44,7 +44,10 @@ class ImageTests(unittest.TestCase):
     def test_nested_index_matches_both_platforms_and_release_identity(self):
         with tempfile.TemporaryDirectory() as folder:
             image = self.archive(Path(folder))
-            self.assertEqual(inspect_oci(image, "0.1.0-alpha.2", "commit"), ["linux/amd64", "linux/arm64"])
+            actual = inspect_oci(image, "0.1.0-alpha.2", "commit")
+            with tarfile.open(image) as archive:
+                expected = json.load(archive.extractfile("index.json"))["manifests"][0]["digest"]
+            self.assertEqual(actual, {"platforms": ["linux/amd64", "linux/arm64"], "digest": expected})
 
     def test_wrong_revision_cannot_join_the_candidate_manifest(self):
         with tempfile.TemporaryDirectory() as folder:

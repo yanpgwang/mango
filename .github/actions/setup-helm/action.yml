@@ -1,0 +1,19 @@
+name: Verified Helm
+description: Install the alpha's official Helm 4.3.0 Linux AMD64 tool
+outputs:
+  path:
+    description: Absolute Helm executable path
+    value: ${{ steps.install.outputs.path }}
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      run: |
+        folder="$RUNNER_TEMP/mango-helm"
+        mkdir -p "$folder"
+        curl --fail --silent --show-error --location --retry 3 \
+          https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz -o "$folder/helm.tar.gz"
+        printf '%s  %s\n' 86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb "$folder/helm.tar.gz" | sha256sum --check
+        tar -xzf "$folder/helm.tar.gz" -C "$folder"
+        printf 'path=%s/linux-amd64/helm\n' "$folder" >> "$GITHUB_OUTPUT"

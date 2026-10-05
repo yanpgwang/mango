@@ -83,9 +83,11 @@ jobs:
         with:
           node-version: 22
       - run: python -m pip install uv==0.12.5
+      - uses: ./.github/actions/setup-helm
+        id: helm
       - run: make release-unit
-      - run: make release-build
-      - run: make release-check
+      - run: make release-build HELM='${{ steps.helm.outputs.path }}'
+      - run: make release-check HELM='${{ steps.helm.outputs.path }}'
 
   chart:
     name: Helm chart
@@ -99,20 +101,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Install verified official Helm 4.3.0
-        env:
-          HELM_VERSION: v4.3.0
-        run: |
-          cd "$RUNNER_TEMP"
-          curl --fail --silent --show-error --location --retry 3 \
-            "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
-            -o "helm-${HELM_VERSION}-linux-amd64.tar.gz"
-          curl --fail --silent --show-error --location --retry 3 \
-            "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" \
-            -o helm.sha256sum
-          sha256sum --check helm.sha256sum
-          tar -xzf "helm-${HELM_VERSION}-linux-amd64.tar.gz"
-      - run: make chart-check HELM="$RUNNER_TEMP/linux-amd64/helm"
+      - uses: ./.github/actions/setup-helm
+        id: helm
+      - run: make chart-check HELM='${{ steps.helm.outputs.path }}'
 
   security:
     name: Security checks
