@@ -12,6 +12,8 @@ image. The [Kubernetes guide](https://yanpgwang.github.io/mango/guides/kubernete
 contains prerequisites, existing-Secret creation, installation, external-worker
 connection and diagnosis. The repository copy is
 [`docs/guides/kubernetes.md`](../../docs/guides/kubernetes.md).
+The [matched candidate guide](https://yanpgwang.github.io/mango/guides/release-candidates)
+explains chart packaging and actual release-artifact installation/recovery checks.
 
 Required values:
 

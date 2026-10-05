@@ -39,7 +39,7 @@ access still depends on the sandbox boundary.
 | Capability | Status | Scope and principal limits |
 | --- | --- | --- |
 | [Agents](api/agents.md) | Supported | Versioned definitions, immutable Session snapshots, updates, archive, filters, and pagination. |
-| [SDKs](sdk.md) | Preview | Go, Python sync/async, and TypeScript resource clients cover the OpenAPI operations. The current alpha 2 interface is source-only; published alpha 1 has an earlier interface. |
+| [SDKs](sdk.md) | Preview | Go, Python sync/async, and TypeScript resource clients cover the OpenAPI operations. Alpha 2 supports source or inspected candidate packages; registry publication is pending. Published alpha 1 has an earlier interface. |
 | [Sessions](api/sessions.md) | Supported | Persistent work, shared budgets, usage, updates, interrupts, archive, and deletion. Archive retains history; automatic idle reclamation is not implemented. |
 | [Events and actions](api/events.md) | Limited | Messages, tool/approval barriers, outcomes, retries, and interrupts. Approval and execution results are separate. File messages support bounded UTF-8 documents, not images or PDFs. |
 | [Event streams](api/events.md#stream-events) | Supported | Durable history plus live Session/Thread SSE and optional ephemeral previews. Streams do not replay history or interpret `Last-Event-ID`. |
@@ -74,7 +74,10 @@ access still depends on the sandbox boundary.
   [Helm candidate](guides/kubernetes.md) has role-separated Secrets, an initial
   schema hook, probes and bounded temporary storage. Isolated Kubernetes 1.37.0
   install, pending-action replacement, external Docker execution and same-release
-  quiesced restore are tested; artifact publication remains pending. The
+  quiesced restore are tested with source inputs and actual release artifacts.
+  Artifact acceptance uses a matched packaged chart, native supervisor and OCI
+  images; the candidate workflow runs that lifecycle before upload. Publication
+  remains pending. The
   [development schema baseline](deployment.md#development-database-baseline)
   requires a fresh database when replacing the historical chain or version-1
   development baseline;

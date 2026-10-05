@@ -94,10 +94,17 @@ make image-smoke
 
 Verify release packaging with `make release-unit`, then build from a clean
 committed checkout using `make release-build` and `make release-check`. The
-required **Release artifacts** job installs the actual wheel, source package,
+required **Release artifacts** job also validates/packages the matching Helm
+chart and installs the actual wheel, source package,
 npm tarball and Go source archive outside the checkout. This complements the
 independent HTTP SDK contract tier. See the
 [candidate guide](docs/guides/release-candidates.md); these targets never publish.
+The manual **Release candidate** workflow uses tracked snapshots for all archives
+and OCI builds, records both image index digests, then runs the Kubernetes journey
+with the packaged chart, released native supervisor and imported images. Local
+artifact acceptance uses `MANGO_RELEASE_CANDIDATE=/absolute/path/to/candidate`
+with `make test-kubernetes`; use the matching source revision and Docker 28+
+containerd image store. Only the explicit model fixture is source-built.
 
 The Helm candidate has an independent offline manifest tier:
 `make chart-check HELM=helm` with Helm 4.3.0. Required **Helm chart** CI validates

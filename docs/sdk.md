@@ -22,9 +22,10 @@ For your first complete application, follow the [Quickstart](getting-started.md)
 
 ## Current development version
 
-The current resource-based clients are **source-only**: Python `0.1.0a2` and
-TypeScript `0.1.0-alpha.2` have not been published, and Go has no independently
-tagged release. Install from the same checkout as your server.
+The current resource-based clients are available from source or inspected
+candidate packages: Python `0.1.0a2` and TypeScript `0.1.0-alpha.2` have not yet
+been published to registries, and Go has no independently tagged release.
+Use the same source revision as your server.
 
 An inspected [release candidate](guides/release-candidates.md) also provides
 wheel/source/npm packages and a Go module source archive from one recorded

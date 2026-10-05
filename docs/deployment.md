@@ -14,7 +14,7 @@ Kubernetes 1.37.0 restart and same-release quiesced restore evidence. Runtime
 image/chart publication remains pending.
 
 Maintainers can build [matched release candidates](guides/release-candidates.md)
-with versioned commands, SDK packages and multi-platform OCI archives. Candidate
+with versioned commands, a packaged chart, SDK packages and multi-platform OCI archives. Candidate
 builds do not publish a runtime release or establish a supported installation.
 The [Kubernetes alpha delivery](design/kubernetes-alpha.md) limits the first
 distribution to fresh installation with external state services and an
@@ -24,11 +24,11 @@ operator-owned sandbox worker; cloud execution is an independent future option.
 
 | Asset | Status | Intended use |
 | --- | --- | --- |
-| Root `Dockerfile` | Buildable | Produce the API/worker image on Linux AMD64 or ARM64 |
+| Root `Dockerfile` | Buildable | Produce the API/orchestration image on Linux AMD64 or ARM64 |
 | `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, SeaweedFS, API, and worker from the current checkout |
 | `deployments/self-hosted/docker` | Preview | Build and run the standalone Docker Environment Work supervisor and item image |
 | Production Docker Compose | Planned | Supported single-host installation using versioned release images |
-| Helm chart | Candidate | Source chart with external state; Kubernetes 1.37.0 restart/quiesced restore tested, publication pending |
+| Helm chart | Candidate | Source or matched packaged chart with external state; actual-artifact Kubernetes 1.37.0 restart/quiesced restore tested, publication pending |
 
 The local stack is intentionally complete so contributors can exercise the
 durable path without installing each dependency. It contains development
@@ -276,7 +276,9 @@ make local-down VOLUMES=1
 
 ## Production promotion gates
 
-A supported Docker or Kubernetes bundle requires:
+A supported production Docker or Kubernetes bundle requires the following broader
+evidence. These are separate from the narrower fresh-install/same-release
+[alpha scope](design/kubernetes-alpha.md):
 
 1. explicit, versioned schema migration;
 2. dependency-aware API and worker readiness;
@@ -287,7 +289,8 @@ A supported Docker or Kubernetes bundle requires:
 6. broader multi-replica recovery evidence and documented temporary-disk sizing;
 7. versioned images with upgrade and rollback documentation.
 
-Kubernetes packaging will use separate API and worker Deployments from the same
-image. Stateful services remain external by default. An Operator is not part
+The current chart uses separate API and Temporal orchestration Deployments from
+the same image. User sandbox execution stays outside those Deployments through
+Environment Work. Stateful services remain external. An Operator is not part
 of the initial deployment model and will be considered only if Mango introduces
 Kubernetes-native custom resources that require reconciliation.
