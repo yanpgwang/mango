@@ -10,6 +10,9 @@ Custom Skills are versioned zip bundles stored in S3-compatible storage. An
 Agent or Session resolves every reference to an immutable Skill Version before
 execution.
 
+Skill-enabled Agents must enable the ordinary `read` tool. The API rejects
+a Skill configuration whose toolset disables it.
+
 ```text
 POST   /v1/skills
 GET    /v1/skills

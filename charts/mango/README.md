@@ -5,8 +5,9 @@ operator-provided PostgreSQL, Temporal, NATS and S3. Sandbox execution stays on
 user infrastructure. It does not install state services, mount a Docker socket,
 create Session Pods or generate credentials.
 
-Chart/appVersion: `0.1.0-alpha.2`. Public image/chart publication and cluster
-restart/restore acceptance are pending. Use an existing inspected candidate
+Chart/appVersion: `0.1.0-alpha.2`. Public image/chart publication is pending;
+isolated Kubernetes 1.37.0 install, replacement and same-release quiesced restore
+are tested. Use an existing inspected candidate
 image. The [Kubernetes guide](https://yanpgwang.github.io/mango/guides/kubernetes)
 contains prerequisites, existing-Secret creation, installation, external-worker
 connection and diagnosis. The repository copy is

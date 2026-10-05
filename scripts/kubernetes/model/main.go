@@ -11,16 +11,16 @@ import (
 )
 
 type block struct {
-	Type      string "json:\"type\""
-	Text      string "json:\"text\""
-	ToolUseID string "json:\"tool_use_id\""
-	IsError   bool   "json:\"is_error\""
-	Content   any    "json:\"content\""
+	Type      string `json:"type"`
+	Text      string `json:"text"`
+	ToolUseID string `json:"tool_use_id"`
+	IsError   bool   `json:"is_error"`
+	Content   any    `json:"content"`
 }
 
 type message struct {
-	Role    string  "json:\"role\""
-	Content []block "json:\"content\""
+	Role    string  `json:"role"`
+	Content []block `json:"content"`
 }
 
 func handler() http.Handler {
@@ -28,8 +28,8 @@ func handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("POST /v1/messages", func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
-			Stream   bool      "json:\"stream\""
-			Messages []message "json:\"messages\""
+			Stream   bool      `json:"stream"`
+			Messages []message `json:"messages"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {

@@ -9,8 +9,9 @@ slug: /deployment
 Mango currently publishes a reproducible local stack and builds a multi-role
 application image. It does not yet publish a supported production Docker
 Compose bundle or Kubernetes distribution. A
-[Helm chart candidate](guides/kubernetes.md) is available in source; cluster
-recovery acceptance and publication remain pending.
+[Helm chart candidate](guides/kubernetes.md) is available in source, with isolated
+Kubernetes 1.37.0 restart and same-release quiesced restore evidence. Runtime
+image/chart publication remains pending.
 
 Maintainers can build [matched release candidates](guides/release-candidates.md)
 with versioned commands, SDK packages and multi-platform OCI archives. Candidate
@@ -27,7 +28,7 @@ operator-owned sandbox worker; cloud execution is an independent future option.
 | `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, SeaweedFS, API, and worker from the current checkout |
 | `deployments/self-hosted/docker` | Preview | Build and run the standalone Docker Environment Work supervisor and item image |
 | Production Docker Compose | Planned | Supported single-host installation using versioned release images |
-| Helm chart | Candidate | Source chart for API/orchestration with external state services; cluster/recovery and publication pending |
+| Helm chart | Candidate | Source chart with external state; Kubernetes 1.37.0 restart/quiesced restore tested, publication pending |
 
 The local stack is intentionally complete so contributors can exercise the
 durable path without installing each dependency. It contains development

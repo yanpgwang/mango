@@ -5,7 +5,7 @@ description: Exercise the real chart and external worker in isolated state store
 
 # Kubernetes Alpha Recovery Plan
 
-> Use superpowers:executing-plans inline, with independent whole-PR review. The maintainer authorized the complete alpha delivery and reviewed clean merges; no repeat approval for the accepted topology.
+> Use `superpowers:executing-plans` inline, with independent whole-PR review. The maintainer authorized the complete alpha delivery and reviewed clean merges; no repeat approval for the accepted topology.
 
 **Goal:** Establish exact same-release installation, restart and consistent restore evidence for the control-plane alpha.
 
