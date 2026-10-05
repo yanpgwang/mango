@@ -53,11 +53,17 @@ The test never uses hosted agent or real provider credentials.
 5. Verify File bytes/checksum, canonical Skill bytes/checksum, Memory content
    and Version history and original pending event IDs from restored HTTP. Submit
    the outstanding custom result and observe a resumed model turn from restored
-   Workflow history. GET of a restored fixture credential must succeed with its
+   Workflow history. Read-only Temporal queries verify the original Run ID and
+   complete history prefix before submission, then prove that same execution
+   advances; PostgreSQL reconstruction cannot satisfy this witness. GET of a
+   restored fixture credential must succeed with its
    original keyring: the existing Vault service decrypts and verifies the stored
    envelope before returning public metadata. No secret is returned by HTTP.
 6. Remove only fixture-owned containers, volumes, images and cluster, including
-   failed runs. Commands are bounded, credentials are passed through private
+   failed runs. Supervisor shutdown permits the full production stop budget;
+   bounded fallback removal rechecks exact Environment, Session and image
+   identity. A paused orphan/unrelated-item probe exercises this cleanup, and
+   an uncertain shutdown aborts backup. Commands are bounded, credentials are passed through private
    environment/stdin, and no key or plaintext backup appears in logs.
 
 ## Scope and evidence

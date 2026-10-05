@@ -2,6 +2,7 @@ package kubernetes_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,61 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/require"
+	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/sdk/client"
+	"google.golang.org/protobuf/proto"
 )
+
+type workflowSnapshot struct {
+	runID   string
+	history [][32]byte
+}
+
+func verifyWorkflowPrefix(before, after workflowSnapshot) error {
+	if before.runID == "" || after.runID != before.runID {
+		return fmt.Errorf("original Temporal Run ID was not restored")
+	}
+	if len(before.history) == 0 || len(after.history) < len(before.history) {
+		return fmt.Errorf("original Temporal history is missing or truncated")
+	}
+	for i, digest := range before.history {
+		if digest != after.history[i] {
+			return fmt.Errorf("original Temporal history event %d changed", i+1)
+		}
+	}
+	return nil
+}
+
+func (s *stateFixture) workflowSnapshot(session, originalRun string) workflowSnapshot {
+	c, t := s.cluster, s.cluster.t
+	t.Helper()
+	address := string(bytes.TrimSpace(s.compose(nil, "port", "temporal", "7233")))
+	ctx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+	defer cancel()
+	conn, err := client.DialContext(ctx, client.Options{HostPort: address})
+	require.NoError(t, err)
+	defer conn.Close()
+	described, err := conn.DescribeWorkflowExecution(ctx, session, "")
+	require.NoError(t, err)
+	runID := described.GetWorkflowExecutionInfo().GetExecution().GetRunId()
+	if originalRun != "" {
+		require.Equal(t, originalRun, runID, "restore/recovery created a replacement Temporal execution")
+	}
+	result := workflowSnapshot{runID: runID}
+	// The exact Run ID prevents Signal-With-Start reconstruction from passing.
+	// Digest complete protobuf events privately: payloads may contain credentials
+	// and must never be included in assertion output or diagnostics.
+	iterator := conn.GetWorkflowHistory(ctx, session, runID, false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+	for iterator.HasNext() {
+		event, err := iterator.Next()
+		require.NoError(t, err)
+		data, err := (proto.MarshalOptions{Deterministic: true}).Marshal(event)
+		require.NoError(t, err)
+		result.history = append(result.history, sha256.Sum256(data))
+	}
+	require.Greater(t, len(result.history), 1, "original execution must have persisted history")
+	return result
+}
 
 type objectSnapshot struct {
 	key, media string
@@ -89,11 +144,12 @@ func (s *stateFixture) verifyQuiescedRestore(evidence journeyEvidence) {
 	sessionID := session["id"].(string)
 	hash := sha256.Sum256([]byte(sessionID))
 	t.Cleanup(func() { c.removeWorkspace(fmt.Sprintf("mango-workspace-%x", hash[:12])) })
-	stop := s.startSupervisor(evidence.environment)
+	stop := s.startSupervisor(evidence.environment, sessionID)
 	s.send(sessionID, map[string]any{"type": "user.message", "content": []any{map[string]any{"type": "text", "text": "alpha:custom"}}}, 200)
 	action := s.waitAction(sessionID, "agent.custom_tool_use", 1)
 	stop()
 	eventsBefore := s.events(sessionID)
+	workflowBefore := s.workflowSnapshot(sessionID, "")
 	t.Log("Quiescing all writers, then capturing Mango/Temporal/visibility databases and bucket bytes")
 	s.quiesce()
 	databases := map[string][]byte{}
@@ -131,6 +187,8 @@ func (s *stateFixture) verifyQuiescedRestore(evidence journeyEvidence) {
 	require.Equal(t, credentialBefore, restored.json("GET", credentialPath, nil, 200))
 	require.Equal(t, eventsBefore, restored.events(sessionID))
 	require.Equal(t, action, restored.waitAction(sessionID, "agent.custom_tool_use", 1))
+	workflowRestored := restored.workflowSnapshot(sessionID, workflowBefore.runID)
+	require.NoError(t, verifyWorkflowPrefix(workflowBefore, workflowRestored))
 	result := map[string]any{"type": "user.custom_tool_result", "custom_tool_use_id": action,
 		"content": []any{map[string]any{"type": "text", "text": "alpha-proof"}}}
 	restored.send(sessionID, result, 200)
@@ -140,5 +198,8 @@ func (s *stateFixture) verifyQuiescedRestore(evidence journeyEvidence) {
 	})
 	require.Equal(t, 1, eventCount(completed, "agent.custom_tool_use"))
 	require.Equal(t, 1, eventCount(completed, "user.custom_tool_result"))
+	workflowAfter := restored.workflowSnapshot(sessionID, workflowBefore.runID)
+	require.NoError(t, verifyWorkflowPrefix(workflowRestored, workflowAfter))
+	require.Greater(t, len(workflowAfter.history), len(workflowRestored.history), "original Temporal execution did not advance")
 	t.Log("Independent quiesced restore and original pending custom action continuation passed")
 }

@@ -206,7 +206,11 @@ submission from history before retrying it.
 It also restores Mango and Temporal state plus object bytes into independent
 stores with the original random keyring. Public IDs, Memory Versions and
 encrypted Credential integrity checks survive; the original pending custom
-action then resumes the restored Workflow. This evidence covers one topology
+action then resumes the restored Workflow. Read-only Temporal queries verify
+the original Run ID and complete history prefix, and confirm that same execution
+advances after the result; rebuilding an execution from Mango rows cannot pass.
+The fixture also checks paused orphan cleanup without touching an unrelated
+item. This evidence covers one topology
 and same-release recovery, not general HA.
 
 Contributors run the same required **Kubernetes lifecycle** CI tier:

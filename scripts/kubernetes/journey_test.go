@@ -3,8 +3,10 @@ package kubernetes_test
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -18,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/errdefs"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,6 +33,7 @@ func TestKubernetesAlpha(t *testing.T) {
 	source := cluster.startState("source")
 	cluster.install(source, "alpha", false)
 	evidence := source.verifyRestartJourney()
+	cluster.verifyOwnedWorkCleanup()
 	source.verifyQuiescedRestore(evidence)
 }
 
@@ -173,14 +178,48 @@ func (s *stateFixture) waitAction(session, kind string, count int) string {
 	return action
 }
 
-func (s *stateFixture) startSupervisor(environment string) func() {
+func removeOwnedWork(ctx context.Context, engine *client.Client, environment, session, image string) (int, error) {
+	if environment == "" || session == "" || image == "" {
+		return 0, errors.New("exact fixture identity is required for item cleanup")
+	}
+	filters := make(client.Filters).Add("label", "io.mango.self-hosted-worker=true", "io.mango.environment-id="+environment, "io.mango.session-id="+session)
+	listed, err := engine.ContainerList(ctx, client.ContainerListOptions{All: true, Filters: filters})
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, item := range listed.Items {
+		inspected, err := engine.ContainerInspect(ctx, item.ID, client.ContainerInspectOptions{})
+		if errdefs.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return removed, err
+		}
+		config := inspected.Container.Config
+		if config == nil || config.Image != image || config.Labels["io.mango.self-hosted-worker"] != "true" ||
+			config.Labels["io.mango.environment-id"] != environment || config.Labels["io.mango.session-id"] != session || config.Labels["io.mango.work-id"] == "" {
+			continue
+		}
+		// Supervisor has exited. A surviving exact-owned item must be killed
+		// before workspace/image cleanup, including paused/hung failure cases.
+		_, err = engine.ContainerRemove(ctx, item.ID, client.ContainerRemoveOptions{Force: true})
+		if err != nil && !errdefs.IsNotFound(err) {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
+}
+
+func (s *stateFixture) startSupervisor(environment, session string) func() {
 	c, t := s.cluster, s.cluster.t
 	t.Helper()
 	var key string
 	raw := c.kube(nil, "-n", s.namespace, "exec", "deployment/"+s.namespace+"-api", "--", "mango", "api-key", "create", "-workspace", "wrkspc_default", "-environment", environment, "-label", "alpha-fixture-supervisor")
 	for _, line := range strings.Split(string(raw), "\n") {
 		if value, ok := strings.CutPrefix(line, "api_key\t"); ok {
-			require.Empty(t, key, "CLI returned more than one key")
+			require.True(t, key == "", "CLI returned more than one key")
 			key = value
 		}
 	}
@@ -208,18 +247,38 @@ func (s *stateFixture) startSupervisor(environment string) func() {
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {
+			var shutdownErr error
 			if err := cmd.Process.Signal(syscall.SIGTERM); err != nil && err != os.ErrProcessDone {
-				t.Errorf("stop owned supervisor: %v", err)
+				shutdownErr = err
 			}
 			select {
 			case err := <-done:
-				require.NoError(t, err, "external supervisor shutdown")
-			case <-time.After(90 * time.Second):
+				shutdownErr = errors.Join(shutdownErr, err)
+			case <-time.After(3 * time.Minute):
+				// Production permits 120s container grace + 15s Docker request
+				// and 15s removal budgets; include host scheduling margin.
 				_ = cmd.Process.Kill()
 				<-done
-				t.Error("external supervisor shutdown exceeded its bound")
+				shutdownErr = errors.New("external supervisor shutdown exceeded its bound")
 			}
-			require.NoError(t, logfile.Close())
+			shutdownErr = errors.Join(shutdownErr, logfile.Close())
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			engine, err := client.New(client.FromEnv)
+			if err == nil {
+				defer func() { _ = engine.Close() }()
+				_, err = engine.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true})
+				if err == nil {
+					var removed int
+					removed, err = removeOwnedWork(ctx, engine, environment, session, c.workerImage)
+					if removed != 0 {
+						shutdownErr = errors.Join(shutdownErr, errors.New("supervisor left item containers; forced cleanup completed, backup cannot proceed"))
+					}
+				}
+			}
+			// Fatal only after fallback cleanup, so no backup can begin following
+			// an uncertain shutdown and test cleanup can remove volumes/images.
+			require.NoError(t, errors.Join(shutdownErr, err), "external supervisor shutdown and owned item cleanup")
 		})
 	}
 	t.Cleanup(func() {
@@ -293,7 +352,7 @@ func (s *stateFixture) verifyRestartJourney() journeyEvidence {
 	sessionID := session["id"].(string)
 	hash := sha256.Sum256([]byte(sessionID))
 	t.Cleanup(func() { c.removeWorkspace(fmt.Sprintf("mango-workspace-%x", hash[:12])) })
-	stop := s.startSupervisor(environment)
+	stop := s.startSupervisor(environment, sessionID)
 	s.send(sessionID, map[string]any{"type": "user.message", "content": []any{map[string]any{"type": "text", "text": "alpha:write"}}}, 200)
 	action := s.waitAction(sessionID, "agent.tool_use", 1)
 	before := s.events(sessionID)

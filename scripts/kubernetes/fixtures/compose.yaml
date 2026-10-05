@@ -27,6 +27,7 @@ services:
       POSTGRES_SEEDS: postgres
       DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
     volumes: [../../../deployments/local/dynamicconfig:/etc/temporal/config/dynamicconfig:ro]
+    ports: ["127.0.0.1::7233"] # Read-only original Run ID/history witness.
     cpus: 1
     mem_limit: 1g
     healthcheck:

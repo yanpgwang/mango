@@ -33,7 +33,7 @@ description: Exercise the real chart and external worker in isolated state store
 
 **Files:** `scripts/kubernetes/model/main.go`, adjacent tests, fixture Dockerfile, `scripts/kubernetes/fixtures/compose.yaml`.
 
-**Interfaces:** The fixture accepts `/v1/messages` with JSON or SSE responses; closed instructions select Bash or a custom tool. Compose consumes an explicitly named fixture image, pins existing service versions, bounds resources and exposes only a loopback ephemeral S3 port.
+**Interfaces:** The fixture accepts `/v1/messages` with JSON or SSE responses; closed instructions select Bash or a custom tool. Compose consumes an explicitly named fixture image, pins existing service versions, bounds resources and exposes loopback ephemeral S3 and Temporal ports; Temporal access supplies the read-only Run ID/history witness.
 
 - [ ] Write tests for initial Bash/custom actions, resumed tool correlation, rejected erroneous results and SSE response assembly; observe RED.
 - [ ] Implement the small stateless fixture; create separate Compose state services using no existing container names.
