@@ -235,8 +235,10 @@ only the named Thread.
 
 Archive prevents further input and retains history and Session Files, but does
 not release the sandbox. Automatic idle or archive-based sandbox reclamation
-is not implemented. Delete performs sandbox cleanup and removes Session-owned
-Files; download any outputs you need to retain before deleting a Session.
+is not implemented. Delete fences remaining Work and removes the Session's
+control-plane records. Existing Files remain available through the Files API;
+the operator owns retention and cleanup of Docker workspace volumes or bound
+directories. Neither archive nor delete erases those working directories.
 
 Delete removes the session and persisted history, sends a final
 `session.deleted` event to active subscribers, and closes their streams:
