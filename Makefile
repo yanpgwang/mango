@@ -127,7 +127,7 @@ test-service: test-service-core test-self-hosted-docker
 
 worker-test-image:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
-	$(DOCKER) build -f deployments/self-hosted/docker/Dockerfile \
+	$(DOCKER) build -f deployments/workers/docker/Dockerfile \
 		--tag '$(WORKER_TEST_IMAGE)' .
 
 test-service-core: worker-test-image

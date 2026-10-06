@@ -11,7 +11,7 @@ infrastructure versions and health checks.
 | NATS Core  | `nats:2.11.17-alpine`          | `4222` (client), `8222` (monitoring) | Ephemeral previews and SSE wakeups; PostgreSQL cursor reads repair loss. |
 | SeaweedFS | `chrislusf/seaweedfs:4.48` (digest pinned) | `9000` → container `8333` | S3-compatible File and Skill bytes for development and service conformance. |
 | API        | `mango:local`        | `8080`                      | PostgreSQL-backed Mango HTTP API. |
-| Worker     | `mango:local`        | —                           | Temporal worker and PostgreSQL outbox relay. |
+| Orchestrator (`worker` service) | `mango:local` | — | Temporal worker and PostgreSQL outbox relay; no sandbox execution. |
 
 The Go module pins the matching client libraries: `go.temporal.io/sdk`,
 `github.com/jackc/pgx/v5`, `github.com/pressly/goose/v3`, and
@@ -28,18 +28,18 @@ make local-health   # block until all services are healthy
 
 When `~/.config/mango/dev.env` exists, `make local-up` loads it via
 `scripts/with-dev-env`. When the model variables are configured, the Compose
-worker uses the real Messages endpoint. A missing file or empty model values
+orchestrator uses the real Messages endpoint. A missing file or empty model values
 keep the offline deterministic model.
 
 For an explicitly offline startup that bypasses the development file, use the
 command in [Getting started](../../docs/getting-started.md#run-the-server).
 Compose first runs the one-shot `migrate` service against PostgreSQL, then
-starts Mango's API and Temporal orchestration worker. It does not
+starts Mango's API and orchestrator. It does not
 start an operator-owned Environment worker. To execute shell or file tools in a
 default `self_hosted` Environment, separately start the
-[Docker self-hosted worker](../self-hosted/docker/README.md) for that Environment.
+[Docker self-hosted worker](../workers/docker/README.md) for that Environment.
 
-The Compose orchestration worker does not mount the Docker socket and does not
+The Compose orchestrator does not mount the Docker socket and does not
 own Session compute. The separately launched Environment worker owns its Docker
 credentials, workspace volumes, and container lifecycle.
 
@@ -126,7 +126,7 @@ Each service declares a Docker `healthcheck`:
 - **nats** — HTTP `GET /healthz` on the monitoring port
 - **seaweedfs** — HTTP `GET /healthz` on S3 port `8333`
 - **api** — HTTP `GET /readyz`
-- **worker** — its long-running orchestration process is alive
+- **worker** — the long-running orchestrator process is alive
 
 `docker compose ps` shows `(healthy)` once each passes.
 
@@ -140,12 +140,13 @@ make local-down VOLUMES=1  # also delete the Postgres and SeaweedFS volumes
 ## Scope
 
 This stack is for local development and integration tests only. It already
-keeps API and worker process roles separate, but it is not a production
+keeps API and orchestrator process roles separate, but it is not a production
 deployment manifest: end-user authorization, TLS, secrets, rolling worker versioning,
 managed persistence, observability, resource limits, and production object
 storage remain deployment work. The bundled SeaweedFS credentials and deterministic
-Vault keyring are not a production recommendation. Files startup reconciliation
-also currently requires one Files-enabled API process. See
+Vault keyring are not a production recommendation. Files/Skills upload recovery
+uses renewable database leases to preserve uploads owned by another API process;
+this does not establish general multi-replica or HA guarantees. See
 [the deployment model](../../docs/deployment.md).
 
 

@@ -1,6 +1,7 @@
 # Local development stack for the Temporal platform spine.
 #
-#   make up       build/start API, worker, Postgres, Temporal (+UI), NATS, and SeaweedFS
+#   make up       build/start API, orchestrator, Postgres, Temporal (+UI), NATS, SeaweedFS
+# The Compose worker service is the orchestrator; sandbox workers run separately.
 #   make health   block until every service reports healthy
 #   make ps       show container status
 #   make logs     tail all service logs

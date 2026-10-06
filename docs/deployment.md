@@ -25,10 +25,21 @@ operator-owned sandbox worker; cloud execution is an independent future option.
 | Asset | Status | Intended use |
 | --- | --- | --- |
 | Root `Dockerfile` | Buildable | Produce the API/orchestration image on Linux AMD64 or ARM64 |
-| `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, SeaweedFS, API, and worker from the current checkout |
-| `deployments/self-hosted/docker` | Preview | Build and run the standalone Docker Environment Work supervisor and item image |
+| `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, SeaweedFS, API, and orchestrator from the current checkout |
+| `deployments/workers/docker` | Preview | Build and run the standalone Docker Environment Work supervisor and item image |
 | Production Docker Compose | Planned | Supported single-host installation using versioned release images |
 | Helm chart | Candidate | Source or matched packaged chart with external state; actual-artifact Kubernetes 1.37.0 restart/quiesced restore tested, publication pending |
+
+Choose the local Compose stack for source development, or the
+[Kubernetes guide](guides/kubernetes.md) for a control plane connected to your
+state services. Those services may run in the same cluster; they are external
+to the Mango chart's lifecycle. The current sandbox execution component is
+deployed separately on your Docker host and can connect to either control
+plane. A single-host bundle using release images remains planned.
+
+Deployment directories describe their purpose, while this table records their
+support status. Helm assets live in `charts/mango`; isolated Kubernetes test
+fixtures live in `scripts/kubernetes`, outside user installation assets.
 
 The local stack is intentionally complete so contributors can exercise the
 durable path without installing each dependency. It contains development

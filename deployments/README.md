@@ -1,33 +1,51 @@
 # Deployment assets
 
-This directory contains deployment-specific assets, grouped by their support
-level rather than by container technology.
+Deployment assets are organized by purpose. Support status is documented here;
+it does not determine directory names.
 
 | Directory | Support level | Purpose |
 | --- | --- | --- |
-| [`local`](local/) | Development | Reproducible PostgreSQL, Temporal, NATS, SeaweedFS, API, and worker stack for local development and integration tests |
-| [`self-hosted/docker`](self-hosted/docker/) | Preview | Reference Docker image and supervisor for the `self_hosted` Environment Work boundary |
-| [`../charts/mango`](../charts/mango/) | Candidate | Control-plane chart with external state and Secrets; isolated Kubernetes 1.37.0 restart/quiesced restore tested, publication pending |
+| [`local`](local/) | Development | Source-built API and orchestrator with PostgreSQL, Temporal, NATS and SeaweedFS for local development and service tests |
+| [`workers/docker`](workers/docker/) | Preview | Docker sandbox item image and instructions for the operator-run Environment Work supervisor |
+| [`../charts/mango`](../charts/mango/) | Candidate | Kubernetes control plane with operator-provided state and Secrets; installation, restart and same-release quiesced restore tested, publication pending |
+| [`../scripts/kubernetes`](../scripts/kubernetes/) | Test fixture | Isolated kind lifecycle and artifact acceptance tests; not a user installation bundle |
 
-`deployments/local` is the only complete deployment bundle today. The
-self-hosted Docker directory is a worker component, not a full Mango stack or a
-production manifest.
+## Choose an installation
 
-Future deployment bundles are added only when their lifecycle is tested and
-documented:
+For development, use `local` to build the current checkout and run its control
+plane and state services. To execute shell/file tools, separately start an
+Environment worker using `workers/docker`. The Compose service named `worker`
+runs `mango orchestrate`; it is not the sandbox worker.
 
-- `deployments/docker` will be a supported single-host installation that pulls
-  versioned release images instead of building source;
-- `charts/mango` contains the independently versioned Helm chart candidate;
-- `deployments/kind` may contain end-to-end cluster fixtures that are not
-  production defaults.
+For Kubernetes, use `charts/mango` and the
+[Kubernetes guide](../docs/guides/kubernetes.md). The chart runs only the API,
+orchestrator and one-shot migration. State services are managed separately by
+the operator; they may run in the same cluster. The current Docker sandbox
+supervisor runs separately on an operator-owned Docker host and connects to the
+Mango API.
+
+A single-host installation bundle consuming versioned release images is
+planned. The development Compose configuration contains development keys and
+builds source; it is not that release installation bundle. Add another bundle
+only when its installation, state retention, restart and recovery lifecycle is
+tested and documented.
+
+## Component boundaries
 
 The release topology uses one immutable Mango image with separate process
-roles. API and worker capacity remain independently scalable; `mango migrate`
-is the explicit one-shot schema role, and both processes check the migration
-ledger without applying migrations. Production manifests should reference external PostgreSQL,
-Temporal, NATS, and object storage by default rather than installing stateful
-dependencies implicitly.
+roles. The API (`mango serve`) and orchestrator (`mango orchestrate`) are separate
+processes; `mango migrate` is the explicit one-shot schema role. Both long-lived
+processes check the migration ledger without applying migrations. The
+operator-owned sandbox supervisor (`mango-worker docker`) launches item
+containers (`mango-worker run`) and owns their workspaces and Docker lifecycle.
+Neither control-plane process needs a Docker socket.
+
+The chart and runtime artifacts are built from the same recorded source and
+release version. Installation manifests reference operator-provided PostgreSQL,
+Temporal, NATS and object storage rather than managing those services implicitly.
+Development defaults and test fixtures do not establish production or HA
+guarantees. Their support boundaries are described in the
+[deployment model](../docs/deployment.md).
 
 Use the repository-level `Makefile` for stable commands:
 
