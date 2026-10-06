@@ -64,7 +64,7 @@ and queue Stats for this Environment. The supervisor does not fall back to
 
 ```bash
 docker build \
-  -f deployments/self-hosted/docker/Dockerfile \
+  -f deployments/workers/docker/Dockerfile \
   -t mango-self-hosted-worker:local \
   .
 ```
@@ -190,7 +190,7 @@ Docker still shares the host kernel and allows bridge egress by default. Set
 network policy for your deployment; this preview is not a hardened hostile
 multi-tenant boundary.
 
-See the [launcher reference](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
+See the [launcher reference](https://github.com/yanpgwang/mango/tree/main/deployments/workers/docker)
 for credential handling and [Go SDK helpers](../sdk/go.md#composed-environment-worker)
 for building your own isolated launcher.
 

@@ -156,7 +156,7 @@ endpoint that supports the native Web declarations. Disable them otherwise.
 Build and run the preview reference worker from the repository root:
 
 ```sh
-docker build -f deployments/self-hosted/docker/Dockerfile \
+docker build -f deployments/workers/docker/Dockerfile \
   -t mango-self-hosted-worker:local .
 
 MANGO_ENVIRONMENT_KEY=replace-with-an-environment-key \
@@ -190,7 +190,7 @@ container boundary. Before dispatch, the worker prepares the frozen custom
 Skill pins and attached Memory Stores described below. It does not yet prepare
 File/Git resources or Session outputs, and it is not a hardened hostile
 multi-tenant boundary. See the
-[Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker).
+[Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/workers/docker).
 
 The file tools are confined to `/workspace` plus the exact Memory Store roots
 attached to the Session. `write` and `edit` reject read-only roots. Bash itself

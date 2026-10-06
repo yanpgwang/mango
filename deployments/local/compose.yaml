@@ -1,6 +1,6 @@
 # Reproducible local development stack for the Temporal platform spine.
 #
-# Brings up the backing services plus separate API and worker processes:
+# Brings up the backing services plus separate API and orchestrator processes:
 #   - PostgreSQL   the event ledger, projections, and admission outbox (and, on a
 #                  separate database, Temporal's own persistence)
 #   - Temporal     durable session orchestration (auto-setup + web UI)
@@ -8,7 +8,8 @@
 #   - SeaweedFS    S3-compatible File and Skill bytes for local and CI use
 #   - Migrate      one-shot schema initialization before application startup
 #   - API          PostgreSQL-backed Mango HTTP surface
-#   - Worker       Temporal worker plus PostgreSQL outbox relay
+#   - Orchestrator (`worker` service) Temporal worker plus PostgreSQL outbox relay
+# Operator-owned sandbox workers are started separately.
 #
 # Versions are pinned deliberately. Bump them intentionally, not implicitly.
 #

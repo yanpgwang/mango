@@ -1,4 +1,4 @@
-# Docker self-hosted worker
+# Docker sandbox worker
 
 This is Mango's first reference launcher for a `self_hosted` Environment. The
 trusted host process polls and acknowledges Environment Work with
@@ -9,7 +9,7 @@ Build the sandbox image from the repository root:
 
 ```sh
 docker build \
-  -f deployments/self-hosted/docker/Dockerfile \
+  -f deployments/workers/docker/Dockerfile \
   -t mango-self-hosted-worker:local \
   .
 ```

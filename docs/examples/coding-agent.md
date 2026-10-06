@@ -24,7 +24,7 @@ provides PostgreSQL, Temporal, NATS and SeaweedFS. Run these commands from the r
 root as your normal non-root user, with Go and a local Docker daemon available:
 
 ```bash
-docker build -f deployments/self-hosted/docker/Dockerfile \
+docker build -f deployments/workers/docker/Dockerfile \
   -t mango-self-hosted-worker:local .
 
 export MANGO_API_KEY=sk-mango-local-development

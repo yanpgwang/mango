@@ -181,7 +181,7 @@ func newCluster(t *testing.T) *clusterFixture {
 		t.Log("Using actual release archives, packaged chart and OCI images:", candidate.Revision)
 		c.installCandidateInputs(candidateFolder, candidate)
 	} else {
-		inputs = append([]struct{ file, image string }{{"Dockerfile", c.image}, {"deployments/self-hosted/docker/Dockerfile", c.workerImage}}, inputs...)
+		inputs = append([]struct{ file, image string }{{"Dockerfile", c.image}, {"deployments/workers/docker/Dockerfile", c.workerImage}}, inputs...)
 		// Same-host source-test execution retains the compiling toolchain even
 		// when sudo's secure_path selects an older Go. Never distributed.
 		//nolint:staticcheck // SA1019: intentional same-host test toolchain selection.
