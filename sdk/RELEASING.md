@@ -2,7 +2,7 @@
 
 Publish the runtime, chart and first-party SDKs from one reviewed source revision
 and one accepted candidate. This checkout targets runtime/TypeScript/Go
-`0.1.0-alpha.3` and Python `0.1.0a3`. The native distribution name is `mango-sdk`; <!-- x-release-please-version -->
+`0.1.0-alpha.4` and Python `0.1.0a3`. The native distribution name is `mango-sdk`; <!-- x-release-please-version -->
 Python imports `mango_sdk`, TypeScript imports `mango-sdk`, and the Go module is
 `github.com/yanpgwang/mango/sdk/go`.
 
@@ -28,7 +28,7 @@ replace an accepted version as part of publication.
 
 The publisher validates existing versions, bootstraps and anonymously verifies
 both OCI indexes, transfers missing native SDK distributions with OIDC, creates
-exact source tags (including `sdk/go/v0.1.0-alpha.3`), verifies public Go retrieval, <!-- x-release-please-version -->
+exact source tags (including `sdk/go/v0.1.0-alpha.4`), verifies public Go retrieval, <!-- x-release-please-version -->
 and checks release assets before making the GitHub prerelease public. The
 release record carries checksums, digests, source and workflow evidence, install
 instructions and the supported developer-preview boundary. A failed or partial

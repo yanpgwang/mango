@@ -12,8 +12,8 @@ loop; the Mango server still owns the Agent/model runtime and durable state.
 | TypeScript / JavaScript | [TypeScript SDK](typescript/) — native fetch and async iteration |
 
 This checkout targets resource-based Python `0.1.0a3`,
-TypeScript `0.1.0-alpha.3` <!-- x-release-please-version -->
-and Go `v0.1.0-alpha.3`. The <!-- x-release-please-version -->
+TypeScript `0.1.0-alpha.4` <!-- x-release-please-version -->
+and Go `v0.1.0-alpha.4`. The <!-- x-release-please-version -->
 [release record](https://github.com/yanpgwang/mango/releases) confirms public
 availability. Before publication or during development, use the matching source
 or inspected candidate instructions in each language's README. The earlier

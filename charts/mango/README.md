@@ -5,7 +5,7 @@ operator-provided PostgreSQL, Temporal, NATS and S3. Sandbox execution stays on
 user infrastructure. It does not install state services, mount a Docker socket,
 create Session Pods or generate credentials.
 
-Chart/appVersion: `0.1.0-alpha.3`. Confirm public image/chart availability and <!-- x-release-please-version -->
+Chart/appVersion: `0.1.0-alpha.4`. Confirm public image/chart availability and <!-- x-release-please-version -->
 digests in the [release record](https://github.com/yanpgwang/mango/releases);
 isolated Kubernetes 1.37.0 installation, Mango process replacement and Work
 recovery are acceptance-tested. External Temporal/database cold restore remains

@@ -23,8 +23,8 @@ For your first complete application, follow the [Quickstart](getting-started.md)
 ## Current development version
 
 This checkout targets Python `0.1.0a3`,
-TypeScript `0.1.0-alpha.3` and Go <!-- x-release-please-version -->
-`v0.1.0-alpha.3`. Select matching public versions from the <!-- x-release-please-version -->
+TypeScript `0.1.0-alpha.4` and Go <!-- x-release-please-version -->
+`v0.1.0-alpha.4`. Select matching public versions from the <!-- x-release-please-version -->
 [release record](https://github.com/yanpgwang/mango/releases), which confirms
 registry availability. Before publication or during development, use source
 or inspected candidate packages from the same revision as your server.
