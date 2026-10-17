@@ -12,7 +12,7 @@ cold restore is experimental and has an unresolved intermittent failure; see
 [backup and restore](#consistent-same-release-backup-and-restore).
 Public artifact publication is still pending.
 Use an inspected candidate image from your own
-registry for now. The default `ghcr.io/yanpgwang/mango:0.1.0-alpha.2` image and
+registry for now. The default `ghcr.io/yanpgwang/mango:0.1.0-alpha.3` image and
 chart are not yet published. See [release candidates](release-candidates.md).
 
 The chart runs `mango serve` and `mango orchestrate` as separate Deployments.
@@ -79,7 +79,7 @@ with your existing inspected candidate; use a digest when available:
 ```yaml
 image:
   repository: registry.example.com/team/mango
-  tag: 0.1.0-alpha.2
+  tag: 0.1.0-alpha.3
   # digest: sha256:<the actual multi-platform image digest>
 database:
   existingSecret: {name: mango-database, key: database-url}
@@ -155,7 +155,7 @@ export MANGO_BASE_URL=https://your-mango.example.com
 export MANGO_DOCKER_BASE_URL=https://your-mango.example.com
 export MANGO_ENVIRONMENT_ID=env_replace_with_your_id
 # Set MANGO_ENVIRONMENT_KEY through your secret manager.
-mango-worker docker --image registry.example.com/team/mango-self-hosted-worker:0.1.0-alpha.2
+mango-worker docker --image registry.example.com/team/mango-self-hosted-worker:0.1.0-alpha.3
 ```
 
 The Docker host, workspace storage and execution policy belong to the operator.

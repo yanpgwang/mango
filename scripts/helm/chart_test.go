@@ -120,7 +120,7 @@ func TestChartControlPlaneRoles(t *testing.T) {
 		}
 		pod := field(t, objects[kind+"/alpha-"+role], "spec", "template", "spec")
 		item := container(t, pod)
-		if item["image"] != "ghcr.io/yanpgwang/mango:0.1.0-alpha.2" || pod["automountServiceAccountToken"] != false {
+		if item["image"] != "ghcr.io/yanpgwang/mango:0.1.0-alpha.3" || pod["automountServiceAccountToken"] != false {
 			t.Fatalf("%s image/token policy: %v", role, pod)
 		}
 		security := field(t, pod, "securityContext")
@@ -354,7 +354,7 @@ func TestChartLintAndPackageExcludesLocalFiles(t *testing.T) {
 	if output, err := helm(t, "package", chart, "--destination", folder); err != nil {
 		t.Fatalf("package: %v\n%s", err, output)
 	}
-	file, err := os.Open(filepath.Join(folder, "mango-0.1.0-alpha.2.tgz"))
+	file, err := os.Open(filepath.Join(folder, "mango-0.1.0-alpha.3.tgz"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -194,7 +194,7 @@ func newCluster(t *testing.T) *clusterFixture {
 	}
 	for _, item := range inputs {
 		args := append(append([]string{}, builder...), "-f", item.file, "-t", item.image,
-			"--build-arg", "VERSION=0.1.0-alpha.2", "--build-arg", "REVISION="+c.revision, ".")
+			"--build-arg", "VERSION=0.1.0-alpha.3", "--build-arg", "REVISION="+c.revision, ".")
 		c.command(nil, nil, "docker", args...)
 		c.builtImages = append(c.builtImages, item.image)
 	}
@@ -332,6 +332,6 @@ func (c *clusterFixture) install(s *stateFixture, namespace string, restore bool
 	var version struct{ Version, Revision string }
 	raw := c.kube(nil, "-n", namespace, "exec", "deployment/"+namespace+"-api", "--", "mango", "version")
 	require.NoError(c.t, json.Unmarshal(raw, &version))
-	require.Equal(c.t, "0.1.0-alpha.2", version.Version)
+	require.Equal(c.t, "0.1.0-alpha.3", version.Version)
 	require.Equal(c.t, c.revision, version.Revision)
 }

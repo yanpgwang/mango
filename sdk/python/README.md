@@ -9,7 +9,7 @@ use an SDK version built for the server revision you deploy.
 
 ## Install
 
-Python 3.11 or newer is required. This checkout prepares `0.1.0a2`.
+Python 3.11 or newer is required. This checkout prepares `0.1.0a3`.
 Select a matching version or inspected wheel/source package from the
 [release record](https://github.com/yanpgwang/mango/releases), which confirms
 registry availability. The previously published alpha 1 has an earlier interface.

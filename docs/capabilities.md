@@ -39,7 +39,7 @@ access still depends on the sandbox boundary.
 | Capability | Status | Scope and principal limits |
 | --- | --- | --- |
 | [Agents](api/agents.md) | Supported | Versioned definitions, immutable Session snapshots, updates, archive, filters, and pagination. |
-| [SDKs](sdk.md) | Preview | Go, Python sync/async, and TypeScript resource clients cover the OpenAPI operations. Alpha 2 supports source or inspected candidate packages; registry publication is pending. Published alpha 1 has an earlier interface. |
+| [SDKs](sdk.md) | Preview | Go, Python sync/async, and TypeScript resource clients cover the OpenAPI operations. Use a matching source revision, inspected candidate or version confirmed in the release record. Published alpha 1 has an earlier interface. |
 | [Sessions](api/sessions.md) | Supported | Persistent work, shared budgets, usage, updates, interrupts, archive, and deletion. Archive retains history; automatic idle reclamation is not implemented. |
 | [Events and actions](api/events.md) | Limited | Messages, tool/approval barriers, outcomes, retries, and interrupts. Approval and execution results are separate. File messages support bounded UTF-8 documents, not images or PDFs. Internal execution content has a [1 MiB encoded transport limit](api/events.md#runtime-content-capacity); exceeding it terminates the affected execution, retaining committed history and usage but potentially discarding uncommitted output. |
 | [Event streams](api/events.md#stream-events) | Supported | Durable history plus live Session/Thread SSE and optional ephemeral previews. Streams do not replay history or interpret `Last-Event-ID`. |
