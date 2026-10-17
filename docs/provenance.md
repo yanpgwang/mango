@@ -1637,3 +1637,29 @@ limits or treating compression as an unbounded-capacity guarantee. The limit
 does not establish unlimited total Workflow history. Mango's own converter,
 Workflow, raw HTTP, PostgreSQL and real Temporal tests validate the behavior;
 this infrastructure slice adopts no new CMA API or SDK mapping.
+
+## Developer-preview artifact promotion (2026-10-17)
+
+Reviewed official [npm Trusted Publishers](https://docs.npmjs.com/trusted-publishers/),
+[PyPI Trusted Publishers](https://docs.pypi.org/trusted-publishers/using-a-publisher/)
+and [Skopeo copy](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md)
+guidance, plus Skopeo v1.24.1 commit
+`77f3d92f861271c7cb9175afcf876017bcae9202` (vendored image v5.41.2)
+for digest-destination semantics. The publication workflow pins its external Actions to reviewed commits,
+including the PyPI publisher at `dc37677b2e1c63e2034f94d8a5b11f265b73ba33`.
+
+Adopted short-lived registry identities, explicit main-branch promotion, standard
+OCI digest destinations and anonymous retrieval checks. Source CI, accepted run
+identity, complete payload inventory and hashes precede publication; a retry
+reuses only matching bytes and never retargets an existing version. Both GHCR
+packages are bootstrapped by digest and must become publicly retrievable before
+image version tags or native SDK uploads. A private package or denied read does
+not prove an absent version.
+
+Disabled npm's automatic build provenance for this later promotion job: its
+workflow revision is not necessarily the candidate's build revision. The release
+records the actual source, candidate workflow, promotion workflow, checksums
+and OCI indexes without claiming a signed build attestation. Registry account
+trust and public visibility remain explicit maintainer setup, separate from
+Mango's credential-free development and ordinary CI. No CMA contract, hosted
+rollout constraint or third-party SDK runtime dependency is adopted.
