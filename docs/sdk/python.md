@@ -11,7 +11,7 @@ and generated request/response `TypedDict` types. The distribution name is
 
 ## Install
 
-The resource-based API in this guide is the unreleased `0.1.0a2` source version.
+The resource-based API in this guide is the unreleased `0.1.0a3` source version.
 Use [source installation](../sdk.md#install-from-source). Published alpha 1 uses
 an earlier interface.
 

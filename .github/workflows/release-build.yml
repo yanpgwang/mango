@@ -6,7 +6,7 @@ on:
       version:
         description: Alpha version matching the checked-out SDK metadata
         required: true
-        default: 0.1.0-alpha.2
+        default: 0.1.0-alpha.3
         type: string
 
 permissions:

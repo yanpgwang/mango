@@ -11,10 +11,12 @@ loop; the Mango server still owns the Agent/model runtime and durable state.
 | Python | [Python SDK](python/) — synchronous and asynchronous clients |
 | TypeScript / JavaScript | [TypeScript SDK](typescript/) — native fetch and async iteration |
 
-This checkout prepares the **unreleased** resource-based Python `0.1.0a2` and
-TypeScript `0.1.0-alpha.2`. Use the source installation instructions below each
-language's README. The earlier alpha 1 packages remain published, but use the
-previous interface and cannot run current examples unchanged.
+This checkout targets resource-based Python `0.1.0a3`, TypeScript
+`0.1.0-alpha.3` and Go `v0.1.0-alpha.3`. The
+[release record](https://github.com/yanpgwang/mango/releases) confirms public
+availability. Before publication or during development, use the matching source
+or inspected candidate instructions in each language's README. The earlier
+alpha 1 packages use a previous interface and cannot run current examples unchanged.
 
 All three target every operation in the current OpenAPI document: Agents,
 Environments, Environment Work, Sessions, Events, Threads, Resources, Files,

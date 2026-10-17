@@ -11,7 +11,7 @@ native `fetch` and has no runtime dependencies.
 
 ## Install
 
-The resource-based API in this guide is the unreleased `0.1.0-alpha.2` source
+The resource-based API in this guide is the unreleased `0.1.0-alpha.3` source
 version. Use [source installation](../sdk.md#install-from-source). Published
 alpha 1 uses an earlier interface.
 
