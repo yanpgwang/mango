@@ -16,7 +16,7 @@ cold restore is not a release promise.
 
 ## Build and inspect
 
-Use Go 1.26+, Node.js 22+, uv, Git, Helm 4.3.0 and a Linux or macOS builder. The Make targets
+Use Go 1.26.9+, Node.js 22+, uv, Git, Helm 4.3.0 and a Linux or macOS builder. The Make targets
 select Python 3.12 through uv. Start from a clean checkout whose SDK versions
 match the requested alpha; local changes and existing output directories are
 rejected. Choose an output directory outside the checkout or inside an ignored
