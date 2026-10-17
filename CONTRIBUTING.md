@@ -99,6 +99,12 @@ chart and installs the actual wheel, source package,
 npm tarball and Go source archive outside the checkout. This complements the
 independent HTTP SDK contract tier. See the
 [candidate guide](docs/guides/release-candidates.md); these targets never publish.
+When changing release-version automation, install its isolated test dependency
+with `npm ci --prefix scripts/release/please-tests --ignore-scripts`, then run
+`make release-please-check`. It tests the exact official action's bundled
+release-please updaters and the matched-version handoff without GitHub writes.
+See [release automation](docs/design/release-automation.md) for the version PR,
+final-head CI approval and pending-publication lifecycle.
 The manual **Release candidate** workflow uses tracked snapshots for all archives
 and OCI builds, records both image index digests, then runs the Kubernetes journey
 with the packaged chart, released native supervisor and imported images. Local

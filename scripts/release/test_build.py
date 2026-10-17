@@ -26,9 +26,12 @@ class ReleaseTests(unittest.TestCase):
         self.root = self.folder / "source"
         self.root.mkdir()
         files = {
+            "VERSION": VERSION + "\n",
             "sdk/typescript/package.json": '{"name":"mango-sdk","version":"0.1.0-alpha.2"}',
+            "sdk/typescript/package-lock.json": '{"version":"0.1.0-alpha.2","packages":{"":{"version":"0.1.0-alpha.2"}}}',
             "sdk/python/pyproject.toml": '[project]\nname="mango-sdk"\nversion="0.1.0a2"\n',
             "sdk/python/src/mango_sdk/_version.py": '__version__ = "0.1.0a2"\n',
+            "sdk/python/uv.lock": '[[package]]\nname="mango-sdk"\nversion="0.1.0a2"\n',
             "sdk/go/version.go": 'package mango\nconst Version = "0.1.0-alpha.2"\n',
             "sdk/go/go.mod": 'module github.com/yanpgwang/mango/sdk/go\n\ngo 1.24.0\n',
             "sdk/go/LICENSE": "test license\n",
@@ -65,6 +68,28 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Python"):
             validate_source(self.root, VERSION, self.output)
         self.assertFalse(self.output.exists())
+
+    def test_requested_version_must_match_current_version_before_building(self):
+        (self.root / "VERSION").write_text("0.1.0-alpha.3\n")
+        self.commit()
+        with patch("build.build_payloads") as compiler:
+            with self.assertRaisesRegex(ValueError, "VERSION"):
+                build(self.root, self.output, VERSION, ["linux/arm64"])
+            compiler.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_mismatched_native_lock_version_is_rejected_before_building(self):
+        for name in ["sdk/typescript/package-lock.json", "sdk/python/uv.lock"]:
+            path = self.root / name
+            before = path.read_text()
+            path.write_text(before.replace("alpha.2", "alpha.9").replace("0.1.0a2", "0.1.0a9"))
+            self.commit()
+            with self.subTest(name=name), patch("build.build_payloads") as compiler:
+                with self.assertRaisesRegex(ValueError, "lock"):
+                    build(self.root, self.output, VERSION, ["linux/arm64"])
+                compiler.assert_not_called()
+            path.write_text(before)
+            self.commit()
 
     def test_chart_version_and_app_version_must_match_before_building(self):
         chart = self.root / "charts/mango/Chart.yaml"
