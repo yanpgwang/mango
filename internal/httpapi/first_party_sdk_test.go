@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -39,7 +40,16 @@ func TestFirstPartySDKHTTPConformance(t *testing.T) {
 			autoHandler := NewServer(Deps{Events: automaticPermissionContractEvents{}, Sessions: automaticPermissionContractSessions{}}, Config{RequireAuth: true}).Handler()
 			mcpHandler := NewServer(Deps{Events: mcpOutputContractEvents{}, Sessions: mcpOutputContractSessions{}}, Config{RequireAuth: true}).Handler()
 			workHandler := NewServer(Deps{EnvironmentWork: newSDKEnvironmentWorkService()}, Config{RequireAuth: true}).Handler()
+			threadHandler := threadStatusHandler(newThreadStatusFixture())
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1/sessions/"+threadFilterSessionID+"/threads" {
+					// A literal wire assertion, independent of OpenAPI/generation.
+					if !slices.Equal(r.URL.Query()["statuses[]"], []string{"idle", "running"}) || r.URL.Query().Has("statuses") {
+						t.Errorf("Thread list lost repeated statuses[]: %s", r.URL.RawQuery)
+					}
+					threadHandler.ServeHTTP(w, r)
+					return
+				}
 				if r.URL.Path == "/v1/sessions/sesn_auto_fixture/events" {
 					autoHandler.ServeHTTP(w, r)
 					return
@@ -96,7 +106,7 @@ func TestFirstPartySDKHTTPConformance(t *testing.T) {
 			t.Logf("%s", output)
 			mu.Lock()
 			defer mu.Unlock()
-			for _, route := range []string{"GET /healthz", "POST /v1/agents", "GET /v1/agents", "POST /v1/environments", "POST /v1/sessions", "POST /v1/files"} {
+			for _, route := range []string{"GET /healthz", "POST /v1/agents", "GET /v1/agents", "POST /v1/environments", "POST /v1/sessions", "POST /v1/files", "GET /v1/sessions/" + threadFilterSessionID + "/threads"} {
 				if seen[route] == 0 {
 					t.Errorf("conformance executable did not exercise %s", route)
 				}

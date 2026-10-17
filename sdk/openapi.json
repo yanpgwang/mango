@@ -11067,6 +11067,7 @@
     },
     "/v1/sessions/{session_id}/threads": {
       "get": {
+        "description": "Filter by repeated statuses[] values before pagination. Omit statuses[] to include every status, including archived terminated Threads. Cursors are bound to the Session and status set; reordered or duplicate statuses are equivalent. Pages reflect current state, not a fixed snapshot.",
         "operationId": "listSessionThreads",
         "parameters": [
           {
@@ -11074,6 +11075,9 @@
           },
           {
             "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/Statuses"
           }
         ],
         "responses": {

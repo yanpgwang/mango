@@ -22,6 +22,12 @@ def main() -> None:
     }
     with Mango(base_url=url, api_key=key) as client:
         client.system.health()
+        thread_page = client.sessions.threads.list("sesn_thread_filter", limit=1, statuses=["idle", "running"])
+        assert [item["id"] for item in thread_page["data"]] == ["sthr_filter_primary"]
+        assert thread_page["next_page"] is not None
+        assert [item["id"] for item in client.sessions.threads.iter(
+            "sesn_thread_filter", limit=1, statuses=["idle", "running"],
+        )] == ["sthr_filter_primary", "sthr_filter_running", "sthr_filter_waiting"]
         mcp_page = client.sessions.events.list("sesn_mcp_fixture")
         assert mcp_page["data"][0]["type"] == "agent.mcp_tool_result"
         assert mcp_page["data"][0]["file_id"] == "file_mcp_full"
@@ -116,6 +122,12 @@ def main() -> None:
             async def check_async() -> None:
                 async with AsyncMango(base_url=url, api_key=key) as async_client:
                     await async_client.system.health()
+                    thread_page = await async_client.sessions.threads.list("sesn_thread_filter", limit=1, statuses=["idle", "running"])
+                    assert [item["id"] for item in thread_page["data"]] == ["sthr_filter_primary"]
+                    assert thread_page["next_page"] is not None
+                    assert [item["id"] async for item in async_client.sessions.threads.iter(
+                        "sesn_thread_filter", limit=1, statuses=["idle", "running"],
+                    )] == ["sthr_filter_primary", "sthr_filter_running", "sthr_filter_waiting"]
                     assert session_id is not None
                     assert (await async_client.sessions.retrieve(session_id))["id"] == session_id
 

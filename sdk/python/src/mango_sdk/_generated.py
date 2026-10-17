@@ -1630,9 +1630,10 @@ class SessionsThreadsResource:
         *,
         limit: int | NotGiven = NOT_GIVEN,
         page: str | NotGiven = NOT_GIVEN,
+        statuses: List[models.SessionStatus] | NotGiven = NOT_GIVEN,
     ) -> models.SessionThreadList:
         """GET /v1/sessions/{session_id}/threads."""
-        return cast(models.SessionThreadList, self._client._request(OPERATIONS['list_session_threads'], {'session_id': session_id}, {'limit': limit, 'page': page}))
+        return cast(models.SessionThreadList, self._client._request(OPERATIONS['list_session_threads'], {'session_id': session_id}, {'limit': limit, 'page': page, 'statuses[]': statuses}))
 
     def iter(
         self,
@@ -1640,9 +1641,10 @@ class SessionsThreadsResource:
         *,
         limit: int | NotGiven = NOT_GIVEN,
         page: str | NotGiven = NOT_GIVEN,
+        statuses: List[models.SessionStatus] | NotGiven = NOT_GIVEN,
     ) -> Iterator[models.SessionThread]:
         """GET /v1/sessions/{session_id}/threads; iterate every page."""
-        return cast(Iterator[models.SessionThread], self._client._paginate(OPERATIONS['list_session_threads'], {'session_id': session_id}, {'limit': limit, 'page': page}))
+        return cast(Iterator[models.SessionThread], self._client._paginate(OPERATIONS['list_session_threads'], {'session_id': session_id}, {'limit': limit, 'page': page, 'statuses[]': statuses}))
 
 class SessionsThreadsEventsResource:
     def __init__(self, client: BaseClient) -> None:
@@ -2958,9 +2960,10 @@ class AsyncSessionsThreadsResource:
         *,
         limit: int | NotGiven = NOT_GIVEN,
         page: str | NotGiven = NOT_GIVEN,
+        statuses: List[models.SessionStatus] | NotGiven = NOT_GIVEN,
     ) -> models.SessionThreadList:
         """GET /v1/sessions/{session_id}/threads."""
-        return cast(models.SessionThreadList, await self._client._request(OPERATIONS['list_session_threads'], {'session_id': session_id}, {'limit': limit, 'page': page}))
+        return cast(models.SessionThreadList, await self._client._request(OPERATIONS['list_session_threads'], {'session_id': session_id}, {'limit': limit, 'page': page, 'statuses[]': statuses}))
 
     def iter(
         self,
@@ -2968,9 +2971,10 @@ class AsyncSessionsThreadsResource:
         *,
         limit: int | NotGiven = NOT_GIVEN,
         page: str | NotGiven = NOT_GIVEN,
+        statuses: List[models.SessionStatus] | NotGiven = NOT_GIVEN,
     ) -> AsyncIterator[models.SessionThread]:
         """GET /v1/sessions/{session_id}/threads; iterate every page."""
-        return cast(AsyncIterator[models.SessionThread], self._client._paginate(OPERATIONS['list_session_threads'], {'session_id': session_id}, {'limit': limit, 'page': page}))
+        return cast(AsyncIterator[models.SessionThread], self._client._paginate(OPERATIONS['list_session_threads'], {'session_id': session_id}, {'limit': limit, 'page': page, 'statuses[]': statuses}))
 
 class AsyncSessionsThreadsEventsResource:
     def __init__(self, client: AsyncBaseClient) -> None:

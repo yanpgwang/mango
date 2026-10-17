@@ -58,7 +58,7 @@ access still depends on the sandbox boundary.
 | [Deployments](api/deployments.md) | Limited | Pinned templates, manual and cron runs, Memory Store templates, budgets, leases, and Run records. Agent-archive propagation remains open. |
 | [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, and permanent-input failure. Environment-scoped supervisor keys with issue/list/revoke/rotation; bounded healthcheck Work proves sandbox execution without a Session/model and stores durable success, failure, timeout, or cancellation. |
 | [API health](deployment.md#health-probes) | Supported | Public process liveness and bounded PostgreSQL readiness, including read-only rejection and recovery. Does not certify worker execution. |
-| [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. |
+| [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, status-filtered Thread pagination, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. |
 
 ## Product and operational boundaries
 
