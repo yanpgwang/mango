@@ -148,7 +148,7 @@ func TestVerticalSlice_PayloadCapacity(t *testing.T) {
 			request.Header.Set("Authorization", "Bearer "+key)
 			response, err := server.Client().Do(request)
 			require.NoError(t, err)
-			defer response.Body.Close()
+			defer func() { require.NoError(t, response.Body.Close()) }()
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			var public struct {
 				Data []struct {

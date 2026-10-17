@@ -185,11 +185,12 @@ func TestPayloadLimitOutcomeDurableRealTemporal(t *testing.T) {
 				require.Equal(t, starts[0].ID, ends[0].Payload["outcome_evaluation_start_id"])
 			}
 			wantWorking, wantGrading := int64(1), int64(1)
-			if mode == "prepare" {
+			switch mode {
+			case "prepare":
 				wantWorking, wantGrading = 0, 0
-			} else if mode == "model_response" {
+			case "model_response":
 				wantGrading = 0
-			} else if mode == "input" {
+			case "input":
 				wantWorking, wantGrading = 2, 0
 			}
 			require.Equal(t, wantWorking, probe.working.Load())
