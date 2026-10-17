@@ -1116,8 +1116,9 @@ type ListSessionThreadEventsParams struct {
 }
 
 type ListSessionThreadsParams struct {
-	Limit Optional[int64]  `json:"limit,omitzero"`
-	Page  Optional[string] `json:"page,omitzero"`
+	Limit    Optional[int64]           `json:"limit,omitzero"`
+	Page     Optional[string]          `json:"page,omitzero"`
+	Statuses Optional[[]SessionStatus] `json:"statuses[],omitzero"`
 }
 
 type ListSessionsParams struct {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"time"
 
 	mango "github.com/yanpgwang/mango/sdk/go"
@@ -30,6 +31,9 @@ func run() (result error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.System.Health(ctx); err != nil {
+		return err
+	}
+	if err := checkThreadStatusFilter(ctx, client); err != nil {
 		return err
 	}
 	mcpPage, err := client.Sessions.Events.List(ctx, "sesn_mcp_fixture", mango.ListSessionEventsParams{})
@@ -293,6 +297,32 @@ func checkAutomaticPermissions(ctx context.Context, client *mango.Client) error 
 				return fmt.Errorf("deny decision lost")
 			}
 		}
+	}
+	return nil
+}
+
+func checkThreadStatusFilter(ctx context.Context, client *mango.Client) error {
+	params := mango.ListSessionThreadsParams{
+		Limit:    mango.Some[int64](1),
+		Statuses: mango.Some([]mango.SessionStatus{"idle", "running"}),
+	}
+	page, err := client.Sessions.Threads.List(ctx, "sesn_thread_filter", params)
+	if err != nil {
+		return err
+	}
+	if len(page.Data) != 1 || page.Data[0].ID != "sthr_filter_primary" || page.NextPage == nil {
+		return fmt.Errorf("filtered Thread first page: %+v", page)
+	}
+	var ids []string
+	iterator := client.Sessions.Threads.ListAutoPaging(ctx, "sesn_thread_filter", params)
+	for iterator.Next() {
+		ids = append(ids, iterator.Value().ID)
+	}
+	if err := iterator.Err(); err != nil {
+		return err
+	}
+	if !slices.Equal(ids, []string{"sthr_filter_primary", "sthr_filter_running", "sthr_filter_waiting"}) {
+		return fmt.Errorf("Thread status filter lost across pages: %v", ids)
 	}
 	return nil
 }

@@ -25,6 +25,37 @@ at the time of that work. On 2026-09-30, the pre-release migration chain was
 consolidated into the [current development schema baseline](deployment.md#development-database-baseline);
 those historical upgrade and downgrade paths are no longer shipped.
 
+## Thread status filtering (2026-10-18)
+
+- User problem: applications need to locate running or waiting delegated work
+  without fetching every Thread. Reviewed Mango's Thread projection, list SQL,
+  HTTP cursor binding, OpenAPI and first-party SDK pagination before comparing
+  the [CMA Thread list API](https://platform.claude.com/docs/en/managed-agents/session-threads#list-threads).
+- Paired public SDK references: [Go v1.82.0](https://github.com/anthropics/anthropic-sdk-go/blob/v1.82.0/betasessionthread.go)
+  (`543d266ce81a4487281e084b013fef807dbb5f18`),
+  [Python v1.15.0](https://github.com/anthropics/anthropic-sdk-python/blob/v1.15.0/src/anthropic/types/beta/sessions/thread_list_params.py)
+  (`bcd55fe1d3f0f1240765f8cef04295b67337f55a`), and
+  [TypeScript sdk-v0.135.0](https://github.com/anthropics/anthropic-sdk-typescript/blob/sdk-v0.135.0/src/resources/beta/sessions/threads/threads.ts)
+  (`04a4c28c70de498d6d0e930e43edb5edb9ac545e`), all published
+  2026-10-15 UTC. The filter first appeared in their 2026-10-09 releases
+  (Go v1.80.0, Python v1.13.0, TypeScript sdk-v0.133.0). CMA remains beta;
+  a released SDK tag does not establish API stability.
+- Adopted the repeated `statuses[]` wire parameter, optional status collection
+  on the existing Thread list resource, and filter-preserving SDK pagination.
+  Mango reuses its existing Session/Thread status enum and Session list
+  validation: unknown and empty values fail, while reordered or duplicate
+  statuses describe the same set. No additional lifecycle state is needed.
+- Mango owns the query and cursor rules: PostgreSQL filters before the limit,
+  matching Threads keep primary-first/spawn ordering, and the opaque cursor
+  binds the Session and normalized status set. Pages read current state rather
+  than a snapshot; archived terminated Threads remain available. Independent
+  HTTP, PostgreSQL and all three first-party SDK conformance tests validate
+  these behaviors. No migration or write-side effect is introduced.
+- Hosted authentication, beta headers, rollout constraints, and dynamic
+  workflow resources are not adopted. Official SDKs were read as references,
+  not executed or added as dependencies. Mango's own OpenAPI generates its
+  client parameters and pagination methods.
+
 ## Explicit database migration role (2026-09-30)
 
 - Reviewed Mango's PostgreSQL initialization, command entry points, local
