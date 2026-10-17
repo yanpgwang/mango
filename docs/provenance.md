@@ -1663,3 +1663,34 @@ and OCI indexes without claiming a signed build attestation. Registry account
 trust and public visibility remain explicit maintainer setup, separate from
 Mango's credential-free development and ordinary CI. No CMA contract, hosted
 rollout constraint or third-party SDK runtime dependency is adopted.
+
+## Matched release version PRs (2026-10-18)
+
+Reviewed official [release-please manifest configuration](https://github.com/googleapis/release-please/blob/v17.6.0/docs/manifest-releaser.md)
+and [action v5.0.0](https://github.com/googleapis/release-please-action/tree/45996ed1f6d02564a971a2fa1b5860e934307cf7).
+The pinned action bundles release-please **17.6.0**; the isolated updater test
+dependency uses that exact version, rather than assuming the latest library
+matches the compiled action. Reviewed its native prerelease strategy, generic
+JSON/YAML/marked-file updaters, Python updater and merged-pending PR handling.
+
+Adopted one root manifest, `simple`/`VERSION`, native prerelease selection and
+changelog generation, and explicit extra-file updates for the matched runtime,
+chart and SDK source. The bot skips GitHub release creation at both action and
+strategy boundaries; existing candidate acceptance and human-triggered OIDC
+publication remain separate. Native merged-pending labels stop subsequent
+version PRs until a matching public prerelease contains the merged version PR.
+Partial tags do not establish publication completion.
+
+The upstream Python updater writes the SemVer string directly. Mango instead
+keeps canonical PEP 440 `0.1.0aN` using a narrow, allowlisted post-step with
+GitHub's expected-head compare-and-swap; it never executes PR source or changes
+dependency versions. Independent tests run the actual upstream manifest/updaters
+and Mango's candidate metadata validator, preserving synthetic/history versions.
+
+Reviewed current [GitHub workflow-trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow):
+`GITHUB_TOKEN` PR opened/synchronize/reopened events create approval-required
+workflows. This current GitHub policy supersedes the action README's older
+blanket statement that token-created PRs do not trigger CI. Maintainers approve
+and verify the final bot head's checks; no long-lived token or alternate CI
+dispatch is introduced. This release-maintenance slice adopts no CMA workflow,
+hosted constraint or third-party SDK runtime dependency.

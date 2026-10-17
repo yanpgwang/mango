@@ -38,8 +38,12 @@ type releaseCandidate struct {
 	Artifacts     []candidateArtifact `json:"artifacts"`
 }
 
-func readCandidate(folder, revision string) (releaseCandidate, error) {
+func readCandidate(folder, revision, version string) (releaseCandidate, error) {
 	var result releaseCandidate
+	pythonVersion, err := candidatePythonVersion(version)
+	if err != nil {
+		return result, err
+	}
 	data, err := os.ReadFile(filepath.Join(folder, "manifest.json"))
 	if err != nil {
 		return result, err
@@ -47,8 +51,8 @@ func readCandidate(folder, revision string) (releaseCandidate, error) {
 	if err := json.Unmarshal(data, &result); err != nil {
 		return result, err
 	}
-	if result.SchemaVersion != 1 || result.Version != "0.1.0-alpha.3" || result.Revision != revision ||
-		len(result.SDKVersions) != 3 || result.SDKVersions["go"] != result.Version || result.SDKVersions["typescript"] != result.Version || result.SDKVersions["python"] != "0.1.0a3" {
+	if result.SchemaVersion != 1 || result.Version != version || result.Revision != revision ||
+		len(result.SDKVersions) != 3 || result.SDKVersions["go"] != result.Version || result.SDKVersions["typescript"] != result.Version || result.SDKVersions["python"] != pythonVersion {
 		return result, errors.New("candidate identity must match this reviewed alpha source and SDKs")
 	}
 	sha := regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -114,6 +118,14 @@ func readCandidate(folder, revision string) (releaseCandidate, error) {
 		}
 	}
 	return result, nil
+}
+
+func candidatePythonVersion(version string) (string, error) {
+	parts := regexp.MustCompile(`^((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))-alpha\.(0|[1-9][0-9]*)$`).FindStringSubmatch(version)
+	if len(parts) != 3 {
+		return "", errors.New("VERSION must be a canonical alpha version")
+	}
+	return parts[1] + "a" + parts[2], nil
 }
 
 func extractCandidateWorker(archive, target string) (err error) {

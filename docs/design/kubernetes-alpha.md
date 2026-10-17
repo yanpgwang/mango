@@ -32,9 +32,9 @@ experimental; the unresolved failure is retained, not declared fixed.
   rolling Workflow versioning and general HA certification are not promised.
 - Files/Skills need configured S3 storage; Vaults/Webhooks need the operator's
   encryption keyring. Model credentials belong only to orchestration.
-- Runtime and chart use `0.1.0-alpha.3`, matching TypeScript
-  `0.1.0-alpha.3`, Python `0.1.0a3`, and Go module tag
-  `sdk/go/v0.1.0-alpha.3`. This is an alpha, not a supported stable API.
+- Runtime and chart use `0.1.0-alpha.3`, matching TypeScript <!-- x-release-please-version -->
+  `0.1.0-alpha.3`, Python `0.1.0a3`, and Go module tag <!-- x-release-please-version -->
+  `sdk/go/v0.1.0-alpha.3`. This is an alpha, not a supported stable API. <!-- x-release-please-version -->
 
 ## Delivery sequence
 

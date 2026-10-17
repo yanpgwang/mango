@@ -26,18 +26,18 @@ so ignored local files cannot affect compilation or packaging.
 
 ```sh
 make release-unit
-make release-build RELEASE_VERSION=0.1.0-alpha.3
-make release-check RELEASE_VERSION=0.1.0-alpha.3
+make release-build RELEASE_VERSION=0.1.0-alpha.3 # x-release-please-version
+make release-check RELEASE_VERSION=0.1.0-alpha.3 # x-release-please-version
 ```
 
-The default output is `dist/release/0.1.0-alpha.3`. `manifest.json` records the
+The default output is `dist/release/0.1.0-alpha.3`. `manifest.json` records the <!-- x-release-please-version -->
 full source revision, language versions, platform and SHA-256 for each archive.
 Chart version and `appVersion` must match the runtime/SDK candidate. Helm packages
 the tracked source without overriding that metadata; mismatches fail before builds.
 `SHA256SUMS` also covers the manifest. Check that index before installing:
 
 ```sh
-cd dist/release/0.1.0-alpha.3
+cd dist/release/0.1.0-alpha.3 # x-release-please-version
 sha256sum -c SHA256SUMS
 ```
 
@@ -71,7 +71,7 @@ candidates include a wheel and source distribution, both exposing the same
 version. Install the inspected files directly in your application's environment:
 
 ```sh
-npm install /absolute/path/to/mango-sdk-0.1.0-alpha.3.tgz
+npm install /absolute/path/to/mango-sdk-0.1.0-alpha.3.tgz # x-release-please-version
 python -m pip install /absolute/path/to/mango_sdk-0.1.0a3-py3-none-any.whl
 ```
 
@@ -153,18 +153,20 @@ An unchanged passing diagnostic run did not establish a fix.
 Publish only a candidate built from the reviewed merged revision after its
 required CI and artifact acceptance pass. Keep the inspected archives unchanged,
 use their recorded OCI index digests, and tag the Go module from that same source
-with `sdk/go/v0.1.0-alpha.3`. Registry publication requires maintainer credentials;
+with `sdk/go/v0.1.0-alpha.3`. Registry publication requires maintainer credentials; <!-- x-release-please-version -->
 those are never development or CI dependencies.
 
 Release notes record the actual source, checksums, image digests, successful
 candidate workflow and supported lifecycle. Operators install the inspected
-`mango-0.1.0-alpha.3.tgz` with their existing Secrets and dependency values:
+`mango-0.1.0-alpha.3.tgz` with their existing Secrets and dependency values: <!-- x-release-please-version -->
 
 ```sh
+# x-release-please-start-version
 helm install mango ./mango-0.1.0-alpha.3.tgz --namespace mango --create-namespace \
   --values operator-values.yaml \
   --set image.repository=ghcr.io/yanpgwang/mango \
   --set 'image.digest=sha256:<digest-from-the-verified-release-record>'
+# x-release-please-end
 ```
 
 Select the matching published reference-worker image for the external

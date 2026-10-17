@@ -37,9 +37,10 @@ and Environment Work recovery. External Temporal database cold restore remains
 experimental after an unexplained restored-server exit in CI; retaining its test
 does not make it a release promise.
 
-Non-goals are automatic version selection or release cadence, a generic registry
-framework, changes to Mango's API, hosted sandbox integration, production HA,
-upgrades, and lossless large-content transport. The bounded-runtime change uses
+The [version-planning bot](release-automation.md) proposes matched metadata and
+changelogs separately. Publication non-goals are automatic cadence, a generic
+registry framework, changes to Mango's API, hosted sandbox integration, production
+HA, upgrades, and lossless large-content transport. The bounded-runtime change uses
 a new alpha version; the earlier alpha.2 candidate and draft keep their original
 source and bytes.
 
@@ -55,9 +56,10 @@ Secrets or Mango configuration. Account sign-in and two-factor checks remain
 with the maintainer. GHCR packages must allow this repository's job token to
 write and must be publicly readable. For first publication, the workflow first
 uploads both indexes to digest destinations without creating version tags.
-New GHCR packages start private: use each package's GitHub settings to make it
-public, then retry the same candidate. Anonymous digest retrieval must pass
-before writing image version tags or uploading native SDK distributions.
+New GHCR packages may require a visibility change: if either is private, use its
+GitHub settings to make it public, then retry the same candidate. Anonymous
+digest retrieval must pass before writing image version tags or uploading native
+SDK distributions.
 Authorization failures are never treated as evidence that a version is absent.
 
 After the source's required main CI passes, dispatch **Release candidate** at

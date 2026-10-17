@@ -43,7 +43,7 @@ HELM ?= helm
 KIND ?= kind
 KUBECTL ?= kubectl
 RELEASE_PYTHON ?= $(UV) run --python 3.12 python
-RELEASE_VERSION ?= 0.1.0-alpha.3
+RELEASE_VERSION ?= $(shell cat VERSION)
 RELEASE_DIR ?= dist/release/$(RELEASE_VERSION)
 RELEASE_PLATFORMS ?=
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
@@ -64,7 +64,7 @@ endif
 	local-config local-up local-down local-health local-ps local-logs
 
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
-.PHONY: release-unit release-build release-check
+.PHONY: release-unit release-please-check release-build release-check
 .PHONY: chart-check test-kubernetes test-kubernetes-restore
 
 help:
@@ -222,6 +222,9 @@ sdk-install:
 
 release-unit:
 	$(RELEASE_PYTHON) -m unittest discover -s scripts/release -p 'test_*.py'
+
+release-please-check:
+	$(UV) run --python 3.12 npm --prefix scripts/release/please-tests test
 
 release-build:
 	$(RELEASE_PYTHON) scripts/release/build.py --version '$(RELEASE_VERSION)' --output '$(RELEASE_DIR)' --helm '$(HELM)' $(foreach target,$(RELEASE_PLATFORMS),--platform '$(target)')

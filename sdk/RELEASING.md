@@ -2,7 +2,7 @@
 
 Publish the runtime, chart and first-party SDKs from one reviewed source revision
 and one accepted candidate. This checkout targets runtime/TypeScript/Go
-`0.1.0-alpha.3` and Python `0.1.0a3`. The native distribution name is `mango-sdk`;
+`0.1.0-alpha.3` and Python `0.1.0a3`. The native distribution name is `mango-sdk`; <!-- x-release-please-version -->
 Python imports `mango_sdk`, TypeScript imports `mango-sdk`, and the Go module is
 `github.com/yanpgwang/mango/sdk/go`.
 
@@ -12,6 +12,11 @@ Acceptance includes generated-source checks, language tests, independent HTTP
 conformance, fresh package installations outside the checkout and the supported
 Kubernetes lifecycle. Development and ordinary CI require no registry or hosted
 agent credentials.
+
+The [release version bot](../docs/design/release-automation.md) proposes the next
+matched version and changelog. Review and approve CI for its final canonical
+Python/Go/TypeScript/chart head before merging. That merge changes source
+metadata; candidate acceptance and explicit publication still follow below.
 
 After the exact merged source's required checks pass, run **Release candidate**
 on `main`, recording its successful run ID. Then use **Publish developer preview**
@@ -23,7 +28,7 @@ replace an accepted version as part of publication.
 
 The publisher validates existing versions, bootstraps and anonymously verifies
 both OCI indexes, transfers missing native SDK distributions with OIDC, creates
-exact source tags (including `sdk/go/v0.1.0-alpha.3`), verifies public Go retrieval,
+exact source tags (including `sdk/go/v0.1.0-alpha.3`), verifies public Go retrieval, <!-- x-release-please-version -->
 and checks release assets before making the GitHub prerelease public. The
 release record carries checksums, digests, source and workflow evidence, install
 instructions and the supported developer-preview boundary. A failed or partial

@@ -14,7 +14,7 @@ and publication remain separate acceptance deliveries.
 ## Installation and state
 
 `charts/mango` is a Helm application chart, version/appVersion
-`0.1.0-alpha.3`. It installs two Deployments, an API ClusterIP Service, a
+`0.1.0-alpha.3`. It installs two Deployments, an API ClusterIP Service, a <!-- x-release-please-version -->
 nonsecret ConfigMap, and a pre-install migration hook Job. It has no stateful
 dependencies, Session Pods, Docker socket, cluster RBAC or sandbox launcher.
 Image digest overrides take precedence over the explicit version tag; no

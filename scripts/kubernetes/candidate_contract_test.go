@@ -49,16 +49,17 @@ func TestCandidateRejectsUnmatchedOrChangedInputs(t *testing.T) {
 			case "invalid-image-digest":
 				records[6]["digest"] = "sha256:invalid"
 			}
-			metadata := map[string]any{"schema_version": 1, "version": "0.1.0-alpha.3", "revision": manifestRevision,
-				"sdk_versions": map[string]string{"go": "0.1.0-alpha.3", "python": "0.1.0a3", "typescript": "0.1.0-alpha.3"}, "artifacts": records}
+			// Synthetic identity: deliberately independent of the checkout's VERSION.
+			metadata := map[string]any{"schema_version": 1, "version": "0.1.0-alpha.2", "revision": manifestRevision,
+				"sdk_versions": map[string]string{"go": "0.1.0-alpha.2", "python": "0.1.0a2", "typescript": "0.1.0-alpha.2"}, "artifacts": records}
 			if scenario == "old-version" {
-				metadata["version"] = "0.1.0-alpha.2"
-				metadata["sdk_versions"] = map[string]string{"go": "0.1.0-alpha.2", "python": "0.1.0a2", "typescript": "0.1.0-alpha.2"}
+				metadata["version"] = "0.1.0-alpha.1"
+				metadata["sdk_versions"] = map[string]string{"go": "0.1.0-alpha.1", "python": "0.1.0a1", "typescript": "0.1.0-alpha.1"}
 			}
 			data, err := json.Marshal(metadata)
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(filepath.Join(folder, "manifest.json"), data, 0600))
-			_, err = readCandidate(folder, revision)
+			_, err = readCandidate(folder, revision, "0.1.0-alpha.2")
 			if scenario == "valid" {
 				require.NoError(t, err)
 			} else {

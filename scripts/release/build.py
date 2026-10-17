@@ -39,6 +39,8 @@ def validate_source(root, version, output, revision=None):
     match = VERSION_PATTERN.fullmatch(version)
     if not match:
         raise ValueError("version must be canonical X.Y.Z-alpha.N")
+    if (root / "VERSION").read_text().strip() != version:
+        raise ValueError("VERSION does not match the candidate")
     if os.path.lexists(output):
         raise ValueError(f"candidate destination already exists: {output}")
     if output.resolve().is_relative_to(root.resolve()):
@@ -51,10 +53,17 @@ def validate_source(root, version, output, revision=None):
     typescript = json.loads((root / "sdk/typescript/package.json").read_text())
     if typescript.get("name") != "mango-sdk" or typescript.get("version") != version:
         raise ValueError("TypeScript SDK name/version does not match the candidate")
+    typescript_lock = json.loads((root / "sdk/typescript/package-lock.json").read_text())
+    if typescript_lock.get("version") != version or typescript_lock.get("packages", {}).get("", {}).get("version") != version:
+        raise ValueError("TypeScript SDK lock versions do not match the candidate")
     python = tomllib.loads((root / "sdk/python/pyproject.toml").read_text())["project"]
     python_source = (root / "sdk/python/src/mango_sdk/_version.py").read_text()
     if python.get("name") != "mango-sdk" or python.get("version") != python_version or not re.search(rf'^__version__ = "{re.escape(python_version)}"$', python_source, re.MULTILINE):
         raise ValueError("Python SDK metadata/source version does not match the candidate")
+    python_lock = tomllib.loads((root / "sdk/python/uv.lock").read_text())
+    locked_versions = [package["version"] for package in python_lock.get("package", []) if package.get("name") == "mango-sdk"]
+    if locked_versions != [python_version]:
+        raise ValueError("Python SDK lock version does not match the candidate")
     go_source = (root / "sdk/go/version.go").read_text()
     if not re.search(rf'^const Version = "{re.escape(version)}"$', go_source, re.MULTILINE):
         raise ValueError("Go SDK source version does not match the candidate")
