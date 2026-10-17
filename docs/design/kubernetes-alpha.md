@@ -33,7 +33,7 @@ experimental; the unresolved failure is retained, not declared fixed.
 - Files/Skills need configured S3 storage; Vaults/Webhooks need the operator's
   encryption keyring. Model credentials belong only to orchestration.
 - Runtime and chart use `0.1.0-alpha.4`, matching TypeScript <!-- x-release-please-version -->
-  `0.1.0-alpha.4`, Python `0.1.0a3`, and Go module tag <!-- x-release-please-version -->
+  `0.1.0-alpha.4`, Python `0.1.0a4`, and Go module tag <!-- x-release-please-version -->
   `sdk/go/v0.1.0-alpha.4`. This is an alpha, not a supported stable API. <!-- x-release-please-version -->
 
 ## Delivery sequence

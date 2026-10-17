@@ -2,7 +2,7 @@
 
 Publish the runtime, chart and first-party SDKs from one reviewed source revision
 and one accepted candidate. This checkout targets runtime/TypeScript/Go
-`0.1.0-alpha.4` and Python `0.1.0a3`. The native distribution name is `mango-sdk`; <!-- x-release-please-version -->
+`0.1.0-alpha.4` and Python `0.1.0a4`. The native distribution name is `mango-sdk`; <!-- x-release-please-version -->
 Python imports `mango_sdk`, TypeScript imports `mango-sdk`, and the Go module is
 `github.com/yanpgwang/mango/sdk/go`.
 
