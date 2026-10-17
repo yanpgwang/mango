@@ -10,10 +10,13 @@ packages from one clean Git revision. The manual candidate workflow also exports
 both OCI images and installs the actual artifacts in an isolated Kubernetes
 lifecycle test. The [alpha design](../design/kubernetes-alpha.md) defines the
 release scope. Building and validating candidates does not publish registries.
+The developer-preview scope is installation, Mango process restart and Work
+recovery with retained external state. Independent external Temporal/database
+cold restore is not a release promise.
 
 ## Build and inspect
 
-Use Go 1.26+, Node.js 22+, uv, Git, Helm 4.3.0 and a Linux or macOS builder. The Make targets
+Use Go 1.26.9+, Node.js 22+, uv, Git, Helm 4.3.0 and a Linux or macOS builder. The Make targets
 select Python 3.12 through uv. Start from a clean checkout whose SDK versions
 match the requested alpha; local changes and existing output directories are
 rejected. Choose an output directory outside the checkout or inside an ignored
@@ -85,7 +88,7 @@ SDK/chart archives, then exports the control-plane and reference-worker OCI imag
 for Linux AMD64 and ARM64. Both image builds also use the tracked Git snapshot,
 so ignored local files are never compiler inputs. It requires only read access
 to source, performs no registry login or push, and uploads one candidate artifact
-retained for 14 days after artifact installation/recovery passes.
+retained for 14 days after artifact installation, Mango restart and Work recovery pass.
 
 OCI exports are named `mango-oci.tar` and
 `mango-self-hosted-worker-oci.tar`. The image checker verifies metadata blob
@@ -121,14 +124,28 @@ This verifies every listed payload's bytes and source identity before importing
 images. It runs the native supervisor from the command archive, installs the
 packaged chart and uses both inspected release images. Only the explicitly
 simulated Messages fixture is built from source. The existing authenticated
-HTTP, external sandbox, process replacement and original-Temporal-history
-restore journey runs against those artifacts. Fixtures own their cluster,
+HTTP, external sandbox, process replacement and Work reactivation journey runs
+against those artifacts with the original external state services retained.
+Fixtures own their cluster,
 state stores, aliases and volumes; configured provider credentials are unused.
 
 The manual workflow runs this tier on Linux AMD64 with Docker 28.1.1;
 local acceptance also exercises macOS ARM64 and the ARM64 images. The default
 required **Kubernetes lifecycle** job retains the source-build contributor path.
 Fresh SDK installation checks remain separate from runtime durability tests.
+
+The complete independent cold-restore test remains available explicitly:
+
+```sh
+MANGO_RELEASE_CANDIDATE=/absolute/path/to/candidate \
+  make test-kubernetes-restore KIND=kind KUBECTL=kubectl HELM=helm
+```
+
+It is experimental, preserves all original restore assertions and fails normally
+when restoration fails. It does not gate this narrower developer-preview alpha.
+The unresolved restored-Temporal exit and supporting workflow evidence are
+recorded in the [Kubernetes guide](kubernetes.md#consistent-same-release-backup-and-restore).
+An unchanged passing diagnostic run did not establish a fix.
 
 ## Publication boundary
 
@@ -152,5 +169,5 @@ helm install mango ./mango-0.1.0-alpha.2.tgz --namespace mango --create-namespac
 Select the matching published reference-worker image for the external
 `mango-worker docker --image` invocation. Follow the
 [Kubernetes guide](kubernetes.md) for dependency preparation, Environment keys,
-backup/key preservation and same-release restore. A candidate's existence does
+state/key preservation and the experimental restore boundary. A candidate's existence does
 not promise registry availability, upgrades/rollback, live snapshots or general HA.

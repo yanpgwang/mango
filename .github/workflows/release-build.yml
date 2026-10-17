@@ -102,7 +102,7 @@ jobs:
         run: python scripts/release/images.py dist/release/candidate
       - uses: ./.github/actions/setup-kubernetes
         id: kubernetes
-      - name: Install actual artifacts and exercise restart and quiesced restore
+      - name: Install actual artifacts and verify Mango restart and Work recovery
         env:
           MANGO_RELEASE_CANDIDATE: dist/release/candidate
         run: >-

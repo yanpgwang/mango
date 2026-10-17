@@ -7,7 +7,7 @@ it does not determine directory names.
 | --- | --- | --- |
 | [`local`](local/) | Development | Source-built API and orchestrator with PostgreSQL, Temporal, NATS and SeaweedFS for local development and service tests |
 | [`workers/docker`](workers/docker/) | Preview | Docker sandbox item image and instructions for the operator-run Environment Work supervisor |
-| [`../charts/mango`](../charts/mango/) | Candidate | Kubernetes control plane with operator-provided state and Secrets; installation, restart and same-release quiesced restore tested, publication pending |
+| [`../charts/mango`](../charts/mango/) | Developer-preview candidate | Kubernetes control plane with operator-provided state and Secrets; installation, Mango restart and Work recovery acceptance, publication pending |
 | [`../scripts/kubernetes`](../scripts/kubernetes/) | Test fixture | Isolated kind lifecycle and artifact acceptance tests; not a user installation bundle |
 
 ## Choose an installation
@@ -23,6 +23,12 @@ orchestrator and one-shot migration. State services are managed separately by
 the operator; they may run in the same cluster. The current Docker sandbox
 supervisor runs separately on an operator-owned Docker host and connects to the
 Mango API.
+
+The developer-preview alpha retains external state services across Mango
+process restart. Independent external Temporal/database cold backup and restore
+remain experimental with a known unresolved failure; their complete opt-in test
+is retained separately. See the
+[recovery boundary](../docs/guides/kubernetes.md#consistent-same-release-backup-and-restore).
 
 A single-host installation bundle consuming versioned release images is
 planned. The development Compose configuration contains development keys and

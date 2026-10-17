@@ -1545,9 +1545,9 @@ image is pinned by digest.
 Adopted explicit fixture ownership/kubeconfig, standard Deployment replacement
 and complete quiescence before copying Mango and both Temporal databases plus
 S3 bytes. Rejected live multi-store snapshot, HA and cross-version guarantees.
-Restored HTTP retains File/Skill bytes/checksums, Memory Versions and original
-action IDs; completing the original custom action resumes restored Workflow
-history. Existing Vault GET decrypts/verifies the restored envelope using the
+The experimental restore assertions check File/Skill bytes/checksums, Memory
+Versions and original action IDs; completing the original custom action must
+resume restored Workflow history. Existing Vault GET decrypts/verifies the restored envelope using the
 original random keyring before returning public metadata. Sandbox workspace
 volumes remain independently operator-owned.
 
@@ -1580,10 +1580,38 @@ builds use tracked Git snapshots; rejected ignored local compiler inputs,
 metadata version overrides and rebuilding runtime images during artifact acceptance.
 Only the explicit test-model fixture remains source-built. Independent checksum,
 identity, archive-path and ownership tests precede actual chart/native worker/OCI
-installation, restart and original-Temporal-history restore.
+installation, Mango restart and Work reactivation. Independent cold restore
+remains a separately selected experimental test under the scope decision below.
 
 Candidate CI remains read-only and requires no provider or publishing credential.
 Publication is a distinct maintainer action after the reviewed revision and its
 acceptance pass; registry availability is not inferred from successful builds.
 No new CMA API/SDK mapping is adopted: hosted rollout, beta identifiers and SDK
 publication policy do not define Mango's independently owned distribution.
+
+## Developer-preview recovery scope (2026-10-17)
+
+The maintainer approved installation, Mango process restart and Work recovery
+while operator-managed external state services remain available. Independent
+external Temporal/database cold backup and restore is outside this alpha's
+support scope. This is a product acceptance decision, not a repair or a change
+to Mango's `/v1`, persistence, Work protocol or external fixture settings.
+
+The full original restore journey remains in `TestKubernetesQuiescedRestore`,
+`make test-kubernetes-restore` and an independent manual workflow. Original
+Run ID/history, pending-action, object-byte, keyring and independent-store
+assertions remain intact, and errors retain their nonzero exit status. Required
+source and actual-candidate lifecycle acceptance selects `TestKubernetesAlpha`;
+core service tests retain active Work across Mango runtime replacement.
+
+[Main Integration run 37417003487](https://github.com/yanpgwang/mango/actions/runs/37417003487)
+recorded restored Temporal exit code 1 without an OOM kill. The later
+[unchanged Linux diagnostic run 39040792757](https://github.com/yanpgwang/mango/actions/runs/39040792757)
+passed without capturing that fatal path. Successful probes and observed
+membership delays do not establish a fix; the cold-restore failure is unresolved.
+
+Temporal `v1.29.7` membership/startup source was a debugging reference, including
+its heartbeat eligibility window and service-start deadline. No speculative
+membership deletion, timeout/resource adjustment, hosted service or external
+SDK dependency was adopted. CMA has no analogous operator-owned database
+backup or chart release lifecycle; no new CMA API/SDK mapping was needed.

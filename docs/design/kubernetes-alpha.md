@@ -12,6 +12,11 @@ Cloud sandbox support is an independent execution option and does not gate
 this release. Agent/Deployment archive propagation remains ordinary feature
 work, not a prerequisite for installation.
 
+On 2026-10-17 the maintainer approved a narrower developer-preview alpha:
+installation, Mango process restart and Work recovery with retained external
+state. Independent external Temporal/database cold backup and restore remain
+experimental; the unresolved failure is retained, not declared fixed.
+
 ## First release scope
 
 - API and Temporal orchestration run as separate Kubernetes Deployments.
@@ -20,8 +25,10 @@ work, not a prerequisite for installation.
 - The operator provides sandbox execution through Environment Work. The Docker
   launcher is a reference component outside the chart, not a control-plane
   dependency. The chart never mounts a Docker socket or creates Session Pods.
-- The first release supports fresh installation and restart/recovery on the
-  documented topology. Cross-version upgrades, rollback of persisted state,
+- The first release covers fresh installation, Mango API/orchestrator restart
+  and Work recovery on the documented topology while external state services
+  remain available. Independent external-state cold restore is excluded.
+  Cross-version upgrades, rollback of persisted state,
   rolling Workflow versioning and general HA certification are not promised.
 - Files/Skills need configured S3 storage; Vaults/Webhooks need the operator's
   encryption keyring. Model credentials belong only to orchestration.
@@ -101,12 +108,20 @@ File/Skill bytes; PostgreSQL metadata alone cannot reconstruct them. The Vault
 keyring must accompany encrypted data. User sandbox working directories are
 operator-owned and outside chart deletion and Session deletion guarantees.
 
-Installation documentation must explain these backup boundaries and preserve
-original encryption keys. Restore validation must use a consistent, quiesced
-fixture into independent state stores; it must not reset the maintainer's local
-stack. NATS Core previews/wakeups are ephemeral and repaired from durable state.
-An alpha release records exactly which restart and restore paths were exercised;
-it does not claim arbitrary live snapshots or production HA.
+Installation documentation must explain these storage boundaries and preserve
+original encryption keys. Required source and actual-artifact acceptance verify
+installation, Mango process replacement and Work reactivation; required core
+services retain active-Work/runtime-restart coverage. NATS Core previews/wakeups
+are ephemeral and repaired from durable state.
+
+The complete quiesced independent-store restore remains in
+`make test-kubernetes-restore` and a separate manual workflow. Its assertions and
+nonzero failure status are retained. The restored Temporal exit in
+[main Integration](https://github.com/yanpgwang/mango/actions/runs/37417003487)
+has no established fatal cause; a subsequent unchanged diagnostic pass did not
+fix it. This experimental boundary does not gate the approved narrower alpha.
+See the [recovery design](kubernetes-recovery.md). No live-snapshot, cross-version
+restore or production HA guarantee is made.
 
 ## Research and intentional choices
 

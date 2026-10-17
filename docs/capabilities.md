@@ -73,8 +73,9 @@ access still depends on the sandbox boundary.
   production Compose and Kubernetes distributions are not available. The
   [Helm candidate](guides/kubernetes.md) has role-separated Secrets, an initial
   schema hook, probes and bounded temporary storage. Isolated Kubernetes 1.37.0
-  install, pending-action replacement, external Docker execution and same-release
-  quiesced restore are tested with source inputs and actual release artifacts.
+  install, pending-action replacement, external Docker execution and Work
+  reactivation are covered by developer-preview acceptance with source inputs
+  and actual release artifacts, while external state services are retained.
   Artifact acceptance uses a matched packaged chart, native supervisor and OCI
   images; the candidate workflow runs that lifecycle before upload. Publication
   remains pending. The
@@ -88,9 +89,12 @@ access still depends on the sandbox boundary.
 - **Scaling and recovery:** API and orchestration roles can run separately.
   Files/Skills upload leases and atomic cleanup claims protect another API
   process's active uploads, with two-service PostgreSQL/object-store tests.
-  Quiesced restore tests additionally cover Mango/Temporal databases, File/Skill
-  bytes, Memory Versions and the original encryption keyring on one isolated
-  Kubernetes topology. See [operator recovery](guides/kubernetes.md#consistent-same-release-backup-and-restore)
+  Active Work/runtime restart and reactivation remain required service tests.
+  Independent external Temporal/database cold restore is experimental and has an
+  unresolved intermittent Temporal exit; it is not supported by this alpha.
+  The complete opt-in test retains Mango/Temporal databases, File/Skill bytes,
+  Memory Versions, original history and keyring assertions. See
+  [operator recovery](guides/kubernetes.md#consistent-same-release-backup-and-restore)
   and the [current assessment](architecture/self-hosted-workers.md#remaining-work-and-evidence-limits).
   Worker Versioning, heterogeneous-worker routing, broader rollout evidence,
   automated backup, audit, and observability still need work.

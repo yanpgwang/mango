@@ -1,0 +1,36 @@
+name: Experimental external-state cold restore
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cold-restore-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Experimental cold restore (known intermittent failure)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: ./.github/actions/setup-helm
+        id: helm
+      - uses: ./.github/actions/setup-kubernetes
+        id: kubernetes
+      - name: Exercise the complete independent restore without suppressing failure
+        run: >-
+          make test-kubernetes-restore
+          KIND='${{ steps.kubernetes.outputs.kind }}'
+          KUBECTL='${{ steps.kubernetes.outputs.kubectl }}'
+          HELM='${{ steps.helm.outputs.path }}'
+          SERVICE_TEST_EXEC='sudo -n -E --'
