@@ -47,8 +47,8 @@ func readCandidate(folder, revision string) (releaseCandidate, error) {
 	if err := json.Unmarshal(data, &result); err != nil {
 		return result, err
 	}
-	if result.SchemaVersion != 1 || result.Version != "0.1.0-alpha.2" || result.Revision != revision ||
-		len(result.SDKVersions) != 3 || result.SDKVersions["go"] != result.Version || result.SDKVersions["typescript"] != result.Version || result.SDKVersions["python"] != "0.1.0a2" {
+	if result.SchemaVersion != 1 || result.Version != "0.1.0-alpha.3" || result.Revision != revision ||
+		len(result.SDKVersions) != 3 || result.SDKVersions["go"] != result.Version || result.SDKVersions["typescript"] != result.Version || result.SDKVersions["python"] != "0.1.0a3" {
 		return result, errors.New("candidate identity must match this reviewed alpha source and SDKs")
 	}
 	sha := regexp.MustCompile(`^[0-9a-f]{64}$`)

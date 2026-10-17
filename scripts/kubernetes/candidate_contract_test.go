@@ -15,7 +15,7 @@ import (
 )
 
 func TestCandidateRejectsUnmatchedOrChangedInputs(t *testing.T) {
-	for _, scenario := range []string{"valid", "old-source", "changed-sdk", "escape", "duplicate-role", "missing-chart", "invalid-image-digest"} {
+	for _, scenario := range []string{"valid", "old-source", "old-version", "changed-sdk", "escape", "duplicate-role", "missing-chart", "invalid-image-digest"} {
 		t.Run(scenario, func(t *testing.T) {
 			folder := t.TempDir()
 			var records []map[string]any
@@ -49,8 +49,12 @@ func TestCandidateRejectsUnmatchedOrChangedInputs(t *testing.T) {
 			case "invalid-image-digest":
 				records[6]["digest"] = "sha256:invalid"
 			}
-			metadata := map[string]any{"schema_version": 1, "version": "0.1.0-alpha.2", "revision": manifestRevision,
-				"sdk_versions": map[string]string{"go": "0.1.0-alpha.2", "python": "0.1.0a2", "typescript": "0.1.0-alpha.2"}, "artifacts": records}
+			metadata := map[string]any{"schema_version": 1, "version": "0.1.0-alpha.3", "revision": manifestRevision,
+				"sdk_versions": map[string]string{"go": "0.1.0-alpha.3", "python": "0.1.0a3", "typescript": "0.1.0-alpha.3"}, "artifacts": records}
+			if scenario == "old-version" {
+				metadata["version"] = "0.1.0-alpha.2"
+				metadata["sdk_versions"] = map[string]string{"go": "0.1.0-alpha.2", "python": "0.1.0a2", "typescript": "0.1.0-alpha.2"}
+			}
 			data, err := json.Marshal(metadata)
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(filepath.Join(folder, "manifest.json"), data, 0600))
