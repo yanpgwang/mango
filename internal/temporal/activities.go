@@ -690,7 +690,7 @@ func (a *Activities) appendWorkflowEvents(
 // PrepareTurn reads one turn's immutable starting state from PostgreSQL. The
 // result becomes Workflow history; replay never performs these reads in
 // Workflow code.
-func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (PrepareTurnResult, error) {
+func (a *Activities) prepareTurn(ctx context.Context, in PrepareTurnInput) (PrepareTurnResult, error) {
 	trigger, err := a.source.GetEvent(ctx, in.SessionID, in.TriggerEventID)
 	if err != nil {
 		return PrepareTurnResult{}, err
@@ -1378,7 +1378,7 @@ const outcomeGraderSystem = "You are an independent outcome grader for a managed
 // EvaluateOutcome uses a separate model context from the working agent. It
 // returns only a compact verdict that deterministic Workflow code can use to
 // decide whether to revise or finish.
-func (a *Activities) EvaluateOutcome(
+func (a *Activities) evaluateOutcome(
 	ctx context.Context,
 	in EvaluateOutcomeInput,
 ) (EvaluateOutcomeResult, error) {
@@ -1676,7 +1676,7 @@ func withoutResumeEvents(history []domain.Event, actions []ResumeAction) []domai
 
 // CallModel performs exactly one model call. Its full normalized response is
 // returned to Temporal, which durably records the text/tool round structure.
-func (a *Activities) CallModel(ctx context.Context, in CallModelInput) (CallModelResult, error) {
+func (a *Activities) callModel(ctx context.Context, in CallModelInput) (CallModelResult, error) {
 	if a.modelClient == nil {
 		return CallModelResult{}, fmt.Errorf("temporal: model client is not configured")
 	}
@@ -1886,7 +1886,7 @@ func modelRetryErrorType(kind model.ErrorKind) string {
 // journal. A completed step is returned without re-execution; a started step
 // without a result is classified ambiguous and reported as a successful result
 // so the Workflow terminates rather than retrying the side effect.
-func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (ExecuteToolResult, error) {
+func (a *Activities) executeTool(ctx context.Context, in ExecuteToolInput) (ExecuteToolResult, error) {
 	if a.journal == nil {
 		return ExecuteToolResult{}, fmt.Errorf("temporal: tool execution requires a journal")
 	}

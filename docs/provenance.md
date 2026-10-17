@@ -1615,3 +1615,25 @@ its heartbeat eligibility window and service-start deadline. No speculative
 membership deletion, timeout/resource adjustment, hosted service or external
 SDK dependency was adopted. CMA has no analogous operator-owned database
 backup or chart release lifecycle; no new CMA API/SDK mapping was needed.
+
+## Bounded runtime content transport (2026-10-17)
+
+Reviewed Temporal Go SDK v1.48.0's default data converter and official
+[data handling](https://docs.temporal.io/develop/go/data-handling) and
+[payload and gRPC limit guidance](https://docs.temporal.io/troubleshooting/blob-size-limit-error).
+Mango currently transports complete context and result DTOs through Activities.
+An oversized value can prevent delivery of an otherwise completed operation.
+
+Adopted measurement of the actual default-converter payload, including JSON
+escaping and protobuf metadata. Mango imposes a conservative 1 MiB limit at
+content-bearing Activity boundaries and turn completion, returning a small,
+durable terminal receipt instead of retrying a completed operation for size.
+Committed history, real usage, routing, and lifecycle control facts survive;
+uncommitted large content need not. The maintainer accepted this explicit
+developer-preview boundary. No public route or error type is added.
+
+Deferred lossless reference transport and rejected increasing Temporal server
+limits or treating compression as an unbounded-capacity guarantee. The limit
+does not establish unlimited total Workflow history. Mango's own converter,
+Workflow, raw HTTP, PostgreSQL and real Temporal tests validate the behavior;
+this infrastructure slice adopts no new CMA API or SDK mapping.

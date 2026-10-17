@@ -6573,6 +6573,7 @@
       },
       "SessionExecutionError": {
         "additionalProperties": false,
+        "description": "Asynchronous execution failure. Runtime content exceeding the 1 MiB encoded internal transport limit produces a terminal retry_status; committed history and incurred usage remain durable, but uncommitted oversized output may be discarded. This limit includes accumulated context and encoding overhead and is separate from HTTP admission.",
         "properties": {
           "credential_id": {
             "type": "string"

@@ -117,7 +117,7 @@ func runWorkflowTurnInternal(
 	triggerEventID string,
 	resolutionEventIDs []string,
 	interrupts *turnInterruptWatcher,
-) (RunTurnResult, error) {
+) (result RunTurnResult, err error) {
 	var prepared PrepareTurnResult
 	if err := workflow.ExecuteActivity(actx, ActivityPrepareTurn, PrepareTurnInput{
 		SessionID:          sessionID,
@@ -219,6 +219,15 @@ func runWorkflowTurnInternal(
 		loadedSkills:              agentruntime.LoadedRuntimeSkills(prepared.Request.Messages),
 		perRequestUsageAccounting: modelRequestAccounting,
 	}
+	if prepared.Outcome != nil {
+		turn.outcomeID = prepared.Outcome.OutcomeID
+	}
+	defer func() {
+		var capacity *payloadCapacityError
+		if errors.As(err, &capacity) {
+			result, err = turn.terminateCapacity(capacity)
+		}
+	}()
 	if prepared.FatalError != "" {
 		return turn.terminate(failTurn(prepared.FatalError))
 	}
