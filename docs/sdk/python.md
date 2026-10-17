@@ -11,9 +11,10 @@ and generated request/response `TypedDict` types. The distribution name is
 
 ## Install
 
-The resource-based API in this guide is the unreleased `0.1.0a3` source version.
-Use [source installation](../sdk.md#install-from-source). Published alpha 1 uses
-an earlier interface.
+This guide targets `0.1.0a3`. Select a matching package confirmed in the
+[release record](https://github.com/yanpgwang/mango/releases). Before publication
+or during development, use [source installation](../sdk.md#install-from-source)
+or an inspected candidate. Published alpha 1 uses an earlier interface.
 
 ## Configure the client
 
