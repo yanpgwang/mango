@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,6 +17,13 @@ import (
 	"go.temporal.io/sdk/client"
 	"google.golang.org/protobuf/proto"
 )
+
+// External-state cold restore remains experimental and is selected explicitly
+// by test-kubernetes-restore, independently of developer-preview acceptance.
+func TestKubernetesQuiescedRestore(t *testing.T) {
+	source, evidence := runKubernetesLifecycle(t)
+	source.verifyQuiescedRestore(evidence)
+}
 
 type workflowSnapshot struct {
 	runID   string

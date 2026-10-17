@@ -65,7 +65,7 @@ endif
 
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
 .PHONY: release-unit release-build release-check
-.PHONY: chart-check test-kubernetes
+.PHONY: chart-check test-kubernetes test-kubernetes-restore
 
 help:
 	@echo "Development"
@@ -94,7 +94,8 @@ help:
 	@echo "  make release-build  build matched runtime/SDK candidates without publication"
 	@echo "  make release-check  inspect and freshly install candidate packages"
 	@echo "  make chart-check    lint/render/package the Helm candidate without a cluster"
-	@echo "  make test-kubernetes  exercise isolated chart installation/restart/restore"
+	@echo "  make test-kubernetes  exercise isolated installation, Mango restart and Work recovery"
+	@echo "  make test-kubernetes-restore  explicitly run experimental external-state cold restore"
 	@echo "  make security       scan reachable Go code and high-severity npm issues"
 	@echo "  make docs-check     install and verify documentation dependencies"
 	@echo "  make dev-env-init   create ~/.config/mango/dev.env with mode 0600"
@@ -208,7 +209,12 @@ chart-check:
 test-kubernetes:
 	MANGO_TEST_KUBERNETES=1 MANGO_KIND_PATH='$(KIND)' \
 	MANGO_KUBECTL_PATH='$(KUBECTL)' MANGO_HELM_PATH='$(HELM)' \
-	$(GO) test -exec '$(SERVICE_TEST_EXEC)' -timeout 30m ./scripts/kubernetes -count=1 -v
+	$(GO) test -exec '$(SERVICE_TEST_EXEC)' -timeout 30m ./scripts/kubernetes -run '^TestKubernetesAlpha$$' -count=1 -v
+
+test-kubernetes-restore:
+	MANGO_TEST_KUBERNETES=1 MANGO_KIND_PATH='$(KIND)' \
+	MANGO_KUBECTL_PATH='$(KUBECTL)' MANGO_HELM_PATH='$(HELM)' \
+	$(GO) test -exec '$(SERVICE_TEST_EXEC)' -timeout 30m ./scripts/kubernetes -run '^TestKubernetesQuiescedRestore$$' -count=1 -v
 
 sdk-install:
 	$(UV) sync --project sdk/python --frozen --group dev

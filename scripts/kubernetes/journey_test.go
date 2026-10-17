@@ -26,6 +26,11 @@ import (
 )
 
 func TestKubernetesAlpha(t *testing.T) {
+	runKubernetesLifecycle(t)
+}
+
+func runKubernetesLifecycle(t *testing.T) (*stateFixture, journeyEvidence) {
+	t.Helper()
 	if os.Getenv("MANGO_TEST_KUBERNETES") != "1" {
 		t.Skip("set MANGO_TEST_KUBERNETES=1 to require isolated Kubernetes acceptance")
 	}
@@ -34,7 +39,7 @@ func TestKubernetesAlpha(t *testing.T) {
 	cluster.install(source, "alpha", false)
 	evidence := source.verifyRestartJourney()
 	cluster.verifyOwnedWorkCleanup()
-	source.verifyQuiescedRestore(evidence)
+	return source, evidence
 }
 
 type journeyEvidence struct {

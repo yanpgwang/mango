@@ -5,9 +5,12 @@ description: Configure the Helm candidate with your state services and connect y
 
 # Kubernetes control plane
 
-The Helm chart is a **candidate**. Offline configuration/packaging and isolated
-Kubernetes 1.37.0 installation, control-plane replacement and same-release
-quiesced restore are tested. Public artifact publication is still pending.
+The Helm chart is a **developer-preview candidate**. Its alpha scope covers
+fresh installation, Mango API/orchestrator restart and Work recovery while the
+operator's external state services remain available. Independent Temporal/database
+cold restore is experimental and has an unresolved intermittent failure; see
+[backup and restore](#consistent-same-release-backup-and-restore).
+Public artifact publication is still pending.
 Use an inspected candidate image from your own
 registry for now. The default `ghcr.io/yanpgwang/mango:0.1.0-alpha.2` image and
 chart are not yet published. See [release candidates](release-candidates.md).
@@ -183,9 +186,10 @@ require restarting both roles; do not discard keys referenced by saved data.
 
 Removing the chart does not remove external PostgreSQL, Temporal history, S3
 bytes or user sandbox directories. Keep all of those plus original encryption
-keys for recovery. An initialized same-release restore may use
+keys for recovery. The experimental initialized same-release restore may use
 `migration.enabled=false`; both process roles still check the schema. Actual
-cluster evidence and operator responsibilities are described below.
+cluster evidence and operator responsibilities are described below. This does
+not establish supported cold-backup/restore of the external state services.
 Cross-version upgrades, rollback and live multi-store snapshots are not supported.
 
 ## Tested lifecycle
@@ -203,15 +207,10 @@ Skills and Memory. Short transport interruptions are expected with one API
 replica: applications should retry reads and reconcile an uncertain event
 submission from history before retrying it.
 
-It also restores Mango and Temporal state plus object bytes into independent
-stores with the original random keyring. Public IDs, Memory Versions and
-encrypted Credential integrity checks survive; the original pending custom
-action then resumes the restored Workflow. Read-only Temporal queries verify
-the original Run ID and complete history prefix, and confirm that same execution
-advances after the result; rebuilding an execution from Mango rows cannot pass.
 The fixture also checks paused orphan cleanup without touching an unrelated
-item. This evidence covers one topology
-and same-release recovery, not general HA.
+item. This release acceptance covers one topology with retained external state,
+not independent external-state cold restore or general HA. Core service tests
+separately exercise active Work across Mango runtime restart and reactivation.
 
 Contributors run the same required **Kubernetes lifecycle** CI tier:
 
@@ -241,6 +240,25 @@ trusted test-binary execution and container-owned volume cleanup.
 
 ## Consistent same-release backup and restore
 
+This retained procedure and its complete test are **experimental**, outside the
+developer-preview alpha support scope. The [main Integration failure](https://github.com/yanpgwang/mango/actions/runs/37417003487)
+recorded restored Temporal exiting with code 1 without an OOM kill. Its fatal
+cause remains unknown. A later [unchanged diagnostic run](https://github.com/yanpgwang/mango/actions/runs/39040792757)
+passed without reproducing that exit; it is not evidence of a fix.
+
+Run the complete restore journey explicitly, locally or through the manual
+**Experimental external-state cold restore** workflow:
+
+```sh
+make test-kubernetes-restore KIND=kind KUBECTL=kubectl HELM=helm
+```
+
+Failures retain their nonzero exit status. This tier preserves the original
+Run ID/history-prefix, pending-action continuation, File/Skill bytes, Memory
+Versions, keyring and independent-store assertions. It is not part of required
+developer-preview acceptance. `MANGO_RELEASE_CANDIDATE` may also select verified
+artifact inputs for this explicit experimental test.
+
 PostgreSQL metadata alone is insufficient. Preserve all of these together:
 
 | State | Responsibility |
@@ -251,7 +269,7 @@ PostgreSQL metadata alone is insufficient. Preserve all of these together:
 | Original keyring and deployment Secrets | Decryption keys and access to the restored dependencies |
 | User sandbox workspace storage | Operator-owned volumes/directories, backed up independently of the control plane |
 
-For the validated path, first stop admitting new work and complete or reconcile
+For this experimental path, first stop admitting new work and complete or reconcile
 active uploads, external operations and tool executions. Shut down the external
 supervisor while its API remains reachable so it can flush Memory and release
 Work. Then stop both Mango roles and wait for their Pods to terminate. Stop all
