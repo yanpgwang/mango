@@ -27,9 +27,12 @@ class PythonMappingTests(unittest.TestCase):
     def contents(self):
         return {path: (ROOT / path).read_text() for path in please.PYTHON_FILES}
 
-    def test_only_canonical_version_slots_change_and_retry_is_a_noop(self):
+    def versions(self):
         current = (ROOT / "VERSION").read_text().strip()
-        target = "0.1.0-alpha." + str(int(please.ALPHA.fullmatch(current)[1]) + 1)
+        return current, "0.1.0-alpha." + str(int(please.ALPHA.fullmatch(current)[1]) + 1)
+
+    def test_only_canonical_version_slots_change_and_retry_is_a_noop(self):
+        current, target = self.versions()
         before = self.contents()
         changes = please.python_updates(before, current, target)
         self.assertEqual(set(changes), set(please.PYTHON_FILES))
@@ -40,21 +43,27 @@ class PythonMappingTests(unittest.TestCase):
         self.assertEqual(please.python_updates({**before, **changes}, current, target), {})
 
     def test_unexpected_or_duplicate_metadata_slot_fails_instead_of_broad_replacement(self):
-        for path, addition in [("sdk/python/pyproject.toml", '\nversion = "0.1.0a3"\n'),
-                               ("sdk/python/src/mango_sdk/_version.py", '\n__version__ = "0.1.0a9"\n')]:
+        current, target = self.versions()
+        old = please.python_version(current)
+        unexpected = "0.1.0a" + str(int(please.ALPHA.fullmatch(target)[1]) + 1)
+        for path, addition in [("sdk/python/pyproject.toml", f'\nversion = "{old}"\n'),
+                               ("sdk/python/src/mango_sdk/_version.py", f'\n__version__ = "{unexpected}"\n')]:
             contents = self.contents()
             contents[path] += addition
-            with self.subTest(path=path), self.assertRaisesRegex(ValueError, "slot"):
-                please.python_updates(contents, "0.1.0-alpha.3", "0.1.0-alpha.4")
+            with self.subTest(path=path), self.assertRaisesRegex(ValueError, f"slot: {path}"):
+                please.python_updates(contents, current, target)
         for version in ["0.1.0-alpha.04", "0.2.0-alpha.1", "0.1.0", "0.1.0a4"]:
             with self.subTest(version=version), self.assertRaises(ValueError):
                 please.python_version(version)
 
     def test_document_mapping_does_not_change_a_longer_alpha_number(self):
+        current, target = self.versions()
+        longer = please.python_version(current) + "0"
         contents = self.contents()
-        contents["docs/sdk/python.md"] += "\nOther version 0.1.0a30 remains distinct.\n"
-        changes = please.python_updates(contents, "0.1.0-alpha.3", "0.1.0-alpha.4")
-        self.assertIn("Other version 0.1.0a30 remains distinct.", changes["docs/sdk/python.md"])
+        contents["docs/sdk/python.md"] += f"\nOther version {longer} remains distinct.\n"
+        changes = please.python_updates(contents, current, target)
+        self.assertIn(please.python_version(target), changes["docs/sdk/python.md"])
+        self.assertIn(f"Other version {longer} remains distinct.", changes["docs/sdk/python.md"])
 
     def test_graphql_commit_requires_the_expected_head_and_contains_only_allowed_python_files(self):
         response = {"data": {"createCommitOnBranch": {"commit": {"oid": SOURCE}}}}

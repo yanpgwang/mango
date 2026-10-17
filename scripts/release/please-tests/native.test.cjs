@@ -14,17 +14,17 @@ const python = process.env.MANGO_RELEASE_TEST_PYTHON || 'python3';
 const logger = Object.fromEntries(['debug', 'info', 'warn', 'error', 'trace'].map(key => [key, () => {}]));
 setLogger(logger);
 
-function github(message, overrides = {}) {
+function github(message, overrides = {}, source = root) {
   return {
     repository: { owner: 'yanpgwang', repo: 'mango' },
     async getFileContentsOnBranch(file) {
-      return { parsedContent: fs.readFileSync(path.join(root, file), 'utf8') };
+      return { parsedContent: fs.readFileSync(path.join(source, file), 'utf8') };
     },
     async getFileJson(file) {
       return JSON.parse((await this.getFileContentsOnBranch(file)).parsedContent);
     },
     async *releaseIterator() {
-      yield { tagName: `v${current}`, sha: baseline, notes: 'Existing public preview' };
+      yield { tagName: `v${fs.readFileSync(path.join(source, 'VERSION'), 'utf8').trim()}`, sha: baseline, notes: 'Existing public preview' };
     },
     async *mergeCommitIterator() {
       yield { sha: '2'.repeat(40), message, files: ['internal/example.go'] };
@@ -35,11 +35,13 @@ function github(message, overrides = {}) {
   };
 }
 
-async function candidate(message) {
-  const manifest = await Manifest.fromManifest(github(message), 'main');
+async function candidate(message, source = root) {
+  const version = fs.readFileSync(path.join(source, 'VERSION'), 'utf8').trim();
+  const expected = `0.1.0-alpha.${Number(version.match(/^0\.1\.0-alpha\.(\d+)$/)[1]) + 1}`;
+  const manifest = await Manifest.fromManifest(github(message, {}, source), 'main');
   const prs = await manifest.buildPullRequests();
   assert.equal(prs.length, 1);
-  assert.equal(prs[0].title.toString(), `chore(main): release ${next}`);
+  assert.equal(prs[0].title.toString(), `chore(main): release ${expected}`);
   assert.equal(prs[0].headRefName, 'release-please--branches--main');
   return prs[0];
 }
@@ -125,4 +127,46 @@ test('native merged-pending mutex holds even when a partial publication already 
   const manifest = await Manifest.fromManifest(api, 'main');
   assert.deepEqual(await manifest.createPullRequests(), []);
   assert.deepEqual(await manifest.createReleases(), [], 'skip-github-release config is a second publication guard');
+});
+
+test('the complete release unit suite passes on two successive native-generated version trees', async () => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'mango-bot-future-'));
+  const source = path.join(temporary, 'source');
+  const config = JSON.parse(fs.readFileSync(path.join(root, 'release-please-config.json'), 'utf8'));
+  const pythonPaths = JSON.parse(execFileSync(python, ['-c',
+    `import json,sys; sys.path.insert(0,${JSON.stringify(path.join(root, 'scripts/release'))}); from please import PYTHON_FILES; print(json.dumps(PYTHON_FILES))`
+  ], { encoding: 'utf8' }));
+  const paths = new Set(['VERSION', '.release-please-manifest.json', 'release-please-config.json', ...pythonPaths,
+    ...config.packages['.']['extra-files'].map(file => typeof file === 'string' ? file : file.path),
+    ...fs.readdirSync(path.join(root, 'scripts/release')).filter(file => file.endsWith('.py')).map(file => `scripts/release/${file}`)]);
+  if (fs.existsSync(path.join(root, 'CHANGELOG.md'))) paths.add('CHANGELOG.md');
+  try {
+    for (const filename of paths) {
+      fs.mkdirSync(path.dirname(path.join(source, filename)), { recursive: true });
+      fs.copyFileSync(path.join(root, filename), path.join(source, filename));
+    }
+    for (let generation = 0; generation < 2; generation++) {
+      const version = fs.readFileSync(path.join(source, 'VERSION'), 'utf8').trim();
+      const pr = await candidate('fix: validate the next matched source snapshot', source);
+      for (const update of pr.updates) {
+        const filename = path.join(source, update.path);
+        const before = fs.existsSync(filename) ? fs.readFileSync(filename, 'utf8') : undefined;
+        fs.mkdirSync(path.dirname(filename), { recursive: true });
+        fs.writeFileSync(filename, update.updater.updateContent(before, logger));
+      }
+      const target = fs.readFileSync(path.join(source, 'VERSION'), 'utf8').trim();
+      const contents = Object.fromEntries(pythonPaths.map(filename => [filename, fs.readFileSync(path.join(source, filename), 'utf8')]));
+      const changes = JSON.parse(execFileSync(python, ['-c',
+        `import json,sys; sys.path.insert(0,${JSON.stringify(path.join(root, 'scripts/release'))}); from please import python_updates; print(json.dumps(python_updates(json.load(sys.stdin),${JSON.stringify(version)},${JSON.stringify(target)})))`
+      ], { input: JSON.stringify(contents), encoding: 'utf8' }));
+      for (const [filename, content] of Object.entries(changes)) fs.writeFileSync(path.join(source, filename), content);
+      // This executes the actual suite from the generated source, so ROOT and
+      // VERSION advance together. No test class or expected result is mocked.
+      execFileSync(python, ['-m', 'unittest', 'discover', '-s', 'scripts/release', '-p', 'test_*.py'],
+        { cwd: source, stdio: 'pipe' });
+      console.log(`Complete release unit suite passed on native source ${target}`);
+    }
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
 });
