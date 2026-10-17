@@ -46,6 +46,24 @@ async function candidate(message, source = root) {
   return prs[0];
 }
 
+function assertArchiveExamples(content, version) {
+  // A native generic updater treats an adjacent ".tgz" as prerelease text.
+  function archive(command) {
+    const line = content.split('\n').find(line => line.startsWith(command + ' '));
+    assert.ok(line, `missing ${command} example`);
+    const argument = line.slice(command.length + 1).match(/^(?:"([^"]+)"|'([^']+)'|(\S+))/);
+    return (argument[1] || argument[2] || argument[3]).replaceAll('${VERSION}', version);
+  }
+  assert.deepEqual({ npm: archive('npm install'), helm: archive('helm install mango') }, {
+    npm: `/absolute/path/to/mango-sdk-${version}.tgz`,
+    helm: `./mango-${version}.tgz`,
+  }, 'native version updates must preserve both installable archive filenames');
+  assert.deepEqual([...content.matchAll(/^VERSION=(\S+) # x-release-please-version$/gm)].map(match => match[1]),
+    [version, version], 'both archive commands must bind the actual generated version');
+  assert.ok(content.includes('`mango-<version>.tgz`') || content.includes('`mango-' + version + '.tgz`'),
+    'the inspected Helm archive description must retain its .tgz suffix');
+}
+
 test('test dependency matches the official action bundle', () => {
   assert.equal(upstreamVersion, '17.6.0');
 });
@@ -79,6 +97,7 @@ for (const message of ['fix: correct a runtime failure', 'feat: add a user workf
       `import json,sys; sys.path.insert(0,${JSON.stringify(path.join(root, 'scripts/release'))}); from please import python_updates; print(json.dumps(python_updates(json.load(sys.stdin),${JSON.stringify(current)},${JSON.stringify(next)})))`
     ], { input: JSON.stringify({ ...pythonFiles, ...files }), encoding: 'utf8' }));
     Object.assign(files, { ...pythonFiles, ...files }, mapped);
+    assertArchiveExamples(files['docs/guides/release-candidates.md'], next);
     const targetPython = next.replace('-alpha.', 'a');
     assert.ok(files['sdk/python/pyproject.toml'].includes(`version = "${targetPython}"`));
     assert.ok(files['sdk/python/src/mango_sdk/_version.py'].includes(`__version__ = "${targetPython}"`));
@@ -160,6 +179,7 @@ test('the complete release unit suite passes on two successive native-generated 
         `import json,sys; sys.path.insert(0,${JSON.stringify(path.join(root, 'scripts/release'))}); from please import python_updates; print(json.dumps(python_updates(json.load(sys.stdin),${JSON.stringify(version)},${JSON.stringify(target)})))`
       ], { input: JSON.stringify(contents), encoding: 'utf8' }));
       for (const [filename, content] of Object.entries(changes)) fs.writeFileSync(path.join(source, filename), content);
+      assertArchiveExamples(fs.readFileSync(path.join(source, 'docs/guides/release-candidates.md'), 'utf8'), target);
       // This executes the actual suite from the generated source, so ROOT and
       // VERSION advance together. No test class or expected result is mocked.
       execFileSync(python, ['-m', 'unittest', 'discover', '-s', 'scripts/release', '-p', 'test_*.py'],

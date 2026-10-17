@@ -7,8 +7,10 @@ create Session Pods or generate credentials.
 
 Chart/appVersion: `0.1.0-alpha.3`. Confirm public image/chart availability and <!-- x-release-please-version -->
 digests in the [release record](https://github.com/yanpgwang/mango/releases);
-isolated Kubernetes 1.37.0 install, replacement and same-release quiesced restore
-are tested. Use a matching release or inspected candidate image.
+isolated Kubernetes 1.37.0 installation, Mango process replacement and Work
+recovery are acceptance-tested. External Temporal/database cold restore remains
+[experimental](https://yanpgwang.github.io/mango/guides/kubernetes#consistent-same-release-backup-and-restore).
+Use a matching release or inspected candidate image.
 The [Kubernetes guide](https://yanpgwang.github.io/mango/guides/kubernetes)
 contains prerequisites, existing-Secret creation, installation, external-worker
 connection and diagnosis. The repository copy is
