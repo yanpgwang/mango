@@ -132,6 +132,12 @@ responsibilities. On lease loss it cancels the runner, prevents later result
 submission, returns `ErrEnvironmentWorkLeaseLost`, and does not Stop a possibly
 newer owner's Work.
 
+An unavailable upload reply does not prove the write failed. Before the next
+sync or cancellation flush, the helper reconciles the exact sent content hash
+against a fresh Store listing, so an earlier committed upload cannot overwrite
+a newer local edit. Genuine remote changes still win. It does not add automatic
+HTTP write retries or persist unsynchronized edits outside the Work activation.
+
 Cancel the context passed to `EnvironmentWorker.Run` or `HandleItem` on shutdown.
 Tool execution is cancelled first; heartbeat renewal continues through Memory
 teardown, and Work Stop follows the flush. A full Memory reconciliation and

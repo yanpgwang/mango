@@ -1694,3 +1694,31 @@ blanket statement that token-created PRs do not trigger CI. Maintainers approve
 and verify the final bot head's checks; no long-lived token or alternate CI
 dispatch is introduced. This release-maintenance slice adopts no CMA workflow,
 hosted constraint or third-party SDK runtime dependency.
+
+## Memory upload acknowledgement reconciliation (2026-10-18)
+
+Reviewed the current official [self-hosted Memory workflow](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes-memory)
+alongside Go SDK `v1.82.0` (`543d266ce81a4487281e084b013fef807dbb5f18`),
+Python `v1.15.0` (`bcd55fe1d3f0f1240765f8cef04295b67337f55a`) and TypeScript
+`sdk-v0.135.0` (`04a4c28c70de498d6d0e930e43edb5edb9ac545e`). The paired API
+uses content-hash preconditions; its worker helpers reconcile unknown upload
+outcomes before comparing newer local edits with the Store. The corresponding
+SDK fix was released on October 7, separately from this review date.
+
+Adopted the failure invariant: remember the exact sent content hash and settle
+it against the next complete successful listing. Matching bytes establish the
+observed baseline; a mismatch remains an ordinary remote conflict. Clear the
+attempt after that observation so later matching bytes cannot inherit stale
+ownership. Apply this before periodic/final sync decisions, cancellation-flush
+decisions and the emptied-directory protection. Definitive HTTP rejection does
+not establish a pending write; ambiguous transport/server errors can.
+
+Mango's implementation and HTTP-backed fault tests are independently authored.
+The existing single-Work Go helper, scoped credentials, SHA preconditions,
+read-only roots, refusal and deletion protections remain its boundaries. No
+route, schema, migration, hosted dependency or official SDK implementation was
+added. Python/TypeScript remain Mango HTTP clients rather than new worker
+implementations. In-memory reconciliation does not persist unuploaded local
+edits across forced termination. Mango's server already treats a no-op content
+update as idempotent; the repair does not assume duplicate requests create
+duplicate immutable Versions.
