@@ -1,6 +1,6 @@
 module github.com/yanpgwang/mango
 
-go 1.26.6
+go 1.26.9
 
 require (
 	charm.land/catwalk v0.51.23
