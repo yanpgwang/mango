@@ -17,7 +17,7 @@ process responsibilities.
 ## Prerequisites
 
 - A running Mango deployment from the [Quickstart](../getting-started.md).
-- Go 1.26.6+ to run the launcher from this repository.
+- Go 1.26.9+ to run the launcher from this repository.
 - Docker reachable from the supervisor, plus `curl` and `jq` for setup.
 - A [configured model](model-configuration.md) that can choose tools when you
   are ready to run a tool-capable Agent.
