@@ -19,7 +19,8 @@ versions stop the run. A retry may reuse identical publication results.
 Use GitHub's short-lived job token for images, tags and the release, and native
 npm/PyPI Trusted Publishers for SDK uploads. Development and ordinary CI need no
 publishing credentials. Only a main-branch publication job receives write/OIDC
-permissions. Its `release` environment can carry maintainer-controlled policy.
+permissions. Its `release` environment permits deployments only from the
+`main` branch, enforcing the branch boundary independently of workflow code.
 The workflow defaults to validation only. Registry trust configuration is an
 account prerequisite, documented alongside the exact workflow identity.
 
@@ -47,7 +48,9 @@ source and bytes.
 Configure a Trusted Publisher on each existing `mango-sdk` project at npm and
 PyPI, with GitHub owner `yanpgwang`, repository `mango`, workflow filename
 `release-publish.yml` and environment `release`. npm must permit direct
-publishing for this workflow. No long-lived registry token belongs in GitHub
+publishing for this workflow. Configure the GitHub `release` environment with
+a custom deployment branch policy allowing only the `main` branch; do not allow
+other branches or tags. No long-lived registry token belongs in GitHub
 Secrets or Mango configuration. Account sign-in and two-factor checks remain
 with the maintainer. GHCR packages must allow this repository's job token to
 write and must be publicly readable. For first publication, the workflow first
