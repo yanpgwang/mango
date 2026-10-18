@@ -39,7 +39,7 @@ access still depends on the sandbox boundary.
 | Capability | Status | Scope and principal limits |
 | --- | --- | --- |
 | [Agents](api/agents.md) | Supported | Versioned definitions, immutable Session snapshots, updates, archive, filters, and pagination. |
-| [SDKs](sdk.md) | Preview | Go, Python sync/async, and TypeScript resource clients cover the OpenAPI operations. Use a matching source revision, inspected candidate or version confirmed in the release record. Published alpha 1 has an earlier interface. |
+| [SDKs](sdk.md) | Preview | Go, Python sync/async, and TypeScript resource clients cover the OpenAPI operations. Match the SDK to the source revision or preview version confirmed in the release record; consult that record for publication status. |
 | [Sessions](api/sessions.md) | Supported | Persistent work, shared budgets, usage, updates, interrupts, archive, and deletion. Archive retains history; automatic idle reclamation is not implemented. |
 | [Events and actions](api/events.md) | Limited | Messages, tool/approval barriers, outcomes, retries, and interrupts. Approval and execution results are separate. File messages support bounded UTF-8 documents, not images or PDFs. Internal execution content has a [1 MiB encoded transport limit](api/events.md#runtime-content-capacity); exceeding it terminates the affected execution, retaining committed history and usage but potentially discarding uncommitted output. |
 | [Event streams](api/events.md#stream-events) | Supported | Durable history plus live Session/Thread SSE and optional ephemeral previews. Streams do not replay history or interpret `Last-Event-ID`. The Go tool runner refreshes its live connection every 15 seconds and reconciles persisted history, including when an old stream stays silently open. Raw SSE clients manage their own recovery. |
@@ -58,7 +58,7 @@ access still depends on the sandbox boundary.
 | [Deployments](api/deployments.md) | Limited | Pinned templates, manual and cron runs, Memory Store templates, budgets, leases, and Run records. Agent-archive propagation remains open. |
 | [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, permanent-input failure, and conditional idle retirement that rejects stale end-turn observations without stranding pending tools. Environment-scoped supervisor keys with issue/list/revoke/rotation; bounded healthcheck Work proves sandbox execution without a Session/model and stores durable success, failure, timeout, or cancellation. |
 | [API health](deployment.md#health-probes) | Supported | Public process liveness and bounded PostgreSQL readiness, including read-only rejection and recovery. Does not certify worker execution. |
-| [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, status-filtered Thread pagination, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. |
+| [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, status-filtered Thread pagination, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. Workflow Runs are not implemented; the [design proposal](design/workflow-runs.md) records research and pending decisions. |
 
 ## Product and operational boundaries
 
@@ -77,8 +77,8 @@ access still depends on the sandbox boundary.
   reactivation are covered by developer-preview acceptance with source inputs
   and actual release artifacts, while external state services are retained.
   Artifact acceptance uses a matched packaged chart, native supervisor and OCI
-  images; the candidate workflow runs that lifecycle before upload. Publication
-  remains pending. The
+  images; the candidate workflow runs that lifecycle before upload. Consult the
+  release record for publication status. The
   [development schema baseline](deployment.md#development-database-baseline)
   requires a fresh database when replacing the historical chain or version-1
   development baseline;
