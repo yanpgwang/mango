@@ -126,6 +126,11 @@ If this fixture fails, it records each owned source/restore dependency's
 running, OOM, exit-code and health status before network and volume teardown.
 Inspect and healthcheck payloads remain private. These facts aid diagnosis;
 an intentionally stopped source dependency normally has exit code zero.
+Before stopping the external supervisor on failure, the fixture also captures
+exact-owned Work container state and a bounded summary of worker lifecycle
+messages, recent Session event metadata and Work state. Dynamic log fields,
+tool arguments/results, credential fields and raw HTTP/Docker errors are never
+printed. Probes share a ten-second budget and cannot prevent fixture teardown.
 
 Independent external Temporal/database cold restore is outside the approved
 developer-preview alpha scope. Its full assertions remain in
