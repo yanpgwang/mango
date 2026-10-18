@@ -25,6 +25,28 @@ at the time of that work. On 2026-09-30, the pre-release migration chain was
 consolidated into the [current development schema baseline](deployment.md#development-database-baseline);
 those historical upgrade and downgrade paths are no longer shipped.
 
+## Workflow Runs research and proposed direction (2026-10-18)
+
+The [Workflow Runs proposal](design/workflow-runs.md) compares Mango source,
+schema, OpenAPI and existing recovery tests at
+`88ddec98b7e38b3e9f6b0a7e4f3fb9a5fdb45f99` with current official
+[CMA lifecycle](https://platform.claude.com/docs/en/managed-agents/workflow-runs),
+[multi-agent configuration](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration)
+and paired SDK source: Go v1.82.0
+`543d266ce81a4487281e084b013fef807dbb5f18`, Python v1.15.0
+`bcd55fe1d3f0f1240765f8cef04295b67337f55a`, and TypeScript sdk-v0.135.0
+`04a4c28c70de498d6d0e930e43edb5edb9ac545e`. Exact source links and reviewed
+config/event/Thread mappings are in the proposal; releases and tag commits
+were checked on 2026-10-18. Official clients were read, never executed.
+
+Useful inputs are Run ownership, durable progress/results and open-Run
+completion/Outcome barriers. The references expose no reusable execution
+language or engine. A bounded declarative plan is recommended for Mango's own
+control plane; the execution boundary, controls and contract remain pending
+maintainer choice. Hosted control planes, cloud mounts, vendor limits and
+arbitrary-code execution are not adopted. No Workflow Run functionality or
+release-state change is delivered by this documentation.
+
 ## Conditional self-hosted idle retirement (2026-10-18)
 
 - Mango problem: Work admission coalesces while a worker owns an activation.
