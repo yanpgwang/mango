@@ -25,6 +25,48 @@ at the time of that work. On 2026-09-30, the pre-release migration chain was
 consolidated into the [current development schema baseline](deployment.md#development-database-baseline);
 those historical upgrade and downgrade paths are no longer shipped.
 
+## Conditional self-hosted idle retirement (2026-10-18)
+
+- Mango problem: Work admission coalesces while a worker owns an activation.
+  A worker retiring from an old end-turn observation could stop after a newer
+  input was already processed into a pending worker tool. The existing Stop
+  successor rule covered newer unprocessed inputs, not that processed input.
+  Real PostgreSQL reproduced successful unconditional Stop followed by an empty
+  Poll with a committed unresolved tool. This is independent of the unproven
+  cause of candidate run 39087512711's timeout.
+- Paired references reviewed on 2026-10-18: the current public
+  [CMA Work Stop API](https://platform.claude.com/docs/en/api/http/beta/environments/work/stop)
+  and [Go v1.82.0 Work resource](https://github.com/anthropics/anthropic-sdk-go/blob/543d266ce81a4487281e084b013fef807dbb5f18/betaenvironmentwork.go)
+  plus [EnvironmentWorker](https://github.com/anthropics/anthropic-sdk-go/blob/543d266ce81a4487281e084b013fef807dbb5f18/lib/environments/worker.go),
+  at `543d266ce81a4487281e084b013fef807dbb5f18`, together with
+  [Python v1.15.0 Stop parameters](https://github.com/anthropics/anthropic-sdk-python/blob/bcd55fe1d3f0f1240765f8cef04295b67337f55a/src/anthropic/types/beta/environments/work_stop_params.py)
+  (`bcd55fe1d3f0f1240765f8cef04295b67337f55a`) and
+  [TypeScript sdk-v0.135.0 Work](https://github.com/anthropics/anthropic-sdk-typescript/blob/04a4c28c70de498d6d0e930e43edb5edb9ac545e/src/resources/beta/environments/work.ts)
+  (`04a4c28c70de498d6d0e930e43edb5edb9ac545e`). Their public Stop body has
+  `force` and no idle-event precondition; their internal scheduler and handoff
+  invariants cannot be inferred from public SDK source. Official clients were
+  read as research only and never executed or added as dependencies.
+- Mango keeps the existing Work Stop route, `force`, bearer credentials and
+  `204` response. Its optional `expected_idle_event_id` is a Mango-owned
+  compare-and-set on the durable Session ledger: exact current primary processed
+  end-turn, aggregate idle, no newer events, unresolved actions or active turns,
+  checked under Session→Work locks. A mismatch returns standard HTTP `412`
+  without a Stop or heartbeat renewal. Explicit operator Stop is unchanged.
+  Heartbeat timestamp fencing cannot express Session activity; no existing
+  cross-resource ETag can support this check, so a new If-Match protocol would
+  add machinery without reusing an established Mango representation version.
+- The Go helper captures the boundary at the timeout decision, before Memory
+  cleanup; a missing boundary, stale response or ambiguous Stop never retries
+  unconditionally. Idle expiry also pauses before opening a replacement SSE
+  connection and stays paused until complete history succeeds. Raw SSE,
+  tool execution and Work heartbeat contexts are unchanged. All three generated
+  SDKs map the optional body field and decode the existing typed `412` error.
+- Independent literal HTTP and first-party SDK tests cover body validation and
+  error mapping. Real PostgreSQL covers processed-input/pending-tool rejection,
+  unchanged lease state, reclaim and result delivery, exact positive completion,
+  strict terminal/archive/deletion rejection and both row-lock admission orders.
+  No storage migration, hosted service, or vendor header is introduced.
+
 ## Self-hosted tool runner silent-stream recovery (2026-10-18)
 
 - User problem: an acknowledged worker can keep renewing its Work lease while

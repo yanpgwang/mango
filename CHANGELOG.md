@@ -11,6 +11,8 @@
 
 ### Bug Fixes
 
+* **worker:** condition automatic idle Stop on the current durable end-turn so newer processed input and pending tools remain reclaimable
+
 * **sdk:** recover persisted approvals from silent tool-runner event connections without repeating tools or extending idle deadlines
 * **release:** preserve archive names across version PRs ([#264](https://github.com/yanpgwang/mango/issues/264)) ([d8cdf0c](https://github.com/yanpgwang/mango/commit/d8cdf0cd520d2318b26f90c4954f2313c4005f59))
 * **sdk:** reconcile ambiguous Memory upload acknowledgements ([#263](https://github.com/yanpgwang/mango/issues/263)) ([c370105](https://github.com/yanpgwang/mango/commit/c370105810018aed0ce5fad2b53383506787a959))

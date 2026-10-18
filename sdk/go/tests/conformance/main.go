@@ -33,6 +33,15 @@ func run() (result error) {
 	if err := client.System.Health(ctx); err != nil {
 		return err
 	}
+
+	if err := client.Environments.Work.Stop(ctx, "env_self_hosted", "work_sdk", mango.EnvironmentWorkStopRequest{Force: mango.Some(true), ExpectedIdleEventID: mango.Some("sevt_idle_fixture")}); err != nil {
+		return err
+	}
+	stopErr := client.Environments.Work.Stop(ctx, "env_self_hosted", "work_sdk", mango.EnvironmentWorkStopRequest{Force: mango.Some(true), ExpectedIdleEventID: mango.Some("sevt_stale")})
+	var stopAPIError *mango.APIError
+	if !errors.As(stopErr, &stopAPIError) || stopAPIError.StatusCode != 412 || stopAPIError.Type != "precondition_failed_error" || stopAPIError.RequestID == "" {
+		return fmt.Errorf("conditional Stop error lost: %v", stopErr)
+	}
 	if err := checkThreadStatusFilter(ctx, client); err != nil {
 		return err
 	}

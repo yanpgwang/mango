@@ -25,6 +25,7 @@ type silentSessionStream struct {
 	overlappingReaders atomic.Bool
 	history            func() []json.RawMessage
 	historyStatus      func() int
+	beforeStream       func(context.Context, int32)
 }
 
 func (s *silentSessionStream) client(t *testing.T) *Client {
@@ -32,7 +33,13 @@ func (s *silentSessionStream) client(t *testing.T) *Client {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/events/stream"):
-			s.streams.Add(1)
+			streamNumber := s.streams.Add(1)
+			if s.beforeStream != nil {
+				s.beforeStream(r.Context(), streamNumber)
+			}
+			if r.Context().Err() != nil {
+				return
+			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
 			w.(http.Flusher).Flush()
@@ -282,5 +289,83 @@ func TestSessionToolRunnerRefreshWaitsForCompleteHistoryAfterFailure(t *testing.
 		}
 	case <-ctx.Done():
 		t.Fatal("new activity did not recover after history became available")
+	}
+}
+
+func TestSessionToolRunnerRefreshSuspendsIdleWhileOpeningStream(t *testing.T) {
+	t.Parallel()
+	var recovered atomic.Bool
+	opening := make(chan struct{}, 1)
+	fixture := &silentSessionStream{
+		beforeStream: func(ctx context.Context, number int32) {
+			if number > 1 && !recovered.Load() {
+				select {
+				case opening <- struct{}{}:
+				default:
+				}
+				<-ctx.Done() // No headers: connection establishment itself is unavailable.
+			}
+		},
+		history: func() []json.RawMessage {
+			if recovered.Load() {
+				return []json.RawMessage{sessionToolUseJSON("tool_after_open_failure", "echo", "allow", "")}
+			}
+			return []json.RawMessage{json.RawMessage(`{"id":"idle_before_open_failure","type":"session.status_idle","processed_at":null,"stop_reason":{"type":"end_turn"}}`)}
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	maxIdle := 50 * time.Millisecond
+	runner := NewSessionToolRunner(ctx, fixture.client(t), "session_open_failure", SessionToolRunnerOptions{
+		Tools: []SessionTool{sessionToolFunc{name: "echo", run: func(context.Context, SessionToolCall) ([]ResultContentInput, error) {
+			return textSessionToolResult("recovered"), nil
+		}}},
+		MaxIdle: &maxIdle,
+	})
+	runner.streamRefreshInterval = 10 * time.Millisecond
+	runner.retryDelay = func(int) time.Duration { return time.Millisecond }
+	defer func() { _ = runner.Close() }()
+	next := make(chan bool, 1)
+	go func() { next <- runner.Next() }()
+	select {
+	case <-opening:
+	case <-ctx.Done():
+		t.Fatal("refresh did not attempt a fresh subscription")
+	}
+	select {
+	case ok := <-next:
+		t.Fatalf("old idle boundary expired before history could be read: next=%v err=%v", ok, runner.Err())
+	case <-time.After(3 * maxIdle):
+	}
+	recovered.Store(true)
+	select {
+	case ok := <-next:
+		if !ok || runner.Current().ToolUseID != "tool_after_open_failure" || !runner.Current().Posted {
+			t.Fatalf("new durable tool lost: next=%v err=%v", ok, runner.Err())
+		}
+	case <-ctx.Done():
+		t.Fatal("fresh history did not recover new durable activity")
+	}
+}
+
+func TestSessionToolRunnerCapturesIdleBoundaryAtTimeout(t *testing.T) {
+	runner := &SessionToolRunner{idle: newSessionIdleClock(time.Millisecond)}
+	var first SessionEvent
+	if err := json.Unmarshal([]byte(`{"id":"idle_decision","type":"session.status_idle","processed_at":null,"stop_reason":{"type":"end_turn"}}`), &first); err != nil {
+		t.Fatal(err)
+	}
+	runner.idle.note(first)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := runner.watchIdle(ctx); !errors.Is(err, ErrIdleTimeout) {
+		t.Fatalf("watchIdle: %v", err)
+	}
+	var later SessionEvent
+	if err := json.Unmarshal([]byte(`{"id":"idle_later","type":"session.status_idle","processed_at":null,"stop_reason":{"type":"end_turn"}}`), &later); err != nil {
+		t.Fatal(err)
+	}
+	runner.idle.note(later)
+	if runner.idleTimeoutEventID != "idle_decision" {
+		t.Fatalf("captured boundary changed: %q", runner.idleTimeoutEventID)
 	}
 }

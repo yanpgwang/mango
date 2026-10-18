@@ -106,7 +106,7 @@ func TestFirstPartySDKHTTPConformance(t *testing.T) {
 			t.Logf("%s", output)
 			mu.Lock()
 			defer mu.Unlock()
-			for _, route := range []string{"GET /healthz", "POST /v1/agents", "GET /v1/agents", "POST /v1/environments", "POST /v1/sessions", "POST /v1/files", "GET /v1/sessions/" + threadFilterSessionID + "/threads"} {
+			for _, route := range []string{"GET /healthz", "POST /v1/agents", "GET /v1/agents", "POST /v1/environments", "POST /v1/sessions", "POST /v1/files", "POST /v1/environments/env_self_hosted/work/work_sdk/stop", "GET /v1/sessions/" + threadFilterSessionID + "/threads"} {
 				if seen[route] == 0 {
 					t.Errorf("conformance executable did not exercise %s", route)
 				}

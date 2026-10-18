@@ -14,6 +14,8 @@ let environment;
 let session;
 try {
   await client.system.health();
+  await client.environments.work.stop('env_self_hosted', 'work_sdk', { force: true, expected_idle_event_id: 'sevt_idle_fixture' });
+  await assert.rejects(client.environments.work.stop('env_self_hosted', 'work_sdk', { force: true, expected_idle_event_id: 'sevt_stale' }), error => error instanceof APIError && error.status === 412 && error.type === 'precondition_failed_error' && !!error.requestId);
   const threadFilter = { limit: 1, statuses: ['idle', 'running'] };
   const threadPage = await client.sessions.threads.list('sesn_thread_filter', threadFilter);
   assert.deepEqual(threadPage.data.map(item => item.id), ['sthr_filter_primary']);
