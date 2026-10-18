@@ -287,17 +287,10 @@ func (s *stateFixture) startSupervisor(environment, session string) func() {
 		})
 	}
 	t.Cleanup(func() {
-		stop()
 		if t.Failed() {
-			data, err := os.ReadFile(logPath)
-			if err == nil {
-				text := strings.ReplaceAll(string(data), key, "[redacted]")
-				if len(text) > 4000 {
-					text = text[len(text)-4000:]
-				}
-				t.Logf("external supervisor diagnostic:\n%s", text)
-			}
+			s.logWorkFailure(environment, session, logPath)
 		}
+		stop()
 	})
 	return stop
 }

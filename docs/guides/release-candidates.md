@@ -130,6 +130,12 @@ HTTP, external sandbox, process replacement and Work reactivation journey runs
 against those artifacts with the original external state services retained.
 Fixtures own their cluster,
 state stores, aliases and volumes; configured provider credentials are unused.
+On failure, before stopping the supervisor and deleting its item container, the
+fixture records bounded lifecycle-only diagnostics: recent event metadata,
+matching Work state, exact-owned container state and fixed worker log messages.
+Tool inputs/results, dynamic log attributes and credentials remain private.
+These diagnostics do not weaken acceptance or establish that a retry repaired
+an unexplained failure; a failed run does not upload a candidate artifact.
 
 The manual workflow runs this tier on Linux AMD64 with Docker 28.1.1;
 local acceptance also exercises macOS ARM64 and the ARM64 images. The default
