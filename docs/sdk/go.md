@@ -179,6 +179,14 @@ maps owned `agent.tool_use` and `agent.custom_tool_use` events to their matching
 result events. MCP calls stay server-side, and unregistered tool names remain
 pending for another owner.
 
+The helper refreshes each live connection after 15 seconds and reads complete
+history again after opening its replacement. This recovers persisted approvals
+and results even when an old connection stays open without delivering events.
+Refreshing does not cancel an executing tool or renew Work authority. Replaying
+the same end-turn boundary does not extend `MaxIdle`; approval waits remain
+valid. Raw SSE clients retain their live-only, caller-cancelled behavior and do
+not inherit this helper's connection refresh.
+
 ```go
 runner := mango.NewSessionToolRunner(ctx, sessionClient, sessionID,
     mango.SessionToolRunnerOptions{Tools: tools})

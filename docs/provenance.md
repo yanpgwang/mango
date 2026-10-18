@@ -25,6 +25,37 @@ at the time of that work. On 2026-09-30, the pre-release migration chain was
 consolidated into the [current development schema baseline](deployment.md#development-database-baseline);
 those historical upgrade and downgrade paths are no longer shipped.
 
+## Self-hosted tool runner silent-stream recovery (2026-10-18)
+
+- User problem: an acknowledged worker can keep renewing its Work lease while
+  a stale SSE connection silently stops delivering persisted approvals. Mango's
+  runner previously reread history only after the stream reported EOF/error.
+  The alpha.4 candidate run 39087512711 attempt 1 timed out after control-plane
+  replacement, but its existing diagnostics do not establish a silent TCP
+  connection as the cause. This fixes the independently reproduced generic
+  helper gap; it does not claim that the candidate failure was diagnosed.
+- Paired clean-room references reviewed on 2026-10-18: the current public
+  [CMA event stream recovery guide](https://platform.claude.com/docs/en/managed-agents/events-and-streaming#reconnect-without-missing-events)
+  and [Go v1.82.0 Session tool runner](https://github.com/anthropics/anthropic-sdk-go/blob/543d266ce81a4487281e084b013fef807dbb5f18/betasessiontoolrunner.go)
+  at `543d266ce81a4487281e084b013fef807dbb5f18`. The guide pairs a new live
+  subscription with complete history and event-ID deduplication; the reviewed
+  helper reconnects after its stream iterator ends, without a periodic
+  connection-age bound. These are research references, not executable clients
+  or hosted dependencies.
+- Mango retains subscribe-before-history recovery and its action/result
+  identity checks. Its own self-hosted liveness requirement adds a private
+  15-second connection lifetime to `SessionToolRunner` ingestion only. Closing
+  and joining the old reader precedes the next subscription; tool execution,
+  result delivery, Work heartbeat, and raw SSE transport contexts remain
+  independent. Replayed idle boundaries preserve their original countdown;
+  incomplete history reads suspend expiry until a complete pass succeeds.
+- Deterministic first-party HTTP fixtures keep SSE open without sending frames
+  while history accepts an approval. Tests cover recovery, prolonged approval
+  waits, an executing tool across several refreshes, resolved-call deduplication,
+  unchanged idle expiry, and cancellation closing/joining stream readers.
+  No HTTP/OpenAPI fields, server heartbeats, vendor headers, or provider limits
+  are introduced. Full Kubernetes and real-model evidence remain separate.
+
 ## Thread status filtering (2026-10-18)
 
 - User problem: applications need to locate running or waiting delegated work
