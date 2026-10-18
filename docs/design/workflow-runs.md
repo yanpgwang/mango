@@ -1,23 +1,31 @@
 ---
 title: Workflow Runs architecture plan
-description: Design the complete lifecycle before enabling progressively richer dynamic workflows.
+description: Plan restricted JavaScript orchestration with PostgreSQL receipts, Temporal coordination, and recoverable context.
 slug: /design/workflow-runs
 ---
 
 # Workflow Runs architecture plan
 
-**Status: architecture proposal and delivery plan, 2026-10-18.** Workflow Runs are
+**Status: revised architecture proposal and delivery plan, 2026-10-19.** Workflow Runs are
 not implemented. The maintainer requested a plan for the complete capability
 before starting with a simple implementation. The first enabled operations are
 a delivery subset, not the definition of the finished product. Proposed choices
 below remain open to design discussion; no runtime, schema, API, or release
 acceptance changes are made here.
 
-The aim is to reuse lifecycle and execution boundaries as capabilities grow.
-It is not a guarantee of zero redesign: executing arbitrary generated programs
-requires a separate runtime design, and Mango's development `/v1` may change
-when a better design is established. Do not preserve an early mistake through
-compatibility shims or build unused frameworks to anticipate every future.
+This revision supersedes the proposed declarative-plan-first direction. The
+recommendation is a restricted JavaScript orchestration program, independently
+implemented by Mango, rather than a public JSON DAG language expanded one node
+type at a time. JSON still carries data, metadata and host commands. This choice
+is informed by newly reviewed official demonstrations; it does not assert that
+CMA's unpublished execution engine is JavaScript or uses Temporal/PostgreSQL.
+
+The [program execution and recovery design](workflow-program-runtime.md) defines
+the proposed JS/Temporal/PG protocol, context boundaries and failure cases.
+Engine, isolation packaging and async replay feasibility must be resolved before
+product implementation. The aim is reusable lifecycle boundaries, not a promise
+of zero redesign or an excuse to build unused infrastructure. Mango may change
+development `/v1` directly when a better design is established.
 
 ## User problem and current foundation
 
@@ -28,16 +36,17 @@ failure, and let an operator stop the batch without losing committed history or
 duplicating accounting for a committed model request. Manually watching child
 Threads does not provide that lifecycle.
 
-The source baseline reviewed is `49921930a2872f12b569ee027b694abbe3afb4f8`,
+The source baseline reviewed is `2f53b8e633055cdf50abb7cdd334a33264d109d7`,
 including `internal/pg/migrations/20261005000001_schema.sql` and
 `internal/httpapi/openapi.yaml`. The existing [multi-agent workflow](../guides/multi-agent.md) is useful foundation:
 
 | Existing Mango capability and source | Reuse and missing boundary |
 | --- | --- |
-| Agent Version pins and Session-owned roster snapshots; `internal/app/agent_service.go`, `internal/controlplane/session_service.go` | Freeze selected definitions for a Run; later Agent edits must not change admitted work. A plan and its admitted inputs still need their own durable identity. |
+| Agent Version pins and Session-owned roster snapshots; `internal/app/agent_service.go`, `internal/controlplane/session_service.go` | Freeze selected definitions for a Run; later Agent edits must not change admitted work. Program source, runtime profile and admitted inputs still need durable identity. |
 | Independent Thread history, status filters, shared usage and lifecycle; `internal/pg/session_threads.go`, `internal/pg/multiagent_runtime.go` | Reuse execution and inspection. Add explicit Run ownership, logical task identity and committed result receipts; an arbitrary child idle or latest message is not a task result. |
 | PostgreSQL ledger and at-least-once outbox; `internal/pg/outbox.go` | Commit scheduling decisions with their wakeups and deduplicate delivery. Existing cursor deduplication does not by itself deduplicate Run step creation. |
 | Session and Thread orchestration; `internal/temporal/session_workflow.go`, `internal/temporal/session_thread_workflow.go` | Reuse replay, timers and Activity boundaries. Add Run scheduling, joins and cancellation recovery; a Temporal Workflow execution is infrastructure, not a public Workflow Run. |
+| Ordinary child reports and current Messages adapter; `internal/pg/thread_completion.go`, `internal/model/anthropic.go` | Last-message reporting and effort configuration are not schema-validated program results. Add an explicit owned terminal-return adapter and trusted validation before journal delivery. |
 | [Deployment Runs](../api/deployments.md), `internal/domain/deployment.go`, `deployment_runs` in the schema | These record a manual/scheduled attempt to create a Session, or its creation error. They are not a phase/step scheduler inside a Session. |
 | Pending actions, interrupts, Outcome evaluation, budget and content guards | Extend the existing aggregate rules to open Runs; current code has no open-Run completion or Outcome barrier. |
 
@@ -68,9 +77,27 @@ local workflow execution helper. Public phase events do not define logical
 steps or execution-attempt records. Copying SDK types would not deliver an
 engine.
 
-The latest stable SDK releases were checked against the official GitHub release
-and tag APIs on 2026-10-18, and the following exact source objects were read
-without executing the SDKs:
+The official Cookbook repository's current main was checked on 2026-10-19:
+`a162e0184e71b60290808a43961a6cbc8060123c` (2026-10-17). This materially
+changes the earlier research: there are concrete program demonstrations, even
+though the CMA client types do not contain the server executor.
+
+| Public demonstration | Evidence and Mango consequence |
+| --- | --- |
+| [Agent SDK dynamic-workflow notebook](https://github.com/anthropics/claude-cookbooks/blob/a162e0184e71b60290808a43961a6cbc8060123c/claude_agent_sdk/08_Dynamic_workflows.ipynb), especially the saved output of `show_script(factcheck_info)` | A complete generated JS program extracts claims, verifies in parallel, conditionally calls skeptics and assembles a report. JSON schemas describe Agent outputs; they are not the orchestration language. Intermediate values stay in program variables. Adopt this separation, not its implementation. |
+| [CMA security-review notebook](https://github.com/anthropics/claude-cookbooks/blob/a162e0184e71b60290808a43961a6cbc8060123c/managed_agents/CMA_agent_security_review.ipynb), `review_settings`, `review_message`, and `answer_tool_calls_until_idle` | Explicitly enables workflows and disables ordinary subagents. Parallel per-session review precedes a reporting phase; custom tools validate submitted verdicts. Its event loop waits for ended Runs and final end-turn. This is an actual CMA integration; it does not expose the generated program or prove its engine/language. Its cloud Environment configuration is not a Mango requirement. |
+| [Claude Code script, isolation and recovery documentation](https://code.claude.com/docs/en/workflows) | Publicly describes restricted JS, no direct filesystem/shell/import, script variables, saved scripts and replay of Agent results. Adopt a narrow orchestration capability. Change resume semantics for Mango: pin immutable code, check the full command/delivery trace, and do not automatically rerun a completed suffix after code changes. |
+
+The notebooks and saved outputs were read as research, not executed. The local
+`08_Dynamic_workflows.ipynb` at reference checkout
+`d7265d6ae994ccd8429db0594b000073b2f9ad43` matches the reviewed current file
+byte-for-byte; the new CMA security-review example was read at the pinned commit
+above. Public materials still do not establish CMA's interpreter, storage or
+server recovery protocol. The JS/PG/Temporal design below is Mango's proposal.
+
+The latest stable SDK releases were rechecked against the official GitHub
+release/tag APIs on 2026-10-19; they remain the versions below. Exact source
+objects were read without executing the SDKs:
 
 | Reference | Reviewed mapping |
 | --- | --- |
@@ -86,140 +113,128 @@ still uses its hosted agent/control plane. Mango must own scheduling, storage,
 execution and recovery. A cloud sandbox is not required to schedule Mango's own
 Agents on its existing self-hosted control plane and operator workers.
 
-## Complete target and staged availability
+## Complete target and selected recommendation
 
-The Mango problem extends beyond a fixed batch. An operator should be able to
-run a large review or research task, let accepted results determine subsequent
-work, keep talking to the primary Agent, inspect progress, and stop the work
-without losing committed results. The target below is a proposed Mango product
-scope informed by the public workflows, not a claim of field-for-field CMA
-compatibility or a description of its implementation.
+An operator should be able to run a large review or research task, let results
+determine subsequent work, keep talking to the primary Agent, inspect progress,
+and stop it without losing committed results. The proposed target is a program
+that coordinates Agent invocations, not an unrestricted application runtime.
 
-| Capability in the complete target | Requirement the first design must accommodate |
+| Part of the design | Decision and rationale |
 | --- | --- |
-| Sequential dependencies, parallel fanout and result joins | Model explicit step instances and dependencies. Do not hard-code two Agents followed by a summarizer or infer completion from idle Threads. |
-| Model-authored plans and decisions informed by results | Separate plan production from admission and execution. Persist each accepted decision before its effects; use the same admission path for application and model requests. |
-| Dynamic expansion, such as a discovered list of review tasks | Freeze each expansion's input and membership as it is admitted. A graph need not be fully expanded when its Run starts. |
-| Branches, bounded loops and review/revision rounds | Separate a definition's node from each invocation and execution attempt. Persist chosen branches, iteration identities and limits consumed across the entire Run. |
-| Explicit partial failure and safe business retries | Settle typed results and retain attempts. A transport retry cannot silently create a new business attempt; unknown external effects require reconciliation or an explicit decision. |
-| Predefined and dynamically defined inline Agents | Give every invocation an immutable effective Agent snapshot. Predefined pins are available at Run admission; a future inline definition is fixed at its spawn admission under the Run's approved authority ceiling. |
-| Several Runs and an interactive primary in one Session | Scope ownership and deduplication by Run. Deliver terminal results durably even while the primary is busy; keep Session completion distinct from an intermediate reply. |
-| Budgets, approvals, deadlines, interruption and operator stop | Make these lifecycle facts shared across all operation types, rather than special cases added separately to loops or planners. |
-| Progress, history reconstruction, result inspection and SDK helpers | Define one HTTP/event lifecycle, map it into all three SDKs, and rebuild state from durable history after reconnecting. |
+| User problem | Batch research, verification, revision and synthesis need repeatable control flow without putting every intermediate result in the primary model context. |
+| Durable lifecycle | Preserve accepted code/inputs, invocation identity, result delivery, waits, stop and accounting through process loss. These facts are not delegated to a model's memory or a JS heap. |
+| Hosted/vendor constraints | Reject hosted scheduling, cloud sandbox dependency, provider headers, fixed model choices and vendor retry counts. Mango owns its control plane and operator workers. |
+| Wire and language choices | Recommend restricted JS plus ordinary JSON inputs/results and existing Mango Session/event primitives. Exact API/helper shapes remain Mango-owned and require paired HTTP/SDK design. |
 
-All selected operations remain bounded by operator limits and the Session's
-authority. First delivery enables a fixed-Agent dependency graph with parallel
-work and synthesis. Later deliveries extend the admitted operations; they must
-use the same ownership, receipts, completion and cancellation rules. Unsupported
-operations are rejected before scheduling, rather than accepted as placeholder
-functionality.
+**Recommendation, subject to the feasibility gate:** use JS for sequential,
+parallel, result-driven branch/loop and transformation logic; use a small
+Mango-owned host API for all effects. Do not first ship a JSON DAG interpreter
+and assume a later JS engine will be a free replacement. Initial implementation
+can certify fewer host operations without inventing a second plan language.
 
-Arbitrary generated programs are a separate design branch. They may be useful
-for the same user problems, but the bounded-plan target does not claim to cover
-an unrestricted programming language. Image/PDF input and cloud sandboxes do
-not become requirements of either the basic or extended plan capability.
-
-## Proposed execution boundary
-
-**Recommendation, pending maintainer choice:** admit a structured, bounded plan
-and interpret only its validated operations in Mango's control plane. Initially
-those operations are fixed-Agent fanout, join and synthesis. Model inference and
-tools remain Activities or existing worker operations; Temporal code performs
-trusted deterministic orchestration. Validation and execution are Mango-owned.
-
-| Option | Benefit | Required boundary and tradeoff |
-| --- | --- | --- |
-| Bounded declarative plan | Durable transitions and limits can be inspected before execution; no new general code runtime. | Mango must define supported operations, typed references, bounded expansion, validation and replay semantics. It will express fewer programs than arbitrary code. |
-| Program driven by an operator-owned Docker worker | Flexible libraries and arbitrary computation near operator data. | Needs isolated execution, a frozen interpreter/image/program, checkpoint and receipt protocol, lease fencing, replay behavior and external-effect recovery. Restarting a process is not resuming its program. This is a separate design and larger first slice. |
-
-Never evaluate model-generated code in the API, orchestrator or Temporal worker
-process. A Docker boundary alone does not make retries safe or establish
-checkpointing; tools and generated programs may already have changed external
-systems before a crash.
-
-The control policy below proposes one admission path for application and model
-starts, with deterministic inspection and stop/resume for self-hosted operators.
-Exact routes, schemas and the plan-confirmation policy still need paired
-API/SDK review. Prefer existing Session resources/events and standard HTTP;
-CMA's message-driven control does not require Mango to depend on model calls
-for operator actions. No speculative endpoint is approved by this proposal.
-Inline Agent creation is part of the longer-term plan target,
-outside the first slice. Arbitrary-code execution needs its own design gate.
+The complete target includes predefined and inline Agent invocations, several
+Runs with an interactive primary, bounded pipelines and iterations, explicit
+partial failure/retries, progress and inspection. All operations obey Run and
+Session authority, capacity and deadline limits. Ordinary `if`/loops are code;
+new host operations require their own recovery/permission contract. File I/O,
+networking, packages, arbitrary processes and unrestricted Node applications
+are outside this program profile. Image/PDF input and cloud sandboxes remain
+independent, deferred capabilities.
 
 ## Proposed architecture and ownership
 
-Use a Mango-owned Run scheduler built on the existing Temporal infrastructure,
-while preserving PostgreSQL as the authority for public lifecycle decisions.
-The recommended shape is one durable scheduling Workflow per Run, reusing the
-existing independent Thread Workflows for Agent execution. Run ownership is a
-Mango relationship; it must not depend on Temporal parent/child cancellation
-semantics. Workflow code runs in Mango's orchestrator, not inside Temporal's
-server or a generated-program sandbox.
-
 ```mermaid
 flowchart TD
-    A[Application or coordinator model] --> B[Validate and admit plan or expansion]
-    B --> P[(PostgreSQL ownership, decisions, receipts and events)]
-    P --> O[Durable outbox wakeups]
-    O --> R[Temporal Run scheduling Workflow]
-    R --> D[Small deterministic commands through Activities]
-    D --> P
+    A[Application or primary model] --> B[Validate source, inputs and authority]
+    B --> P[(PostgreSQL program, Run, journal and receipts)]
+    P --> O[Transactional outbox]
+    O --> R[Trusted Go Temporal Run coordinator]
+    R --> H[Bounded evaluation Activity and trusted host adapter]
+    H --> J[Isolated disposable JS evaluator]
+    J --> H
+    H --> P
     O --> T[Existing Agent Thread Workflows]
-    T --> E[Model Activities and existing tool execution]
-    E --> C[Commit owned attempt result]
+    T --> E[Model Activities and operator tool workers]
+    E --> C[Commit invocation result]
     C --> P
-    O --> S[Primary result delivery and synthesis]
+    O --> S[Primary terminal-result delivery]
 ```
 
-Every external effect follows a committed ownership/admission decision.
-Temporal replays command ordering and timers; Activities recover the same
-committed decision after an acknowledgement is lost. Neither side independently
-recomputes a branch or creates a second child. Carry bounded IDs, receipt
-references and cursors through Workflow history and Continue-As-New; load
-bounded plan fragments or results through Activities instead of transporting
-the whole evolving graph.
+| Owner | Responsibility | Does not own |
+| --- | --- | --- |
+| JS program | Compute prompts, arrays, result transformations, branches and iterations; request approved Agent work. | Database access, tools, credentials, wall-clock scheduling, durable truth or LLM transcript compaction. |
+| PostgreSQL | Immutable source/input/runtime pins; ordered program command/delivery journal; invocation/attempt ownership, results, lifecycle, events and outbox. | A serialized live JS stack or an independent unjournaled scheduler. |
+| Temporal Go coordinator | Durable wakeups, bounded evaluation Activities, timers, reconciliation and Continue-As-New. | Running generated JS inside Workflow code or storing all source/results in history. |
+| Isolated evaluator and trusted host adapter | Execute a bounded program slice, reconstruct its variables from the journal, validate/commit host requests and yield on durable waits. | Another model/tool runner, the Session sandbox, or authority to widen Run permissions. |
+| Existing Thread execution | Per-Agent model context, provider/tool loop, pending actions, usage and effect journal. | Deciding that child idle means a program invocation has returned a valid result. |
+| Existing operator worker | Environment Work leases, tool execution, workspace, Skills and Memory. | Running the JS scheduler as an ordinary Bash tool or isolating each Agent's shared filesystem. |
 
-| Boundary | Responsibility and relationship to current code |
-| --- | --- |
-| Plan admission and operation evaluation | Pure validation and bounded dependency/expansion rules. Keep them outside HTTP DTOs, provider adapters and Temporal-specific contexts so application and model inputs share the rules. A dedicated package is justified when those rules are implemented, not as an empty plugin framework. |
-| PostgreSQL transitions | Own Run, instance, attempt, expansion membership and receipt identity; commit state, events and outbox atomically. Extend `internal/pg` with the same Session-first lock order and no external I/O in transactions. |
-| Temporal adapter | Add Run scheduling, timers and receipt-driven wakeups beside `SessionWorkflow` and `SessionThreadWorkflow`. Retain their Agent execution loop rather than building another model/tool runner. |
-| Existing Thread completion and Session aggregation | Run-owned child results settle their Run's receipt; ordinary subagent reports retain their coordinator workflow. Extend completion, Outcome, pending-action, deletion and Work-idle checks coherently. |
-| Existing operator worker | Continue Environment Work leases, scoped credentials, Skills/Memory preparation and serial local tools. Stopping one Run must not stop the shared Work item or unrelated Threads. |
-| Public contract and clients | HTTP DTOs and OpenAPI describe Mango's Run lifecycle; generated clients and handwritten observation helpers compose that lifecycle in Go, Python and TypeScript. Server scheduling state does not leak into client internals. |
+The evaluator has a separate trust boundary but need not become a new public
+service or SDK dependency. Installation/packaging is decided at the gate.
+Mango's architecture should add a narrow program host/journal boundary, extend
+`internal/pg` transitions and the existing Temporal adapter, and reuse Agent
+execution. Do not add interfaces around every DTO or build a pluggable universal
+workflow framework. The [detailed protocol](workflow-program-runtime.md) owns
+lease fencing, Promise ordering, replay cost and the runner containment gate.
 
-### Definitions, instances and decisions
+One Temporal scheduling Workflow per Run remains the recommendation. This is
+infrastructure, not the public Run itself; its parent/child cancellation policy
+cannot substitute for Mango ownership. Existing Workflows carry some complete
+turn DTOs under current limits; the new program pump must use IDs and bounded
+decision references from the start rather than multiplying those payloads.
 
-The immutable accepted plan describes operations and references. A Run binds
-that definition to admitted inputs, Agent pins, authority and limits. A logical
-step instance is one invocation of a definition's node; an attempt is one
-execution of that invocation. A receipt is the committed result of that attempt.
-Phase names group progress and are not dependency edges or step identity.
+### Definitions, invocations and recovery
 
-Run creation freezes the plan revision, known inputs, predefined pins and
-authority ceiling. It does not pre-expand the entire future graph. A later
-expansion validates committed inputs, selects stable parent/iteration/item
-identities, and freezes the resulting instances or inline Agent definitions
-before dispatch. Replaying the same expansion returns that decision. The same
-Agent may appear in many instances; neither its name nor Thread ID alone is a
-logical task identity. Do not add unused loop or inline-Agent tables in the
-first implementation merely because these concepts have a place in the plan.
+A Run binds one immutable program revision to admitted inputs, Agent snapshots,
+authority and limits. An invocation is one observed `agent()` call, including a
+repeated identical call or loop iteration; an attempt is its explicit execution
+attempt. Phase names are progress labels, not dependency or task identities.
 
-A join consumes an explicitly closed membership set. For example, completing
-the first page of discovered tasks cannot satisfy a join while the producer
-still has another page to admit. Persist each producer's input snapshot/order,
-expansion identity, admitted members and closed/sealed decision; a late receipt
-or retried decision cannot mutate a closed set. A fixed first-profile graph
-already has closed dependency sets and uses this same rule. A producer failure
-before closure is a failure or explicitly declared partial closure, never a
-successful seal inferred from its currently completed children.
+Future work is discovered by running the code over committed results. Freeze
+each invocation's actual prompt, Agent definition and schema before dispatch.
+The program journal records host-call order and result-delivery order; pure
+branches replay from those facts rather than requiring a separate JSON branch
+node/table for every `if`. Static whole-program validation cannot know every
+future prompt, loop count or effect, so host admission enforces bounds at every
+call. Unknown/forbidden capabilities fail before their effects.
 
-Result references identify immutable committed values, Thread/event receipts,
-or authorized Files whose retention is protected while referenced. A mutable
-path in the shared sandbox is not a replayable result value: another Agent or
-Run can modify it. The first profile can use bounded text/event receipts without
-depending on automatic Files output publication. A future output snapshot must
-use explicit scoped publication rather than snapshotting the whole workspace.
+JS variables are transient. A fresh evaluator reruns the pinned code and reads
+matching committed outcomes at recorded scheduler turns. That reconstructs
+ordinary variables without repeating committed Agent work. A changed trace
+fails closed. Temporal independently replays its trusted coordinator commands.
+Neither a container restart nor successful Temporal replay proves JS recovery.
+
+A join must have a closed membership, not infer completion from currently idle
+or completed children. A parallel helper freezes its ordered members; paged or
+pipeline expansion must close each membership under its defined host contract.
+Finishing one page does not imply producer completion, and producer failure is
+not a successful seal. Store grouping only when that helper is implemented;
+the fundamental records are invocations and the program trace.
+
+Result references identify immutable receipts/values or authorized retained
+Files. A mutable sandbox path is not a replayable value. All Agent Threads still
+share the Session filesystem; concurrent model work does not imply concurrent
+local tools. Current `EnvironmentWorker` uses one `SessionToolRunner` per Session
+and dispatches local tools serially. Program orchestration does not change that.
+
+### Context ownership
+
+The primary owns the user conversation and reads bounded Run progress/results.
+Each invocation owns an independent Thread with its exact admitted prompt,
+selected upstream inputs and its own provider transcript. The program owns
+intermediate values, reconstructed from immutable inputs/receipts. PG owns the
+execution facts and Temporal owns durable scheduling. These are distinct forms
+of state; none can be replaced by a summary of the primary conversation.
+
+Existing working-turn admission, token estimates and preparation compaction
+apply to planner/child/synthesis model calls. Original history remains retained.
+Program journals and committed results are not compacted as chat. Large-data
+summarization, if needed, is an explicit accounted invocation. Full request audit
+snapshots for every round and equivalent Outcome/Advisor overflow recovery are
+not supplied by this design. The [context section](workflow-program-runtime.md#context-and-data-movement)
+defines exact input retention, bounded hydration, untrusted data and source
+inspection requirements.
 
 ## Proposed durable model and acceptance invariants
 
@@ -228,13 +243,13 @@ fields or an approved schema:
 
 | Concept | Durable responsibility |
 | --- | --- |
-| Plan definition | Immutable accepted revision and supported operations; separate from model planning attempts and the graph expanded during execution. |
-| Run | Session/Workspace owner, accepted definition, known pins and inputs, approved permission ceiling, cumulative limits, absolute deadline, usage and terminal result. |
-| Phase | Stable progress grouping. A phase-end event alone must not imply successful task completion or a satisfied join. |
-| Step instance | A stable invocation of a definition node, including its admitted parent/iteration/item identity when applicable, dependencies and bounded input references. |
-| Execution attempt | A distinct attempt/generation, owning child Thread, execution state and settlement receipt. Transport retry must not silently become a new business attempt. |
-| Expansion decision | Frozen producer inputs, selected branch or members plus explicit closure state; commit each decision once before its child effects. Added when dynamic expansion is enabled. |
-| Result reference | A committed step/attempt receipt referring to owned Thread/events or authorized immutable Files, with bounded summary and explicit success/failure. References must retain their bytes and authorization while consumed. |
+| Program definition | Exact accepted source, digest, inert metadata and pinned engine/helper/platform profile; separate from the model attempt that proposed it. |
+| Run | Session/Workspace owner, immutable program/input/pins, approved permission ceiling, cumulative limits, absolute deadline and terminal result. |
+| Phase | Stable progress grouping; phase-end does not imply business success or satisfied joins. |
+| Invocation | A stable observed program call with exact task, output contract and effective Agent snapshot. Repeated calls have distinct Run-local identities. |
+| Execution attempt | Owning child Thread, explicit business-attempt identity and settlement receipt; transport retries retain the same logical invocation. |
+| Program journal | Ordered host invocations, result deliveries and control decisions needed to reconstruct JS execution; expected prefix/version and fenced evaluator ownership. |
+| Result reference | Committed validated value/failure or retained authorized bytes, independent of provider context and mutable paths. |
 
 1. **Atomic ownership and delivery.** Commit each admission, spawn decision or
    result settlement with its ownership rows, public events and required outbox
@@ -285,7 +300,7 @@ fields or an approved schema:
    history or bypass the [runtime content limit](../api/events.md#runtime-content-capacity).
    Measure actual encoded Activity/completion payloads. Enforce Workspace and
    Session ownership, immutable pins, permission ceilings and worker leases on
-   every expansion/result path. A plan cannot widen credentials or tool policy.
+   every expansion/result path. A program cannot widen credentials or tool policy.
 8. **Observable recovery.** Durable event history must reconstruct Runs, phase
    progress and owned children after disconnection. Use subscribe-before-history
    and ID deduplication. Events, errors and SDK variants must distinguish waiting,
@@ -331,136 +346,112 @@ and reconnect lifecycle, regardless of generator convenience.
 
 | Future scenario | Design requirement to prove early; implementation can remain incremental |
 | --- | --- |
-| The same Agent runs twice, then a loop repeats it | Node definition, instance and attempt identities are distinct. First-profile acceptance must invoke one Agent in several logical steps; enabling loops adds admitted iteration instances, not a new meaning for the old deduplication key. |
-| A result discovers a second page of tasks | Join membership is closed explicitly; the scheduler cannot declare success between pages. Dynamic producer and seal storage lands with that feature, not as unused first-profile tables. |
+| The same Agent runs twice, then a loop repeats it | Program, invocation and attempt identities are distinct. Repeated calls/iterations must replay the same ordered command trace, not deduplicate by Agent name, prompt or source line. |
+| A result discovers a second page of tasks | Join membership closes explicitly; producer code may discover later pages while earlier Agents work. Persist helper membership/closure with the feature, never infer producer completion from finished children. |
 | R2 completes while R1 runs and the user asks for progress | Results queue independently, the primary can answer, and the Session-wide completion/Outcome barrier stays closed. Test this without a global singleton Run slot. Limits may constrain admission, but ownership is always per Run. |
 | Run stop commits while a model/tool finishes | Separate logical fencing, cancellation delivery, physical cleanup and accounting. Prove late usage is retained without accepting a successful business result or terminating another Run's tools. |
 | A planner returns but the reply is never committed | Reuse a committed planning receipt whenever it exists. An unknown/uncommitted response cannot be recovered by assertion: a bounded new planning attempt may be required, with its own accounting. No child may execute an unadmitted plan. |
 | A future inline Agent requests new MCP credentials | Its effective snapshot fits already-approved Run authority. Reject escalation; keep live credential rotation and revocation rather than freezing secret values at Run creation. |
 | Two Runs access the same workspace path | The filesystem remains shared and mutable. Use committed values or immutable snapshots for dependency inputs. Do not claim Agent/Run isolation or introduce tool parallelism through a plan-language feature. |
-| A future executable program calls a library with direct I/O | A replaceable interpreter interface is insufficient. Program memory/control state, nondeterminism, direct effects, concurrency and checkpoints need a distinct design. Reuse ownership/accounting/Agent-command boundaries where valid; do not promise a drop-in executor swap or zero redesign. |
+| A program requests a library with direct I/O | Reject it in the restricted profile. Arbitrary libraries/processes need a new effect and recovery design; JS support does not imply a general Node runtime. |
 
-Before the first implementation is finalized, write the exact admitted plan
-profile, retry-identity contract, transition/lock rules, resource limits and
-raw HTTP/event examples. Review these against the scenarios above. Later
+Before product implementation, pass the evaluator/replay gate and specify the
+certified program profile, retry-identity contract, transition/lock rules,
+resource limits and raw HTTP/event examples. Review these against the scenarios above. Later
 deliveries may change `/v1` and storage directly when justified; extensibility
 does not create a requirement to keep a poor early schema forever.
 
 ## Proposed end-to-end PR groups
 
-Plan the complete lifecycle first, then enable these capabilities incrementally.
-A group may require several focused PRs for safe review; this is not a promise
-of full CMA behavior in five PRs. No public endpoint, feature flag or SDK type
-should advertise an operation before its runtime and recovery path exists.
+Only documentation is delivered now. Each group may need several reviewable
+PRs. The sequence deliberately starts with a simple program on the intended
+execution boundary, not a temporary DAG product. Unsupported host operations
+must not be advertised; a JS feature's syntax existing in an engine does not
+mean its async/recovery semantics are certified.
 
-### 1. Durable fixed-Agent dependency graphs
+### 0. Prove the isolated evaluator and journal protocol
 
-Deliver one usable operator journey: admit a small fixed graph, run independent
-Agent steps concurrently, join committed receipts, and synthesize the result.
-Use the real definition/instance/attempt model and dependency rules rather than
-special-case batch code. Implement start retry identity, inspection, deterministic
-stop/resume, events, cumulative limits and result delivery in this same slice.
-No model-generated plan, dynamic expansion, branches, loops or inline Agents.
+Compare the pinned runtime/isolation candidates in a bounded offline study,
+with independently authored fixtures; do not execute the reference SDKs or
+copy their executor. Settle module/wrapper shape, supported Promise behavior,
+host-command identity, recorded delivery turns, IPC validation, lease fencing,
+resource limits and deployment requirements. Measure replay/hydration cost.
 
-The first slice reuses the Session's shared sandbox and filesystem. Concurrent
-model turns or Threads do not imply concurrent local tools, a separate filesystem
-per Agent, or Agent/Run isolation. Keep the current Go worker behavior:
-`EnvironmentWorker` composes one `SessionToolRunner` for the Session, whose
-dispatch loop executes local tools serially. Parallel tools or per-Agent
-sandboxes require separate file-conflict, effect, resource and isolation design.
+The gate must kill/replace the evaluator before/after command acceptance and
+result delivery, scramble completion timing, test repeated calls/loops and
+malicious resource exhaustion, and show no duplicate committed effects. It must
+prove containment and reject ambient I/O/entropy. Failure returns to design
+review; a happy-path demo cannot approve a product executor. No public routes,
+unused framework packages or release capability are justified by this study.
 
-Acceptance includes raw HTTP and all SDKs, duplicate/lost start replies,
-Workspace isolation, frozen inputs/pins, one Agent used in distinct steps,
-parallel success, explicit child failure, approval/budget waits, stop/timeout,
-late results and late usage, and Work lease reclaim. Exercise two Runs and
-primary progress messages so completion and ownership are not singleton
-assumptions. Real PostgreSQL/Temporal tests lose replies or replace processes
-at admission, spawn, receipt, join, result delivery and terminalization; prove
-no duplicate committed child, receipt consumption or request accounting.
-Inspect worker cancellation behavior and expose only guarantees it can prove.
+### 1. Durable supplied-program Runs
 
-### 2. Model-generated admitted plans
+Implement one small end-to-end journey with a supplied immutable program and
+predefined Agents, initially sequential invocation and synthesis. A certified
+profile must describe supported JS/host operations and reject unsupported ones.
+Use the real journal/invocation/attempt model, isolated evaluator and existing
+Thread runner. Include start retry identity, source/result inspection,
+operator stop/resume, events, bounds and durable primary result delivery.
 
-Let the primary propose supported operations through normal model tool calling;
-application and model plans use the same validator, admission identities and
-scheduler. Commit the accepted proposal, inputs and plan before scheduling.
-Choose and document explicit plan confirmation or preauthorized admission under
-a Run capability policy; tool approvals continue independently. Do not expose
-an option whose name silently grants broader tools, credentials or spend.
+Acceptance includes raw HTTP and all three SDKs, frozen inputs/source/pins,
+repeated identical Agent calls, lost acknowledgements at admission/spawn/result,
+evaluator/Temporal process replacement, stale epochs, waits/deadlines and late
+usage. Exercise two Runs plus primary messages, shared Work retirement and
+Session archive/delete/repin barriers. The first available journey must already
+have correct lifecycle semantics, not defer cancellation or recovery to fanout.
 
-Acceptance includes invalid references, cycles in a static dependency graph,
-malformed/oversized plans, unknown Agents, authority escalation, exceeded limits,
-confirmation denial and proposal changes. Reuse committed planning receipts on
-recovery. If the provider reply was not committed, record any new planning
-attempt honestly; no unadmitted result may execute, and no lost reply is assumed
-to be recoverable. Cover planner usage, rejection events and the same first-group
-completion/cancellation path. No arbitrary generated code.
+### 2. Parallel execution and result-driven programs
 
-### 3. Result-driven expansion and sealed joins
+Certify ordered parallel joins, branches and bounded review/revision loops over
+committed values; the JS program owns this logic. Add helper membership/closure,
+recorded Promise delivery and explicit partial-failure behavior. Keep concurrency
+and cumulative work bounded across the Run and Session. This does not add a
+second declarative scheduler or rerun the primary model for each transition.
 
-Allow an admitted producer to expand a bounded list of task instances from
-committed results, then close its membership. Persist its input snapshot/order,
-expansion identity, members and seal. Resolve dependencies through typed result
-references rather than model text or mutable workspace paths. Cumulative work
-and size limits include every page and attempt, not only currently active tasks.
+Acceptance includes completion order permutations, replay when every result is
+already available, callbacks issuing new calls, paged discovery, rejected
+Promises, producer failure before closure, loop exhaustion and mismatching
+trace prefixes. Prove a wait/Continue-As-New handoff cannot strand results.
+Stop/timeout must fence new calls without stopping another Run's shared worker;
+verify the real per-Thread cancellation boundary separately.
 
-Acceptance includes duplicate input values, paged discovery, restart before and
-after seal, child results arriving before producer closure, duplicate expansion
-commands, limit exhaustion, cancellation during admission and membership that
-cannot change after seal. Prove no premature join and no repeated committed
-spawn. Add only the expansion storage/rules now exercised by this feature.
+### 3. Primary-generated source and context integration
 
-### 4. Bounded control flow and explicit failure/retry policies
+Let the primary generate a supported program through normal model tool calling.
+Bind authorization/any confirmation to the exact immutable source and inputs;
+application and model starts share admission and journal rules. Source-run
+permission is separate from later child tool approvals. Default enablement and
+confirmation must be selected explicitly before exposing model-start controls.
 
-Add selected branch predicates and bounded review/revision loops using the same
-admission and receipt model. Each invocation/iteration gets stable instance
-identity. Persist decisions before their effects; a replay cannot select a new
-branch. Joins follow the admitted selected branch, with unchosen work explicitly
-skipped or excluded by that decision, rather than waiting on nonexistent steps.
-Choose fail-fast versus explicitly collected partial failures, sibling
-cancellation, and safe attempt/backoff rules. Keep unknown-effect repair separate
-from ordinary infrastructure retry.
+Acceptance includes malformed/oversized source, unauthorized Agent/model/tool
+references, model response lost before commit, budget accounting for planning,
+child and synthesis calls, and independently verified per-Thread context. Child
+results go to the program, with one durable terminal delivery to the primary;
+progress conversation cannot consume a final result accidentally. Validate a
+fact-check-style journey authored for Mango with deterministic fixtures first,
+then a separately recorded opt-in local real-model smoke.
 
-Acceptance includes multi-iteration replay, loop exhaustion, nested expansion
-bounds, branch decisions at cancellation, partially joined failures, budget and
-approval pauses, stale prior-attempt results and actual-incurred usage. Test
-cumulative limits across all iterations. Do not enable unbounded recursion,
-hidden business retries or a general language interpreter through this step.
+### 4. Inline Agents, pipelines and supported-scale operation
 
-### 5. Inline Agent snapshots under admitted authority
+Add effective inline definitions under the Run ceiling and pipelined per-item
+stages through the same journaled Agent boundary. Freeze definitions at
+invocation admission; use credential references with live revocation, never
+plaintext secret snapshots. Pipeline items can enter later stages independently;
+phase titles cannot create an unintended global barrier.
 
-Allow the plan/model to propose an effective inline definition at a spawn
-boundary. Validate it against the Run's approved model/tool/MCP/Skill/Memory
-scope, then snapshot it and bind it to the instance before execution. Reuse the
-same Agent execution and attempt lifecycle as predefined Agents; later changes
-to a prompt or definition do not rewrite an admitted instance.
+Acceptance includes inline definition drift/escalation, Memory/Skill pins,
+credential rotation/revocation, per-item partial failure, overlapping phases and
+bounded replay with retained results. Publish measured scale/latency limits and
+operator capability/upgrade guidance. Reusable saved-program resources or
+editing/forking a Run are separate user problems; do not prebuild their CRUD or
+reuse old results under changed source silently.
 
-Acceptance includes definition reply loss, duplicate spawn, unauthorized model
-or tool/MCP changes, Skill pin drift, credential rotation/revocation after
-snapshot, Memory access, restart and late results. Keep credential references
-and live operator controls; do not freeze plaintext secrets or infer permission
-from model-authored text. No per-Agent filesystem isolation is implied.
-
-### Separate gate: executable generated programs
-
-Revisit this only with a selected user scenario that the admitted operations do
-not serve adequately. Compare extending bounded operations with a separately
-isolated program runtime. A program route needs frozen code/image/interpreter,
-a durable command/checkpoint protocol, control-state recovery, nondeterminism
-capture, direct-I/O authority, leases and ambiguity repair. A container restart
-and an interpreter interface do not establish those properties. Prototype crash
-and effect boundaries before promising interchangeability with plan execution.
-Reuse the existing lifecycle/Agent-command boundaries where sound; expect an
-additional runtime and possible schema/API changes if this route is selected.
-
-Every implementation group updates affected HTTP validation, OpenAPI,
-Go/Python/TypeScript client mappings, independent raw HTTP and SDK conformance,
-API/capability docs and owning PostgreSQL/Temporal recovery tests together.
-Observation helpers and examples must use the same public completion and
-reconnect rules; do not make the SDKs independently interpret task success.
-Add service/operator Docker coverage when worker execution changes and record
-an available real-model smoke separately. This documentation does not establish
-execution, failure-recovery or provider-quality evidence for any future group.
+Every product group updates affected HTTP/OpenAPI, Go/Python/TypeScript mapping,
+independent raw HTTP/SDK conformance, API/capability docs and the owning PG,
+Temporal, evaluator and service tests together. SDKs submit/observe Mango's
+contract; they do not execute scripts or decide business success. Cookbook
+applications remain standalone examples, not conformance or recovery harnesses.
+No hosted credentials are required in development or CI.
 
 ## Separate self-hosted follow-ups
 
