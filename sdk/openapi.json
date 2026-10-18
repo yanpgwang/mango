@@ -3925,6 +3925,11 @@
       "EnvironmentWorkStopRequest": {
         "additionalProperties": false,
         "properties": {
+          "expected_idle_event_id": {
+            "description": "Optional Session Work idle-retirement precondition. Requires the exact current primary end_turn event, aggregate idle, and no newer events or outstanding work. A stale observation returns 412 without stopping or renewing Work; never retry it as an unconditional Stop. Omit for explicit operator shutdown.",
+            "minLength": 1,
+            "type": "string"
+          },
           "force": {
             "default": false,
             "type": "boolean"
@@ -10039,6 +10044,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
           }
         },
         "summary": "Request graceful or forced Work shutdown",

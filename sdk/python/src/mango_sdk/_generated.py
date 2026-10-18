@@ -1169,10 +1169,11 @@ class EnvironmentsWorkResource:
         environment_id: str,
         work_id: str,
         *,
+        expected_idle_event_id: str | NotGiven = NOT_GIVEN,
         force: bool | NotGiven = NOT_GIVEN,
     ) -> None:
         """POST /v1/environments/{environment_id}/work/{work_id}/stop."""
-        return cast(None, self._client._request(OPERATIONS['stop_environment_work'], {'environment_id': environment_id, 'work_id': work_id}, {}, {'force': force}))
+        return cast(None, self._client._request(OPERATIONS['stop_environment_work'], {'environment_id': environment_id, 'work_id': work_id}, {}, {'expected_idle_event_id': expected_idle_event_id, 'force': force}))
 
     def update(
         self,
@@ -2499,10 +2500,11 @@ class AsyncEnvironmentsWorkResource:
         environment_id: str,
         work_id: str,
         *,
+        expected_idle_event_id: str | NotGiven = NOT_GIVEN,
         force: bool | NotGiven = NOT_GIVEN,
     ) -> None:
         """POST /v1/environments/{environment_id}/work/{work_id}/stop."""
-        return cast(None, await self._client._request(OPERATIONS['stop_environment_work'], {'environment_id': environment_id, 'work_id': work_id}, {}, {'force': force}))
+        return cast(None, await self._client._request(OPERATIONS['stop_environment_work'], {'environment_id': environment_id, 'work_id': work_id}, {}, {'expected_idle_event_id': expected_idle_event_id, 'force': force}))
 
     async def update(
         self,

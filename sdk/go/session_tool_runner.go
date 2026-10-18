@@ -122,6 +122,7 @@ type SessionToolRunner struct {
 	sleep                 func(context.Context, time.Duration)
 	retryDelay            func(int) time.Duration
 	streamRefreshInterval time.Duration
+	idleTimeoutEventID    string
 }
 
 type sessionToolState struct {
@@ -337,6 +338,9 @@ func (r *SessionToolRunner) ingest(ctx context.Context, queue chan<- pendingSess
 	awaiting := make(map[string]pendingSessionToolCall)
 	failures := 0
 	for ctx.Err() == nil {
+		// Opening the next subscription can fail while finite history stays
+		// healthy. Do not retire from an old idle observation before reconciling.
+		r.idle.reconciling(true)
 		// Bound this live connection, not the runner or an executing tool. A
 		// silent stale connection must not hide newly persisted approvals forever.
 		streamCtx, stopStream := context.WithTimeout(ctx, r.streamRefreshInterval)
@@ -1133,6 +1137,15 @@ func (c *sessionIdleClock) reconciling(active bool) {
 	c.signal()
 }
 
+func (c *sessionIdleClock) expiredBoundary(now time.Time) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.readingHistory || c.deadline.IsZero() || now.Before(c.deadline) {
+		return "", false
+	}
+	return c.lastIdleID, true
+}
+
 func (c *sessionIdleClock) signal() {
 	select {
 	case c.wake <- struct{}{}:
@@ -1152,7 +1165,11 @@ func (r *SessionToolRunner) watchIdle(ctx context.Context) error {
 		if !deadline.IsZero() {
 			delay := time.Until(deadline)
 			if delay <= 0 {
-				return ErrIdleTimeout
+				if id, expired := r.idle.expiredBoundary(time.Now()); expired {
+					r.idleTimeoutEventID = id
+					return ErrIdleTimeout
+				}
+				continue
 			}
 			if timer == nil {
 				timer = time.NewTimer(delay)
@@ -1175,7 +1192,8 @@ func (r *SessionToolRunner) watchIdle(ctx context.Context) error {
 			return nil
 		case <-r.idle.wake:
 		case <-timerC:
-			if current := r.idle.snapshot(); !current.IsZero() && !time.Now().Before(current) {
+			if id, expired := r.idle.expiredBoundary(time.Now()); expired {
+				r.idleTimeoutEventID = id
 				return ErrIdleTimeout
 			}
 		}

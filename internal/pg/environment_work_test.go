@@ -170,7 +170,7 @@ func TestEnvironmentWorkActivatesSelfHostedSessionAndFollowsLeaseLifecycle(t *te
 	}}); err != nil {
 		t.Fatalf("admit during active Work: %v", err)
 	}
-	if err := repository.StopWork(workCtx, session.EnvironmentID, workID, false); err != nil {
+	if err := repository.StopWork(workCtx, session.EnvironmentID, workID, false, nil); err != nil {
 		t.Fatalf("graceful Stop: %v", err)
 	}
 	if successor, err := repository.PollWork(ctx, session.EnvironmentID, app.EnvironmentWorkPollInput{
@@ -185,7 +185,7 @@ func TestEnvironmentWorkActivatesSelfHostedSessionAndFollowsLeaseLifecycle(t *te
 	if err != nil || stopping.LeaseExtended || stopping.State != domain.EnvironmentWorkStopping {
 		t.Fatalf("stopping Heartbeat = %+v, err=%v", stopping, err)
 	}
-	if err := repository.StopWork(workCtx, session.EnvironmentID, workID, true); err != nil {
+	if err := repository.StopWork(workCtx, session.EnvironmentID, workID, true, nil); err != nil {
 		t.Fatalf("force Stop: %v", err)
 	}
 	if _, _, err := store.AuthenticateSessionToken(ctx, sessionsToken); !errors.Is(err, workspace.ErrInvalidSessionToken) {
@@ -276,7 +276,7 @@ func TestEnvironmentWorkSessionTokenScopesMemoryWritesToLiveLease(t *testing.T) 
 		t.Fatalf("live worker update = %+v, %v", updated, err)
 	}
 
-	if err := workRepository.StopWork(workCtx, session.EnvironmentID, work.ID, true); err != nil {
+	if err := workRepository.StopWork(workCtx, session.EnvironmentID, work.ID, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	staleContent := "stale worker"
@@ -323,7 +323,7 @@ func TestEnvironmentWorkForceStopDoesNotRequeueOriginalActivation(t *testing.T) 
 	if err != nil || work == nil {
 		t.Fatalf("Poll = %+v, err=%v", work, err)
 	}
-	if err := repository.StopWork(ctx, session.EnvironmentID, work.ID, true); err != nil {
+	if err := repository.StopWork(ctx, session.EnvironmentID, work.ID, true, nil); err != nil {
 		t.Fatalf("force Stop: %v", err)
 	}
 	page, err := repository.ListWork(ctx, session.EnvironmentID, app.EnvironmentWorkListQuery{Limit: 10})
@@ -473,7 +473,7 @@ func TestEnvironmentWorkAmbiguousAckIsReclaimedAfterStartingTTL(t *testing.T) {
 			t.Fatalf("expired pre-reclaim heartbeat error = %T %v", err, err)
 		}
 	}
-	if err := repository.StopWork(firstCtx, session.EnvironmentID, first.ID, true); err == nil {
+	if err := repository.StopWork(firstCtx, session.EnvironmentID, first.ID, true, nil); err == nil {
 		t.Fatal("expired starting lease was stopped before reclaim")
 	} else {
 		var domainErr *domain.DomainError
@@ -507,7 +507,7 @@ func TestEnvironmentWorkAmbiguousAckIsReclaimedAfterStartingTTL(t *testing.T) {
 			t.Fatalf("expired heartbeat error = %T %v", err, err)
 		}
 	}
-	if err := repository.StopWork(firstCtx, session.EnvironmentID, first.ID, true); err == nil {
+	if err := repository.StopWork(firstCtx, session.EnvironmentID, first.ID, true, nil); err == nil {
 		t.Fatal("expired worker stopped a reclaimed lease")
 	} else {
 		var domainErr *domain.DomainError
@@ -598,7 +598,7 @@ func TestEnvironmentWorkStoppingCredentialExpiresWithoutAnotherPoller(t *testing
 	); err != nil {
 		t.Fatalf("Heartbeat: %v", err)
 	}
-	if err := repository.StopWork(workCtx, session.EnvironmentID, work.ID, false); err != nil {
+	if err := repository.StopWork(workCtx, session.EnvironmentID, work.ID, false, nil); err != nil {
 		t.Fatalf("graceful Stop: %v", err)
 	}
 	if err := store.ValidateSessionScope(ctx, sessionScope); err != nil {
@@ -619,7 +619,7 @@ func TestEnvironmentWorkStoppingCredentialExpiresWithoutAnotherPoller(t *testing
 	}}); err == nil {
 		t.Fatal("expired stopping scope admitted a tool result")
 	}
-	if err := repository.StopWork(workCtx, session.EnvironmentID, work.ID, true); err == nil {
+	if err := repository.StopWork(workCtx, session.EnvironmentID, work.ID, true, nil); err == nil {
 		t.Fatal("expired stopping scope force-stopped Work")
 	}
 	if _, err := repository.PollWork(ctx, session.EnvironmentID, app.EnvironmentWorkPollInput{
@@ -646,7 +646,7 @@ func TestEnvironmentWorkSessionStreamClosesAfterLeaseEnds(t *testing.T) {
 				_ context.Context, _ *Store, repository *EnvironmentWorkRepository,
 				_ *environmentWorkTestClock, work domain.EnvironmentWork, workCtx context.Context,
 			) error {
-				return repository.StopWork(workCtx, work.EnvironmentID, work.ID, true)
+				return repository.StopWork(workCtx, work.EnvironmentID, work.ID, true, nil)
 			},
 		},
 		{

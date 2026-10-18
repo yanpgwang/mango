@@ -811,7 +811,8 @@ const (
 )
 
 type EnvironmentWorkStopRequest struct {
-	Force Optional[bool] `json:"force,omitzero"`
+	ExpectedIdleEventID Optional[string] `json:"expected_idle_event_id,omitzero"`
+	Force               Optional[bool]   `json:"force,omitzero"`
 }
 
 type EnvironmentWorkUpdateRequest struct {

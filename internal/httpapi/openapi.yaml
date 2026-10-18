@@ -451,6 +451,7 @@ paths:
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
 
   /v1/sessions:
     post:
@@ -4495,6 +4496,10 @@ components:
       additionalProperties: false
       properties:
         force: {type: boolean, default: false}
+        expected_idle_event_id:
+          type: string
+          minLength: 1
+          description: Optional Session Work idle-retirement precondition. Requires the exact current primary end_turn event, aggregate idle, and no newer events or outstanding work. A stale observation returns 412 without stopping or renewing Work; never retry it as an unconditional Stop. Omit for explicit operator shutdown.
     EnvironmentWorkFailureRequest:
       type: object
       additionalProperties: false
