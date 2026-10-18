@@ -47,6 +47,27 @@ maintainer choice. Hosted control planes, cloud mounts, vendor limits and
 arbitrary-code execution are not adopted. No Workflow Run functionality or
 release-state change is delivered by this documentation.
 
+The follow-up architecture plan responds to the maintainer's request to design
+the full capability before enabling simple operations. Reviewed Mango baseline
+`49921930a2872f12b569ee027b694abbe3afb4f8`, including Thread completion/report
+routing, Session admission and archive/deletion, outbox delivery and the Go local
+tool runner, and re-read the exact SDK source objects above alongside current
+official lifecycle/configuration documentation. Existing requires-action work
+can be queued in Mango, and Session deletion already has a durable fence and
+reconciler; the plan extends those Mango semantics rather than importing CMA's
+hosted request restrictions. Generic Run-create retry identity is new work,
+not a property supplied by today's Session event submission.
+
+The proposed target now includes result-driven expansion, closed join
+membership, repeated step instances, multiple Runs with primary conversation,
+and inline Agent snapshots within admitted authority. Initial delivery is a
+subset of this lifecycle, with PostgreSQL decisions and Temporal scheduling
+kept distinct. Deterministic operator stop/resume and observable cleanup are
+Mango self-hosted requirements, not claims about CMA endpoints. Arbitrary
+program execution remains a separately evaluated runtime choice; no reusable
+interface is claimed to make it a free executor swap. Implementation and exact
+wire/schema decisions remain proposed; this work delivers only a reviewed plan.
+
 ## Conditional self-hosted idle retirement (2026-10-18)
 
 - Mango problem: Work admission coalesces while a worker owns an activation.
