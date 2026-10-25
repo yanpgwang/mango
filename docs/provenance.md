@@ -25,48 +25,78 @@ at the time of that work. On 2026-09-30, the pre-release migration chain was
 consolidated into the [current development schema baseline](deployment.md#development-database-baseline);
 those historical upgrade and downgrade paths are no longer shipped.
 
-## Workflow Runs research and proposed direction (2026-10-18)
+## Workflow Runs program design research (2026-10-19)
 
-The [Workflow Runs proposal](design/workflow-runs.md) compares Mango source,
-schema, OpenAPI and existing recovery tests at
-`88ddec98b7e38b3e9f6b0a7e4f3fb9a5fdb45f99` with current official
-[CMA lifecycle](https://platform.claude.com/docs/en/managed-agents/workflow-runs),
-[multi-agent configuration](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration)
-and paired SDK source: Go v1.82.0
-`543d266ce81a4487281e084b013fef807dbb5f18`, Python v1.15.0
-`bcd55fe1d3f0f1240765f8cef04295b67337f55a`, and TypeScript sdk-v0.135.0
-`04a4c28c70de498d6d0e930e43edb5edb9ac545e`. Exact source links and reviewed
-config/event/Thread mappings are in the proposal; releases and tag commits
-were checked on 2026-10-18. Official clients were read, never executed.
+The [revised plan](design/workflow-runs.md) and its
+[program execution/recovery detail](design/workflow-program-runtime.md) compare
+Mango baseline `2f53b8e633055cdf50abb7cdd334a33264d109d7`, migrations,
+OpenAPI, provider context snapshots, Thread completion, operation journals and
+at-least-once outbox with current public demonstrations. This supersedes the
+2026-10-18 declarative-plan-first recommendation. It delivers design only:
+Workflow Runs, a JS evaluator and their HTTP/SDK surfaces are not implemented.
 
-Useful inputs are Run ownership, durable progress/results and open-Run
-completion/Outcome barriers. The references expose no reusable execution
-language or engine. A bounded declarative plan is recommended for Mango's own
-control plane; the execution boundary, controls and contract remain pending
-maintainer choice. Hosted control planes, cloud mounts, vendor limits and
-arbitrary-code execution are not adopted. No Workflow Run functionality or
-release-state change is delivered by this documentation.
+References read on 2026-10-19:
 
-The follow-up architecture plan responds to the maintainer's request to design
-the full capability before enabling simple operations. Reviewed Mango baseline
-`49921930a2872f12b569ee027b694abbe3afb4f8`, including Thread completion/report
-routing, Session admission and archive/deletion, outbox delivery and the Go local
-tool runner, and re-read the exact SDK source objects above alongside current
-official lifecycle/configuration documentation. Existing requires-action work
-can be queued in Mango, and Session deletion already has a durable fence and
-reconciler; the plan extends those Mango semantics rather than importing CMA's
-hosted request restrictions. Generic Run-create retry identity is new work,
-not a property supplied by today's Session event submission.
+- The current [CMA lifecycle](https://platform.claude.com/docs/en/managed-agents/workflow-runs)
+  and [multi-agent configuration](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration).
+- Official Cookbook main `a162e0184e71b60290808a43961a6cbc8060123c`, dated
+  2026-10-17: [Agent SDK dynamic workflows](https://github.com/anthropics/claude-cookbooks/blob/a162e0184e71b60290808a43961a6cbc8060123c/claude_agent_sdk/08_Dynamic_workflows.ipynb),
+  including the full generated JS in its saved output; and
+  [CMA security review](https://github.com/anthropics/claude-cookbooks/blob/a162e0184e71b60290808a43961a6cbc8060123c/managed_agents/CMA_agent_security_review.ipynb),
+  including its source prompts, workflow enablement, custom-tool result checks
+  and completion/reconnection loop. The local reference checkout remains
+  `d7265d6ae994ccd8429db0594b000073b2f9ad43`; its dynamic-workflow notebook
+  matches the reviewed current notebook exactly. The newer CMA example was
+  read directly at the pinned official commit.
+- [Claude Code workflows](https://code.claude.com/docs/en/workflows): restricted
+  JS, script variables, isolation and observable saved-result replay semantics.
+  This is a related product reference, not proof of CMA's server implementation.
+- Latest stable SDK releases rechecked against official release/tag APIs:
+  Go v1.82.0 `543d266ce81a4487281e084b013fef807dbb5f18`, Python v1.15.0
+  `bcd55fe1d3f0f1240765f8cef04295b67337f55a`, TypeScript sdk-v0.135.0
+  `04a4c28c70de498d6d0e930e43edb5edb9ac545e`. Read configuration,
+  `workflow_run.created`/terminal result types and Run/Thread association in
+  Go's `betaagent.go`, `betasessionevent.go`, `betasessionthread.go`, Python's
+  workflow configuration and `types/beta/sessions/` event models, and
+  TypeScript's `beta/agents/agents.ts`, `beta/sessions/events.ts` and
+  `beta/sessions/threads/threads.ts`. These clients map lifecycle and event
+  types, not an embedded workflow engine.
+- Official [Temporal Activities](https://docs.temporal.io/activities),
+  [Workflow replay](https://docs.temporal.io/workflow-execution#replays),
+  [Side Effects](https://docs.temporal.io/develop/go/workflows/side-effects)
+  and [Continue-As-New](https://docs.temporal.io/develop/go/workflows/continue-as-new):
+  Activity retries and trusted Workflow replay do not preserve arbitrary JS
+  process memory or deduplicate application effects automatically.
+- [QuickJS resource hooks](https://bellard.org/quickjs/quickjs.html) and
+  [Node VM's isolation disclaimer](https://nodejs.org/api/vm.html) inform an
+  unresolved engine/containment feasibility gate, not a dependency selection.
 
-The proposed target now includes result-driven expansion, closed join
-membership, repeated step instances, multiple Runs with primary conversation,
-and inline Agent snapshots within admitted authority. Initial delivery is a
-subset of this lifecycle, with PostgreSQL decisions and Temporal scheduling
-kept distinct. Deterministic operator stop/resume and observable cleanup are
-Mango self-hosted requirements, not claims about CMA endpoints. Arbitrary
-program execution remains a separately evaluated runtime choice; no reusable
-interface is claimed to make it a free executor swap. Implementation and exact
-wire/schema decisions remain proposed; this work delivers only a reviewed plan.
+**Adopt as proposed high-level design:** generated restricted programs own
+control flow and intermediate values; independent Agent Threads own their model
+contexts; validated results precede downstream work; Run/phase/Thread lifecycle
+is observable. This serves Mango batch review and research without requiring
+primary-context accumulation or new JSON node types for every control pattern.
+
+**Adapt for Mango:** PG records immutable source, inputs, runtime pins and a
+checked command/result-delivery trace; an isolated disposable evaluator
+reconstructs its variables; trusted Go Temporal code drives bounded Activities,
+waits and deadlines. Require source inspection and deterministic operator
+controls independent of model availability. Freeze source within a Run rather
+than importing Claude Code's edited-script suffix replay behavior. Reuse Mango
+Thread context, accounting, tool-effect reconciliation and Session barriers.
+Explicitly test Promise order and fencing, not merely call/result caching.
+
+**Reject or defer:** hosted scheduling/authentication, cloud sandbox requirement,
+vendor limits/default retry counts, unrestricted Node/library/I/O execution,
+heap-snapshot recovery claims, automatic safe business retries, automatic result
+reuse under changed source, and a second public JSON DAG language. CMA's engine,
+program language and database implementation remain unverified; no claim is
+made that it uses JS, Temporal or PG internally.
+
+All reference code/outputs were read, never executed as Mango clients or copied
+as an implementation. Acceptance will use independently authored Mango HTTP,
+SDK, PG, Temporal and real evaluator/worker tests. The first next step is the
+bounded feasibility gate; this documentation authorizes no runtime release.
 
 ## Conditional self-hosted idle retirement (2026-10-18)
 
