@@ -63,6 +63,13 @@ test when that language's SDK behavior is the subject; keep Mango runtime and
 durability assertions in Go so they run with the implementation and Go's race
 detector.
 
+The unshipped Workflow program proposal has a separate research tier:
+`make test-workflow-runtime` builds disposable QuickJS/Node candidates and tests
+ordered replay against its own PostgreSQL fixture. Its path-filtered CI job
+runs when the study changes. Passing it is partial feasibility evidence, not a
+released executor or the complete program-runtime gate; see
+[`scripts/workflow-runtime/README.md`](scripts/workflow-runtime/README.md).
+
 `make lint` checks changes relative to `origin/main`, matching the incremental
 CI rollout. Set `LINT_BASE` when your comparison branch differs.
 

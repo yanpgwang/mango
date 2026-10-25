@@ -13,6 +13,10 @@ command journal for semantic recovery, and Temporal for durable coordination.
 Engine selection and the protocol feasibility gate remain open. This page is
 not an API specification, an executable prototype, or evidence of isolation.
 
+The [first replay study](workflow-runtime-study.md), added on 2026-10-25,
+contains independently authored executable research and measured protocol
+evidence. It leaves the full gate open and does not implement a product Run.
+
 ## Execution boundary
 
 The program builds prompts, invokes approved Agents, processes their results,

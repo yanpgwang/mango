@@ -25,6 +25,40 @@ at the time of that work. On 2026-09-30, the pre-release migration chain was
 consolidated into the [current development schema baseline](deployment.md#development-database-baseline);
 those historical upgrade and downgrade paths are no longer shipped.
 
+## Workflow program evaluator study (2026-10-25)
+
+The [first replay study](design/workflow-runtime-study.md) follows Mango baseline
+`40a5a2285061f3cc1dc4b2f9c70c7391d0ef52e4`. It adds original research fixtures,
+not a product executor, public API or official-client interoperability claim.
+It adapts the program/independent-Thread/result relationships described by the
+current [CMA workflow guide](https://platform.claude.com/docs/en/managed-agents/workflow-runs)
+and [multi-agent guide](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration).
+Ordered JS delivery traces, PostgreSQL fencing and the disposable evaluator
+protocol are Mango's proposed implementation, not inferred CMA internals.
+
+Official latest stable release/tag APIs and paired source were read again on
+2026-10-25:
+
+- Go v2.3.0, `f5c6193d5902070b5e006d5334f5c379cba1f6ae`:
+  `betaagent.go`, `betasessionevent.go`, `betasessionthread.go`.
+- Python v2.3.0, `202db72c87d7c6eaa72129c67ce67fd343a3a20c`:
+  workflows-enabled parameters, Run created/ended/idle events and SessionThread.
+- TypeScript sdk-v1.3.0, `cb5fba419808e3844fa6407e59577ab7ba346b79`:
+  `beta/agents/agents.ts`, `beta/sessions/events.ts`,
+  `beta/sessions/threads/threads.ts`.
+
+The reviewed Workflow configuration, lifecycle events and Thread association
+retain the prior mappings; SDK generator/type changes do not require a new
+Mango product surface. No reference client was executed or made a dependency.
+
+Engine research uses [QuickJS C API](https://bellard.org/quickjs/quickjs.html)
+(2026-06-04 source archive with a verified SHA-256) and
+[Node VM documentation](https://nodejs.org/download/release/v22.17.0/docs/api/vm.html).
+The latter explicitly excludes an untrusted-code security guarantee. Both
+study candidates therefore use an independently confined process; no generated
+code runs in Mango's trusted Go orchestration. The study leaves full runtime,
+recovery and platform certification open.
+
 ## Workflow Runs program design research (2026-10-19)
 
 The [revised plan](design/workflow-runs.md) and its
