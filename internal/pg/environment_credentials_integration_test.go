@@ -133,7 +133,7 @@ func TestEnvironmentKeyRevocationPreservesAcknowledgedWorkLease(t *testing.T) {
 	if err != nil || !heartbeat.LeaseExtended {
 		t.Fatalf("active heartbeat=%+v, %v", heartbeat, err)
 	}
-	if err := repo.StopWork(itemCtx, "env_key", work.ID, true); err != nil {
+	if err := repo.StopWork(itemCtx, "env_key", work.ID, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := store.AuthenticateSessionToken(ctx, token); !errors.Is(err, workspace.ErrInvalidSessionToken) {
@@ -240,7 +240,7 @@ func TestEnvironmentKeyRevocationInterruptsAuthenticatedLongPoll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.StopWork(ctx, "env_key", page.Work[0].ID, true); err != nil {
+	if err := repo.StopWork(ctx, "env_key", page.Work[0].ID, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	service := app.NewEnvironmentWorkService(repo, NewEnvironmentRepository(store))

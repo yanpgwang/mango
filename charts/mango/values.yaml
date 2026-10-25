@@ -1,0 +1,51 @@
+# Candidate: no runtime image or chart publication is claimed yet.
+# All state services, bucket and Secrets must exist before installation.
+fullnameOverride: ""
+image:
+  repository: ghcr.io/yanpgwang/mango
+  tag: "" # appVersion; explicit latest is rejected
+  digest: "" # sha256:... overrides the tag
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+database:
+  existingSecret: {name: "", key: database-url}
+  migrationSecret: {name: "", key: database-url} # optional distinct DDL account
+auth:
+  existingSecret: {name: "", key: api-key}
+temporal:
+  address: ""
+  namespace: default
+nats:
+  existingSecret: {name: "", key: nats-url}
+files:
+  endpoint: ""
+  region: us-east-1
+  bucket: ""
+  pathStyle: true
+  existingSecret: {name: "", accessKey: access-key, secretKey: secret-key}
+model:
+  baseURL: ""
+  id: ""
+  auth: x-api-key
+  existingSecret: {name: "", key: api-key}
+vault:
+  enabled: false
+  existingSecret: {name: "", key: keyring.json}
+service:
+  port: 8080
+api:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi, ephemeral-storage: 128Mi}
+    limits: {cpu: "1", memory: 512Mi, ephemeral-storage: 2Gi}
+  temporaryStorage: 1Gi
+orchestration:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi, ephemeral-storage: 128Mi}
+    limits: {cpu: "1", memory: 1Gi, ephemeral-storage: 2Gi}
+  temporaryStorage: 1Gi
+migration:
+  enabled: true # disable only for an initialized same-release restore
+  resources:
+    requests: {cpu: 50m, memory: 64Mi, ephemeral-storage: 32Mi}
+    limits: {cpu: 500m, memory: 256Mi, ephemeral-storage: 256Mi}
+  temporaryStorage: 128Mi

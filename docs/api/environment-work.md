@@ -62,6 +62,31 @@ The API exposes Create, Get, Update, List, Ack, Heartbeat, Result, Fail, Poll, S
 /v1/environments/{environment_id}/work
 ```
 
+Automatic idle retirement uses the optional Stop body field
+`expected_idle_event_id`, for example:
+
+```json
+{"force": true, "expected_idle_event_id": "sevt_last_end_turn"}
+```
+
+The event must be this Work's Session's exact latest durable primary
+`session.status_idle` with `stop_reason.type: "end_turn"`, with aggregate idle,
+no unresolved actions or active turns, and no newer Session events. The check
+and Stop share the Session→Work transaction locks. An old, unrelated, child,
+unprocessed, archived, deleting, or terminal boundary returns `412` without
+stopping or renewing Work. A healthcheck cannot use this field (`400`). Existing
+lease ownership and expiry checks still apply. A worker must never retry a
+rejected or uncertain conditional Stop without the condition. Any still-active Work is left for lease reclaim; an uncertain
+reply may also mean the conditional Stop already committed. This preserves
+already admitted input and pending tools even when their live events were
+missed. An input admitted after successful
+retirement creates a successor Work activation.
+
+Omit the field for an explicit operator shutdown; `force` still selects
+immediate versus graceful cancellation. Heartbeat's timestamp condition only
+fences lease renewal and cannot assert that the Session event ledger stayed
+idle. No new ETag or conditional header is introduced.
+
 Stop returns `204 No Content`, and an empty Poll returns an empty JSON object.
 Get, List, metadata Update, and Ack responses redact the Work secret as `null`;
 only Poll returns the raw payload. The Go WorkPoller preserves the polled value
@@ -156,7 +181,7 @@ endpoint that supports the native Web declarations. Disable them otherwise.
 Build and run the preview reference worker from the repository root:
 
 ```sh
-docker build -f deployments/self-hosted/docker/Dockerfile \
+docker build -f deployments/workers/docker/Dockerfile \
   -t mango-self-hosted-worker:local .
 
 MANGO_ENVIRONMENT_KEY=replace-with-an-environment-key \
@@ -190,7 +215,7 @@ container boundary. Before dispatch, the worker prepares the frozen custom
 Skill pins and attached Memory Stores described below. It does not yet prepare
 File/Git resources or Session outputs, and it is not a hardened hostile
 multi-tenant boundary. See the
-[Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker).
+[Docker worker deployment notes](https://github.com/yanpgwang/mango/tree/main/deployments/workers/docker).
 
 The file tools are confined to `/workspace` plus the exact Memory Store roots
 attached to the Session. `write` and `edit` reject read-only roots. Bash itself

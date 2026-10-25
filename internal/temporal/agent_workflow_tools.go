@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -49,6 +50,7 @@ type workflowTurnState struct {
 	outcomeHeartbeatInterval       time.Duration
 	activeOutcomeEvaluationStartID string
 	activeOutcomeIteration         int
+	outcomeID                      string
 	usesProviderTranscript         bool
 	transcriptDelta                []domain.Message
 	toolUseMappings                []domain.ProviderToolUseMapping
@@ -70,6 +72,8 @@ func (t *workflowTurnState) startModelRequest(startID string) error {
 	).Get(t.actx, nil)
 }
 
+var errOwnedTurnInterrupted = errors.New("owned turn was interrupted while waiting for budget")
+
 func (t *workflowTurnState) awaitModelRequestAdmission() error {
 	for {
 		var admitted AdmitModelRequestResult
@@ -89,7 +93,17 @@ func (t *workflowTurnState) awaitModelRequestAdmission() error {
 		if t.interrupts == nil {
 			return fmt.Errorf("budget-paused turn has no workflow wakeup channel")
 		}
-		t.interrupts.waitForWakeup()
+		if t.attemptID != "" {
+			interrupted, err := t.waitPermissionBudgetWakeup()
+			if err != nil {
+				return err
+			}
+			if interrupted {
+				return errOwnedTurnInterrupted
+			}
+		} else {
+			t.interrupts.waitForWakeup()
+		}
 	}
 }
 
@@ -97,7 +111,32 @@ func (t *workflowTurnState) flushOutput() error {
 	if len(t.output) == 0 {
 		return nil
 	}
-	drafts := append([]domain.EventDraft(nil), t.output...)
+	// Keep an unfinished tool round with its results or atomic pending barrier.
+	// In particular, an Advisor request must not flush later unexecuted MCP calls.
+	flushCount := len(t.output)
+	completed := make(map[string]bool)
+	for _, draft := range t.output {
+		if id, ok := domain.AgentToolResultReference(draft.Type, draft.Payload); ok {
+			completed[id] = true
+		}
+	}
+	firstAction := -1
+	for i, draft := range t.output {
+		switch draft.Type {
+		case domain.EvAgentToolUse, domain.EvAgentMcpToolUse, domain.EvAgentCustomToolUse:
+			if firstAction < 0 {
+				firstAction = i
+			}
+			if !completed[draft.ID] {
+				flushCount = firstAction
+			}
+		}
+	}
+
+	if flushCount == 0 {
+		return nil
+	}
+	drafts := append([]domain.EventDraft(nil), t.output[:flushCount]...)
 	for i := range drafts {
 		if drafts[i].ID == "" {
 			drafts[i].ID = workflowProgressEventID(
@@ -107,25 +146,40 @@ func (t *workflowTurnState) flushOutput() error {
 			)
 		}
 	}
+	input := AppendWorkflowEventsInput{
+		SessionID: t.sessionID, TriggerEventID: t.triggerEventID, Events: drafts,
+	}
+	if err := checkContentPayload("pending events", input); err != nil {
+		return err
+	}
 	if err := workflow.ExecuteActivity(
-		t.actx,
-		ActivityAppendWorkflowEvents,
-		AppendWorkflowEventsInput{
-			SessionID:      t.sessionID,
-			TriggerEventID: t.triggerEventID,
-			Events:         drafts,
-		},
+		t.actx, ActivityAppendWorkflowEvents, input,
 	).Get(t.actx, nil); err != nil {
 		return err
 	}
+	for _, draft := range drafts {
+		if draft.Type != domain.EvSpanOutcomeEvaluationEnd || draft.Payload["outcome_id"] != t.outcomeID {
+			continue
+		}
+		if draft.Payload["result"] == "needs_revision" {
+			t.activeOutcomeIteration = intValue(draft.Payload["iteration"]) + 1
+		} else {
+			// A committed terminal verdict is authoritative even if later
+			// uncommitted turn content exceeds capacity.
+			t.outcomeID = ""
+		}
+	}
 	t.flushedEventCount += len(drafts)
-	t.output = nil
+	t.output = t.output[flushCount:]
 	return nil
 }
 
 func (t *workflowTurnState) callModel(
 	input CallModelInput,
 ) (CallModelResult, interruptibleActivityOutcome, error) {
+	if err := checkContentPayload("model context", input); err != nil {
+		return CallModelResult{}, interruptibleActivityOutcome{}, err
+	}
 	var called CallModelResult
 	if t.interrupts == nil {
 		err := workflow.ExecuteActivity(
@@ -196,6 +250,9 @@ func (t *workflowTurnState) waitModelRetry(delay time.Duration) (bool, error) {
 func (t *workflowTurnState) evaluateOutcome(
 	input EvaluateOutcomeInput,
 ) (EvaluateOutcomeResult, interruptibleActivityOutcome, error) {
+	if err := checkContentPayload("outcome context", input); err != nil {
+		return EvaluateOutcomeResult{}, interruptibleActivityOutcome{}, err
+	}
 	var evaluated EvaluateOutcomeResult
 	if t.outcomeHeartbeats {
 		heartbeatInterval := t.outcomeHeartbeatInterval
@@ -481,9 +538,10 @@ func (t *workflowTurnState) executeTool(
 	definition TurnTool,
 	advisorRequest model.Request,
 	advisorConsultation domain.AdvisorConsultation,
+	permissionReceiptID string,
 ) (ExecuteToolResult, interruptibleActivityOutcome, error) {
-	t.attemptID = attemptID
 	input := ExecuteToolInput{
+		PermissionReceiptID: permissionReceiptID,
 		SessionID:           t.sessionID,
 		ThreadID:            t.threadID,
 		TriggerEventID:      t.triggerEventID,
@@ -505,6 +563,10 @@ func (t *workflowTurnState) executeTool(
 			_, input.SkillAlreadyLoaded = t.loadedSkills[name]
 		}
 	}
+	if err := checkContentPayload("tool input", input); err != nil {
+		return ExecuteToolResult{}, interruptibleActivityOutcome{}, err
+	}
+	t.attemptID = attemptID
 	toolActx := t.actx
 	if workflow.GetVersion(
 		t.actx,
@@ -567,18 +629,19 @@ func (t *workflowTurnState) rememberLoadedSkill(
 func (t *workflowTurnState) complete(
 	pendingActionEventIDs []string,
 ) (RunTurnResult, error) {
-	return t.completeTurn(pendingActionEventIDs)
+	return t.completeTurn(pendingActionEventIDs, domain.RunAttemptCompleted)
 }
 
 // completeInterrupted commits the interrupt promptly. Session output
 // publication is an idle-transition side effect for completed work; it must not
 // make an explicit interrupt wait behind a potentially long sandbox snapshot.
 func (t *workflowTurnState) completeInterrupted() (RunTurnResult, error) {
-	return t.completeTurn(nil)
+	return t.completeTurn(nil, domain.RunAttemptInterrupted)
 }
 
 func (t *workflowTurnState) completeTurn(
 	pendingActionEventIDs []string,
+	attemptState domain.RunAttemptState,
 ) (RunTurnResult, error) {
 	stopReason := map[string]any{"type": "end_turn"}
 	if len(pendingActionEventIDs) > 0 {
@@ -620,15 +683,9 @@ func (t *workflowTurnState) completeTurn(
 		input.ToolUseMappings = t.toolUseMappings
 	}
 	if t.attemptID != "" {
-		input.AttemptState = domain.RunAttemptCompleted
+		input.AttemptState = attemptState
 	}
-	var result RunTurnResult
-	err := workflow.ExecuteActivity(
-		t.actx,
-		ActivityCompleteWorkflowTurn,
-		input,
-	).Get(t.actx, &result)
-	return result, err
+	return t.commitTurn(input)
 }
 
 func (t *workflowTurnState) exhaustModelRetries(
@@ -669,13 +726,7 @@ func (t *workflowTurnState) exhaustModelRetries(
 		input.AttemptState = domain.RunAttemptFailed
 		input.AttemptError = &message
 	}
-	var result RunTurnResult
-	err := workflow.ExecuteActivity(
-		t.actx,
-		ActivityCompleteWorkflowTurn,
-		input,
-	).Get(t.actx, &result)
-	return result, err
+	return t.commitTurn(input)
 }
 
 func (t *workflowTurnState) terminate(
@@ -688,6 +739,24 @@ func (t *workflowTurnState) terminateTyped(
 	errorType string,
 	message string,
 ) (RunTurnResult, error) {
+	statusPayload := map[string]any{}
+	if t.outcomeID != "" {
+		failure := t.terminalOutcomeFailure(message)
+		foundEnd := false
+		for _, draft := range t.output {
+			if draft.Type == domain.EvSpanOutcomeEvaluationEnd && draft.Payload["outcome_id"] == t.outcomeID {
+				foundEnd = true
+				break
+			}
+		}
+		if !foundEnd {
+			// Bounded model/tool FatalError results use this existing terminal
+			// channel too; admission's active Outcome must not remain running.
+			t.output = append(t.output, failure)
+		}
+		statusPayload[domain.InternalOutcomeEvaluationStart] = failure.Payload["outcome_evaluation_start_id"]
+		statusPayload[domain.InternalOutcomeIteration] = failure.Payload["iteration"]
+	}
 	errorPayload := map[string]any{"type": "api_error", "message": message}
 	if t.terminalSessionErrors {
 		if errorType == "" {
@@ -705,7 +774,7 @@ func (t *workflowTurnState) terminateTyped(
 		domain.EventDraft{Type: domain.EvSessionError, Payload: map[string]any{
 			"error": errorPayload,
 		}},
-		domain.EventDraft{Type: domain.EvSessionStatusTerminated, Payload: map[string]any{}},
+		domain.EventDraft{Type: domain.EvSessionStatusTerminated, Payload: statusPayload},
 	)
 	input := CompleteWorkflowTurnInput{
 		SessionID:             t.sessionID,
@@ -727,13 +796,7 @@ func (t *workflowTurnState) terminateTyped(
 		input.AttemptState = domain.RunAttemptFailed
 		input.AttemptError = &message
 	}
-	var result RunTurnResult
-	err := workflow.ExecuteActivity(
-		t.actx,
-		ActivityCompleteWorkflowTurn,
-		input,
-	).Get(t.actx, &result)
-	return result, err
+	return t.commitTurn(input)
 }
 
 func indexTurnTools(tools []TurnTool) map[string]TurnTool {
@@ -785,6 +848,7 @@ func resumeWorkflowTurn(
 
 		content := action.Content
 		isError := action.IsError
+		outputFileID := ""
 		switch action.Kind {
 		case domain.PendingCustomToolResult:
 			if definition.Kind != TurnToolCustom {
@@ -798,15 +862,15 @@ func resumeWorkflowTurn(
 					"tool result does not reference a self-hosted built-in tool",
 				), nil
 			}
-			if definition.Permission.Type == "always_ask" && action.Confirmation != "allow" {
+			if action.EvaluatedPermission != "allow" && (action.EvaluatedPermission != "ask" || action.Confirmation != "allow") {
 				return nil, false, failTurn("external tool result has no verified approval"), nil
 			}
 		case domain.PendingToolConfirmation:
 			if (definition.Kind != TurnToolBuiltin &&
 				definition.Kind != TurnToolMCP && definition.Kind != TurnToolSelfHosted) ||
-				definition.Permission.Type != "always_ask" {
+				action.EvaluatedPermission != "ask" {
 				return nil, false, failTurn(
-					"tool confirmation does not reference an always_ask built-in",
+					"tool confirmation does not reference a recorded ask outcome",
 				), nil
 			}
 			if action.Confirmation == "deny" {
@@ -838,6 +902,7 @@ func resumeWorkflowTurn(
 					definition,
 					model.Request{},
 					domain.AdvisorConsultation{},
+					"",
 				)
 				if err != nil {
 					return nil, false, "", err
@@ -861,6 +926,7 @@ func resumeWorkflowTurn(
 					), nil
 				}
 				turn.output = append(turn.output, executed.Events...)
+				outputFileID = executed.Result.FileID
 				content = executed.Result.Content
 				isError = executed.Result.IsError
 				if activityOutcome.Interrupted {
@@ -868,7 +934,7 @@ func resumeWorkflowTurn(
 						action.ActionEventType,
 						action.ActionEventID,
 						content,
-						isError,
+						isError, outputFileID,
 					))
 					return nil, true, "", nil
 				}
@@ -877,7 +943,7 @@ func resumeWorkflowTurn(
 				action.ActionEventType,
 				action.ActionEventID,
 				content,
-				isError,
+				isError, outputFileID,
 			))
 		default:
 			return nil, false, failTurn("unknown pending action kind"), nil
@@ -924,6 +990,7 @@ type toolBatchPlan struct {
 	actionDrafts          []domain.EventDraft
 	executable            []plannedToolUse
 	pendingActionEventIDs []string
+	denied                toolBatchExecution
 }
 
 // serverToolUseType picks the documented tool-use variant for a server-executed
@@ -956,15 +1023,16 @@ func toolResultDraft(
 	toolUseEventID string,
 	content []any,
 	isError bool,
+	fileIDs ...string,
 ) domain.EventDraft {
 	if domain.AgentToolResultTypeFor(toolUseEventType) == domain.EvAgentMcpToolResult {
+		payload := map[string]any{"mcp_tool_use_id": toolUseEventID, "content": content, "is_error": isError}
+		if len(fileIDs) > 0 && fileIDs[0] != "" {
+			payload["file_id"] = fileIDs[0]
+		}
 		return domain.EventDraft{
-			Type: domain.EvAgentMcpToolResult,
-			Payload: map[string]any{
-				"mcp_tool_use_id": toolUseEventID,
-				"content":         content,
-				"is_error":        isError,
-			},
+			Type:    domain.EvAgentMcpToolResult,
+			Payload: payload,
 		}
 	}
 	return domain.EventDraft{
@@ -980,111 +1048,86 @@ func toolResultDraft(
 // planToolBatch is the pure classification boundary for one model tool-use
 // round. It validates the complete batch before any side effect and then
 // separates server-executed built-ins from client-action barriers.
-func planToolBatch(
-	toolUses []domain.ContentBlock,
-	toolsByName map[string]TurnTool,
-	stepsByProviderID map[string]PlannedToolStep,
-	mcpToolEvents bool,
-) (toolBatchPlan, turnFailure) {
+func validateToolBatch(toolUses []domain.ContentBlock, toolsByName map[string]TurnTool, stepsByProviderID map[string]PlannedToolStep) turnFailure {
 	for _, use := range toolUses {
 		if stepsByProviderID[use.ToolUseID].ToolStepID == "" {
-			return toolBatchPlan{}, failTurn(
-				"model tool request has no durable operation id",
-			)
+			return failTurn("model tool request has no durable operation id")
 		}
 		definition, ok := toolsByName[use.ToolName]
 		if !ok {
-			return toolBatchPlan{}, failTurn(
-				"model requested a tool that is not enabled: " + use.ToolName,
-			)
+			return failTurn("model requested a tool that is not enabled: " + use.ToolName)
 		}
 		if definition.Kind == TurnToolAdvisor {
 			if definition.Model == "" {
-				return toolBatchPlan{}, failTurn("advisor tool has no configured model")
+				return failTurn("advisor tool has no configured model")
 			}
 			if len(use.Input) != 0 {
-				return toolBatchPlan{}, failTurn("advisor tool does not accept input fields")
+				return failTurn("advisor tool does not accept input fields")
 			}
 		}
-		if (definition.Kind == TurnToolBuiltin || definition.Kind == TurnToolSelfHosted) &&
-			definition.Permission.Type != "always_allow" &&
-			definition.Permission.Type != "always_ask" {
-			return toolBatchPlan{}, failTurn(
-				"built-in tool has unsupported permission policy: " +
-					definition.Permission.Type,
-			)
+		if definition.Kind == TurnToolBuiltin || definition.Kind == TurnToolSelfHosted || definition.Kind == TurnToolMCP {
+			switch definition.Permission.Type {
+			case "always_allow", "always_ask", "auto":
+			default:
+				return failTurn("tool has unsupported permission policy: " + definition.Permission.Type)
+			}
 		}
 	}
+	return ""
+}
 
-	plan := toolBatchPlan{
-		actionDrafts: make([]domain.EventDraft, 0, len(toolUses)),
+func planToolBatch(toolUses []domain.ContentBlock, toolsByName map[string]TurnTool, stepsByProviderID map[string]PlannedToolStep, mcpToolEvents bool, decisions map[string]domain.ToolPermissionDecision) (toolBatchPlan, turnFailure) {
+	if failure := validateToolBatch(toolUses, toolsByName, stepsByProviderID); failure != "" {
+		return toolBatchPlan{}, failure
 	}
+	plan := toolBatchPlan{actionDrafts: make([]domain.EventDraft, 0, len(toolUses))}
 	for _, use := range toolUses {
 		definition := toolsByName[use.ToolName]
 		planned := stepsByProviderID[use.ToolUseID]
 		if definition.Kind == TurnToolCoordinator || definition.Kind == TurnToolAdvisor {
-			// Coordinator and Advisor primitives are private model tools. Their
-			// durable public projection is the official Thread lifecycle/message
-			// event set, never a generic agent.tool_use / agent.tool_result pair.
-			plan.executable = append(plan.executable, plannedToolUse{
-				use: use, publicEventID: planned.ToolUseEventID,
-				stepID: planned.ToolStepID, definition: definition,
-			})
+			plan.executable = append(plan.executable, plannedToolUse{use: use, publicEventID: planned.ToolUseEventID, stepID: planned.ToolStepID, definition: definition})
 			continue
 		}
-		draft := domain.EventDraft{
-			ID: planned.ToolUseEventID,
-			Payload: map[string]any{
-				"name":  use.ToolName,
-				"input": use.Input,
-			},
-		}
+		draft := domain.EventDraft{ID: planned.ToolUseEventID, Payload: map[string]any{"name": use.ToolName, "input": use.Input}}
 		if definition.Kind == TurnToolMCP {
-			// The public event reports the bare tool name the server published.
-			// use.ToolName is the namespaced model-facing alias and stays private
-			// to the provider request; mcp_server_name is what lets the alias be
-			// reconstructed on resume.
 			draft.Payload["name"] = definition.MCPToolName
 			draft.Payload["mcp_server_name"] = definition.MCPServer.Name
 		}
-		switch {
-		case definition.Kind == TurnToolCustom:
+		if definition.Kind == TurnToolCustom {
 			draft.Type = domain.EvAgentCustomToolUse
-			plan.pendingActionEventIDs = append(
-				plan.pendingActionEventIDs,
-				planned.ToolUseEventID,
-			)
-		case definition.Kind == TurnToolSelfHosted:
-			draft.Type = domain.EvAgentToolUse
-			draft.Payload["evaluated_permission"] = "allow"
-			if definition.Permission.Type == "always_ask" {
-				draft.Payload["evaluated_permission"] = "ask"
+			plan.pendingActionEventIDs = append(plan.pendingActionEventIDs, planned.ToolUseEventID)
+			plan.actionDrafts = append(plan.actionDrafts, draft)
+			continue
+		}
+		draft.Type = serverToolUseType(definition, mcpToolEvents)
+		decision := domain.ToolPermissionDecision{Type: "allow"}
+		evaluation := domain.ToolPermissionEvaluation{Type: definition.Permission.Type}
+		switch definition.Permission.Type {
+		case "always_ask":
+			decision.Type = "ask"
+		case "auto":
+			var ok bool
+			decision, ok = decisions[use.ToolUseID]
+			if !ok || !decision.Valid() {
+				return toolBatchPlan{}, failTurn("automatic tool invocation has no valid committed judgment")
 			}
+			evaluation.EvaluatedPermission = &decision
+			draft.Payload[domain.InternalPermissionToolName] = use.ToolName
+		}
+		draft.Payload["evaluated_permission"] = decision.Type
+		draft.Payload["evaluation"] = evaluation
+		if definition.Kind == TurnToolSelfHosted {
 			draft.Payload[domain.InternalToolExecutionOwner] = "self_hosted"
-			plan.pendingActionEventIDs = append(
-				plan.pendingActionEventIDs,
-				planned.ToolUseEventID,
-			)
-		case definition.Permission.Type == "always_ask":
-			draft.Type = serverToolUseType(definition, mcpToolEvents)
-			draft.Payload["evaluated_permission"] = "ask"
-			plan.pendingActionEventIDs = append(
-				plan.pendingActionEventIDs,
-				planned.ToolUseEventID,
-			)
+		}
+		switch {
+		case decision.Type == "deny":
+			text := fmt.Sprintf("Permission to use %s has been denied.", draft.Payload["name"])
+			plan.denied.resultDrafts = append(plan.denied.resultDrafts, toolResultDraft(draft.Type, planned.ToolUseEventID, []any{map[string]any{"type": "text", "text": text}}, true))
+			plan.denied.resultBlocks = append(plan.denied.resultBlocks, domain.ContentBlock{Type: "tool_result", ToolResultFor: use.ToolUseID, Text: text, IsError: true})
+		case decision.Type == "ask" || definition.Kind == TurnToolSelfHosted:
+			plan.pendingActionEventIDs = append(plan.pendingActionEventIDs, planned.ToolUseEventID)
 		default:
-			draft.Type = serverToolUseType(definition, mcpToolEvents)
-			// The public field reports the result of permission evaluation, not
-			// merely a barrier. An always_allow call has already evaluated to
-			// allow even though it proceeds directly to server execution.
-			draft.Payload["evaluated_permission"] = "allow"
-			plan.executable = append(plan.executable, plannedToolUse{
-				use:           use,
-				publicEventID: planned.ToolUseEventID,
-				useEventType:  draft.Type,
-				stepID:        planned.ToolStepID,
-				definition:    definition,
-			})
+			plan.executable = append(plan.executable, plannedToolUse{use: use, publicEventID: planned.ToolUseEventID, useEventType: draft.Type, stepID: planned.ToolStepID, definition: definition})
 		}
 		plan.actionDrafts = append(plan.actionDrafts, draft)
 	}
@@ -1163,8 +1206,8 @@ func executeToolBatch(
 	assistantContent []domain.ContentBlock,
 ) (toolBatchExecution, bool, turnFailure, error) {
 	execution := toolBatchExecution{
-		resultDrafts: make([]domain.EventDraft, 0, len(plan.executable)),
-		resultBlocks: make([]domain.ContentBlock, 0, len(plan.executable)),
+		resultDrafts: append([]domain.EventDraft(nil), plan.denied.resultDrafts...),
+		resultBlocks: append([]domain.ContentBlock(nil), plan.denied.resultBlocks...),
 	}
 	injectedBlocks := make([]domain.ContentBlock, 0, len(plan.executable))
 	for _, planned := range plan.executable {
@@ -1176,6 +1219,9 @@ func executeToolBatch(
 					return toolBatchExecution{}, false, "", err
 				}
 				if err := turn.awaitModelRequestAdmission(); err != nil {
+					if errors.Is(err, errOwnedTurnInterrupted) {
+						return execution, true, "", nil
+					}
 					return toolBatchExecution{}, false, "", err
 				}
 			}
@@ -1186,12 +1232,17 @@ func executeToolBatch(
 				assistantContent,
 			)
 			if err != nil {
-				return toolBatchExecution{}, false, failTurn(err.Error()), nil
+				execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
+				return execution, false, failTurn(err.Error()), nil
 			}
 			ids := advisorConsultationIDs(planned.stepID)
 			consultation.ThreadID = ids.ThreadID
 			consultation.UsageRequestID = ids.UsageRequestID
 			consultation.LifecycleIDs = ids.LifecycleIDs
+		}
+		permissionReceiptID := ""
+		if planned.definition.Permission.Type == "auto" {
+			permissionReceiptID = planned.publicEventID
 		}
 		executed, activityOutcome, err := turn.executeTool(
 			attemptID,
@@ -1201,6 +1252,7 @@ func executeToolBatch(
 			planned.definition,
 			advisorRequest,
 			consultation,
+			permissionReceiptID,
 		)
 		if err != nil {
 			return toolBatchExecution{}, false, "", err
@@ -1210,18 +1262,18 @@ func executeToolBatch(
 			return execution, true, "", nil
 		}
 		if executed.FatalError != "" {
+			execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
 			if activityOutcome.Interrupted {
-				execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
 				return execution, true, "", nil
 			}
-			return toolBatchExecution{}, false, failTurn(executed.FatalError), nil
+			return execution, false, failTurn(executed.FatalError), nil
 		}
 		if executed.Ambiguous {
+			execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
 			if activityOutcome.Interrupted {
-				execution.resultBlocks = append(execution.resultBlocks, injectedBlocks...)
 				return execution, true, "", nil
 			}
-			return toolBatchExecution{}, false, failTurn(
+			return execution, false, failTurn(
 				"a tool began executing but no trustworthy result was recorded; " +
 					"the side effect will not be retried",
 			), nil
@@ -1233,7 +1285,7 @@ func executeToolBatch(
 				planned.useEventType,
 				planned.publicEventID,
 				executed.Result.Content,
-				executed.Result.IsError,
+				executed.Result.IsError, executed.Result.FileID,
 			))
 		}
 		execution.resultBlocks = append(execution.resultBlocks, domain.ContentBlock{

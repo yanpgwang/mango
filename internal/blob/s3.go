@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -93,25 +94,32 @@ func (s *S3Store) Put(
 	body io.Reader,
 	maxBytes int64,
 ) (app.BlobInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return app.BlobInfo{}, errors.Join(app.ErrBlobNotWritten, context.Cause(ctx))
+	}
+	if closer, ok := body.(io.Closer); ok {
+		stop := context.AfterFunc(ctx, func() { _ = closer.Close() })
+		defer stop()
+	}
 	temp, err := os.CreateTemp(s.uploadTempDir, "mango-file-upload-*")
 	if err != nil {
-		return app.BlobInfo{}, fmt.Errorf("blob: create upload spool: %w", err)
+		return app.BlobInfo{}, fmt.Errorf("blob: create upload spool: %w: %w", app.ErrBlobNotWritten, err)
 	}
 	tempName := temp.Name()
 	defer os.Remove(tempName) //nolint:errcheck // best-effort cleanup after close
 	defer temp.Close()        //nolint:errcheck // PutObject result is authoritative
 
 	hash := sha256.New()
-	limited := &io.LimitedReader{R: body, N: maxBytes + 1}
+	limited := &io.LimitedReader{R: contextUploadReader{ctx: ctx, body: body}, N: maxBytes + 1}
 	size, err := io.Copy(io.MultiWriter(temp, hash), limited)
 	if err != nil {
-		return app.BlobInfo{}, fmt.Errorf("blob: spool upload: %w", err)
+		return app.BlobInfo{}, fmt.Errorf("blob: spool upload: %w: %w", app.ErrBlobNotWritten, err)
 	}
 	if size > maxBytes {
 		return app.BlobInfo{}, app.ErrBlobTooLarge
 	}
 	if _, err := temp.Seek(0, io.SeekStart); err != nil {
-		return app.BlobInfo{}, fmt.Errorf("blob: rewind upload spool: %w", err)
+		return app.BlobInfo{}, fmt.Errorf("blob: rewind upload spool: %w: %w", app.ErrBlobNotWritten, err)
 	}
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:        aws.String(s.bucket),
@@ -119,6 +127,10 @@ func (s *S3Store) Put(
 		Body:          temp,
 		ContentLength: aws.Int64(size),
 		ContentType:   aws.String(contentType),
+	}, func(options *s3.Options) {
+		// A lost response may leave the first remote write in flight. A later
+		// retry's success cannot prove that earlier attempt is finished.
+		options.RetryMaxAttempts = 1
 	})
 	if err != nil {
 		return app.BlobInfo{}, fmt.Errorf("blob: put object: %w", err)
@@ -126,6 +138,25 @@ func (s *S3Store) Put(
 	return app.BlobInfo{
 		SizeBytes: size, ChecksumSHA256: hex.EncodeToString(hash.Sum(nil)),
 	}, nil
+}
+
+type contextUploadReader struct {
+	ctx  context.Context
+	body io.Reader
+}
+
+func (r contextUploadReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, context.Cause(r.ctx)
+	}
+	n, err := r.body.Read(p)
+	if r.ctx.Err() != nil {
+		// Closing or expiring the source wakes Read with a transport error.
+		// Preserve the actual ownership/renewal failure instead of reporting
+		// that transport error as a malformed multipart request.
+		return n, context.Cause(r.ctx)
+	}
+	return n, err
 }
 
 func (s *S3Store) Open(ctx context.Context, key string) (io.ReadCloser, error) {

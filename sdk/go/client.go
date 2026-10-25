@@ -135,7 +135,7 @@ func (c *Client) request(ctx context.Context, method, path string, query url.Val
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 	req.Header.Set("Accept", accept)
-	req.Header.Set("User-Agent", "mango-go/0.1.0")
+	req.Header.Set("User-Agent", "mango-go/"+Version)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}

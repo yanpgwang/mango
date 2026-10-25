@@ -85,9 +85,11 @@ func runOrchestrate() {
 		log.Printf("orchestrate: Files and custom Skills disabled: %v", err)
 		fileRuntime = nil
 	}
+	var toolOutputs temporalpkg.ToolOutputStore
 	var skillInstructions temporalpkg.SkillInstructionLoader
 	if fileRuntime != nil {
 		skillInstructions = app.NewSessionSkillMaterializer(store, fileRuntime.blobs)
+		toolOutputs = fileRuntime.service
 	}
 
 	client, err := temporalpkg.Dial(temporalpkg.ClientConfig{
@@ -107,6 +109,7 @@ func runOrchestrate() {
 		IDGenerator:       ids,
 		RelayConfig:       temporalpkg.RelayConfig{},
 		SkillInstructions: skillInstructions,
+		ToolOutputs:       toolOutputs,
 		MCPAuth:           mcpAuth,
 		PreviewPublisher:  broker,
 	})
