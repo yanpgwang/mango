@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/yanpgwang/mango/internal/app"
@@ -99,8 +100,18 @@ func (s *Server) listSessionThreads(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionID := r.PathValue("id")
-	fingerprint := resourceFilterFingerprint(map[string]string{"session_id": sessionID})
+	statuses, err := parseSessionStatusFilter(values["statuses[]"])
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	fingerprint := resourceFilterFingerprint(map[string]string{
+		"session_id": sessionID, "statuses": strings.Join(statuses, ","),
+	})
 	query := app.SessionThreadListQuery{Limit: limit + 1}
+	for _, status := range statuses {
+		query.Statuses = append(query.Statuses, domain.Status(status))
+	}
 	if token := values.Get("page"); token != "" {
 		cursor, ok := decodeResourceCursor(token, sessionThreadListCursorKind)
 		if !ok || cursor.Filter != fingerprint {

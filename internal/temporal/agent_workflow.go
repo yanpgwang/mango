@@ -3,6 +3,7 @@ package temporal
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"time"
 
@@ -116,7 +117,7 @@ func runWorkflowTurnInternal(
 	triggerEventID string,
 	resolutionEventIDs []string,
 	interrupts *turnInterruptWatcher,
-) (RunTurnResult, error) {
+) (result RunTurnResult, err error) {
 	var prepared PrepareTurnResult
 	if err := workflow.ExecuteActivity(actx, ActivityPrepareTurn, PrepareTurnInput{
 		SessionID:          sessionID,
@@ -218,6 +219,15 @@ func runWorkflowTurnInternal(
 		loadedSkills:              agentruntime.LoadedRuntimeSkills(prepared.Request.Messages),
 		perRequestUsageAccounting: modelRequestAccounting,
 	}
+	if prepared.Outcome != nil {
+		turn.outcomeID = prepared.Outcome.OutcomeID
+	}
+	defer func() {
+		var capacity *payloadCapacityError
+		if errors.As(err, &capacity) {
+			result, err = turn.terminateCapacity(capacity)
+		}
+	}()
 	if prepared.FatalError != "" {
 		return turn.terminate(failTurn(prepared.FatalError))
 	}
@@ -286,6 +296,9 @@ func runWorkflowTurnInternal(
 			)
 			if modelRequestAccounting {
 				if err := turn.awaitModelRequestAdmission(); err != nil {
+					if errors.Is(err, errOwnedTurnInterrupted) {
+						return turn.completeInterrupted()
+					}
 					return RunTurnResult{}, err
 				}
 			}
@@ -606,6 +619,9 @@ func runWorkflowTurnInternal(
 					return RunTurnResult{}, err
 				}
 				if err := turn.awaitModelRequestAdmission(); err != nil {
+					if errors.Is(err, errOwnedTurnInterrupted) {
+						return turn.completeInterrupted()
+					}
 					return RunTurnResult{}, err
 				}
 			}
@@ -734,34 +750,34 @@ func runWorkflowTurnInternal(
 			}
 			stepsByProviderID[providerID] = planned
 		}
+		if activityOutcome.Interrupted {
+			closeInterruptedProviderToolRound(turn, toolUses, nil, mappingCheckpoint)
+			return turn.completeInterrupted()
+		}
+		if failure := validateToolBatch(toolUses, toolsByName, stepsByProviderID); failure != "" {
+			return turn.terminate(failure)
+		}
+
+		permissionConversation := agentruntime.AppendMerging(append([]domain.Message(nil), request.Messages...), []domain.Message{assistantMessage})
+		decisions, permissionInterrupted, err := turn.evaluateToolPermissions(prepared, toolUses, toolsByName, stepsByProviderID, permissionConversation)
+		if err != nil {
+			return RunTurnResult{}, err
+		}
+		if permissionInterrupted {
+			closeInterruptedProviderToolRound(turn, toolUses, nil, mappingCheckpoint)
+			return turn.completeInterrupted()
+		}
 		plan, failure := planToolBatch(
 			toolUses,
 			toolsByName,
 			stepsByProviderID,
 			mcpToolEvents,
+			decisions,
 		)
 		if failure != "" {
-			if activityOutcome.Interrupted {
-				closeInterruptedProviderToolRound(
-					turn,
-					toolUses,
-					nil,
-					mappingCheckpoint,
-				)
-				return turn.completeInterrupted()
-			}
 			return turn.terminate(failure)
 		}
 		turn.output = append(turn.output, plan.actionDrafts...)
-		if activityOutcome.Interrupted {
-			closeInterruptedProviderToolRound(
-				turn,
-				toolUses,
-				nil,
-				mappingCheckpoint,
-			)
-			return turn.completeInterrupted()
-		}
 
 		executed, interrupted, failure, err := executeToolBatch(
 			turn,

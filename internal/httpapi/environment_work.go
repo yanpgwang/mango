@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/yanpgwang/mango/internal/app"
@@ -321,19 +322,28 @@ func (s *Server) stopEnvironmentWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Force optionalJSONField[bool] `json:"force"`
+		Force               optionalJSONField[bool]   `json:"force"`
+		ExpectedIdleEventID optionalJSONField[string] `json:"expected_idle_event_id"`
 	}
 	if err := decodeJSONBody(r, &body); err != nil {
 		writeError(w, err)
 		return
 	}
-	if body.Force.Null {
-		writeError(w, domain.Validation("force cannot be null"))
+	if body.Force.Null || body.ExpectedIdleEventID.Null {
+		writeError(w, domain.Validation("force and expected_idle_event_id cannot be null"))
 		return
+	}
+	var expectedIdleEventID *string
+	if body.ExpectedIdleEventID.Present {
+		if strings.TrimSpace(body.ExpectedIdleEventID.Value) == "" {
+			writeError(w, domain.Validation("expected_idle_event_id must not be empty"))
+			return
+		}
+		expectedIdleEventID = &body.ExpectedIdleEventID.Value
 	}
 	if err := s.deps.EnvironmentWork.Stop(
 		r.Context(), r.PathValue("environment_id"), r.PathValue("work_id"),
-		body.Force.Value,
+		body.Force.Value, expectedIdleEventID,
 	); err != nil {
 		writeError(w, err)
 		return

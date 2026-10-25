@@ -190,15 +190,16 @@ func TestEnvironmentWorkFailureCommitsWorkerMessage(t *testing.T) {
 }
 
 type sdkEnvironmentWorkService struct {
-	mu        sync.Mutex
-	work      domain.EnvironmentWork
-	polls     int
-	workerID  string
-	acks      int
-	stops     int
-	failure   string
-	heartbeat time.Time
-	secret    string
+	mu           sync.Mutex
+	work         domain.EnvironmentWork
+	polls        int
+	workerID     string
+	acks         int
+	stops        int
+	idleBoundary *string
+	failure      string
+	heartbeat    time.Time
+	secret       string
 }
 
 func newSDKEnvironmentWorkService() *sdkEnvironmentWorkService {
@@ -282,9 +283,16 @@ func (s *sdkEnvironmentWorkService) Poll(
 	return &work, nil
 }
 
-func (s *sdkEnvironmentWorkService) Stop(context.Context, string, string, bool) error {
+func (s *sdkEnvironmentWorkService) Stop(_ context.Context, _, _ string, _ bool, expected *string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if expected != nil && *expected != "sevt_idle_fixture" {
+		return domain.Precondition("stale idle boundary")
+	}
+	if expected != nil {
+		copyID := *expected
+		s.idleBoundary = &copyID
+	}
 	s.stops++
 	s.work.State = domain.EnvironmentWorkStopped
 	return nil
@@ -380,5 +388,50 @@ func TestEnvironmentHealthcheckRawJSON(t *testing.T) {
 	data := got["data"].(map[string]any)
 	if len(data) != 1 || data["type"] != "healthcheck" || got["result"] != nil || got["expires_at"] == nil || got["secret"] != nil {
 		t.Fatalf("body=%s", rec.Body)
+	}
+}
+
+// Literal JSON/status assertions complement SDK encoding; these expectations
+// are not derived from OpenAPI or the generator under test.
+func TestEnvironmentWorkConditionalStopHTTPContract(t *testing.T) {
+	for _, tc := range []struct {
+		name, body    string
+		status, stops int
+		boundary      bool
+	}{
+		{"operator", `{"force":true}`, 204, 1, false},
+		{"conditional", `{"force":true,"expected_idle_event_id":"sevt_idle_fixture"}`, 204, 1, true},
+		{"stale", `{"force":true,"expected_idle_event_id":"sevt_stale"}`, 412, 0, false},
+		{"empty", `{"expected_idle_event_id":""}`, 400, 0, false},
+		{"blank", `{"expected_idle_event_id":"  "}`, 400, 0, false},
+		{"null", `{"expected_idle_event_id":null}`, 400, 0, false},
+		{"wrong_type", `{"expected_idle_event_id":42}`, 400, 0, false},
+		{"null_force", `{"force":null}`, 400, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := newSDKEnvironmentWorkService()
+			handler := NewServer(Deps{EnvironmentWork: service}, Config{RequireAuth: true}).Handler()
+			request := httptest.NewRequest(http.MethodPost, "/v1/environments/env_self_hosted/work/work_sdk/stop", bytes.NewBufferString(tc.body))
+			request.Header.Set("authorization", "Bearer test-key")
+			request.Header.Set("content-type", "application/json")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != tc.status || service.stops != tc.stops || (service.idleBoundary != nil) != tc.boundary {
+				t.Fatalf("status=%d stops=%d boundary=%v body=%s", response.Code, service.stops, service.idleBoundary, response.Body.String())
+			}
+			if tc.status == 412 {
+				var body struct {
+					Error struct {
+						Type string `json:"type"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if body.Error.Type != "precondition_failed_error" || response.Header().Get("request-id") == "" {
+					t.Fatalf("412 error contract: %#v headers=%v", body, response.Header())
+				}
+			}
+		})
 	}
 }

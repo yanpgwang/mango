@@ -1,0 +1,33 @@
+name: Workflow runtime study
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/workflow-runtime/**'
+      - '.github/workflows/workflow-runtime-study.yml'
+      - 'Makefile'
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-runtime-study-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  protocol:
+    name: Isolated JS and PostgreSQL study
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make test-workflow-runtime

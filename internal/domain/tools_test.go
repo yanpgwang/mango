@@ -468,3 +468,18 @@ func TestParseTools_RejectsDuplicateAndUnknownConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestAutoPermissionConfigurationUsesLocalAndMCPAdmission(t *testing.T) {
+	local := map[string]any{"type": "agent_toolset_20260401", "default_config": map[string]any{"permission_policy": map[string]any{"type": "auto"}}, "configs": []any{map[string]any{"name": "web_fetch", "enabled": false}, map[string]any{"name": "web_search", "enabled": false}}}
+	if err := ValidateStoredToolConfiguration([]any{local}, nil); err != nil {
+		t.Fatalf("local auto: %v", err)
+	}
+	mcp := map[string]any{"type": "mcp_toolset", "mcp_server_name": "issues", "default_config": map[string]any{"permission_policy": map[string]any{"type": "auto"}}}
+	if err := ValidateStoredToolConfiguration([]any{mcp}, []any{map[string]any{"name": "issues", "type": "url", "url": "https://mcp.example.test"}}); err != nil {
+		t.Fatalf("MCP auto: %v", err)
+	}
+	delete(local, "configs")
+	if err := ValidateStoredToolConfiguration([]any{local}, nil); err == nil {
+		t.Fatal("provider-native Web auto accepted")
+	}
+}

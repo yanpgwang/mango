@@ -1,0 +1,17 @@
+database:
+  existingSecret: {name: fixture-database, key: url}
+auth:
+  existingSecret: {name: fixture-auth, key: token}
+temporal:
+  address: temporal.operator.svc:7233
+nats:
+  existingSecret: {name: fixture-nats, key: url}
+files:
+  endpoint: http://s3.operator.svc:8333
+  bucket: mango-fixture
+  existingSecret: {name: fixture-s3, accessKey: access, secretKey: secret}
+model:
+  baseURL: https://model.example.test
+  id: fixture-model
+  auth: bearer
+  existingSecret: {name: fixture-model, key: credential}

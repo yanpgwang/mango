@@ -423,21 +423,11 @@ func parseSessionListParams(r *http.Request) (app.ListPage, sessionCursorFilter,
 		*item.normalized = utc.Format(timeFmt)
 	}
 
-	statusSet := map[string]struct{}{}
-	for _, value := range query["statuses[]"] {
-		switch domain.Status(value) {
-		case domain.StatusRescheduling, domain.StatusRunning, domain.StatusIdle, domain.StatusTerminated:
-			statusSet[value] = struct{}{}
-		default:
-			return app.ListPage{}, sessionCursorFilter{},
-				domain.Validation("statuses[] contains an invalid session status")
-		}
+	statuses, err := parseSessionStatusFilter(query["statuses[]"])
+	if err != nil {
+		return app.ListPage{}, sessionCursorFilter{}, err
 	}
-	filter.Statuses = make([]string, 0, len(statusSet))
-	for status := range statusSet {
-		filter.Statuses = append(filter.Statuses, status)
-	}
-	sort.Strings(filter.Statuses)
+	filter.Statuses = statuses
 	params.Statuses = make([]domain.Status, len(filter.Statuses))
 	for index, status := range filter.Statuses {
 		params.Statuses[index] = domain.Status(status)
@@ -651,4 +641,24 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"id": r.PathValue("id"), "type": "session_deleted"})
+}
+
+// parseSessionStatusFilter shares the status-set semantics of Session and
+// Thread lists. Canonical order also makes equivalent cursor filters identical.
+func parseSessionStatusFilter(values []string) ([]string, error) {
+	statusSet := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		switch domain.Status(value) {
+		case domain.StatusRescheduling, domain.StatusRunning, domain.StatusIdle, domain.StatusTerminated:
+			statusSet[value] = struct{}{}
+		default:
+			return nil, domain.Validation("statuses[] contains an invalid session status")
+		}
+	}
+	statuses := make([]string, 0, len(statusSet))
+	for status := range statusSet {
+		statuses = append(statuses, status)
+	}
+	sort.Strings(statuses)
+	return statuses, nil
 }

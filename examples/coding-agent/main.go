@@ -481,7 +481,7 @@ type turnEvidence struct {
 func newTurnEvidence() *turnEvidence { return &turnEvidence{allowed: map[string]string{}} }
 func (p *turnEvidence) observe(event mango.SessionEvent) (bool, error) {
 	if call := event.AgentToolUseEvent; call != nil {
-		if permission, _ := call.EvaluatedPermission.Get(); permission == "allow" {
+		if call.EvaluatedPermission == "allow" {
 			p.allowed[call.ID] = call.Name
 		}
 	}

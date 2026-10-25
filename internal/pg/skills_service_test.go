@@ -106,6 +106,9 @@ func TestSkillService_PostgresS3SDKLifecycleAndRestartReconciliation(t *testing.
 		t.Fatal(err)
 	}
 	restarted := app.NewSkillService(repo, blobs, domain.NewSeqIDGen(), fixedClock{})
+	if _, err := store.pool.Exec(ctx, `UPDATE skill_versions SET upload_expires_at=now()-interval '1 second' WHERE skill_id=$1 AND version=$2`, pendingSkill.ID, pendingVersion.Version); err != nil {
+		t.Fatal(err)
+	}
 	if err := restarted.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}

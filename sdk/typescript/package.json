@@ -1,6 +1,6 @@
 {
   "name": "mango-sdk",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.4",
   "description": "Typed TypeScript and JavaScript client for Mango's self-hosted /v1 API",
   "type": "module",
   "license": "Apache-2.0",
@@ -10,18 +10,36 @@
     "url": "git+https://github.com/yanpgwang/mango.git",
     "directory": "sdk/typescript"
   },
-  "bugs": { "url": "https://github.com/yanpgwang/mango/issues" },
-  "keywords": ["mango", "agents", "sdk", "self-hosted"],
+  "bugs": {
+    "url": "https://github.com/yanpgwang/mango/issues"
+  },
+  "keywords": [
+    "mango",
+    "agents",
+    "sdk",
+    "self-hosted"
+  ],
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
     "tag": "alpha"
   },
-  "engines": { "node": ">=22" },
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "generate": "node scripts/generate.mjs",
     "generate:check": "node scripts/generate.mjs --check",
@@ -29,5 +47,7 @@
     "prepack": "npm run build",
     "test": "npm run generate:check && npm run build && tsc -p test/tsconfig.json && tsc -p examples/tsconfig.json && node --test test/*.test.mjs"
   },
-  "devDependencies": { "typescript": "5.9.3" }
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
 }

@@ -1,0 +1,75 @@
+# Test-owned external state only; never the maintainer's local project.
+# The Go test supplies unique --project-name and a required model image.
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: fixture-postgres-only
+      POSTGRES_DB: mango
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    cpus: 0.5
+    mem_limit: 256m
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres, -d, mango]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  temporal:
+    image: temporalio/auto-setup:1.29.7
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PWD: fixture-postgres-only
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    volumes: [../../../deployments/local/dynamicconfig:/etc/temporal/config/dynamicconfig:ro]
+    ports: ["127.0.0.1::7233"] # Read-only original Run ID/history witness.
+    cpus: 1
+    mem_limit: 1g
+    healthcheck:
+      test: [CMD, tctl, --address, "temporal:7233", cluster, health]
+      interval: 3s
+      timeout: 5s
+      retries: 80
+  nats:
+    image: nats:2.11.17-alpine
+    command: [--http_port=8222]
+    cpus: 0.25
+    mem_limit: 64m
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O- http://127.0.0.1:8222/healthz >/dev/null || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    command: [mini, "-dir=/data", "-ip=seaweedfs", "-volume.max=16", "-master.volumeSizeLimitMB=1024", "-admin.ui=false", "-webdav=false"]
+    environment:
+      AWS_ACCESS_KEY_ID: fixture-s3-only
+      AWS_SECRET_ACCESS_KEY: fixture-s3-secret-only
+    ports: ["127.0.0.1::8333"]
+    volumes: [seaweedfs-data:/data]
+    cpus: 0.5
+    mem_limit: 768m
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://127.0.0.1:8333/healthz >/dev/null || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  model:
+    image: ${MANGO_KUBERNETES_MODEL_IMAGE:?explicit simulated model image required}
+    read_only: true
+    cpus: 0.25
+    mem_limit: 64m
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O- http://127.0.0.1:8081/healthz >/dev/null || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+volumes:
+  postgres-data:
+  seaweedfs-data:

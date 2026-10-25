@@ -40,10 +40,11 @@ Mango keeps these runtime requirements:
   secrets. Provider and connector credentials belong to deployment/worker
   configuration, not Agent or Session resources.
 - MCP tools default to `always_ask`; built-in tools default to `always_allow`.
+  Both support opt-in `auto` for interceptable calls; see [Tool permissions](../guides/tool-permissions.md).
   A running Session keeps the tool configuration snapshot with which it began.
 - Local tool output follows the operator worker's limits. Control-plane MCP
-  output above 100,000 characters becomes a 2,000-character preview without a
-  full-result file; binary MCP content is reported as unsupported.
+  output above 100,000 characters becomes a preview and a complete File up to
+  32 MiB when Files storage is configured; binary MCP content is unsupported.
 - Self-hosted sandboxes change the execution location, not the control-plane
   resource model. Tool inputs and results still cross the control plane.
 
@@ -301,7 +302,7 @@ pause between the model requesting the tool and the provider executing it.
 Therefore:
 
 - `provider_native + always_allow` is supported;
-- `provider_native + always_ask` is rejected during capability resolution;
+- `provider_native + always_ask` and `provider_native + auto` are rejected during capability resolution;
 - an interceptable `platform_managed` executor can support `always_ask` by
   durably parking before execution;
 - `client_self_hosted` built-ins preserve the permission gate: first wait for a
@@ -390,9 +391,9 @@ running.
 An MCP tool call uses the normal operation journal:
 
 1. persist `prepared` with normalized input and discovery snapshot ID;
-2. enforce `always_ask`, parking the Session before network execution;
+2. enforce the recorded permission outcome, parking on `ask`, returning a tool error on automatic `deny`, or admitting execution on `allow`;
 3. mark `started`;
-4. invoke the remote server with deadlines and bounded transport;
+4. invoke the remote server with deadlines;
 5. retain raw MCP JSON in the private journal only when it fits the
    100,000-byte diagnostic limit; oversized raw content is omitted;
 6. create the model and public projections;
@@ -407,11 +408,39 @@ model-visible text. Image, audio, and binary resource content become an explicit
 unsupported-content message. `_meta` and protocol control fields stay outside
 model context; bounded raw JSON may remain in the private journal.
 
-If the projected text exceeds 100,000 characters, only a 2,000-character preview
-and truncation notice reach the model and public event. There is no full-result
-File or sandbox path to read afterward. Applications should paginate or narrow
-large MCP responses. A future full-result transfer mechanism needs an explicit
-storage, authorization, retention, and worker-retrieval contract.
+If the projected text exceeds 100,000 characters and fits within 32 MiB,
+Mango retains the complete text as a regular File in configured object storage.
+The model and public event receive a 2,000-character preview with a path relative
+to the Session workspace root: `.mango-tool-results/{file_id}.txt`. The public
+`agent.mcp_tool_result` also carries `file_id`. Native Go workers materialize
+these Files before owned local tool dispatch, including after paginated history
+replay and Work reclaim. Use Bash or a bounded file read to inspect selected
+parts; the ordinary `read` tool still has its 64 KiB limit.
+
+The tool journal commits its complete private byte receipt before object-store I/O.
+JSON base64 encoding preserves every UTF-8 byte, including NUL, in PostgreSQL
+JSONB. Previews and inline text represent NUL as the printable `\u0000` escape;
+native raw JSON containing that escape is omitted from diagnostics.
+An Activity retry publishes the same File without repeating the MCP invocation.
+After File publication, the private full text is removed from the journal; only
+the preview and reference reach Temporal history. File downloads verify size and
+SHA-256 and publish through a confined worker filesystem root. `_meta` and binary
+content remain outside the saved textual projection.
+
+Generated Files are pinned while the owning Session exists. Active scoped Work
+credentials can read only their own Session's output Files, without list,
+upload, or delete access. Workspace keys can download them normally. Session
+deletion releases the File pin without deleting bytes; operators then use the
+ordinary Files deletion API. Startup reconciliation leaves resumable generated
+uploads alone while their Session exists and cleans abandoned uploads after its
+deletion. A publication retry cannot recreate a File after Session deletion.
+
+Without configured Files storage, or above the 32 MiB projected-text limit,
+Mango returns a tool error explaining that full retention was unavailable and a
+bounded preview. It does not report successful full retention or a usable path.
+A configured object-store outage retries publication before advancing the turn.
+External workers should implement the documented `file_id` download contract;
+Mango does not reach back into their filesystems.
 
 The first MCP slice supports tools only. Resources and prompts should be added
 only when Mango's product requirements and context policy define their
@@ -501,7 +530,7 @@ tool boundaries needed for native web and unauthenticated MCP:
 4. Local tools enforce worker-side output limits; oversized MCP projections
    use a bounded preview and do not create a sandbox file.
 5. Native Web Search/Fetch declarations go to the configured Messages API
-   `base_url`; provider-native web rejects `always_ask`.
+   `base_url`; provider-native web rejects `always_ask` and `auto`.
 6. Remote MCP tools use the official Go SDK, Session-pinned discovery, normal
    permission policies, and the operation journal. Discovery connection
    failures emit a recoverable `session.error`, omit that server's tools for

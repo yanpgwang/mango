@@ -22,11 +22,41 @@ def main() -> None:
     }
     with Mango(base_url=url, api_key=key) as client:
         client.system.health()
+        client.environments.work.stop("env_self_hosted", "work_sdk", force=True, expected_idle_event_id="sevt_idle_fixture")
+        try:
+            client.environments.work.stop("env_self_hosted", "work_sdk", force=True, expected_idle_event_id="sevt_stale")
+        except APIError as error:
+            assert error.status_code == 412 and error.type == "precondition_failed_error" and error.request_id
+        else:
+            raise AssertionError("Stale idle Stop must return a typed 412")
+
+        thread_page = client.sessions.threads.list("sesn_thread_filter", limit=1, statuses=["idle", "running"])
+        assert [item["id"] for item in thread_page["data"]] == ["sthr_filter_primary"]
+        assert thread_page["next_page"] is not None
+        assert [item["id"] for item in client.sessions.threads.iter(
+            "sesn_thread_filter", limit=1, statuses=["idle", "running"],
+        )] == ["sthr_filter_primary", "sthr_filter_running", "sthr_filter_waiting"]
+        mcp_page = client.sessions.events.list("sesn_mcp_fixture")
+        assert mcp_page["data"][0]["type"] == "agent.mcp_tool_result"
+        assert mcp_page["data"][0]["file_id"] == "file_mcp_full"
+        auto_page = client.sessions.events.list("sesn_auto_fixture")
+        assert len(auto_page["data"]) == 6
+        for index, event in enumerate(auto_page["data"]):
+            assert event["type"] == ("agent.tool_use" if index < 3 else "agent.mcp_tool_use")
+            expected = ("allow", "ask", "deny")[index % 3]
+            assert event["evaluated_permission"] == expected
+            evaluation = event["evaluation"]
+            assert evaluation["type"] == "auto"
+            assert evaluation["evaluated_permission"]["type"] == expected
+            if expected != "allow":
+                assert evaluation["evaluated_permission"]["reason_code"] == ("indeterminate" if expected == "ask" else "high_risk")
         payload = b"mango\x00\xff"
         uploaded = client.files.upload(file=Upload("result.bin", payload, "application/octet-stream"))
         try:
-            assert set(uploaded) == {"id", "type", "created_at", "filename", "mime_type", "size_bytes"}
+            assert set(uploaded) == {"id", "type", "created_at", "filename", "mime_type", "size_bytes", "checksum_sha256"}
             assert uploaded["size_bytes"] == len(payload)
+            import hashlib
+            assert uploaded["checksum_sha256"] == hashlib.sha256(payload).hexdigest()
             with client.files.download(uploaded["id"]) as stream:
                 assert b"".join(stream.iter_bytes()) == payload
         finally:
@@ -45,10 +75,11 @@ def main() -> None:
                 agent = client.agents.create(name="python-sdk-" + suffix, model="sdk-conformance", skills=[skill_input], tools=[{
                         "type": "custom", "name": "lookup", "description": "Look up a record",
                         "input_schema": input_schema,
-                    }, {"type": "agent_toolset_20260401"}])
+                    }, {"type": "agent_toolset_20260401", "default_config": {"enabled": False}, "configs": [{"name": "read", "enabled": True, "permission_policy": {"type": "auto"}}]}])
                 agents.append(agent["id"])
                 assert client.agents.retrieve(agent["id"])["name"] == "python-sdk-" + suffix
                 assert agent["tools"][0]["input_schema"] == input_schema
+                assert agent["tools"][1]["configs"][0]["permission_policy"] == {"type": "auto"}
                 assert agent["skills"] == [resolved_skill]
                 assert client.agents.retrieve(agent["id"])["skills"] == [resolved_skill]
             page = client.agents.list(limit=1)
@@ -99,6 +130,13 @@ def main() -> None:
             async def check_async() -> None:
                 async with AsyncMango(base_url=url, api_key=key) as async_client:
                     await async_client.system.health()
+                    await async_client.environments.work.stop("env_self_hosted", "work_sdk", force=True, expected_idle_event_id="sevt_idle_fixture")
+                    thread_page = await async_client.sessions.threads.list("sesn_thread_filter", limit=1, statuses=["idle", "running"])
+                    assert [item["id"] for item in thread_page["data"]] == ["sthr_filter_primary"]
+                    assert thread_page["next_page"] is not None
+                    assert [item["id"] async for item in async_client.sessions.threads.iter(
+                        "sesn_thread_filter", limit=1, statuses=["idle", "running"],
+                    )] == ["sthr_filter_primary", "sthr_filter_running", "sthr_filter_waiting"]
                     assert session_id is not None
                     assert (await async_client.sessions.retrieve(session_id))["id"] == session_id
 
