@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mango.resourceName" (dict "root" . "suffix" "api") }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "mango.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mango.selector" (dict "root" . "role" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mango.selector" (dict "root" . "role" "api") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        {{- include "mango.podSecurity" . | nindent 8 }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: api
+          image: {{ include "mango.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [serve, -addr, ":8080"]
+          securityContext:
+            {{- include "mango.containerSecurity" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            {{- include "mango.runtimeEnv" . | nindent 12 }}
+            - name: MANGO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret.name | quote }}
+                  key: {{ .Values.auth.existingSecret.key | quote }}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources: {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            - name: temporary
+              mountPath: /tmp
+            {{- include "mango.keyringMount" . | nindent 12 }}
+      volumes:
+        - name: temporary
+          emptyDir: {sizeLimit: {{ .Values.api.temporaryStorage | quote }}}
+        {{- include "mango.keyringVolume" . | nindent 8 }}

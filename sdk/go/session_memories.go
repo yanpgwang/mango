@@ -101,6 +101,7 @@ type mountedMemoryStore struct {
 	identity      fs.FileInfo
 	marker        []byte
 	baseline      map[string]string
+	pendingUpload map[string]string
 	refused       map[string]string
 	pendingDelete map[string]time.Time
 }
@@ -262,7 +263,7 @@ func (s *SessionMemoryStores) downloadStore(
 		storeID: resource.MemoryStoreID, mountPath: mountPath,
 		readOnly: resource.Access == "read_only", root: root, identity: identity,
 		marker: markerContents(resource.MemoryStoreID), baseline: map[string]string{},
-		refused: map[string]string{}, pendingDelete: map[string]time.Time{},
+		pendingUpload: map[string]string{}, refused: map[string]string{}, pendingDelete: map[string]time.Time{},
 	}
 	if err := store.writeFile(MemoryMarkerPath, store.marker); err != nil {
 		_ = root.Close()
@@ -426,9 +427,6 @@ func (s *SessionMemoryStores) syncStore(ctx context.Context, store *mountedMemor
 		}
 		return s.rebuildStore(ctx, store)
 	}
-	if len(local) == 0 && len(store.baseline) > 1 {
-		return s.rebuildStore(ctx, store)
-	}
 	remote, err := s.listMemories(ctx, store.storeID, false)
 	if err != nil {
 		return err
@@ -436,6 +434,10 @@ func (s *SessionMemoryStores) syncStore(ctx context.Context, store *mountedMemor
 	remoteByPath := make(map[string]Memory, len(remote))
 	for _, item := range remote {
 		remoteByPath[memoryRelativePath(item.Path)] = item
+	}
+	store.reconcileUploads(remoteByPath)
+	if len(local) == 0 && len(store.baseline) > 1 {
+		return s.rebuildStore(ctx, store)
 	}
 	deleteLimit := max(minimumDeleteBatch, min(maximumDeleteBatch, len(store.baseline)/4))
 	deletesAttempted := 0
@@ -510,6 +512,19 @@ func (s *SessionMemoryStores) syncStore(ctx context.Context, store *mountedMemor
 	return nil
 }
 
+// A fresh complete listing settles an ambiguous write once. Matching bytes
+// establish the observed baseline even if the reply was lost; a mismatch is
+// still subject to the ordinary Store-wins conflict rules. Do not retain a
+// matching hash as evidence about any future remote write.
+func (store *mountedMemoryStore) reconcileUploads(remote map[string]Memory) {
+	for relative, sentSHA := range store.pendingUpload {
+		if item, exists := remote[relative]; exists && string(item.ContentSHA256) == sentSHA {
+			store.baseline[relative] = sentSHA
+		}
+		delete(store.pendingUpload, relative)
+	}
+}
+
 func (s *SessionMemoryStores) syncLocalDeletion(
 	ctx context.Context,
 	store *mountedMemoryStore,
@@ -579,6 +594,7 @@ func (s *SessionMemoryStores) flushStore(ctx context.Context, store *mountedMemo
 	for _, item := range remote {
 		remoteByPath[memoryRelativePath(item.Path)] = item
 	}
+	store.reconcileUploads(remoteByPath)
 	paths := make([]string, 0, len(local))
 	for relative := range local {
 		paths = append(paths, relative)
@@ -634,6 +650,9 @@ func (s *SessionMemoryStores) uploadMemory(
 			"memory_store_id", store.storeID, "path", "/"+relative)
 		return Memory{}, false
 	}
+	// Remember the bytes read for this request, not a later filesystem state.
+	// Transport failures and server errors do not establish whether it committed.
+	store.pendingUpload[relative] = sha
 	var result Memory
 	if existing == nil {
 		result, err = s.client.MemoryStores.Memories.New(ctx, store.storeID, CreateMemoryParams{View: Some("full")}, MemoryCreateRequest{
@@ -647,6 +666,10 @@ func (s *SessionMemoryStores) uploadMemory(
 		})
 	}
 	if err != nil {
+		var apiError *APIError
+		if errors.As(err, &apiError) && apiError.StatusCode >= 400 && apiError.StatusCode < 500 && apiError.StatusCode != 408 {
+			delete(store.pendingUpload, relative)
+		}
 		if isAPIStatus(err, 400) || isAPIStatus(err, 413) {
 			store.refused[relative] = sha
 			s.logger.Warn("Store rejected a Memory file; it will not be retried until it changes",
@@ -660,6 +683,7 @@ func (s *SessionMemoryStores) uploadMemory(
 		}
 		return Memory{}, false
 	}
+	delete(store.pendingUpload, relative)
 	delete(store.refused, relative)
 	return result, true
 }
@@ -705,6 +729,7 @@ func (s *SessionMemoryStores) rebuildStore(ctx context.Context, store *mountedMe
 		return err
 	}
 	store.baseline = map[string]string{}
+	store.pendingUpload = map[string]string{}
 	store.pendingDelete = map[string]time.Time{}
 	for _, head := range heads {
 		if err := store.writeRemote(head); err != nil {

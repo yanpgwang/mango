@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -626,4 +627,65 @@ func TestExecuteTool_MCPAuthenticationFailureIsDurableAndNonAmbiguous(t *testing
 	require.NoError(t, err)
 	require.Len(t, recovered.Events, 1)
 	require.True(t, recovered.Result.IsError)
+}
+
+func (j *memoryMCPJournal) MarkToolOutputPublished(_ context.Context, _, fileID string) error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.step.Result == nil || j.step.Result.FileID != fileID {
+		return errors.New("receipt mismatch")
+	}
+	copy := *j.step.Result
+	copy.FullOutput = nil
+	j.step.Result = &copy
+	j.result = copy
+	return nil
+}
+
+type receiptOutputStore struct {
+	journal *memoryMCPJournal
+	fail    bool
+	text    string
+	calls   int
+}
+
+func (s *receiptOutputStore) StoreToolOutput(_ context.Context, _, _ string, text string) error {
+	if s.journal.step.State != domain.ToolStepCompleted || string(s.journal.result.FullOutput) != text {
+		return errors.New("storage ran before durable receipt")
+	}
+	s.calls++
+	if s.fail {
+		return errors.New("storage outage")
+	}
+	s.text = text
+	return nil
+}
+func TestExecuteTool_LargeMCPReceiptResumesStorageWithoutRemoteReplay(t *testing.T) {
+	journal := &memoryMCPJournal{}
+	text := "\x00" + strings.Repeat("中", 100001) + "\x00tail-proof"
+	raw, _ := json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": text}}, "_meta": map[string]any{"secret": "private"}})
+	client := &fakeMCPClient{result: mcpclient.Result{Raw: raw}}
+	store := &receiptOutputStore{journal: journal, fail: true}
+	activities := NewActivities(nil, &mcpPrepareSource{session: domain.Session{ID: "sesn_large"}}, journal, &testIDGen{}).WithMCPClient(client).WithToolOutputStore(store)
+	input := ExecuteToolInput{SessionID: "sesn_large", TriggerEventID: "sevt_user", AttemptID: "ratm_large", ToolUseEventID: "sevt_mcp", ToolStepID: "tstep_large", ToolName: "mcp__large__get", ToolKind: TurnToolMCP, MCPServer: domain.MCPServer{Name: "large", URL: "https://mcp.example.com"}, MCPToolName: "get", Input: map[string]any{}}
+	_, err := activities.ExecuteTool(context.Background(), input)
+	require.Error(t, err)
+	require.Equal(t, domain.ToolStepCompleted, journal.step.State)
+	client.err = errors.New("remote must never be called again")
+	store.fail = false
+	result, err := activities.ExecuteTool(context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, text, store.text)
+	require.Empty(t, result.Result.FullOutput)
+	require.Empty(t, journal.result.FullOutput)
+	require.NotEmpty(t, result.Result.FileID)
+	require.Contains(t, result.Result.Content[0].(map[string]any)["text"], ".mango-tool-results/")
+	require.Contains(t, result.Result.Content[0].(map[string]any)["text"], `\u0000`)
+	require.NotContains(t, result.Result.Content[0].(map[string]any)["text"], "\x00")
+	require.NotContains(t, result.Result.Content[0].(map[string]any)["text"], "tail-proof")
+	_, err = activities.ExecuteTool(context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, 2, store.calls)
+	draft := toolResultDraft(domain.EvAgentMcpToolUse, "sevt_mcp", result.Result.Content, false, result.Result.FileID)
+	require.Equal(t, result.Result.FileID, draft.Payload["file_id"])
 }

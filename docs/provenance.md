@@ -25,6 +25,217 @@ at the time of that work. On 2026-09-30, the pre-release migration chain was
 consolidated into the [current development schema baseline](deployment.md#development-database-baseline);
 those historical upgrade and downgrade paths are no longer shipped.
 
+## Workflow program evaluator study (2026-10-25)
+
+The [first replay study](design/workflow-runtime-study.md) follows Mango baseline
+`40a5a2285061f3cc1dc4b2f9c70c7391d0ef52e4`. It adds original research fixtures,
+not a product executor, public API or official-client interoperability claim.
+It adapts the program/independent-Thread/result relationships described by the
+current [CMA workflow guide](https://platform.claude.com/docs/en/managed-agents/workflow-runs)
+and [multi-agent guide](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration).
+Ordered JS delivery traces, PostgreSQL fencing and the disposable evaluator
+protocol are Mango's proposed implementation, not inferred CMA internals.
+
+Official latest stable release/tag APIs and paired source were read again on
+2026-10-25:
+
+- Go v2.3.0, `f5c6193d5902070b5e006d5334f5c379cba1f6ae`:
+  `betaagent.go`, `betasessionevent.go`, `betasessionthread.go`.
+- Python v2.3.0, `202db72c87d7c6eaa72129c67ce67fd343a3a20c`:
+  workflows-enabled parameters, Run created/ended/idle events and SessionThread.
+- TypeScript sdk-v1.3.0, `cb5fba419808e3844fa6407e59577ab7ba346b79`:
+  `beta/agents/agents.ts`, `beta/sessions/events.ts`,
+  `beta/sessions/threads/threads.ts`.
+
+The reviewed Workflow configuration, lifecycle events and Thread association
+retain the prior mappings; SDK generator/type changes do not require a new
+Mango product surface. No reference client was executed or made a dependency.
+
+Engine research uses [QuickJS C API](https://bellard.org/quickjs/quickjs.html)
+(2026-06-04 source archive with a verified SHA-256) and
+[Node VM documentation](https://nodejs.org/download/release/v22.17.0/docs/api/vm.html).
+The latter explicitly excludes an untrusted-code security guarantee. Both
+study candidates therefore use an independently confined process; no generated
+code runs in Mango's trusted Go orchestration. The study leaves full runtime,
+recovery and platform certification open.
+
+## Workflow Runs program design research (2026-10-19)
+
+The [revised plan](design/workflow-runs.md) and its
+[program execution/recovery detail](design/workflow-program-runtime.md) compare
+Mango baseline `2f53b8e633055cdf50abb7cdd334a33264d109d7`, migrations,
+OpenAPI, provider context snapshots, Thread completion, operation journals and
+at-least-once outbox with current public demonstrations. This supersedes the
+2026-10-18 declarative-plan-first recommendation. It delivers design only:
+Workflow Runs, a JS evaluator and their HTTP/SDK surfaces are not implemented.
+
+References read on 2026-10-19:
+
+- The current [CMA lifecycle](https://platform.claude.com/docs/en/managed-agents/workflow-runs)
+  and [multi-agent configuration](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration).
+- Official Cookbook main `a162e0184e71b60290808a43961a6cbc8060123c`, dated
+  2026-10-17: [Agent SDK dynamic workflows](https://github.com/anthropics/claude-cookbooks/blob/a162e0184e71b60290808a43961a6cbc8060123c/claude_agent_sdk/08_Dynamic_workflows.ipynb),
+  including the full generated JS in its saved output; and
+  [CMA security review](https://github.com/anthropics/claude-cookbooks/blob/a162e0184e71b60290808a43961a6cbc8060123c/managed_agents/CMA_agent_security_review.ipynb),
+  including its source prompts, workflow enablement, custom-tool result checks
+  and completion/reconnection loop. The local reference checkout remains
+  `d7265d6ae994ccd8429db0594b000073b2f9ad43`; its dynamic-workflow notebook
+  matches the reviewed current notebook exactly. The newer CMA example was
+  read directly at the pinned official commit.
+- [Claude Code workflows](https://code.claude.com/docs/en/workflows): restricted
+  JS, script variables, isolation and observable saved-result replay semantics.
+  This is a related product reference, not proof of CMA's server implementation.
+- Latest stable SDK releases rechecked against official release/tag APIs:
+  Go v1.82.0 `543d266ce81a4487281e084b013fef807dbb5f18`, Python v1.15.0
+  `bcd55fe1d3f0f1240765f8cef04295b67337f55a`, TypeScript sdk-v0.135.0
+  `04a4c28c70de498d6d0e930e43edb5edb9ac545e`. Read configuration,
+  `workflow_run.created`/terminal result types and Run/Thread association in
+  Go's `betaagent.go`, `betasessionevent.go`, `betasessionthread.go`, Python's
+  workflow configuration and `types/beta/sessions/` event models, and
+  TypeScript's `beta/agents/agents.ts`, `beta/sessions/events.ts` and
+  `beta/sessions/threads/threads.ts`. These clients map lifecycle and event
+  types, not an embedded workflow engine.
+- Official [Temporal Activities](https://docs.temporal.io/activities),
+  [Workflow replay](https://docs.temporal.io/workflow-execution#replays),
+  [Side Effects](https://docs.temporal.io/develop/go/workflows/side-effects)
+  and [Continue-As-New](https://docs.temporal.io/develop/go/workflows/continue-as-new):
+  Activity retries and trusted Workflow replay do not preserve arbitrary JS
+  process memory or deduplicate application effects automatically.
+- [QuickJS resource hooks](https://bellard.org/quickjs/quickjs.html) and
+  [Node VM's isolation disclaimer](https://nodejs.org/api/vm.html) inform an
+  unresolved engine/containment feasibility gate, not a dependency selection.
+
+**Adopt as proposed high-level design:** generated restricted programs own
+control flow and intermediate values; independent Agent Threads own their model
+contexts; validated results precede downstream work; Run/phase/Thread lifecycle
+is observable. This serves Mango batch review and research without requiring
+primary-context accumulation or new JSON node types for every control pattern.
+
+**Adapt for Mango:** PG records immutable source, inputs, runtime pins and a
+checked command/result-delivery trace; an isolated disposable evaluator
+reconstructs its variables; trusted Go Temporal code drives bounded Activities,
+waits and deadlines. Require source inspection and deterministic operator
+controls independent of model availability. Freeze source within a Run rather
+than importing Claude Code's edited-script suffix replay behavior. Reuse Mango
+Thread context, accounting, tool-effect reconciliation and Session barriers.
+Explicitly test Promise order and fencing, not merely call/result caching.
+
+**Reject or defer:** hosted scheduling/authentication, cloud sandbox requirement,
+vendor limits/default retry counts, unrestricted Node/library/I/O execution,
+heap-snapshot recovery claims, automatic safe business retries, automatic result
+reuse under changed source, and a second public JSON DAG language. CMA's engine,
+program language and database implementation remain unverified; no claim is
+made that it uses JS, Temporal or PG internally.
+
+All reference code/outputs were read, never executed as Mango clients or copied
+as an implementation. Acceptance will use independently authored Mango HTTP,
+SDK, PG, Temporal and real evaluator/worker tests. The first next step is the
+bounded feasibility gate; this documentation authorizes no runtime release.
+
+## Conditional self-hosted idle retirement (2026-10-18)
+
+- Mango problem: Work admission coalesces while a worker owns an activation.
+  A worker retiring from an old end-turn observation could stop after a newer
+  input was already processed into a pending worker tool. The existing Stop
+  successor rule covered newer unprocessed inputs, not that processed input.
+  Real PostgreSQL reproduced successful unconditional Stop followed by an empty
+  Poll with a committed unresolved tool. This is independent of the unproven
+  cause of candidate run 39087512711's timeout.
+- Paired references reviewed on 2026-10-18: the current public
+  [CMA Work Stop API](https://platform.claude.com/docs/en/api/http/beta/environments/work/stop)
+  and [Go v1.82.0 Work resource](https://github.com/anthropics/anthropic-sdk-go/blob/543d266ce81a4487281e084b013fef807dbb5f18/betaenvironmentwork.go)
+  plus [EnvironmentWorker](https://github.com/anthropics/anthropic-sdk-go/blob/543d266ce81a4487281e084b013fef807dbb5f18/lib/environments/worker.go),
+  at `543d266ce81a4487281e084b013fef807dbb5f18`, together with
+  [Python v1.15.0 Stop parameters](https://github.com/anthropics/anthropic-sdk-python/blob/bcd55fe1d3f0f1240765f8cef04295b67337f55a/src/anthropic/types/beta/environments/work_stop_params.py)
+  (`bcd55fe1d3f0f1240765f8cef04295b67337f55a`) and
+  [TypeScript sdk-v0.135.0 Work](https://github.com/anthropics/anthropic-sdk-typescript/blob/04a4c28c70de498d6d0e930e43edb5edb9ac545e/src/resources/beta/environments/work.ts)
+  (`04a4c28c70de498d6d0e930e43edb5edb9ac545e`). Their public Stop body has
+  `force` and no idle-event precondition; their internal scheduler and handoff
+  invariants cannot be inferred from public SDK source. Official clients were
+  read as research only and never executed or added as dependencies.
+- Mango keeps the existing Work Stop route, `force`, bearer credentials and
+  `204` response. Its optional `expected_idle_event_id` is a Mango-owned
+  compare-and-set on the durable Session ledger: exact current primary processed
+  end-turn, aggregate idle, no newer events, unresolved actions or active turns,
+  checked under Session→Work locks. A mismatch returns standard HTTP `412`
+  without a Stop or heartbeat renewal. Explicit operator Stop is unchanged.
+  Heartbeat timestamp fencing cannot express Session activity; no existing
+  cross-resource ETag can support this check, so a new If-Match protocol would
+  add machinery without reusing an established Mango representation version.
+- The Go helper captures the boundary at the timeout decision, before Memory
+  cleanup; a missing boundary, stale response or ambiguous Stop never retries
+  unconditionally. Idle expiry also pauses before opening a replacement SSE
+  connection and stays paused until complete history succeeds. Raw SSE,
+  tool execution and Work heartbeat contexts are unchanged. All three generated
+  SDKs map the optional body field and decode the existing typed `412` error.
+- Independent literal HTTP and first-party SDK tests cover body validation and
+  error mapping. Real PostgreSQL covers processed-input/pending-tool rejection,
+  unchanged lease state, reclaim and result delivery, exact positive completion,
+  strict terminal/archive/deletion rejection and both row-lock admission orders.
+  No storage migration, hosted service, or vendor header is introduced.
+
+## Self-hosted tool runner silent-stream recovery (2026-10-18)
+
+- User problem: an acknowledged worker can keep renewing its Work lease while
+  a stale SSE connection silently stops delivering persisted approvals. Mango's
+  runner previously reread history only after the stream reported EOF/error.
+  The alpha.4 candidate run 39087512711 attempt 1 timed out after control-plane
+  replacement, but its existing diagnostics do not establish a silent TCP
+  connection as the cause. This fixes the independently reproduced generic
+  helper gap; it does not claim that the candidate failure was diagnosed.
+- Paired clean-room references reviewed on 2026-10-18: the current public
+  [CMA event stream recovery guide](https://platform.claude.com/docs/en/managed-agents/events-and-streaming#reconnect-without-missing-events)
+  and [Go v1.82.0 Session tool runner](https://github.com/anthropics/anthropic-sdk-go/blob/543d266ce81a4487281e084b013fef807dbb5f18/betasessiontoolrunner.go)
+  at `543d266ce81a4487281e084b013fef807dbb5f18`. The guide pairs a new live
+  subscription with complete history and event-ID deduplication; the reviewed
+  helper reconnects after its stream iterator ends, without a periodic
+  connection-age bound. These are research references, not executable clients
+  or hosted dependencies.
+- Mango retains subscribe-before-history recovery and its action/result
+  identity checks. Its own self-hosted liveness requirement adds a private
+  15-second connection lifetime to `SessionToolRunner` ingestion only. Closing
+  and joining the old reader precedes the next subscription; tool execution,
+  result delivery, Work heartbeat, and raw SSE transport contexts remain
+  independent. Replayed idle boundaries preserve their original countdown;
+  incomplete history reads suspend expiry until a complete pass succeeds.
+- Deterministic first-party HTTP fixtures keep SSE open without sending frames
+  while history accepts an approval. Tests cover recovery, prolonged approval
+  waits, an executing tool across several refreshes, resolved-call deduplication,
+  unchanged idle expiry, and cancellation closing/joining stream readers.
+  No HTTP/OpenAPI fields, server heartbeats, vendor headers, or provider limits
+  are introduced. Full Kubernetes and real-model evidence remain separate.
+
+## Thread status filtering (2026-10-18)
+
+- User problem: applications need to locate running or waiting delegated work
+  without fetching every Thread. Reviewed Mango's Thread projection, list SQL,
+  HTTP cursor binding, OpenAPI and first-party SDK pagination before comparing
+  the [CMA Thread list API](https://platform.claude.com/docs/en/managed-agents/session-threads#list-threads).
+- Paired public SDK references: [Go v1.82.0](https://github.com/anthropics/anthropic-sdk-go/blob/v1.82.0/betasessionthread.go)
+  (`543d266ce81a4487281e084b013fef807dbb5f18`),
+  [Python v1.15.0](https://github.com/anthropics/anthropic-sdk-python/blob/v1.15.0/src/anthropic/types/beta/sessions/thread_list_params.py)
+  (`bcd55fe1d3f0f1240765f8cef04295b67337f55a`), and
+  [TypeScript sdk-v0.135.0](https://github.com/anthropics/anthropic-sdk-typescript/blob/sdk-v0.135.0/src/resources/beta/sessions/threads/threads.ts)
+  (`04a4c28c70de498d6d0e930e43edb5edb9ac545e`), all published
+  2026-10-15 UTC. The filter first appeared in their 2026-10-09 releases
+  (Go v1.80.0, Python v1.13.0, TypeScript sdk-v0.133.0). CMA remains beta;
+  a released SDK tag does not establish API stability.
+- Adopted the repeated `statuses[]` wire parameter, optional status collection
+  on the existing Thread list resource, and filter-preserving SDK pagination.
+  Mango reuses its existing Session/Thread status enum and Session list
+  validation: unknown and empty values fail, while reordered or duplicate
+  statuses describe the same set. No additional lifecycle state is needed.
+- Mango owns the query and cursor rules: PostgreSQL filters before the limit,
+  matching Threads keep primary-first/spawn ordering, and the opaque cursor
+  binds the Session and normalized status set. Pages read current state rather
+  than a snapshot; archived terminated Threads remain available. Independent
+  HTTP, PostgreSQL and all three first-party SDK conformance tests validate
+  these behaviors. No migration or write-side effect is introduced.
+- Hosted authentication, beta headers, rollout constraints, and dynamic
+  workflow resources are not adopted. Official SDKs were read as references,
+  not executed or added as dependencies. Mango's own OpenAPI generates its
+  client parameters and pagination methods.
+
 ## Explicit database migration role (2026-09-30)
 
 - Reviewed Mango's PostgreSQL initialization, command entry points, local
@@ -1260,3 +1471,465 @@ and cookbook `d7265d6ae994ccd8429db0594b000073b2f9ad43`. Mango source and tests 
 
 Earlier follow-up lists now identify delivered healthchecks, credentials, and
 the coding/deliverable example instead of presenting them as outstanding work.
+
+## Local object storage (2026-10-03)
+
+Reviewed the official [SeaweedFS 4.48 release](https://github.com/seaweedfs/seaweedfs/releases/tag/4.48),
+[Apache-2.0 license](https://github.com/seaweedfs/seaweedfs/blob/4.48/LICENSE),
+[pinned mini command](https://github.com/seaweedfs/seaweedfs/blob/4.48/weed/command/mini.go),
+[S3 route definitions](https://github.com/seaweedfs/seaweedfs/blob/4.48/weed/s3api/s3api_server.go),
+and [S3 API guide](https://github.com/seaweedfs/seaweedfs/wiki/Amazon-S3-API).
+The Compose image is pinned to the multi-platform manifest digest
+`sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d`.
+
+- Operator problem: the archived MinIO community source required a separate
+  image build and checksum-network dependency just to start local and CI tests.
+  Adopted the maintained SeaweedFS community image as that stack's default.
+- Adopted the single-process development topology, explicit volume sizing, S3
+  health probe, and a persistent `/data` containing Filer metadata and bytes.
+  Disabled unused Admin UI and WebDAV; only S3 is published to the host.
+- Kept Mango's generic S3 adapter, PostgreSQL resource ownership, and existing
+  HTTP/SDK contract. Files and Skills stay fully self-hosted. Memory remains in
+  PostgreSQL. No hosted agent service, vendor SDK, or enterprise feature is used.
+- Did not adopt SeaweedFS as a production requirement, promise complete AWS S3
+  parity, or add an automatic MinIO disk/data conversion. Existing state needs
+  an explicit transfer or a disposable-stack reset. Namespace metadata and
+  object bytes must both be covered by backups.
+
+## Terminal Session connection (2026-10-03)
+
+Reviewed Mango's current Session/Event/Thread HTTP handlers, OpenAPI, event
+admission and lifecycle tests, and Go SDK List/Send/Stream mapping alongside the
+official [Session terminal connection](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/sessions-connect)
+and [events and streaming](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
+guides. The CMA terminal workflow was introduced on September 10. Paired public
+Go SDK resource grouping, pagination, Send, and Stream source was reviewed at
+v1.78.0 (`c9ebe447ac92c91748af817c265398e5d81ca49f`, released September 30), using
+the optional reference checkout's tag rather than its older checked-out HEAD.
+
+- User problem: a self-hosted operator needs to join an existing Session, read
+  its history, send messages, and decide pending tool approvals without writing
+  a client application. Adopted this workflow and Ctrl+C detachment semantics.
+- Durable invariants: open the live stream before paginated history, deduplicate
+  durable event IDs, reconcile history after read disconnects, and never retry
+  uncertain writes. A second history pass covers the one-time movement of queued
+  inputs when `processed_at` is assigned. Idle interrupts preserve pending
+  approval barriers. Approval and execution remain separate; relayed child
+  approvals are checked against child history and routed by the original action
+  ID. Detaching never implicitly interrupts runtime work.
+- Hosted constraints: rejected the hosted Console/web viewer, vendor CLI,
+  authentication and preview headers, hosted runtime execution, and release
+  version requirements. Mango's command connects directly to its operator's API
+  with a Workspace key; it does not need model or hosted-service credentials.
+- Wire and SDK choices: retained Mango's existing `/v1` Session/Event/Thread
+  resources, Go SDK pagination and SSE decoding, and typed message,
+  confirmation, and interrupt inputs. The CLI is a line interface with explicit
+  `/allow`, `/deny`, and `/interrupt`, not a full-screen UI or sandbox terminal.
+  Added `source_event_id` to relayed tool, MCP, and custom actions because Mango
+  stores distinct child-local and primary-relay event IDs. This explicit event
+  reference lets clients correlate resolutions submitted through either current
+  view, without matching arguments, timestamps, or list positions. Go, Python,
+  and TypeScript SDK response types preserve it. No database migration or new
+  endpoint is needed.
+
+Official implementations were neither copied nor executed as Mango clients.
+Validation uses independently authored raw HTTP fixtures through the Mango Go
+SDK plus native command tests. PostgreSQL tests verify source references and
+resolution routing; HTTP/SDK tests and language typechecks verify the new field.
+Runtime execution and admission invariants remain
+owned by Mango's existing HTTP, workflow, persistence, and service tests.
+
+## MCP full textual output retention (2026-10-03)
+
+Reviewed the current official [MCP output handling](https://platform.claude.com/docs/en/managed-agents/mcp-connector#mcp-tool-output-handling)
+and [self-hosted sandbox](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+guides, paired with official Go SDK v1.78.0 (`c9ebe447ac92c91748af817c265398e5d81ca49f`),
+`betasessionevent.go` and `lib/environments/worker.go`. These are read-only
+clean-room references; no official SDK or cookbook executes as a Mango client.
+
+Adopted the useful lifecycle: MCP output above 100,000 characters gives the
+model a 2,000-character preview and a file path it can read later. Mango retains
+its projected model-visible UTF-8 text, including structured text, rather than
+protocol control metadata or binary contents. This solves lost information in
+large log, issue-list, and query results while bounding model context.
+
+Adapted transfer for Mango's independent self-hosted runtime: a completed tool
+receipt precedes object storage; a regular Mango File is published under a
+stable ID; native Go workers download it before local tool dispatch. The public
+`agent.mcp_tool_result.file_id` is a machine-readable Mango adaptation. The
+reviewed CMA event type has no equivalent top-level field, and the general CMA
+MCP guide does not establish how fallback files reach an external self-hosted
+worker. No exact wire parity or confirmed CMA self-hosted transfer is claimed.
+
+Mango limits retained projected text to 32 MiB. It requires configured Files
+storage, reports a tool error with a preview if retention is unavailable or
+oversized, and retries only File publication after a durable receipt. The
+private full byte receipt uses JSON base64 encoding to retain NUL losslessly in
+PostgreSQL JSONB, is removed after publication, and never enters Temporal
+history, public events, or model context. Generated Files remain pinned while
+their Session exists; Session deletion releases them for ordinary File deletion,
+preventing replay from resurrecting explicitly deleted output. Images, PDF,
+audio, general File mounts, and MCP resources/prompts are outside this slice.
+
+## Shared-storage upload recovery (2026-10-04)
+
+Reviewed the current official [Files workflow](https://platform.claude.com/docs/en/managed-agents/files)
+and [Skills workflow](https://platform.claude.com/docs/en/managed-agents/skills),
+paired with official Go SDK v1.78.0 (`c9ebe447ac92c91748af817c265398e5d81ca49f`)
+`betafile.go` and `betaskill.go`. The API/SDK pair describes upload, immutable
+resource reads, and deletion, but does not expose hosted reconciliation or
+upload-owner internals. No equivalent CMA internal implementation is claimed.
+References were read, not imported or executed.
+
+Mango keeps its existing API/SDK mapping. This work was selected because a
+second self-hosted API process could delete another process's live Files/Skills
+upload, independently reproduced against PostgreSQL and SeaweedFS. Adopted the
+resource visibility invariant: only completed immutable bytes become public;
+unknown completion responses cannot justify deleting published bytes.
+
+Mango owns the internal solution: renewable PostgreSQL wall-time leases, atomic
+cleanup claims, unique per-attempt Skill archive keys, and periodic recovery.
+Independent object cleanup guards are committed with cleanup claims and survive
+removal or reuse of upload metadata. Sequence revisions fence stale
+acknowledgements; unknown writers retain guards and bounded scans rotate fairly.
+Cancellation expires the actual HTTP connection read deadline before closing the
+upload source.
+No hosted credentials, beta headers, public lease wrappers, new API namespace,
+or synchronization obligation are introduced. See the
+[recovery design](design/blob-upload-recovery.md) for acceptance and evidence.
+
+## Generated MCP File publication recovery (2026-10-04)
+
+Re-reviewed the official [MCP output handling](https://platform.claude.com/docs/en/managed-agents/mcp-connector#mcp-tool-output-handling)
+guide alongside Go SDK v1.78.0 (`c9ebe447ac92c91748af817c265398e5d81ca49f`),
+`betasessionevent.go` and `betafile.go`. The paired references establish the
+file-backed result workflow and File resource operations, not the hosted
+service's object-write transactions or unknown-outcome recovery. No CMA internal
+implementation is claimed, imported, or executed.
+
+Kept Mango's existing stable File/event identity, immutable complete-text
+receipt, checksum, worker path, and scoped download mapping. The selected Mango
+problem was a late S3 request surviving replacement publication or File deletion.
+Adapted internal publication to unique physical attempt keys, pre-I/O cleanup
+guards, and atomic receipt/key validation. This reuses Mango's existing cleanup
+primitive without introducing a public resource or provider-specific wrapper.
+Unknown write guards remain persistent because a timeout does not prove that a
+remote request cannot commit later. Mango's own PostgreSQL/S3 recovery and
+HTTP/SDK tests validate this lifecycle; public third-party schemas do not.
+
+
+## Automatic tool permissions (2026-10-04)
+
+- Reviewed current official CMA [permission policies](https://platform.claude.com/docs/en/managed-agents/permission-policies)
+  and their paired public SDK types: Go `v1.78.0` at
+  `c9ebe447ac92c91748af817c265398e5d81ca49f`, Python `v1.11.0` at
+  `18f25547f20cf5f01da69ac611e700e3bc9ebf21`, and TypeScript
+  `sdk-v0.131.0` at `d49bdab458000bcdffe77bd84b03293f31824fb3`.
+  Research included Go `BetaAutoPolicy` and Session evaluation types, Python
+  managed-agent auto policy and Session types, TypeScript
+  `resources/beta/sessions/events.ts`, and cookbook commit
+  `d7265d6ae994ccd8429db0594b000073b2f9ad43` for the surrounding workflows.
+  Reference code was not copied, executed, or added as a dependency.
+- Mango's user problem is repetitive human approval for routine local/MCP
+  calls, while preserving human review when an invocation is uncertain. Adopted
+  `auto`, recorded allow/ask/deny, typed event evaluations, ask/indeterminate and
+  deny/high_risk reasons, unchanged defaults, denial-as-tool-error, and the
+  principle that untrusted tool and inter-Thread text cannot grant authority.
+  The first-party SDKs map those wire types coherently; the Go runner consumes
+  the recorded outcome rather than reinterpreting the configured policy.
+- Mango independently implemented a replaceable, tool-free evaluator using the
+  configured Messages adapter, bounded input/output/deadline, strict decoding,
+  and fail-safe asking. Its risk criteria and qualification cases are Mango
+  design decisions; the reviewed documentation does not disclose CMA's prompt,
+  model-selection algorithm, full taxonomy, or judgment quality.
+- Adapted execution to self-hosted Work and the existing PostgreSQL/Temporal
+  journal. Immutable receipt plus known usage commit atomically; active turn
+  ownership independently fences Work publication and MCP dispatch. Original
+  client intent is read before compaction; private server-authored task links
+  preserve child delegation/report/follow-up provenance. Those links and model
+  aliases stay off public DTOs. Budget-paused interruption consumes the old
+  round so a budget increase cannot revive it.
+- Rejected hosted rollout identifiers, Anthropic authentication/beta headers,
+  CMA runtime delegation, and a blanket rule that every consequential action
+  must ask. Enabled provider-native Web still requires `always_allow` because
+  Mango cannot intercept it before execution. Custom tools remain owned by the
+  application. No security-sandbox guarantee, exactly-once provider billing,
+  or equivalence to CMA judgment quality is claimed.
+- Validation separates raw Mango HTTP and first-party SDK conformance from
+  evaluator tests, real PostgreSQL ownership/accounting tests, Temporal tests,
+  and a real-service HTTP/worker-restart lifecycle test. See
+  [the design](design/automatic-tool-permissions.md) and
+  [the user guide](guides/tool-permissions.md).
+
+
+Automatic-permission qualification refinement (2026-10-04): Mango freezes client
+intent privately at child delegation and validates its trigger identity, rather
+than deriving a child's authority from mutable processed flags later. Primary
+reports include already processed client changes, complete barrier companion
+instructions, and terminal outcome descriptions. This is independently designed
+self-hosted persistence, not a claim about CMA internals. The configured
+`deepseek-flash` endpoint passed 15 authored allow/ask/deny cases after opaque
+reasoning was excluded from parsing and the response cap became 1,024 tokens;
+20-second timeouts and strict final JSON remain. This supplies limited workload
+evidence rather than a general evaluator-quality guarantee.
+
+## Kubernetes alpha release artifacts (2026-10-05)
+
+- The maintainer selected a versioned Kubernetes control-plane alpha with
+  external state services and operator-owned sandbox execution. Cloud sandbox
+  support and Agent/Deployment archive propagation are independent work. The
+  [delivery design](design/kubernetes-alpha.md) states the installation,
+  recovery and publication acceptance; candidate building alone does not meet it.
+- Reviewed current [CMA overview](https://platform.claude.com/docs/en/managed-agents/overview)
+  and [self-hosted guide](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes).
+  Adopted the useful separation of control-plane behavior from Environment
+  execution. Rejected a hosted cloud sandbox, vendor rollout, beta headers or
+  exact endpoint parity as prerequisites for Mango's independently owned release.
+- OCI image index/layout v1.1.1, official Docker Buildx OCI export, Helm chart
+  conventions and Kubernetes Job/probe documentation inform distribution.
+  The image checker verifies Mango's own exported platforms/config identity,
+  with independently constructed fixtures; it is not a general OCI validator.
+- Runtime and SDK candidates use the same clean tracked source revision,
+  immutable snapshot inputs, package versions, manifest and checksums. Shared
+  build info replaces the worker Dockerfile's ineffective `main.version` and
+  `main.revision` linker flags. Both images use numeric UID/GID 65532. The
+  worker build copies only required Go source, excluding broad local context.
+- Verified public tool releases: Helm v4.3.0 and kind v0.33.0 for subsequent
+  cluster work, Docker setup-buildx v4.4.1, setup-qemu v4.4.0 and build-push
+  v7.4.0 for candidate CI. Candidate workflows have read-only repository
+  permissions, no registry login, and no automatic publishing trigger.
+- Packaging reuses Mango's existing generated resource clients and standard
+  npm/uv tooling. No official external SDK implementation or runtime dependency
+  was added. SDK source and raw HTTP conformance remain separate from fresh
+  installed-artifact checks against a named simulated HTTP boundary. Public
+  package status remains unchanged until actual publication is verified.
+
+## Kubernetes chart candidate (2026-10-05)
+
+Kubernetes [object naming rules](https://kubernetes.io/docs/concepts/overview/working-with-objects/names/)
+require Service names to start with a letter by default. Mango prefixes
+digit-leading Helm release names or overrides with `mango-` before bounded
+hashing, rather than requiring the optional relaxed naming gate. Independent
+rendered Service tests cover both input paths and maximum-length overrides.
+
+The maintainer-selected alpha topology is mapped directly onto existing Mango
+commands and configuration in `charts/mango`. Reviewed current official
+[Helm chart](https://helm.sh/docs/topics/charts/) and
+[hook](https://helm.sh/docs/topics/charts_hooks/) documentation, Kubernetes
+probe/security-context documentation and [Goose SQL migration conventions](https://github.com/pressly/goose#sql-migrations).
+Helm 4.3.0 is the tested CLI; executable Mango-owned manifest tests, not
+third-party schemas or SDK execution, validate the selected mapping.
+
+Adopted standard chart resources, values validation, existing Secret/key
+references and a pre-install migration Job. The hook needs no uncreated chart
+ConfigMap/ServiceAccount. Model credentials are selected only for orchestration;
+migration receives only DB credentials. Read-only roots, UID/GID/fsGroup 65532,
+selected group-readable keyring projection and bounded `/tmp` are verified.
+Orchestration does not claim provider readiness from a process probe.
+
+The first-runtime-alpha baseline uses distinct Goose timestamp version
+`20261005000001`, with byte-identical consolidated SQL. This adapts the existing
+version check to reject known older development version `1` without new checksum
+state, compatibility readers, automatic reset or a non-idempotent fresh-only
+initializer. Same-release migration retry and old-ledger refusal are tested with
+real PostgreSQL. It does not detect arbitrary manual schema edits.
+
+CMA's hosted control plane does not supply a Mango database or chart lifecycle.
+Its self-hosted Environment boundary remains a useful execution separation;
+Mango's sandbox worker stays operator-owned outside this chart. Bundled state
+services, Session Pods, cloud execution and vendor rollout/authentication are
+rejected as chart dependencies. Cluster restart/restore and publication remain
+the next deliveries in the [alpha design](design/kubernetes-alpha.md).
+
+## Kubernetes lifecycle and quiesced restore (2026-10-05)
+
+Mango-owned cluster tests exercise the current chart, commands and raw HTTP
+contract against isolated external state. Reviewed official
+[kind installation/isolation guidance](https://kind.sigs.k8s.io/docs/user/quick-start/),
+[kubectl installation checksums](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/)
+and PostgreSQL custom-format logical backup/restore conventions. The tested
+versions are kind0.33.0, Kubernetes/kubectl1.37.0 and Helm4.3.0, with
+PostgreSQL17.5, Temporal1.29.7, NATS2.11.17 and SeaweedFS4.48. Official
+Linux AMD64 tool digests are pinned and verified in required CI; the kind node
+image is pinned by digest.
+
+Adopted explicit fixture ownership/kubeconfig, standard Deployment replacement
+and complete quiescence before copying Mango and both Temporal databases plus
+S3 bytes. Rejected live multi-store snapshot, HA and cross-version guarantees.
+The experimental restore assertions check File/Skill bytes/checksums, Memory
+Versions and original action IDs; completing the original custom action must
+resume restored Workflow history. Existing Vault GET decrypts/verifies the restored envelope using the
+original random keyring before returning public metadata. Sandbox workspace
+volumes remain independently operator-owned.
+
+The Messages endpoint is explicitly simulated and stateless, derived from its
+supplied transcript; actual Docker sandbox execution and Mango HTTP are used.
+It is test infrastructure, outside runtime images and cookbook applications.
+Read-only probes may retry transport errors during single-replica replacement;
+POST admission is never automatically retried by this harness. Mango's own
+HTTP/SDK/service tests remain the contract and durability authorities.
+
+No new CMA API/SDK mapping is adopted by this slice. A hosted control plane does
+not define operator backup, key preservation or Kubernetes lifecycle policy;
+Mango owns these self-hosted invariants. Publication remains a distinct alpha
+acceptance delivery.
+
+## Matched alpha distribution acceptance (2026-10-05)
+
+Mango's own release contract binds runtime commands, chart, first-party SDKs and
+both images to one reviewed source revision. Reviewed official
+[Helm 4.3.0 package behavior](https://helm.sh/docs/helm/helm_package/),
+[Docker containerd image-store guidance](https://docs.docker.com/engine/storage/containerd/)
+and [docker/setup-docker-action v5](https://github.com/docker/setup-docker-action)
+for the candidate builder. The shared CI installers verify the already reviewed
+Helm4.3.0, kind0.33.0 and kubectl1.37.0 Linux AMD64 digests; Docker28.1.1 matches
+the actually exercised containerd import boundary.
+
+Adopted standard Helm archives and standard Docker OCI loading addressed by the
+validated Buildx top-level image index digest. Both command/package and image
+builds use tracked Git snapshots; rejected ignored local compiler inputs,
+metadata version overrides and rebuilding runtime images during artifact acceptance.
+Only the explicit test-model fixture remains source-built. Independent checksum,
+identity, archive-path and ownership tests precede actual chart/native worker/OCI
+installation, Mango restart and Work reactivation. Independent cold restore
+remains a separately selected experimental test under the scope decision below.
+
+Candidate CI remains read-only and requires no provider or publishing credential.
+Publication is a distinct maintainer action after the reviewed revision and its
+acceptance pass; registry availability is not inferred from successful builds.
+No new CMA API/SDK mapping is adopted: hosted rollout, beta identifiers and SDK
+publication policy do not define Mango's independently owned distribution.
+
+## Developer-preview recovery scope (2026-10-17)
+
+The maintainer approved installation, Mango process restart and Work recovery
+while operator-managed external state services remain available. Independent
+external Temporal/database cold backup and restore is outside this alpha's
+support scope. This is a product acceptance decision, not a repair or a change
+to Mango's `/v1`, persistence, Work protocol or external fixture settings.
+
+The full original restore journey remains in `TestKubernetesQuiescedRestore`,
+`make test-kubernetes-restore` and an independent manual workflow. Original
+Run ID/history, pending-action, object-byte, keyring and independent-store
+assertions remain intact, and errors retain their nonzero exit status. Required
+source and actual-candidate lifecycle acceptance selects `TestKubernetesAlpha`;
+core service tests retain active Work across Mango runtime replacement.
+
+[Main Integration run 37417003487](https://github.com/yanpgwang/mango/actions/runs/37417003487)
+recorded restored Temporal exit code 1 without an OOM kill. The later
+[unchanged Linux diagnostic run 39040792757](https://github.com/yanpgwang/mango/actions/runs/39040792757)
+passed without capturing that fatal path. Successful probes and observed
+membership delays do not establish a fix; the cold-restore failure is unresolved.
+
+Temporal `v1.29.7` membership/startup source was a debugging reference, including
+its heartbeat eligibility window and service-start deadline. No speculative
+membership deletion, timeout/resource adjustment, hosted service or external
+SDK dependency was adopted. CMA has no analogous operator-owned database
+backup or chart release lifecycle; no new CMA API/SDK mapping was needed.
+
+## Bounded runtime content transport (2026-10-17)
+
+Reviewed Temporal Go SDK v1.48.0's default data converter and official
+[data handling](https://docs.temporal.io/develop/go/data-handling) and
+[payload and gRPC limit guidance](https://docs.temporal.io/troubleshooting/blob-size-limit-error).
+Mango currently transports complete context and result DTOs through Activities.
+An oversized value can prevent delivery of an otherwise completed operation.
+
+Adopted measurement of the actual default-converter payload, including JSON
+escaping and protobuf metadata. Mango imposes a conservative 1 MiB limit at
+content-bearing Activity boundaries and turn completion, returning a small,
+durable terminal receipt instead of retrying a completed operation for size.
+Committed history, real usage, routing, and lifecycle control facts survive;
+uncommitted large content need not. The maintainer accepted this explicit
+developer-preview boundary. No public route or error type is added.
+
+Deferred lossless reference transport and rejected increasing Temporal server
+limits or treating compression as an unbounded-capacity guarantee. The limit
+does not establish unlimited total Workflow history. Mango's own converter,
+Workflow, raw HTTP, PostgreSQL and real Temporal tests validate the behavior;
+this infrastructure slice adopts no new CMA API or SDK mapping.
+
+## Developer-preview artifact promotion (2026-10-17)
+
+Reviewed official [npm Trusted Publishers](https://docs.npmjs.com/trusted-publishers/),
+[PyPI Trusted Publishers](https://docs.pypi.org/trusted-publishers/using-a-publisher/)
+and [Skopeo copy](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md)
+guidance, plus Skopeo v1.24.1 commit
+`77f3d92f861271c7cb9175afcf876017bcae9202` (vendored image v5.41.2)
+for digest-destination semantics. The publication workflow pins its external Actions to reviewed commits,
+including the PyPI publisher at `dc37677b2e1c63e2034f94d8a5b11f265b73ba33`.
+
+Adopted short-lived registry identities, explicit main-branch promotion, standard
+OCI digest destinations and anonymous retrieval checks. Source CI, accepted run
+identity, complete payload inventory and hashes precede publication; a retry
+reuses only matching bytes and never retargets an existing version. Both GHCR
+packages are bootstrapped by digest and must become publicly retrievable before
+image version tags or native SDK uploads. A private package or denied read does
+not prove an absent version.
+
+Disabled npm's automatic build provenance for this later promotion job: its
+workflow revision is not necessarily the candidate's build revision. The release
+records the actual source, candidate workflow, promotion workflow, checksums
+and OCI indexes without claiming a signed build attestation. Registry account
+trust and public visibility remain explicit maintainer setup, separate from
+Mango's credential-free development and ordinary CI. No CMA contract, hosted
+rollout constraint or third-party SDK runtime dependency is adopted.
+
+## Matched release version PRs (2026-10-18)
+
+Reviewed official [release-please manifest configuration](https://github.com/googleapis/release-please/blob/v17.6.0/docs/manifest-releaser.md)
+and [action v5.0.0](https://github.com/googleapis/release-please-action/tree/45996ed1f6d02564a971a2fa1b5860e934307cf7).
+The pinned action bundles release-please **17.6.0**; the isolated updater test
+dependency uses that exact version, rather than assuming the latest library
+matches the compiled action. Reviewed its native prerelease strategy, generic
+JSON/YAML/marked-file updaters, Python updater and merged-pending PR handling.
+
+Adopted one root manifest, `simple`/`VERSION`, native prerelease selection and
+changelog generation, and explicit extra-file updates for the matched runtime,
+chart and SDK source. The bot skips GitHub release creation at both action and
+strategy boundaries; existing candidate acceptance and human-triggered OIDC
+publication remain separate. Native merged-pending labels stop subsequent
+version PRs until a matching public prerelease contains the merged version PR.
+Partial tags do not establish publication completion.
+
+The upstream Python updater writes the SemVer string directly. Mango instead
+keeps canonical PEP 440 `0.1.0aN` using a narrow, allowlisted post-step with
+GitHub's expected-head compare-and-swap; it never executes PR source or changes
+dependency versions. Independent tests run the actual upstream manifest/updaters
+and Mango's candidate metadata validator, preserving synthetic/history versions.
+
+Reviewed current [GitHub workflow-trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow):
+`GITHUB_TOKEN` PR opened/synchronize/reopened events create approval-required
+workflows. This current GitHub policy supersedes the action README's older
+blanket statement that token-created PRs do not trigger CI. Maintainers approve
+and verify the final bot head's checks; no long-lived token or alternate CI
+dispatch is introduced. This release-maintenance slice adopts no CMA workflow,
+hosted constraint or third-party SDK runtime dependency.
+
+## Memory upload acknowledgement reconciliation (2026-10-18)
+
+Reviewed the current official [self-hosted Memory workflow](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes-memory)
+alongside Go SDK `v1.82.0` (`543d266ce81a4487281e084b013fef807dbb5f18`),
+Python `v1.15.0` (`bcd55fe1d3f0f1240765f8cef04295b67337f55a`) and TypeScript
+`sdk-v0.135.0` (`04a4c28c70de498d6d0e930e43edb5edb9ac545e`). The paired API
+uses content-hash preconditions; its worker helpers reconcile unknown upload
+outcomes before comparing newer local edits with the Store. The corresponding
+SDK fix was released on October 7, separately from this review date.
+
+Adopted the failure invariant: remember the exact sent content hash and settle
+it against the next complete successful listing. Matching bytes establish the
+observed baseline; a mismatch remains an ordinary remote conflict. Clear the
+attempt after that observation so later matching bytes cannot inherit stale
+ownership. Apply this before periodic/final sync decisions, cancellation-flush
+decisions and the emptied-directory protection. Definitive HTTP rejection does
+not establish a pending write; ambiguous transport/server errors can.
+
+Mango's implementation and HTTP-backed fault tests are independently authored.
+The existing single-Work Go helper, scoped credentials, SHA preconditions,
+read-only roots, refusal and deletion protections remain its boundaries. No
+route, schema, migration, hosted dependency or official SDK implementation was
+added. Python/TypeScript remain Mango HTTP clients rather than new worker
+implementations. In-memory reconciliation does not persist unuploaded local
+edits across forced termination. Mango's server already treats a no-op content
+update as idempotent; the repair does not assume duplicate requests create
+duplicate immutable Versions.

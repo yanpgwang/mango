@@ -44,7 +44,7 @@ curl -i http://localhost:8080/readyz
 
 Expect `HTTP/1.1 200 OK`. The stack initializes the schema with a one-shot
 `migrate` container, then starts Mango's API and orchestration worker,
-PostgreSQL, Temporal, NATS, and MinIO. The model variables above explicitly
+PostgreSQL, Temporal, NATS, and SeaweedFS. The model variables above explicitly
 select offline mode. Later, use [Model configuration](guides/model-configuration.md)
 to connect a real endpoint.
 
@@ -201,7 +201,7 @@ the local services when you are done:
 make local-down
 ```
 
-This keeps the PostgreSQL and MinIO volumes for your next run. Use
+This keeps the PostgreSQL and SeaweedFS volumes for your next run. Use
 `make local-down VOLUMES=1` only when you intend to delete the stack's stored data.
 
 ## Next steps

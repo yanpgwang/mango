@@ -25,8 +25,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Start PostgreSQL, Temporal, NATS, and MinIO
-        run: docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats minio
+      - name: Start PostgreSQL, Temporal, NATS, and SeaweedFS
+        run: docker compose -f deployments/local/compose.yaml up -d --wait postgres temporal nats seaweedfs
       - name: Run core service integration tests
         # Match the trusted root worker in Compose. Native Linux bind mounts
         # retain container UIDs, including root-owned nested output directories.
@@ -34,7 +34,7 @@ jobs:
         run: make test-service-core SERVICE_TEST_EXEC='sudo -n -E --'
       - name: Show dependency logs after failure
         if: failure()
-        run: docker compose -f deployments/local/compose.yaml logs --no-color postgres temporal nats minio
+        run: docker compose -f deployments/local/compose.yaml logs --no-color postgres temporal nats seaweedfs
       - name: Stop service dependencies
         if: always()
         run: docker compose -f deployments/local/compose.yaml down --volumes
@@ -57,10 +57,34 @@ jobs:
         if: failure()
         run: docker ps --all --no-trunc
 
+  kubernetes:
+    name: Kubernetes lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: ./.github/actions/setup-helm
+        id: helm
+      - uses: ./.github/actions/setup-kubernetes
+        id: kubernetes
+      - name: Exercise installation, Mango process replacement and Work recovery
+        run: >-
+          make test-kubernetes
+          KIND='${{ steps.kubernetes.outputs.kind }}'
+          KUBECTL='${{ steps.kubernetes.outputs.kubectl }}'
+          HELM='${{ steps.helm.outputs.path }}'
+          SERVICE_TEST_EXEC='sudo -n -E --'
+
   required:
     name: Required
     if: always()
-    needs: [service_core, self_hosted_docker]
+    needs: [service_core, self_hosted_docker, kubernetes]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -68,9 +92,11 @@ jobs:
         env:
           CORE_RESULT: ${{ needs.service_core.result }}
           WORKER_RESULT: ${{ needs.self_hosted_docker.result }}
+          KUBERNETES_RESULT: ${{ needs.kubernetes.result }}
         run: |
-          if [ "$CORE_RESULT" != "success" ] || [ "$WORKER_RESULT" != "success" ]; then
+          if [ "$CORE_RESULT" != "success" ] || [ "$WORKER_RESULT" != "success" ] || [ "$KUBERNETES_RESULT" != "success" ]; then
             echo "Core services: $CORE_RESULT"
             echo "Self-hosted Docker worker: $WORKER_RESULT"
+            echo "Kubernetes lifecycle: $KUBERNETES_RESULT"
             exit 1
           fi

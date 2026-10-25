@@ -1,4 +1,4 @@
-FROM golang:1.26.6-bookworm AS build
+FROM golang:1.26.10-bookworm AS build
 WORKDIR /src
 COPY sdk/go/ ./sdk/go/
 COPY examples/mongodb-query/*.go ./example/

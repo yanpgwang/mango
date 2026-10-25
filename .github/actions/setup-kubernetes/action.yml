@@ -1,0 +1,23 @@
+name: Verified Kubernetes test tools
+description: Install official kind 0.33.0 and kubectl 1.37.0 Linux AMD64 tools
+outputs:
+  kind:
+    description: Absolute kind executable path
+    value: ${{ steps.install.outputs.kind }}
+  kubectl:
+    description: Absolute kubectl executable path
+    value: ${{ steps.install.outputs.kubectl }}
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      run: |
+        folder="$RUNNER_TEMP/mango-kubernetes-tools"
+        mkdir -p "$folder"
+        curl --fail --location --retry 3 --output "$folder/kind" https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+        printf '%s  %s\n' aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d "$folder/kind" | sha256sum --check
+        curl --fail --location --retry 3 --output "$folder/kubectl" https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl
+        printf '%s  %s\n' 6129359f4e1f3848a5572ccb0b26cf28b8ca08cef38c95a765b2f64a2c961a2f "$folder/kubectl" | sha256sum --check
+        chmod +x "$folder/kind" "$folder/kubectl"
+        printf 'kind=%s/kind\nkubectl=%s/kubectl\n' "$folder" "$folder" >> "$GITHUB_OUTPUT"

@@ -158,6 +158,10 @@ func (s *Store) CompleteThreadWorkflowTurn(
 		); err != nil {
 			return err
 		}
+		if err := s.validateToolPermissionDraftsLocked(ctx, tx, q, domain.ToolPermissionOwner{SessionID: sessionID, ThreadID: threadID, TriggerEventID: triggerEventID, AttemptID: attemptID}, outputDrafts); err != nil {
+			return err
+		}
+
 		if attemptID != "" {
 			if err := validateAttemptFinish(attemptState, attemptError); err != nil {
 				return err
@@ -274,6 +278,7 @@ func (s *Store) CompleteThreadWorkflowTurn(
 			}
 			payload := cloneEventPayload(action.Payload)
 			payload["session_thread_id"] = threadID
+			payload["source_event_id"] = actionEventID
 			clientID := s.ids.NewID(domain.PrefixEvent)
 			clientActionEventIDs[actionEventID] = clientID
 			clientActionDrafts = append(clientActionDrafts, domain.EventDraft{
@@ -304,9 +309,10 @@ func (s *Store) CompleteThreadWorkflowTurn(
 				[]domain.EventDraft{{
 					Type: domain.EvAgentThreadMessageReceived,
 					Payload: map[string]any{
-						"from_session_thread_id": threadID,
-						"from_agent_name":        thread.Agent.Name,
-						"content":                coordinatorReport,
+						"from_session_thread_id":            threadID,
+						"from_agent_name":                   thread.Agent.Name,
+						"content":                           coordinatorReport,
+						domain.InternalOriginTriggerEventID: triggerEventID,
 					},
 				}}, maxSeq, nil, now,
 			)
@@ -392,6 +398,9 @@ func (s *Store) CompleteThreadWorkflowTurn(
 			}
 		}
 
+		if interrupt != nil || effectiveStatus == domain.StatusTerminated {
+			thread.BudgetPaused = false
+		}
 		thread.Usage.Add(usage)
 		thread.TransitionStatus(effectiveStatus, now)
 		if err := putSessionThreadTx(ctx, tx, thread); err != nil {

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/moby/moby/client"
+	"github.com/yanpgwang/mango/internal/buildinfo"
 	"github.com/yanpgwang/mango/internal/selfhosted"
 	mango "github.com/yanpgwang/mango/sdk/go"
 )
@@ -33,15 +34,20 @@ func main() {
 
 func run(ctx context.Context, arguments []string) error {
 	if len(arguments) == 0 {
-		return errors.New("usage: mango-worker <docker|run> [flags]")
+		return errors.New("usage: mango-worker <version|docker|run> [flags]")
 	}
 	switch arguments[0] {
+	case "version":
+		if len(arguments) != 1 {
+			return errors.New("usage: mango-worker version")
+		}
+		return buildinfo.Write(os.Stdout)
 	case "docker":
 		return runDocker(ctx, arguments[1:])
 	case "run":
 		return runItem(ctx, arguments[1:])
 	case "help", "-h", "--help":
-		_, err := fmt.Fprintln(os.Stdout, "usage: mango-worker <docker|run> [flags]")
+		_, err := fmt.Fprintln(os.Stdout, "usage: mango-worker <version|docker|run> [flags]")
 		return err
 	default:
 		return fmt.Errorf("unknown mango-worker command %q", arguments[0])
