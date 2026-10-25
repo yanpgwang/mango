@@ -66,6 +66,7 @@ endif
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
 .PHONY: release-unit release-please-check release-build release-check
 .PHONY: chart-check test-kubernetes test-kubernetes-restore
+.PHONY: test-workflow-runtime
 
 help:
 	@echo "Development"
@@ -80,6 +81,7 @@ help:
 	@echo "  make test-tool-permissions-live  qualify automatic permissions with the configured model"
 	@echo "  make test-self-hosted-live  run one real-model turn through a self-hosted Docker worker"
 	@echo "  make test-platform-live  alias for the self-hosted live smoke"
+	@echo "  make test-workflow-runtime  run the isolated JS/journal feasibility study (not a product executor)"
 	@echo "  make test-custom-tool-barrier  test custom-tool results across a worker restart"
 	@echo "  make demo-coding-agent  run the coding agent example with a local Docker worker"
 	@echo "  make demo-hitl-gate      run the recoverable HITL Go SDK example"
@@ -123,6 +125,14 @@ test:
 
 test-race:
 	MANGO_TEST_DOCKER=0 $(GO) test -race ./...
+
+# Explicit research tier. No runtime, SDK, release or ordinary test depends on
+# these images. First build downloads pinned public engines, never credentials.
+test-workflow-runtime:
+	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
+	$(DOCKER) build --target quickjs -t mango-workflow-study:quickjs scripts/workflow-runtime
+	$(DOCKER) build --target node -t mango-workflow-study:node scripts/workflow-runtime
+	MANGO_TEST_WORKFLOW_RUNTIME=1 $(GO) test -timeout 10m -count=1 -v ./scripts/workflow-runtime
 
 test-service: test-service-core test-self-hosted-docker
 
