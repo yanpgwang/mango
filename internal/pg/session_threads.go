@@ -72,6 +72,15 @@ func (s *Store) ListSessionThreads(
 	}
 
 	args := []any{sessionID}
+	statusFilter := ""
+	if len(query.Statuses) > 0 {
+		statuses := make([]string, len(query.Statuses))
+		for index, status := range query.Statuses {
+			statuses[index] = string(status)
+		}
+		args = append(args, statuses)
+		statusFilter = fmt.Sprintf(` AND thread.status = ANY($%d::text[])`, len(args))
+	}
 	boundary := ""
 	if query.Boundary != nil {
 		args = append(args, query.Boundary.CreatedAt, query.Boundary.ID)
@@ -86,7 +95,7 @@ SELECT thread.id, thread.session_id, thread.parent_thread_id,
        thread.status, thread.body, thread.created_at,
        thread.updated_at, thread.archived_at
 FROM session_threads AS thread
-WHERE thread.session_id = $1`+boundary+`
+WHERE thread.session_id = $1`+statusFilter+boundary+`
 ORDER BY CASE WHEN thread.kind = 'primary' THEN 0 ELSE 1 END,
          thread.created_at, thread.id
 LIMIT $`+fmt.Sprint(len(args)), args...)

@@ -579,15 +579,54 @@ func (r *EnvironmentWorkRepository) StopWork(
 	ctx context.Context,
 	environmentID, workID string,
 	force bool,
+	expectedIdleEventID *string,
 ) error {
 	if err := r.authorizeEnvironment(ctx, environmentID); err != nil {
 		return err
+	}
+	requestScope, _ := workspace.FromContext(ctx)
+	if expectedIdleEventID != nil && requestScope.Session != nil {
+		claim := requestScope.Session
+		if claim.EnvironmentID != environmentID || claim.WorkID != workID || len(claim.CredentialDigest) == 0 {
+			return domain.Precondition("work lease is no longer owned")
+		}
 	}
 	if err := r.expireHealthchecks(ctx, environmentID); err != nil {
 		return err
 	}
 	now := r.store.clock.Now().UTC().Truncate(time.Microsecond)
 	return r.store.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
+		var session *domain.Session
+		deleting := false
+		if expectedIdleEventID != nil {
+			// Admission/completion lock Session before touching Work. Take that
+			// same lock order so an idle observation and retirement are atomic.
+			var sessionID string
+			if err := tx.QueryRow(ctx, `SELECT COALESCE(session_id,'') FROM environment_work
+WHERE environment_id=$1 AND id=$2`, environmentID, workID).Scan(&sessionID); errors.Is(err, pgx.ErrNoRows) {
+				return domain.NotFound("work item not found")
+			} else if err != nil {
+				return err
+			}
+			if requestScope.Session != nil && requestScope.Session.SessionID != sessionID {
+				return domain.Precondition("work lease is no longer owned")
+			}
+			if sessionID == "" {
+				return domain.Validation("expected_idle_event_id applies only to Session Work")
+			}
+			row, err := q.LockSession(ctx, sessionID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.NotFound("Session Work no longer exists")
+			}
+			if err != nil {
+				return err
+			}
+			loaded, err := sessionFromLockRow(row)
+			if err != nil {
+				return err
+			}
+			session, deleting = &loaded, row.DeletingAt.Valid
+		}
 		work, err := r.workForUpdate(ctx, tx, environmentID, workID)
 		if err != nil {
 			return err
@@ -600,7 +639,6 @@ func (r *EnvironmentWorkRepository) StopWork(
 		if expired {
 			return nil
 		}
-		requestScope, _ := workspace.FromContext(ctx)
 		if requestScope.Session != nil && environmentWorkLeaseExpired(work, now) {
 			return domain.Precondition("work lease has expired")
 		}
@@ -619,6 +657,30 @@ WHERE environment_id = $1 AND id = $2`, environmentID, workID).Scan(&activationS
 		}
 		if work.State == domain.EnvironmentWorkStopped {
 			return domain.Conflict("work item is already stopped")
+		}
+		if expectedIdleEventID != nil {
+			valid := false
+			if !deleting && session.ArchivedAt == nil && session.Status == domain.StatusIdle {
+				err = tx.QueryRow(ctx, `SELECT EXISTS (
+    SELECT 1 FROM events AS event
+    JOIN session_threads AS thread ON thread.session_id=event.session_id AND thread.id=event.thread_id
+    WHERE event.session_id=$1 AND event.id=$2 AND thread.kind='primary'
+      AND event.type='session.status_idle' AND event.processed_at IS NOT NULL
+      AND event.payload->'stop_reason'->>'type'='end_turn'
+      AND event.seq=(SELECT MAX(seq) FROM events WHERE session_id=$1)
+      AND NOT EXISTS (SELECT 1 FROM pending_actions WHERE session_id=$1 AND resolved_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM turn_attempts WHERE session_id=$1 AND state='active')
+      AND NOT EXISTS (SELECT 1 FROM session_threads WHERE session_id=$1 AND archived_at IS NULL AND status IN ('running','rescheduling'))
+      AND NOT EXISTS (SELECT 1 FROM events WHERE session_id=$1 AND processed_at IS NULL
+          AND type IN ('user.message','user.define_outcome','user.tool_confirmation','user.tool_result','user.custom_tool_result'))
+)`, session.ID, *expectedIdleEventID).Scan(&valid)
+				if err != nil {
+					return err
+				}
+			}
+			if !valid {
+				return domain.Precondition("Session no longer matches expected_idle_event_id")
+			}
 		}
 		next := domain.EnvironmentWorkStopping
 		stoppedAt := (*time.Time)(nil)

@@ -1023,6 +1023,7 @@ func (c *SessionsThreadsService) List(ctx context.Context, session_id string, pa
 	query := make(url.Values)
 	addQuery(query, "limit", params.Limit)
 	addQuery(query, "page", params.Page)
+	addQueryArray(query, "statuses[]", params.Statuses)
 	path := "/v1/sessions/" + escapePath(session_id) + "/threads"
 	var result SessionThreadList
 	err := c.client.doJSON(ctx, "GET", path, query, nil, &result, true)

@@ -188,6 +188,30 @@ The response echoes only the submitted events:
 
 Status and agent output are asynchronous and appear in list/stream results.
 
+### Runtime content capacity
+
+Execution has a **1 MiB encoded limit per content-bearing internal Activity
+input or result**, including prepared context, model and tool results, Outcome
+and permission evaluation inputs, and batched turn output. This is separate
+from HTTP admission and model context-window limits. JSON escaping, metadata,
+and accumulated conversation can make the encoded value larger than an
+individual message; a successful event admission does not guarantee that the
+next turn fits.
+
+When this limit is exceeded, Mango ends the affected execution with a
+`session.error` whose `retry_status.type` is `terminal`, followed by the
+terminated status. The error identifies the operation and encoded size without
+including the content. An interrupt committed before completion retains its
+usual precedence. Already committed input, output, tool-journal records, and
+incurred usage remain durable. Oversized content from the uncommitted part of
+the turn may be discarded; do not rely on recovering that content from event
+history. A completed inference or journaled tool call is not repeated just
+because its result exceeds this transport limit.
+
+This development-preview limit does not provide unlimited Workflow history or
+lossless large-content transport. Split large work into smaller Sessions and
+keep application artifacts in Files or operator-managed storage.
+
 ## List events
 
 `GET /v1/sessions/{id}/events`

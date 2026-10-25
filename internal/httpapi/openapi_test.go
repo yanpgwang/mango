@@ -241,7 +241,7 @@ func TestOpenAPISessionThreadContract(t *testing.T) {
 
 	listPath := openAPIMap(t, paths["/v1/sessions/{session_id}/threads"], "thread list path")
 	list := openAPIMap(t, listPath["get"], "list threads")
-	assertOpenAPIParameterNames(t, doc, list["parameters"], []string{"limit", "page"})
+	assertOpenAPIParameterNames(t, doc, list["parameters"], []string{"limit", "page", "statuses[]"})
 
 	eventsPath := openAPIMap(t,
 		paths["/v1/sessions/{session_id}/threads/{thread_id}/events"], "thread events path")

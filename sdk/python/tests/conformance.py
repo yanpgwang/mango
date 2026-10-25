@@ -22,6 +22,20 @@ def main() -> None:
     }
     with Mango(base_url=url, api_key=key) as client:
         client.system.health()
+        client.environments.work.stop("env_self_hosted", "work_sdk", force=True, expected_idle_event_id="sevt_idle_fixture")
+        try:
+            client.environments.work.stop("env_self_hosted", "work_sdk", force=True, expected_idle_event_id="sevt_stale")
+        except APIError as error:
+            assert error.status_code == 412 and error.type == "precondition_failed_error" and error.request_id
+        else:
+            raise AssertionError("Stale idle Stop must return a typed 412")
+
+        thread_page = client.sessions.threads.list("sesn_thread_filter", limit=1, statuses=["idle", "running"])
+        assert [item["id"] for item in thread_page["data"]] == ["sthr_filter_primary"]
+        assert thread_page["next_page"] is not None
+        assert [item["id"] for item in client.sessions.threads.iter(
+            "sesn_thread_filter", limit=1, statuses=["idle", "running"],
+        )] == ["sthr_filter_primary", "sthr_filter_running", "sthr_filter_waiting"]
         mcp_page = client.sessions.events.list("sesn_mcp_fixture")
         assert mcp_page["data"][0]["type"] == "agent.mcp_tool_result"
         assert mcp_page["data"][0]["file_id"] == "file_mcp_full"
@@ -116,6 +130,13 @@ def main() -> None:
             async def check_async() -> None:
                 async with AsyncMango(base_url=url, api_key=key) as async_client:
                     await async_client.system.health()
+                    await async_client.environments.work.stop("env_self_hosted", "work_sdk", force=True, expected_idle_event_id="sevt_idle_fixture")
+                    thread_page = await async_client.sessions.threads.list("sesn_thread_filter", limit=1, statuses=["idle", "running"])
+                    assert [item["id"] for item in thread_page["data"]] == ["sthr_filter_primary"]
+                    assert thread_page["next_page"] is not None
+                    assert [item["id"] async for item in async_client.sessions.threads.iter(
+                        "sesn_thread_filter", limit=1, statuses=["idle", "running"],
+                    )] == ["sthr_filter_primary", "sthr_filter_running", "sthr_filter_waiting"]
                     assert session_id is not None
                     assert (await async_client.sessions.retrieve(session_id))["id"] == session_id
 

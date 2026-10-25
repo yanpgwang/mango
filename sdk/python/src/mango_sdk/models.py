@@ -510,6 +510,7 @@ EnvironmentWorkState: TypeAlias = Literal['queued', 'starting', 'active', 'stopp
 
 
 class EnvironmentWorkStopRequest(TypedDict, total=False):
+    expected_idle_event_id: str
     force: bool
 
 

@@ -73,7 +73,7 @@ jobs:
         id: helm
       - uses: ./.github/actions/setup-kubernetes
         id: kubernetes
-      - name: Exercise isolated install, replacement and quiesced restore
+      - name: Exercise installation, Mango process replacement and Work recovery
         run: >-
           make test-kubernetes
           KIND='${{ steps.kubernetes.outputs.kind }}'

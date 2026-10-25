@@ -39,10 +39,10 @@ access still depends on the sandbox boundary.
 | Capability | Status | Scope and principal limits |
 | --- | --- | --- |
 | [Agents](api/agents.md) | Supported | Versioned definitions, immutable Session snapshots, updates, archive, filters, and pagination. |
-| [SDKs](sdk.md) | Preview | Go, Python sync/async, and TypeScript resource clients cover the OpenAPI operations. Alpha 2 supports source or inspected candidate packages; registry publication is pending. Published alpha 1 has an earlier interface. |
+| [SDKs](sdk.md) | Preview | Go, Python sync/async, and TypeScript resource clients cover the OpenAPI operations. Match the SDK to the source revision or preview version confirmed in the release record; consult that record for publication status. |
 | [Sessions](api/sessions.md) | Supported | Persistent work, shared budgets, usage, updates, interrupts, archive, and deletion. Archive retains history; automatic idle reclamation is not implemented. |
-| [Events and actions](api/events.md) | Limited | Messages, tool/approval barriers, outcomes, retries, and interrupts. Approval and execution results are separate. File messages support bounded UTF-8 documents, not images or PDFs. |
-| [Event streams](api/events.md#stream-events) | Supported | Durable history plus live Session/Thread SSE and optional ephemeral previews. Streams do not replay history or interpret `Last-Event-ID`. |
+| [Events and actions](api/events.md) | Limited | Messages, tool/approval barriers, outcomes, retries, and interrupts. Approval and execution results are separate. File messages support bounded UTF-8 documents, not images or PDFs. Internal execution content has a [1 MiB encoded transport limit](api/events.md#runtime-content-capacity); exceeding it terminates the affected execution, retaining committed history and usage but potentially discarding uncommitted output. |
+| [Event streams](api/events.md#stream-events) | Supported | Durable history plus live Session/Thread SSE and optional ephemeral previews. Streams do not replay history or interpret `Last-Event-ID`. The Go tool runner refreshes its live connection every 15 seconds and reconciles persisted history, including when an old stream stays silently open. Raw SSE clients manage their own recovery. |
 | [Terminal Session connection](guides/session-connect.md) | Limited | Primary history/live events, messages, relayed child tool/MCP approvals, and explicit Session-wide interrupts. Reconciles history after read disconnects; uncertain writes stop without retry. Line interface only; no sandbox shell or full child-conversation viewer. |
 | [Outcome evaluation](api/sessions.md) | Limited | Text/File rubrics and bounded grading/iteration. The grader does not independently execute tests or inspect output artifacts; validate deliverables separately. |
 | [Model and context](architecture/storage-context-and-tools.md) | Limited | Durable transcripts, model-window profiles, usage-based estimates, request admission, and compaction. Exact provider token counts, complete request audit records, and equivalent Outcome/Advisor overflow recovery remain open. |
@@ -52,13 +52,13 @@ access still depends on the sandbox boundary.
 | [Files](api/files.md) | Limited | S3-compatible immutable upload/download, Workspace isolation, and lifecycle recovery, including retained cleanup records when failed-upload deletion must be retried. Applications explicitly transfer workspace deliverables. File-sourced images/PDFs and broader multi-replica operating evidence remain open. Active-upload cleanup is fenced across API processes; generated MCP publication uses distinct internal attempt keys, and unknown remote writes retain durable guards through publication and deletion. |
 | [Session Resources](api/session-resources.md) | Limited | Create-time Memory Store attachments. File/Git staging is operator-owned. |
 | [Skills](api/skills.md) | Limited | Validated bundles, typed immutable references, exact expanded-size admission, Agent-scoped pins, and instruction loading. External catalogs and repository discovery are not implemented. |
-| [Memory](api/memory.md) | Limited | Versioned UTF-8 files, optimistic preconditions, and attached-Store synchronization. Automatic retention and non-Docker self-hosted launchers are not implemented. |
+| [Memory](api/memory.md) | Limited | Versioned UTF-8 files, optimistic preconditions, and attached-Store synchronization. Workers reconcile an unavailable upload reply before applying later local edits; pending local writes are not durable across forced termination. Automatic retention and non-Docker self-hosted launchers are not implemented. |
 | [Vaults](api/vaults.md) | Limited | Encrypted credentials, Session attachment, OAuth validation/refresh, and rotation. Environment-variable secret egress and refresh-failure notifications are not implemented. |
 | [Webhooks](api/webhooks.md) | Limited | Signed Session and Deployment Run lifecycle delivery, with three at-least-once attempts. No delivery-log API or configurable sustained-failure threshold. |
 | [Deployments](api/deployments.md) | Limited | Pinned templates, manual and cron runs, Memory Store templates, budgets, leases, and Run records. Agent-archive propagation remains open. |
-| [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, and permanent-input failure. Environment-scoped supervisor keys with issue/list/revoke/rotation; bounded healthcheck Work proves sandbox execution without a Session/model and stores durable success, failure, timeout, or cancellation. |
+| [Environment Work](api/environment-work.md) | Limited | Poll/Ack, bounded renewable leases, reclaim, scoped Work credentials, permanent-input failure, and conditional idle retirement that rejects stale end-turn observations without stranding pending tools. Environment-scoped supervisor keys with issue/list/revoke/rotation; bounded healthcheck Work proves sandbox execution without a Session/model and stores durable success, failure, timeout, or cancellation. |
 | [API health](deployment.md#health-probes) | Supported | Public process liveness and bounded PostgreSQL readiness, including read-only rejection and recovery. Does not certify worker execution. |
-| [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. |
+| [Multi-agent](guides/multi-agent.md) | Limited | Persistent child Threads, status-filtered Thread pagination, primary-only Advisor consultations, shared budgets, follow-ups, reports, and lifecycle controls. Broader repeated provider evidence and targeted interruption timing remain open. Workflow Runs are not implemented; the [design proposal](design/workflow-runs.md) records research and pending decisions. |
 
 ## Product and operational boundaries
 
@@ -73,11 +73,12 @@ access still depends on the sandbox boundary.
   production Compose and Kubernetes distributions are not available. The
   [Helm candidate](guides/kubernetes.md) has role-separated Secrets, an initial
   schema hook, probes and bounded temporary storage. Isolated Kubernetes 1.37.0
-  install, pending-action replacement, external Docker execution and same-release
-  quiesced restore are tested with source inputs and actual release artifacts.
+  install, pending-action replacement, external Docker execution and Work
+  reactivation are covered by developer-preview acceptance with source inputs
+  and actual release artifacts, while external state services are retained.
   Artifact acceptance uses a matched packaged chart, native supervisor and OCI
-  images; the candidate workflow runs that lifecycle before upload. Publication
-  remains pending. The
+  images; the candidate workflow runs that lifecycle before upload. Consult the
+  release record for publication status. The
   [development schema baseline](deployment.md#development-database-baseline)
   requires a fresh database when replacing the historical chain or version-1
   development baseline;
@@ -88,9 +89,12 @@ access still depends on the sandbox boundary.
 - **Scaling and recovery:** API and orchestration roles can run separately.
   Files/Skills upload leases and atomic cleanup claims protect another API
   process's active uploads, with two-service PostgreSQL/object-store tests.
-  Quiesced restore tests additionally cover Mango/Temporal databases, File/Skill
-  bytes, Memory Versions and the original encryption keyring on one isolated
-  Kubernetes topology. See [operator recovery](guides/kubernetes.md#consistent-same-release-backup-and-restore)
+  Active Work/runtime restart and reactivation remain required service tests.
+  Independent external Temporal/database cold restore is experimental and has an
+  unresolved intermittent Temporal exit; it is not supported by this alpha.
+  The complete opt-in test retains Mango/Temporal databases, File/Skill bytes,
+  Memory Versions, original history and keyring assertions. See
+  [operator recovery](guides/kubernetes.md#consistent-same-release-backup-and-restore)
   and the [current assessment](architecture/self-hosted-workers.md#remaining-work-and-evidence-limits).
   Worker Versioning, heterogeneous-worker routing, broader rollout evidence,
   automated backup, audit, and observability still need work.

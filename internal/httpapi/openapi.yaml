@@ -451,6 +451,7 @@ paths:
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
 
   /v1/sessions:
     post:
@@ -674,9 +675,15 @@ paths:
       x-sdk-method: list
       tags: [Session Threads]
       summary: List Session Threads, primary first
+      description: >-
+        Filter by repeated statuses[] values before pagination. Omit statuses[]
+        to include every status, including archived terminated Threads. Cursors
+        are bound to the Session and status set; reordered or duplicate statuses
+        are equivalent. Pages reflect current state, not a fixed snapshot.
       parameters:
         - $ref: '#/components/parameters/SessionThreadListLimit'
         - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Statuses'
       responses:
         '200': {$ref: '#/components/responses/SessionThreadListResponse'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
@@ -4489,6 +4496,10 @@ components:
       additionalProperties: false
       properties:
         force: {type: boolean, default: false}
+        expected_idle_event_id:
+          type: string
+          minLength: 1
+          description: Optional Session Work idle-retirement precondition. Requires the exact current primary end_turn event, aggregate idle, and no newer events or outstanding work. A stale observation returns 412 without stopping or renewing Work; never retry it as an unconditional Stop. Omit for explicit operator shutdown.
     EnvironmentWorkFailureRequest:
       type: object
       additionalProperties: false
@@ -5730,6 +5741,12 @@ components:
       unevaluatedProperties: false
     SessionExecutionError:
       type: object
+      description: >-
+        Asynchronous execution failure. Runtime content exceeding the 1 MiB
+        encoded internal transport limit produces a terminal retry_status;
+        committed history and incurred usage remain durable, but uncommitted
+        oversized output may be discarded. This limit includes accumulated
+        context and encoding overhead and is separate from HTTP admission.
       required: [type, message]
       properties:
         type:

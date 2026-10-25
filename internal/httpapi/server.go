@@ -44,7 +44,7 @@ type EnvironmentWorkService interface {
 	Heartbeat(context.Context, string, string, *string, *int64) (domain.EnvironmentWorkHeartbeat, error)
 	Fail(context.Context, string, string, string) error
 	Poll(context.Context, string, string, time.Duration, *time.Duration) (*domain.EnvironmentWork, error)
-	Stop(context.Context, string, string, bool) error
+	Stop(context.Context, string, string, bool, *string) error
 	Stats(context.Context, string) (domain.EnvironmentWorkQueueStats, error)
 }
 

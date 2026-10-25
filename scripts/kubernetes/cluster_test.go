@@ -34,6 +34,7 @@ type clusterFixture struct {
 	kind, kubectl, helm       string
 	image, workerImage, model string
 	workerBinary, revision    string
+	version                   string
 	chart                     string
 	kubeconfig, keyring       string
 	ports                     [2]int
@@ -156,6 +157,11 @@ func newCluster(t *testing.T) *clusterFixture {
 	c.workerBinary = filepath.Join(c.temp, "mango-worker")
 	c.chart = "charts/mango"
 	c.revision = strings.TrimSpace(string(c.command(nil, nil, "git", "rev-parse", "HEAD")))
+	currentVersion, err := os.ReadFile(filepath.Join(c.root, "VERSION"))
+	require.NoError(t, err)
+	c.version = strings.TrimSpace(string(currentVersion))
+	_, err = candidatePythonVersion(c.version)
+	require.NoError(t, err)
 	keyBytes := make([]byte, 32)
 	_, err = rand.Read(keyBytes)
 	require.NoError(t, err)
@@ -176,7 +182,7 @@ func newCluster(t *testing.T) *clusterFixture {
 		if !filepath.IsAbs(candidateFolder) {
 			candidateFolder = filepath.Join(c.root, candidateFolder)
 		}
-		candidate, err := readCandidate(candidateFolder, c.revision)
+		candidate, err := readCandidate(candidateFolder, c.revision, c.version)
 		require.NoError(t, err)
 		t.Log("Using actual release archives, packaged chart and OCI images:", candidate.Revision)
 		c.installCandidateInputs(candidateFolder, candidate)
@@ -194,7 +200,7 @@ func newCluster(t *testing.T) *clusterFixture {
 	}
 	for _, item := range inputs {
 		args := append(append([]string{}, builder...), "-f", item.file, "-t", item.image,
-			"--build-arg", "VERSION=0.1.0-alpha.2", "--build-arg", "REVISION="+c.revision, ".")
+			"--build-arg", "VERSION="+c.version, "--build-arg", "REVISION="+c.revision, ".")
 		c.command(nil, nil, "docker", args...)
 		c.builtImages = append(c.builtImages, item.image)
 	}
@@ -332,6 +338,6 @@ func (c *clusterFixture) install(s *stateFixture, namespace string, restore bool
 	var version struct{ Version, Revision string }
 	raw := c.kube(nil, "-n", namespace, "exec", "deployment/"+namespace+"-api", "--", "mango", "version")
 	require.NoError(c.t, json.Unmarshal(raw, &version))
-	require.Equal(c.t, "0.1.0-alpha.2", version.Version)
+	require.Equal(c.t, c.version, version.Version)
 	require.Equal(c.t, c.revision, version.Revision)
 }

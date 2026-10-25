@@ -22,10 +22,12 @@ For your first complete application, follow the [Quickstart](getting-started.md)
 
 ## Current development version
 
-The current resource-based clients are available from source or inspected
-candidate packages: Python `0.1.0a2` and TypeScript `0.1.0-alpha.2` have not yet
-been published to registries, and Go has no independently tagged release.
-Use the same source revision as your server.
+This checkout targets Python `0.1.0a4`,
+TypeScript `0.1.0-alpha.4` and Go <!-- x-release-please-version -->
+`v0.1.0-alpha.4`. Select matching public versions from the <!-- x-release-please-version -->
+[release record](https://github.com/yanpgwang/mango/releases), which confirms
+registry availability. Before publication or during development, use source
+or inspected candidate packages from the same revision as your server.
 
 An inspected [release candidate](guides/release-candidates.md) also provides
 wheel/source/npm packages and a Go module source archive from one recorded

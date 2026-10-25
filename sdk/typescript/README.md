@@ -1,7 +1,7 @@
 # Mango TypeScript / JavaScript SDK
 
-First-party client for Mango's current development API: all 99 OpenAPI operations
-and 280 schema types. It uses native `fetch`, supports Node.js 22+, and has no
+First-party client for Mango's current development API, covering its OpenAPI
+operations and schema types. It uses native `fetch`, supports Node.js 22+, and has no
 runtime dependencies. JavaScript uses the same package; TypeScript gets generated
 request/response types and discriminated event unions.
 
@@ -13,7 +13,7 @@ capability that the operator has not configured.
 
 ## Install
 
-This checkout prepares `0.1.0-alpha.2`. Select a matching version or inspected npm
+This checkout prepares `0.1.0-alpha.4`. Select a matching version or inspected npm <!-- x-release-please-version -->
 tarball from the [release record](https://github.com/yanpgwang/mango/releases),
 which confirms registry availability. Published alpha 1 uses the previous
 interface. Before publication or during development, build from the matching

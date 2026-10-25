@@ -43,7 +43,7 @@ HELM ?= helm
 KIND ?= kind
 KUBECTL ?= kubectl
 RELEASE_PYTHON ?= $(UV) run --python 3.12 python
-RELEASE_VERSION ?= 0.1.0-alpha.2
+RELEASE_VERSION ?= $(shell cat VERSION)
 RELEASE_DIR ?= dist/release/$(RELEASE_VERSION)
 RELEASE_PLATFORMS ?=
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
@@ -64,8 +64,9 @@ endif
 	local-config local-up local-down local-health local-ps local-logs
 
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
-.PHONY: release-unit release-build release-check
-.PHONY: chart-check test-kubernetes
+.PHONY: release-unit release-please-check release-build release-check
+.PHONY: chart-check test-kubernetes test-kubernetes-restore
+.PHONY: test-workflow-runtime
 
 help:
 	@echo "Development"
@@ -80,6 +81,7 @@ help:
 	@echo "  make test-tool-permissions-live  qualify automatic permissions with the configured model"
 	@echo "  make test-self-hosted-live  run one real-model turn through a self-hosted Docker worker"
 	@echo "  make test-platform-live  alias for the self-hosted live smoke"
+	@echo "  make test-workflow-runtime  run the isolated JS/journal feasibility study (not a product executor)"
 	@echo "  make test-custom-tool-barrier  test custom-tool results across a worker restart"
 	@echo "  make demo-coding-agent  run the coding agent example with a local Docker worker"
 	@echo "  make demo-hitl-gate      run the recoverable HITL Go SDK example"
@@ -94,7 +96,8 @@ help:
 	@echo "  make release-build  build matched runtime/SDK candidates without publication"
 	@echo "  make release-check  inspect and freshly install candidate packages"
 	@echo "  make chart-check    lint/render/package the Helm candidate without a cluster"
-	@echo "  make test-kubernetes  exercise isolated chart installation/restart/restore"
+	@echo "  make test-kubernetes  exercise isolated installation, Mango restart and Work recovery"
+	@echo "  make test-kubernetes-restore  explicitly run experimental external-state cold restore"
 	@echo "  make security       scan reachable Go code and high-severity npm issues"
 	@echo "  make docs-check     install and verify documentation dependencies"
 	@echo "  make dev-env-init   create ~/.config/mango/dev.env with mode 0600"
@@ -122,6 +125,14 @@ test:
 
 test-race:
 	MANGO_TEST_DOCKER=0 $(GO) test -race ./...
+
+# Explicit research tier. No runtime, SDK, release or ordinary test depends on
+# these images. First build downloads pinned public engines, never credentials.
+test-workflow-runtime:
+	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
+	$(DOCKER) build --target quickjs -t mango-workflow-study:quickjs scripts/workflow-runtime
+	$(DOCKER) build --target node -t mango-workflow-study:node scripts/workflow-runtime
+	MANGO_TEST_WORKFLOW_RUNTIME=1 $(GO) test -timeout 10m -count=1 -v ./scripts/workflow-runtime
 
 test-service: test-service-core test-self-hosted-docker
 
@@ -208,7 +219,12 @@ chart-check:
 test-kubernetes:
 	MANGO_TEST_KUBERNETES=1 MANGO_KIND_PATH='$(KIND)' \
 	MANGO_KUBECTL_PATH='$(KUBECTL)' MANGO_HELM_PATH='$(HELM)' \
-	$(GO) test -exec '$(SERVICE_TEST_EXEC)' -timeout 30m ./scripts/kubernetes -count=1 -v
+	$(GO) test -exec '$(SERVICE_TEST_EXEC)' -timeout 30m ./scripts/kubernetes -run '^TestKubernetesAlpha$$' -count=1 -v
+
+test-kubernetes-restore:
+	MANGO_TEST_KUBERNETES=1 MANGO_KIND_PATH='$(KIND)' \
+	MANGO_KUBECTL_PATH='$(KUBECTL)' MANGO_HELM_PATH='$(HELM)' \
+	$(GO) test -exec '$(SERVICE_TEST_EXEC)' -timeout 30m ./scripts/kubernetes -run '^TestKubernetesQuiescedRestore$$' -count=1 -v
 
 sdk-install:
 	$(UV) sync --project sdk/python --frozen --group dev
@@ -216,6 +232,9 @@ sdk-install:
 
 release-unit:
 	$(RELEASE_PYTHON) -m unittest discover -s scripts/release -p 'test_*.py'
+
+release-please-check:
+	$(UV) run --python 3.12 npm --prefix scripts/release/please-tests test
 
 release-build:
 	$(RELEASE_PYTHON) scripts/release/build.py --version '$(RELEASE_VERSION)' --output '$(RELEASE_DIR)' --helm '$(HELM)' $(foreach target,$(RELEASE_PLATFORMS),--platform '$(target)')

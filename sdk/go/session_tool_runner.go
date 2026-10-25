@@ -20,6 +20,7 @@ const (
 	defaultSessionToolTimeout     = 120 * time.Second
 	defaultSessionSendTimeout     = 15 * time.Second
 	defaultSessionSendRetryWindow = 30 * time.Second
+	defaultSessionStreamRefresh   = 15 * time.Second
 	sessionStreamRetryCap         = 5 * time.Second
 	sessionRunnerBuffer           = 32
 )
@@ -118,8 +119,10 @@ type SessionToolRunner struct {
 	state   *sessionToolState
 	idle    *sessionIdleClock
 
-	sleep      func(context.Context, time.Duration)
-	retryDelay func(int) time.Duration
+	sleep                 func(context.Context, time.Duration)
+	retryDelay            func(int) time.Duration
+	streamRefreshInterval time.Duration
+	idleTimeoutEventID    string
 }
 
 type sessionToolState struct {
@@ -185,8 +188,9 @@ func NewSessionToolRunner(ctx context.Context, client *Client, sessionID string,
 			claimed:  make(map[string]struct{}),
 			resolved: make(map[string]struct{}),
 		},
-		sleep:      sleepWithContext,
-		retryDelay: sessionToolRetryDelay,
+		sleep:                 sleepWithContext,
+		retryDelay:            sessionToolRetryDelay,
+		streamRefreshInterval: defaultSessionStreamRefresh,
 	}
 	runner.idle = newSessionIdleClock(runner.maxIdle())
 	switch {
@@ -334,7 +338,12 @@ func (r *SessionToolRunner) ingest(ctx context.Context, queue chan<- pendingSess
 	awaiting := make(map[string]pendingSessionToolCall)
 	failures := 0
 	for ctx.Err() == nil {
-		streamCtx, stopStream := context.WithCancel(ctx)
+		// Opening the next subscription can fail while finite history stays
+		// healthy. Do not retire from an old idle observation before reconciling.
+		r.idle.reconciling(true)
+		// Bound this live connection, not the runner or an executing tool. A
+		// silent stale connection must not hide newly persisted approvals forever.
+		streamCtx, stopStream := context.WithTimeout(ctx, r.streamRefreshInterval)
 		stream, err := r.client.Sessions.Events.Stream(streamCtx, r.sessionID, StreamSessionEventsParams{})
 		if err != nil {
 			stopStream()
@@ -349,10 +358,18 @@ func (r *SessionToolRunner) ingest(ctx context.Context, queue chan<- pendingSess
 		}
 
 		live := make(chan sessionStreamItem, sessionRunnerBuffer)
-		go readSessionStream(streamCtx, stream, live)
-		if err := r.reconcile(ctx, queue, confirmations, awaiting); err != nil {
+		readerDone := make(chan struct{})
+		go func() {
+			defer close(readerDone)
+			readSessionStream(streamCtx, stream, live)
+		}()
+		closeStream := func() {
 			stopStream()
 			_ = stream.Close()
+			<-readerDone
+		}
+		if err := r.reconcile(ctx, queue, confirmations, awaiting); err != nil {
+			closeStream()
 			if terminal := classifySessionRequestError("reconcile event history", err); terminal != nil {
 				return terminal
 			}
@@ -367,13 +384,14 @@ func (r *SessionToolRunner) ingest(ctx context.Context, queue chan<- pendingSess
 		for {
 			select {
 			case <-ctx.Done():
-				stopStream()
-				_ = stream.Close()
+				closeStream()
 				return nil
 			case item, ok := <-live:
 				if !ok {
-					stopStream()
-					_ = stream.Close()
+					closeStream()
+					if errors.Is(streamCtx.Err(), context.DeadlineExceeded) {
+						goto reconnect
+					}
 					if time.Since(connectedAt) >= 5*time.Second {
 						failures = 0
 					} else {
@@ -385,11 +403,13 @@ func (r *SessionToolRunner) ingest(ctx context.Context, queue chan<- pendingSess
 					goto reconnect
 				}
 				if item.err != nil {
-					stopStream()
-					_ = stream.Close()
+					closeStream()
 					var decodeError *sessionStreamDecodeError
 					if errors.As(item.err, &decodeError) {
 						return item.err
+					}
+					if errors.Is(streamCtx.Err(), context.DeadlineExceeded) {
+						goto reconnect
 					}
 					if terminal := classifySessionRequestError("read event stream", item.err); terminal != nil {
 						return terminal
@@ -404,8 +424,7 @@ func (r *SessionToolRunner) ingest(ctx context.Context, queue chan<- pendingSess
 					continue
 				}
 				if err := r.handleLiveEvent(ctx, queue, confirmations, awaiting, *item.event); err != nil {
-					stopStream()
-					_ = stream.Close()
+					closeStream()
 					var outputError *toolOutputPreparationError
 					if errors.As(err, &outputError) {
 						if terminal := classifySessionRequestError("prepare MCP output", err); terminal != nil {
@@ -469,7 +488,10 @@ func (r *SessionToolRunner) reconcile(
 	confirmations map[string]string,
 	awaiting map[string]pendingSessionToolCall,
 ) error {
-	r.idle.disarm()
+	// Pause expiry during the finite history read, preserving the original
+	// deadline if it ends at the same durable idle boundary after a refresh.
+	// A failed/incomplete pass leaves expiry paused until history is authoritative.
+	r.idle.reconciling(true)
 	var pending []pendingSessionToolCall
 	var last SessionEvent
 	hasLast := false
@@ -518,6 +540,7 @@ func (r *SessionToolRunner) reconcile(
 	if hasLast {
 		r.idle.note(last)
 	}
+	r.idle.reconciling(false)
 	return nil
 }
 
@@ -1022,12 +1045,14 @@ func sessionEventID(event SessionEvent) string {
 }
 
 type sessionIdleClock struct {
-	duration time.Duration
-	wake     chan struct{}
-	mu       sync.Mutex
-	deadline time.Time
-	pending  bool
-	blocked  map[string]struct{}
+	duration       time.Duration
+	wake           chan struct{}
+	mu             sync.Mutex
+	deadline       time.Time
+	pending        bool
+	blocked        map[string]struct{}
+	lastIdleID     string
+	readingHistory bool
 }
 
 func newSessionIdleClock(duration time.Duration) *sessionIdleClock {
@@ -1039,17 +1064,22 @@ func (c *sessionIdleClock) note(event SessionEvent) {
 		return
 	}
 	if event.SessionStatusIdleEvent != nil && event.SessionStatusIdleEvent.StopReason.SessionEndTurn != nil {
-		c.arm()
+		c.arm(event.SessionStatusIdleEvent.ID)
 		return
 	}
 	c.disarm()
 }
 
-func (c *sessionIdleClock) arm() {
+func (c *sessionIdleClock) arm(eventID string) {
 	if c.duration <= 0 {
 		return
 	}
 	c.mu.Lock()
+	if eventID != "" && eventID == c.lastIdleID {
+		c.mu.Unlock()
+		return
+	}
+	c.lastIdleID = eventID
 	if len(c.blocked) > 0 {
 		c.pending = true
 		c.deadline = time.Time{}
@@ -1094,7 +1124,26 @@ func (c *sessionIdleClock) unblock(id string) {
 func (c *sessionIdleClock) snapshot() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.readingHistory {
+		return time.Time{}
+	}
 	return c.deadline
+}
+
+func (c *sessionIdleClock) reconciling(active bool) {
+	c.mu.Lock()
+	c.readingHistory = active
+	c.mu.Unlock()
+	c.signal()
+}
+
+func (c *sessionIdleClock) expiredBoundary(now time.Time) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.readingHistory || c.deadline.IsZero() || now.Before(c.deadline) {
+		return "", false
+	}
+	return c.lastIdleID, true
 }
 
 func (c *sessionIdleClock) signal() {
@@ -1116,7 +1165,11 @@ func (r *SessionToolRunner) watchIdle(ctx context.Context) error {
 		if !deadline.IsZero() {
 			delay := time.Until(deadline)
 			if delay <= 0 {
-				return ErrIdleTimeout
+				if id, expired := r.idle.expiredBoundary(time.Now()); expired {
+					r.idleTimeoutEventID = id
+					return ErrIdleTimeout
+				}
+				continue
 			}
 			if timer == nil {
 				timer = time.NewTimer(delay)
@@ -1139,7 +1192,8 @@ func (r *SessionToolRunner) watchIdle(ctx context.Context) error {
 			return nil
 		case <-r.idle.wake:
 		case <-timerC:
-			if current := r.idle.snapshot(); !current.IsZero() && !time.Now().Before(current) {
+			if id, expired := r.idle.expiredBoundary(time.Now()); expired {
+				r.idleTimeoutEventID = id
 				return ErrIdleTimeout
 			}
 		}

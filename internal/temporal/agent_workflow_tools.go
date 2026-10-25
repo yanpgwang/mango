@@ -50,6 +50,7 @@ type workflowTurnState struct {
 	outcomeHeartbeatInterval       time.Duration
 	activeOutcomeEvaluationStartID string
 	activeOutcomeIteration         int
+	outcomeID                      string
 	usesProviderTranscript         bool
 	transcriptDelta                []domain.Message
 	toolUseMappings                []domain.ProviderToolUseMapping
@@ -145,16 +146,28 @@ func (t *workflowTurnState) flushOutput() error {
 			)
 		}
 	}
+	input := AppendWorkflowEventsInput{
+		SessionID: t.sessionID, TriggerEventID: t.triggerEventID, Events: drafts,
+	}
+	if err := checkContentPayload("pending events", input); err != nil {
+		return err
+	}
 	if err := workflow.ExecuteActivity(
-		t.actx,
-		ActivityAppendWorkflowEvents,
-		AppendWorkflowEventsInput{
-			SessionID:      t.sessionID,
-			TriggerEventID: t.triggerEventID,
-			Events:         drafts,
-		},
+		t.actx, ActivityAppendWorkflowEvents, input,
 	).Get(t.actx, nil); err != nil {
 		return err
+	}
+	for _, draft := range drafts {
+		if draft.Type != domain.EvSpanOutcomeEvaluationEnd || draft.Payload["outcome_id"] != t.outcomeID {
+			continue
+		}
+		if draft.Payload["result"] == "needs_revision" {
+			t.activeOutcomeIteration = intValue(draft.Payload["iteration"]) + 1
+		} else {
+			// A committed terminal verdict is authoritative even if later
+			// uncommitted turn content exceeds capacity.
+			t.outcomeID = ""
+		}
 	}
 	t.flushedEventCount += len(drafts)
 	t.output = t.output[flushCount:]
@@ -164,6 +177,9 @@ func (t *workflowTurnState) flushOutput() error {
 func (t *workflowTurnState) callModel(
 	input CallModelInput,
 ) (CallModelResult, interruptibleActivityOutcome, error) {
+	if err := checkContentPayload("model context", input); err != nil {
+		return CallModelResult{}, interruptibleActivityOutcome{}, err
+	}
 	var called CallModelResult
 	if t.interrupts == nil {
 		err := workflow.ExecuteActivity(
@@ -234,6 +250,9 @@ func (t *workflowTurnState) waitModelRetry(delay time.Duration) (bool, error) {
 func (t *workflowTurnState) evaluateOutcome(
 	input EvaluateOutcomeInput,
 ) (EvaluateOutcomeResult, interruptibleActivityOutcome, error) {
+	if err := checkContentPayload("outcome context", input); err != nil {
+		return EvaluateOutcomeResult{}, interruptibleActivityOutcome{}, err
+	}
 	var evaluated EvaluateOutcomeResult
 	if t.outcomeHeartbeats {
 		heartbeatInterval := t.outcomeHeartbeatInterval
@@ -521,7 +540,6 @@ func (t *workflowTurnState) executeTool(
 	advisorConsultation domain.AdvisorConsultation,
 	permissionReceiptID string,
 ) (ExecuteToolResult, interruptibleActivityOutcome, error) {
-	t.attemptID = attemptID
 	input := ExecuteToolInput{
 		PermissionReceiptID: permissionReceiptID,
 		SessionID:           t.sessionID,
@@ -545,6 +563,10 @@ func (t *workflowTurnState) executeTool(
 			_, input.SkillAlreadyLoaded = t.loadedSkills[name]
 		}
 	}
+	if err := checkContentPayload("tool input", input); err != nil {
+		return ExecuteToolResult{}, interruptibleActivityOutcome{}, err
+	}
+	t.attemptID = attemptID
 	toolActx := t.actx
 	if workflow.GetVersion(
 		t.actx,
@@ -663,13 +685,7 @@ func (t *workflowTurnState) completeTurn(
 	if t.attemptID != "" {
 		input.AttemptState = attemptState
 	}
-	var result RunTurnResult
-	err := workflow.ExecuteActivity(
-		t.actx,
-		ActivityCompleteWorkflowTurn,
-		input,
-	).Get(t.actx, &result)
-	return result, err
+	return t.commitTurn(input)
 }
 
 func (t *workflowTurnState) exhaustModelRetries(
@@ -710,13 +726,7 @@ func (t *workflowTurnState) exhaustModelRetries(
 		input.AttemptState = domain.RunAttemptFailed
 		input.AttemptError = &message
 	}
-	var result RunTurnResult
-	err := workflow.ExecuteActivity(
-		t.actx,
-		ActivityCompleteWorkflowTurn,
-		input,
-	).Get(t.actx, &result)
-	return result, err
+	return t.commitTurn(input)
 }
 
 func (t *workflowTurnState) terminate(
@@ -729,6 +739,24 @@ func (t *workflowTurnState) terminateTyped(
 	errorType string,
 	message string,
 ) (RunTurnResult, error) {
+	statusPayload := map[string]any{}
+	if t.outcomeID != "" {
+		failure := t.terminalOutcomeFailure(message)
+		foundEnd := false
+		for _, draft := range t.output {
+			if draft.Type == domain.EvSpanOutcomeEvaluationEnd && draft.Payload["outcome_id"] == t.outcomeID {
+				foundEnd = true
+				break
+			}
+		}
+		if !foundEnd {
+			// Bounded model/tool FatalError results use this existing terminal
+			// channel too; admission's active Outcome must not remain running.
+			t.output = append(t.output, failure)
+		}
+		statusPayload[domain.InternalOutcomeEvaluationStart] = failure.Payload["outcome_evaluation_start_id"]
+		statusPayload[domain.InternalOutcomeIteration] = failure.Payload["iteration"]
+	}
 	errorPayload := map[string]any{"type": "api_error", "message": message}
 	if t.terminalSessionErrors {
 		if errorType == "" {
@@ -746,7 +774,7 @@ func (t *workflowTurnState) terminateTyped(
 		domain.EventDraft{Type: domain.EvSessionError, Payload: map[string]any{
 			"error": errorPayload,
 		}},
-		domain.EventDraft{Type: domain.EvSessionStatusTerminated, Payload: map[string]any{}},
+		domain.EventDraft{Type: domain.EvSessionStatusTerminated, Payload: statusPayload},
 	)
 	input := CompleteWorkflowTurnInput{
 		SessionID:             t.sessionID,
@@ -768,13 +796,7 @@ func (t *workflowTurnState) terminateTyped(
 		input.AttemptState = domain.RunAttemptFailed
 		input.AttemptError = &message
 	}
-	var result RunTurnResult
-	err := workflow.ExecuteActivity(
-		t.actx,
-		ActivityCompleteWorkflowTurn,
-		input,
-	).Get(t.actx, &result)
-	return result, err
+	return t.commitTurn(input)
 }
 
 func indexTurnTools(tools []TurnTool) map[string]TurnTool {

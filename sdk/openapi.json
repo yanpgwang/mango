@@ -3925,6 +3925,11 @@
       "EnvironmentWorkStopRequest": {
         "additionalProperties": false,
         "properties": {
+          "expected_idle_event_id": {
+            "description": "Optional Session Work idle-retirement precondition. Requires the exact current primary end_turn event, aggregate idle, and no newer events or outstanding work. A stale observation returns 412 without stopping or renewing Work; never retry it as an unconditional Stop. Omit for explicit operator shutdown.",
+            "minLength": 1,
+            "type": "string"
+          },
           "force": {
             "default": false,
             "type": "boolean"
@@ -6573,6 +6578,7 @@
       },
       "SessionExecutionError": {
         "additionalProperties": false,
+        "description": "Asynchronous execution failure. Runtime content exceeding the 1 MiB encoded internal transport limit produces a terminal retry_status; committed history and incurred usage remain durable, but uncommitted oversized output may be discarded. This limit includes accumulated context and encoding overhead and is separate from HTTP admission.",
         "properties": {
           "credential_id": {
             "type": "string"
@@ -10038,6 +10044,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
           }
         },
         "summary": "Request graceful or forced Work shutdown",
@@ -11066,6 +11075,7 @@
     },
     "/v1/sessions/{session_id}/threads": {
       "get": {
+        "description": "Filter by repeated statuses[] values before pagination. Omit statuses[] to include every status, including archived terminated Threads. Cursors are bound to the Session and status set; reordered or duplicate statuses are equivalent. Pages reflect current state, not a fixed snapshot.",
         "operationId": "listSessionThreads",
         "parameters": [
           {
@@ -11073,6 +11083,9 @@
           },
           {
             "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/Statuses"
           }
         ],
         "responses": {

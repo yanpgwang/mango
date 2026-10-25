@@ -63,6 +63,9 @@ func (t *workflowTurnState) evaluateToolPermissions(prepared PrepareTurnResult, 
 			return nil, false, fmt.Errorf("automatic permission tool has no prepared schema")
 		}
 		input := EvaluateToolPermissionInput{Owner: owner, ToolUseEventID: steps[use.ToolUseID].ToolUseEventID, Model: domain.Model{ID: prepared.Request.Model}, Input: permission.Input{Intent: prepared.PermissionIntent, Tool: schema, Call: use, Conversation: conversation}}
+		if err := checkContentPayload("permission context", input); err != nil {
+			return nil, false, err
+		}
 		for {
 			var evaluated EvaluateToolPermissionResult
 			var outcome interruptibleActivityOutcome
