@@ -116,8 +116,8 @@ func startEvaluator(ctx context.Context, image, source string, args json.RawMess
 	}
 	data := canonical(map[string]any{"kind": "start", "source": source, "args": args})
 	if _, err := fmt.Fprintln(e.input, string(data)); err != nil {
-		e.close()
-		return nil, err
+		_, cleanupErr := e.close()
+		return nil, errors.Join(err, cleanupErr)
 	}
 	return e, nil
 }
