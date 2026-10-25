@@ -102,9 +102,49 @@ source remains reconstructed from the start and repeated wakeups can incur
 quadratic work. Test logs contain the actual image identity for each run;
 source/base versions and the QuickJS checksum are pinned in the research build.
 
+## Existing coordinator and Thread recovery experiment
+
+A separate real-service test, `TestWorkflowThreadRecoveryRealTemporal` in
+`internal/temporal/workflow_thread_recovery_integration_test.go`, exercises the
+current Mango implementation. It uses migrated PostgreSQL, the real Temporal
+service, `SessionWorkflow`, `SessionThreadWorkflow`, `Activities`, the tool
+journal, completion transactions, `Signaler` and `Relay`. Only model responses
+and transport fault boundaries are simulated. There are no alternative Run
+tables, scheduler or executor in this experiment.
+
+| Injected boundary | Assertion on current Mango components |
+| --- | --- |
+| Signal accepted but acknowledgement lost | The relay retains the real outbox row and redelivers it; PostgreSQL consumption repairs the duplicate signal. |
+| Delegation committed but Activity reply lost | A replacement worker retries the same Activity ID and logical turn/tool-step input, with an increased Activity attempt number. Two identical Agent calls still create exactly two child Threads and two journal steps. |
+| Primary progress message while children are active | The primary can answer and Continue-As-New without repeating delegation; aggregate final end-turn remains blocked. |
+| Child completion cannot insert its primary wakeup | A temporary constraint in the isolated test schema forces transaction failure. The child report and trigger consumption both roll back. Removing the fault permits the same Activity to retry. |
+| Child completion committed but Activity reply lost | The same completion input retries without duplicating its report, transcript or usage. The report, processed trigger and pending outbox row survive together. |
+| Reports cross Continue-As-New and worker replacement | Actual low-threshold Workflow executions continue with new Temporal Run IDs. Sticky cache is purged between workers; the primary receives both reports and emits its final idle after them. |
+| Duplicate, wrong-owner or archived-owner completion | A duplicate replays committed state; another Thread's trigger conflicts; a late completion cannot reopen an archived Thread or append output. |
+
+Run it against isolated services with `MANGO_TEST_DATABASE_URL` and
+`MANGO_TEST_TEMPORAL_HOSTPORT` set:
+
+```sh
+go test ./internal/temporal -run '^TestWorkflowThreadRecoveryRealTemporal$' -count=1
+```
+
+The normal `make test-service-core` tier includes this test. Default offline
+tests skip it when service addresses are absent; explicit addresses must fail
+if either service is unreachable. Its database schema, task queue and Workflow
+IDs are unique, and cleanup terminates only its own Workflows and schema.
+
+This establishes recovery properties of the existing ordinary child-report
+path. It does **not** establish a Run pump request/decision identity across
+Continue-As-New, a Run-owned invocation/attempt/result contract, evaluator epoch
+fencing, structured result validation, or the open-Run/Outcome barrier. In
+particular, the existing report goes to the primary; a future Run-owned result
+must settle its Run instead. Worker objects are replaced in one test process;
+no database/Temporal server crash or host-process kill is simulated.
+
 ## Remaining decisions before product exposure
 
-Keep the gate open. The next integration must prove the trusted Temporal pump
+Keep the gate open. Beyond the existing-component experiment, integration must prove the trusted Temporal pump
 request/decision identity, retry after SQL acknowledgement loss,
 Continue-As-New and reconciliation against actual product ownership and outbox
 transitions. An evaluator crash is not evidence that no command committed.

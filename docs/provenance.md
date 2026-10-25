@@ -1933,3 +1933,32 @@ implementations. In-memory reconciliation does not persist unuploaded local
 edits across forced termination. Mango's server already treats a no-op content
 update as idempotent; the repair does not assume duplicate requests create
 duplicate immutable Versions.
+
+## Coordinator and Thread recovery experiment (2026-10-25)
+
+Reviewed the current official Temporal [Activity execution](https://docs.temporal.io/develop/go/activities/execution)
+and [Continue-As-New](https://docs.temporal.io/develop/go/workflows/continue-as-new)
+guides. Recorded Activity results and a continued Workflow's cursor serve
+different purposes: Continue-As-New retains the Workflow ID but changes its
+Temporal Run ID. Mango therefore tests application-owned journal identity and
+committed PostgreSQL state rather than treating a Temporal Run ID or successful
+signal as a receipt for business work. The independently authored test lowers
+the existing Workflow threshold to exercise actual continuation and purges
+sticky state between replacement workers.
+
+Rechecked the official [CMA Workflow lifecycle](https://platform.claude.com/docs/en/managed-agents/workflow-runs),
+which distinguishes open Runs, their Threads, returned results and a later
+primary end-turn, and prevents Outcome evaluation while a Run is open. These
+are public lifecycle observations, not evidence of CMA's internal scheduler,
+transaction boundaries, interpreter or recovery journal. The paired public
+API/SDK research recorded for the JS study remains the reference for their
+mapping; this experiment changes no HTTP, OpenAPI or SDK contract.
+
+Mango's choice here is to test its existing coordinator, child Threads, tool
+journal, completion transaction and outbox under commit/acknowledgement failures.
+An ordinary child report is not a schema-validated Run result. The experiment
+supports reuse of these components but does not establish the proposed Run
+pump, Run-owned receipts, epoch fencing or open-Run/Outcome barrier. Those
+remain explicit gates in the [study](design/workflow-runtime-study.md#remaining-decisions-before-product-exposure).
+No reference implementation or hosted service is executed, and no production
+engine, public API, migration or dependency is selected by this work.
