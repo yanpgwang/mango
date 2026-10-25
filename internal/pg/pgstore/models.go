@@ -457,6 +457,51 @@ type WebhookEvent struct {
 	CreatedAt   pgtype.Timestamptz
 }
 
+type WorkflowInvocation struct {
+	ID            string
+	SessionID     string
+	RunID         string
+	Ordinal       int32
+	Command       []byte
+	AgentSnapshot []byte
+}
+
+type WorkflowInvocationAttempt struct {
+	ID                string
+	SessionID         string
+	RunID             string
+	InvocationID      string
+	AttemptNo         int32
+	ThreadID          string
+	RootTriggerID     string
+	State             string
+	Receipt           []byte
+	TerminalTriggerID *string
+	TerminalEventID   *string
+	TurnAttemptID     *string
+}
+
+type WorkflowRun struct {
+	ID             string
+	SessionID      string
+	AdmissionKey   string
+	Request        []byte
+	Roster         []byte
+	Deadline       pgtype.Timestamptz
+	MaxInvocations int32
+	MaxResultBytes int32
+	State          string
+	Version        int64
+	CreatedAt      pgtype.Timestamptz
+}
+
+type WorkflowRunOutbox struct {
+	SessionID  string
+	RunID      string
+	Version    int64
+	EnqueuedAt pgtype.Timestamptz
+}
+
 type Workspace struct {
 	ID        string
 	Name      string

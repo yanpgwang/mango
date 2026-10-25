@@ -29,6 +29,7 @@ func (s *Store) CompleteThreadWorkflowTurn(
 	transcriptDelta []domain.Message,
 	toolUseMappings []domain.ProviderToolUseMapping,
 	usage domain.TokenUsage,
+	returnCandidates ...domain.ThreadReturnCandidate,
 ) (TurnCompletion, error) {
 	if err := validatePendingCompletion(
 		status, outputDrafts, pendingActionEventIDs,
@@ -48,6 +49,10 @@ func (s *Store) CompleteThreadWorkflowTurn(
 			return domain.Conflict("session deletion is in progress")
 		}
 		session, err := sessionFromLockRow(row)
+		if err != nil {
+			return err
+		}
+		workflowOwner, err := lockWorkflowCompletionOwner(ctx, tx, sessionID, threadID)
 		if err != nil {
 			return err
 		}
@@ -106,6 +111,9 @@ func (s *Store) CompleteThreadWorkflowTurn(
 				Parked: turnEventsParked(events), ThreadStatus: thread.Status,
 			}
 			return nil
+		}
+		if workflowOwner != nil && workflowOwner.state != "active" {
+			return domain.Conflict("Workflow attempt already has a terminal receipt")
 		}
 
 		// Child admission and completion share the Session row lock, so the first
@@ -237,12 +245,12 @@ func (s *Store) CompleteThreadWorkflowTurn(
 		}
 		primaryID := *thread.ParentThreadID
 		finalReport := []any(nil)
-		if interrupt == nil && status == domain.StatusIdle &&
+		if workflowOwner == nil && interrupt == nil && status == domain.StatusIdle &&
 			len(pendingActionEventIDs) == 0 {
 			finalReport = lastAgentMessageContent(outputDrafts)
 		}
 		coordinatorReport := finalReport
-		if status == domain.StatusTerminated {
+		if workflowOwner == nil && status == domain.StatusTerminated {
 			coordinatorReport = terminatedChildReport(thread.Agent.Name, outputDrafts)
 		}
 		drafts := childThreadDrafts(
@@ -405,6 +413,19 @@ func (s *Store) CompleteThreadWorkflowTurn(
 		thread.TransitionStatus(effectiveStatus, now)
 		if err := putSessionThreadTx(ctx, tx, thread); err != nil {
 			return err
+		}
+		if workflowOwner != nil && !gatedAfterCompletion &&
+			(effectiveStatus == domain.StatusIdle || effectiveStatus == domain.StatusTerminated) &&
+			!workflowCompletionWait(outputDrafts) {
+			candidate := domain.ThreadReturnCandidate{}
+			if len(returnCandidates) == 1 {
+				candidate = returnCandidates[0]
+			}
+			if err := s.settleWorkflowCompletionLocked(ctx, tx, workflowOwner, sessionID, triggerEventID, attemptID, candidate,
+				outputDrafts, childEvents, interrupt != nil || attemptState == domain.RunAttemptInterrupted,
+				effectiveStatus == domain.StatusTerminated || retriesExhausted); err != nil {
+				return err
+			}
 		}
 		if len(coordinatorReport) > 0 {
 			primary, err := loadSessionThreadForUpdate(

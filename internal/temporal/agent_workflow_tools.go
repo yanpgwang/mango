@@ -34,6 +34,7 @@ func failTurn(message string) turnFailure {
 // manually passing the same session, trigger, output, attempt, and resolution
 // arguments in positional order.
 type workflowTurnState struct {
+	returnCandidate                *domain.ThreadReturnCandidate
 	actx                           workflow.Context
 	sessionID                      string
 	triggerEventID                 string
@@ -666,6 +667,7 @@ func (t *workflowTurnState) completeTurn(
 			t.activeOutcomeIteration
 	}
 	input := CompleteWorkflowTurnInput{
+		ReturnCandidate:       t.returnCandidate,
 		SessionID:             t.sessionID,
 		ThreadID:              t.threadID,
 		IsChild:               t.isChild,

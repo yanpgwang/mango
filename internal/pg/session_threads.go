@@ -191,6 +191,13 @@ func (s *Store) ArchiveSessionThread(
 		if err != nil {
 			return err
 		}
+		owner, err := lockWorkflowCompletionOwner(ctx, tx, sessionID, threadID)
+		if err != nil {
+			return err
+		}
+		if owner != nil && owner.runState == "open" {
+			return domain.Conflict("Workflow-owned Thread archive requires its Run lifecycle")
+		}
 		thread, err := loadSessionThreadForUpdate(ctx, tx, sessionID, threadID)
 		if err != nil {
 			return err

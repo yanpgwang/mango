@@ -264,6 +264,10 @@ tests to establish current persistence behavior. When editing the schema,
 regenerate the query bindings with sqlc and review the generated diff.
 
 `mango migrate` is the only binary command that applies schema migrations.
+The additive `20261025000001_workflow_receipts.sql` migration introduces internal,
+unexposed Workflow ownership/receipt tables. Run `mango migrate` before starting
+this checkout against an initialized baseline; startup remains read-only and
+rejects pending versions. No Workflow product capability is enabled by it.
 `serve`, `orchestrate`, `workspace`, and `api-key` check the applied migration
 versions without changing the schema. Local Compose runs migration before
 starting application processes. Real PostgreSQL tests initialize their own

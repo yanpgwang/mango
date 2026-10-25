@@ -319,6 +319,13 @@ WHERE session_id = $1 AND kind != 'advisor'
 		)
 		created = true
 	} else {
+		var workflowOwned bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workflow_invocation_attempts WHERE session_id=$1 AND thread_id=$2)`, session.ID, input.SessionThreadID).Scan(&workflowOwned); err != nil {
+			return domain.ToolStepResult{}, "", err
+		}
+		if workflowOwned {
+			return coordinatorToolError("Workflow-owned Threads cannot receive ordinary follow-ups"), "", nil
+		}
 		child, err = loadSessionThreadForUpdate(
 			ctx, tx, session.ID, input.SessionThreadID,
 		)

@@ -100,6 +100,10 @@ func TestMigrationOperatorCLI(t *testing.T) {
 	if _, err := pool.Exec(ctx, "INSERT INTO goose_db_version (version_id, is_applied) VALUES (99, true)"); err != nil {
 		t.Fatal(err)
 	}
+	var beforeRows int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version").Scan(&beforeRows); err != nil {
+		t.Fatal(err)
+	}
 	for _, arguments := range [][]string{{"serve"}, {"orchestrate"}, {"workspace", "list"}, {"api-key", "list", "-workspace", "wrkspc_default"}, {"migrate"}} {
 		out, err := run(arguments...)
 		if err == nil || !strings.Contains(out, "schema version 99") {
@@ -107,7 +111,7 @@ func TestMigrationOperatorCLI(t *testing.T) {
 		}
 	}
 	var rows int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version").Scan(&rows); err != nil || rows != 3 {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version").Scan(&rows); err != nil || rows != beforeRows {
 		t.Fatalf("unsupported schema ledger changed: rows=%d, err=%v", rows, err)
 	}
 }

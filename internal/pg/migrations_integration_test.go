@@ -47,7 +47,7 @@ func TestMigrateRejectsPreAlphaBaselineLedger(t *testing.T) {
 	if _, err := store.CreateSession(ctx, session, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, `UPDATE workspaces SET name = 'Keep operator data' WHERE id = 'wrkspc_default'; UPDATE goose_db_version SET version_id = 1 WHERE version_id <> 0`); err != nil {
+	if _, err := store.pool.Exec(ctx, `UPDATE workspaces SET name = 'Keep operator data' WHERE id = 'wrkspc_default'; UPDATE goose_db_version SET version_id = 1 WHERE version_id = 20261005000001`); err != nil {
 		t.Fatal(err)
 	}
 	for name, check := range map[string]func(context.Context, *pgxpool.Pool) error{"migrate": Migrate, "startup": CheckSchema} {
@@ -75,7 +75,7 @@ func TestMigrateRejectsPreAlphaBaselineLedger(t *testing.T) {
 		}
 		versions = append(versions, version)
 	}
-	if err := rows.Err(); err != nil || len(versions) != 2 || versions[0] != 0 || versions[1] != 1 {
+	if err := rows.Err(); err != nil || len(versions) != 3 || versions[0] != 0 || versions[1] != 1 || versions[2] != 20261025000001 {
 		t.Fatalf("old ledger was modified: %v, %v", versions, err)
 	}
 }
