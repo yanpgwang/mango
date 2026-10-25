@@ -1,0 +1,10 @@
+.helmignore
+.git/
+.DS_Store
+*.env
+.env*
+*.key
+*.log
+*.tgz
+*.tmp
+*~

@@ -22,7 +22,7 @@ payments or connect to a real expense service.
   on the Mango worker using the [model configuration guide](../guides/model-configuration.md).
 - Keep that Mango deployment running. The model must support custom tools;
   this example does not need a sandbox tool call.
-- Run from a Mango repository checkout with **Go 1.26.6 or newer**. This root
+- Run from a Mango repository checkout with **Go 1.26.10 or newer**. This root
   application uses the source Go SDK through the repository's local module
   replacement. The standalone SDK quickstart has its own Go 1.24 minimum.
 - Use one terminal process and one operator per state file.

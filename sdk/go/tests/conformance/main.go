@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"time"
 
 	mango "github.com/yanpgwang/mango/sdk/go"
@@ -30,6 +31,32 @@ func run() (result error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.System.Health(ctx); err != nil {
+		return err
+	}
+
+	if err := client.Environments.Work.Stop(ctx, "env_self_hosted", "work_sdk", mango.EnvironmentWorkStopRequest{Force: mango.Some(true), ExpectedIdleEventID: mango.Some("sevt_idle_fixture")}); err != nil {
+		return err
+	}
+	stopErr := client.Environments.Work.Stop(ctx, "env_self_hosted", "work_sdk", mango.EnvironmentWorkStopRequest{Force: mango.Some(true), ExpectedIdleEventID: mango.Some("sevt_stale")})
+	var stopAPIError *mango.APIError
+	if !errors.As(stopErr, &stopAPIError) || stopAPIError.StatusCode != 412 || stopAPIError.Type != "precondition_failed_error" || stopAPIError.RequestID == "" {
+		return fmt.Errorf("conditional Stop error lost: %v", stopErr)
+	}
+	if err := checkThreadStatusFilter(ctx, client); err != nil {
+		return err
+	}
+	mcpPage, err := client.Sessions.Events.List(ctx, "sesn_mcp_fixture", mango.ListSessionEventsParams{})
+	if err != nil {
+		return err
+	}
+	if len(mcpPage.Data) != 1 || mcpPage.Data[0].AgentMCPToolResultEvent == nil {
+		return errors.New("MCP result variant lost")
+	}
+	fileID, ok := mcpPage.Data[0].AgentMCPToolResultEvent.FileID.Get()
+	if !ok || fileID != "file_mcp_full" {
+		return errors.New("MCP output File reference lost")
+	}
+	if err := checkAutomaticPermissions(ctx, client); err != nil {
 		return err
 	}
 	if err := checkFiles(ctx, client); err != nil {
@@ -86,7 +113,7 @@ func run() (result error) {
 	skillInput := mango.Some([]mango.SkillReferenceInput{{CustomSkillReferenceInput: &mango.CustomSkillReferenceInput{
 		Type: "custom", SkillID: "skill_reports", Version: mango.Some("latest"),
 	}}})
-	skillTools := mango.Some([]mango.AgentTool{{BuiltinToolset: &mango.BuiltinToolset{Type: "agent_toolset_20260401"}}})
+	skillTools := mango.Some([]mango.AgentTool{{BuiltinToolset: &mango.BuiltinToolset{Type: "agent_toolset_20260401", DefaultConfig: mango.Some(mango.ToolDefaultConfig{Enabled: mango.Some(false)}), Configs: mango.Some([]mango.BuiltinToolsetConfigsItem{{Name: "read", Enabled: mango.Some(true), PermissionPolicy: mango.Some(mango.PermissionPolicy{Type: "auto"})}})}}})
 	wantSkill := mango.SkillReferenceResponse{Type: "custom", SkillID: "skill_reports", Version: "1759178010641129"}
 	for _, suffix := range []string{"one", "two"} {
 		agent, err := client.Agents.New(ctx, mango.AgentCreateRequest{Name: "go-sdk-" + suffix, Model: mango.ModelID("sdk-conformance"), Tools: skillTools, Skills: skillInput})
@@ -94,6 +121,14 @@ func run() (result error) {
 			return err
 		}
 		agentIDs = append(agentIDs, agent.ID)
+		configs, ok := agent.Tools[0].BuiltinToolset.Configs.Get()
+		if !ok || len(configs) != 1 {
+			return fmt.Errorf("automatic policy config lost")
+		}
+		policy, ok := configs[0].PermissionPolicy.Get()
+		if !ok || policy.Type != "auto" {
+			return fmt.Errorf("automatic permission policy encoding lost")
+		}
 		fetched, err := client.Agents.Get(ctx, agent.ID)
 		if err != nil {
 			return err
@@ -225,6 +260,78 @@ func checkFiles(ctx context.Context, client *mango.Client) (result error) {
 	}
 	if !bytes.Equal(body, payload) {
 		return errors.New("File download changed immutable bytes")
+	}
+	return nil
+}
+
+func checkAutomaticPermissions(ctx context.Context, client *mango.Client) error {
+	page, err := client.Sessions.Events.List(ctx, "sesn_auto_fixture", mango.ListSessionEventsParams{})
+	if err != nil {
+		return err
+	}
+	if len(page.Data) != 6 {
+		return fmt.Errorf("automatic permission events lost")
+	}
+	for i, event := range page.Data {
+		var evaluation mango.ToolPermissionEvaluation
+		var top mango.EvaluatedPermission
+		if i < 3 {
+			if event.AgentToolUseEvent == nil {
+				return fmt.Errorf("local permission type lost")
+			}
+			evaluation = event.AgentToolUseEvent.Evaluation
+			top = event.AgentToolUseEvent.EvaluatedPermission
+		} else {
+			if event.AgentMCPToolUseEvent == nil {
+				return fmt.Errorf("MCP permission type lost")
+			}
+			evaluation = event.AgentMCPToolUseEvent.Evaluation
+			top = event.AgentMCPToolUseEvent.EvaluatedPermission
+		}
+		if evaluation.AutoEvaluation == nil {
+			return fmt.Errorf("auto evaluation type lost")
+		}
+		decision := evaluation.AutoEvaluation.EvaluatedPermission
+		switch i % 3 {
+		case 0:
+			if top != "allow" || decision.AutomaticPermissionAllow == nil {
+				return fmt.Errorf("allow decision lost")
+			}
+		case 1:
+			if top != "ask" || decision.AutomaticPermissionAsk == nil || decision.AutomaticPermissionAsk.ReasonCode != "indeterminate" {
+				return fmt.Errorf("ask decision lost")
+			}
+		case 2:
+			if top != "deny" || decision.AutomaticPermissionDeny == nil || decision.AutomaticPermissionDeny.ReasonCode != "high_risk" {
+				return fmt.Errorf("deny decision lost")
+			}
+		}
+	}
+	return nil
+}
+
+func checkThreadStatusFilter(ctx context.Context, client *mango.Client) error {
+	params := mango.ListSessionThreadsParams{
+		Limit:    mango.Some[int64](1),
+		Statuses: mango.Some([]mango.SessionStatus{"idle", "running"}),
+	}
+	page, err := client.Sessions.Threads.List(ctx, "sesn_thread_filter", params)
+	if err != nil {
+		return err
+	}
+	if len(page.Data) != 1 || page.Data[0].ID != "sthr_filter_primary" || page.NextPage == nil {
+		return fmt.Errorf("filtered Thread first page: %+v", page)
+	}
+	var ids []string
+	iterator := client.Sessions.Threads.ListAutoPaging(ctx, "sesn_thread_filter", params)
+	for iterator.Next() {
+		ids = append(ids, iterator.Value().ID)
+	}
+	if err := iterator.Err(); err != nil {
+		return err
+	}
+	if !slices.Equal(ids, []string{"sthr_filter_primary", "sthr_filter_running", "sthr_filter_waiting"}) {
+		return fmt.Errorf("Thread status filter lost across pages: %v", ids)
 	}
 	return nil
 }

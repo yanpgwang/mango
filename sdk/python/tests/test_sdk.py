@@ -572,3 +572,23 @@ def test_async_cancellation_closes_network_stream() -> None:
 def test_invalid_base_url(url: str) -> None:
     with pytest.raises(ValueError):
         Mango(base_url=url)
+
+
+def test_relayed_action_source_survives_http_decoding() -> None:
+    for event_type in ("agent.tool_use", "agent.mcp_tool_use", "agent.custom_tool_use"):
+        event = {
+            "id": "sevt_relay", "type": event_type, "name": "lookup", "input": {},
+            "processed_at": None, "session_thread_id": "sthr_child",
+            "source_event_id": "sevt_local",
+        }
+        if event_type == "agent.mcp_tool_use":
+            event["mcp_server_name"] = "catalog"
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/v1/sessions/sesn_test/events"
+            return httpx.Response(200, json={"data": [event], "next_page": None})
+
+        with Mango(base_url="https://mango.test", transport=httpx.MockTransport(handle)) as client:
+            response: Any = client.sessions.events.list("sesn_test")
+            assert response["data"][0]["source_event_id"] == "sevt_local"
+            assert response["data"][0]["id"] == "sevt_relay"

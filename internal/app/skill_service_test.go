@@ -181,6 +181,7 @@ func TestSkillService_FailedUploadRetainsCleanupUntilStorageRecovers(t *testing.
 }
 
 type memorySkillRepository struct {
+	memoryBlobCleanupRepository
 	skills   map[string]domain.Skill
 	versions map[string]map[string]domain.SkillVersion
 }
@@ -209,9 +210,12 @@ func (r *memorySkillRepository) BeginVersion(_ context.Context, version domain.S
 }
 
 func (r *memorySkillRepository) CompleteVersion(
-	_ context.Context, skillID, version string, info BlobInfo,
+	_ context.Context, skillID, version, blobKey string, info BlobInfo,
 ) (domain.Skill, domain.SkillVersion, error) {
 	item := r.versions[skillID][version]
+	if item.BlobKey != blobKey {
+		return domain.Skill{}, domain.SkillVersion{}, ErrUploadLeaseLost
+	}
 	item.State = domain.SkillVersionReady
 	item.SizeBytes, item.ChecksumSHA256 = info.SizeBytes, info.ChecksumSHA256
 	r.versions[skillID][version] = item
@@ -283,8 +287,8 @@ func (r *memorySkillRepository) BeginDeleteVersion(
 	return item, nil
 }
 
-func (r *memorySkillRepository) RemoveIncompleteVersion(_ context.Context, skillID, version string) error {
-	if item, ok := r.versions[skillID][version]; ok && item.State != domain.SkillVersionReady {
+func (r *memorySkillRepository) RemoveIncompleteVersion(_ context.Context, skillID, version, blobKey string) error {
+	if item, ok := r.versions[skillID][version]; ok && item.State != domain.SkillVersionReady && item.BlobKey == blobKey {
 		delete(r.versions[skillID], version)
 	}
 	return nil
@@ -300,6 +304,22 @@ func (r *memorySkillRepository) ListIncompleteVersions(_ context.Context) ([]dom
 		}
 	}
 	return items, nil
+}
+
+func (r *memorySkillRepository) RenewUpload(context.Context, string, string, string) error {
+	return nil
+}
+func (r *memorySkillRepository) ReleaseUpload(context.Context, string, string, string, bool) error {
+	return nil
+}
+func (r *memorySkillRepository) ClaimIncompleteVersion(_ context.Context, id, version string) (domain.SkillVersion, bool, error) {
+	item, ok := r.versions[id][version]
+	if !ok || item.State == domain.SkillVersionReady {
+		return domain.SkillVersion{}, false, nil
+	}
+	item.State = domain.SkillVersionDeleting
+	r.versions[id][version] = item
+	return item, true, nil
 }
 
 func (r *memorySkillRepository) DeleteEmptySkill(_ context.Context, id string) error {

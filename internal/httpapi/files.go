@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/domain"
@@ -39,7 +40,9 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	body := &singleMultipartPartReader{part: part, multipart: reader}
+	body := &singleMultipartPartReader{part: part, multipart: reader, source: r.Body,
+		interrupt: func() { _ = http.NewResponseController(w).SetReadDeadline(time.Now()) },
+	}
 	created, err := s.deps.Files.Upload(r.Context(), app.FileUploadInput{
 		Filename: params["filename"], MimeType: contentType, Body: body,
 	})
@@ -64,6 +67,17 @@ type singleMultipartPartReader struct {
 	part      *multipart.Part
 	multipart *multipart.Reader
 	checked   bool
+	source    io.ReadCloser
+	interrupt func()
+}
+
+// HTTP/1 Body.Close may wait for a blocked Read. Expire the connection's read
+// deadline first. Part.Close alone drains more payload and can block as well.
+func (r *singleMultipartPartReader) Close() error {
+	if r.interrupt != nil {
+		r.interrupt()
+	}
+	return r.source.Close()
 }
 
 func (r *singleMultipartPartReader) Read(p []byte) (int, error) {
@@ -191,7 +205,7 @@ func fileToJSON(file domain.File) map[string]any {
 	return map[string]any{
 		"id": file.ID, "created_at": file.CreatedAt.Format(timeFmt),
 		"filename": file.Filename, "mime_type": file.MimeType,
-		"size_bytes": file.SizeBytes, "type": "file",
+		"size_bytes": file.SizeBytes, "type": "file", "checksum_sha256": file.ChecksumSHA256,
 	}
 }
 
