@@ -64,6 +64,49 @@ jobs:
       - run: make sdk-test
       - run: make sdk-conformance
 
+  release_artifacts:
+    name: Release artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: python -m pip install uv==0.12.5
+      - uses: ./.github/actions/setup-helm
+        id: helm
+      - run: make release-unit
+      - run: npm ci --prefix scripts/release/please-tests --ignore-scripts
+      - run: make release-please-check
+      - run: make release-build HELM='${{ steps.helm.outputs.path }}'
+      - run: make release-check HELM='${{ steps.helm.outputs.path }}'
+
+  chart:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: ./.github/actions/setup-helm
+        id: helm
+      - run: make chart-check HELM='${{ steps.helm.outputs.path }}'
+
   security:
     name: Security checks
     runs-on: ubuntu-latest

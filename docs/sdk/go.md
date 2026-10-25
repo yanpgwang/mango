@@ -132,12 +132,23 @@ responsibilities. On lease loss it cancels the runner, prevents later result
 submission, returns `ErrEnvironmentWorkLeaseLost`, and does not Stop a possibly
 newer owner's Work.
 
+An unavailable upload reply does not prove the write failed. Before the next
+sync or cancellation flush, the helper reconciles the exact sent content hash
+against a fresh Store listing, so an earlier committed upload cannot overwrite
+a newer local edit. Genuine remote changes still win. It does not add automatic
+HTTP write retries or persist unsynchronized edits outside the Work activation.
+
 Cancel the context passed to `EnvironmentWorker.Run` or `HandleItem` on shutdown.
 Tool execution is cancelled first; heartbeat renewal continues through Memory
 teardown, and Work Stop follows the flush. A full Memory reconciliation and
 rescue upload each have a 30-second budget. Allow additional time for tool/result
-cleanup and final Stop; the Docker reference grants 120 seconds. Hard kills and
-upload failures are not durable local Memory commits.
+cleanup and final Stop; the Docker reference grants 120 seconds. When `MaxIdle`
+expires, the worker captures that exact end-turn event before cleanup and sends
+`expected_idle_event_id` with its final Stop. A missing boundary, `412`, or an
+uncertain Stop reply never falls back to unconditional Stop. Any still-active
+Work is left for lease reclaim; an uncertain reply may mean Stop committed.
+Other exit paths retain their existing Stop behavior. Hard kills and upload
+failures are not durable local Memory commits.
 
 For launchers that need Mango's core shell and file executors, the independent
 `tools/agenttoolset` package returns `bash`, `read`, `write`, `edit`, `glob`, and
@@ -172,6 +183,16 @@ opens SSE before listing durable history, reconciles again on reconnect, and
 maps owned `agent.tool_use` and `agent.custom_tool_use` events to their matching
 result events. MCP calls stay server-side, and unregistered tool names remain
 pending for another owner.
+
+The helper refreshes each live connection after 15 seconds and reads complete
+history again after opening its replacement. This recovers persisted approvals
+and results even when an old connection stays open without delivering events.
+Refreshing does not cancel an executing tool or renew Work authority. Replaying
+the same end-turn boundary does not extend `MaxIdle`; approval waits remain
+valid. Idle expiry is paused before opening each replacement and remains
+paused until a full history pass succeeds, including connection-opening or
+history outages. Raw SSE clients retain their live-only, caller-cancelled
+behavior and do not inherit this helper's connection refresh.
 
 ```go
 runner := mango.NewSessionToolRunner(ctx, sessionClient, sessionID,

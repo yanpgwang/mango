@@ -10,7 +10,8 @@ BIN_DIR ?= bin
 BINARY ?= $(BIN_DIR)/mango
 IMAGE ?= mango:local
 VERSION ?= dev
-REVISION ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+REVISION ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BUILD_LDFLAGS := -s -w -X github.com/yanpgwang/mango/internal/buildinfo.Version=$(VERSION) -X github.com/yanpgwang/mango/internal/buildinfo.Revision=$(REVISION)
 GOPROXY ?=
 LINT_BASE ?= origin/main
 # Optional test-binary wrapper; compilation and Go caches keep the caller's UID.
@@ -34,10 +35,17 @@ MANGO_TEST_TEMPORAL_HOSTPORT ?= localhost:7233
 MANGO_TEST_NATS_URL ?= nats://localhost:4222
 MANGO_TEST_S3_ENDPOINT ?= http://localhost:9000
 MANGO_TEST_S3_BUCKET ?= mango-test
-MANGO_TEST_S3_ACCESS_KEY ?= minioadmin
-MANGO_TEST_S3_SECRET_KEY ?= minioadmin
+MANGO_TEST_S3_ACCESS_KEY ?= mango-local
+MANGO_TEST_S3_SECRET_KEY ?= mango-local-development-only
 PYTHON ?= python3
 UV ?= uv
+HELM ?= helm
+KIND ?= kind
+KUBECTL ?= kubectl
+RELEASE_PYTHON ?= $(UV) run --python 3.12 python
+RELEASE_VERSION ?= $(shell cat VERSION)
+RELEASE_DIR ?= dist/release/$(RELEASE_VERSION)
+RELEASE_PLATFORMS ?=
 MANGO_EXAMPLE_MODEL_ID ?= $(MANGO_MODEL_ID)
 MANGO_EXAMPLE_ADVISOR_MODEL_ID ?= $(MANGO_EXAMPLE_MODEL_ID)
 HITL_ARGS ?= start
@@ -49,13 +57,16 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help build lint test test-race test-service test-service-core \
-	worker-test-image test-self-hosted-docker test-model-live test-self-hosted-live test-platform-live \
+	worker-test-image test-self-hosted-docker test-model-live test-tool-permissions-live test-self-hosted-live test-platform-live \
 	test-custom-tool-barrier demo-hitl-gate \
 	demo-multi-agent-team demo-coding-agent \
 	vet verify security docs-check image image-smoke dev-env-init \
 	local-config local-up local-down local-health local-ps local-logs
 
 .PHONY: sdk-install sdk-generate sdk-check sdk-test sdk-conformance
+.PHONY: release-unit release-please-check release-build release-check
+.PHONY: chart-check test-kubernetes test-kubernetes-restore
+.PHONY: test-workflow-runtime
 
 help:
 	@echo "Development"
@@ -63,12 +74,14 @@ help:
 	@echo "  make lint           lint changes relative to $(LINT_BASE)"
 	@echo "  make test           run unit tests"
 	@echo "  make test-race      run tests with the race detector"
-	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, MinIO, and Docker"
+	@echo "  make test-service   run tests against PostgreSQL, Temporal, NATS, SeaweedFS, and Docker"
 	@echo "  make test-service-core  run stateful service integration tests"
 	@echo "  make test-self-hosted-docker  run self-hosted Docker worker tests"
 	@echo "  make test-model-live     test an explicitly configured Messages endpoint"
+	@echo "  make test-tool-permissions-live  qualify automatic permissions with the configured model"
 	@echo "  make test-self-hosted-live  run one real-model turn through a self-hosted Docker worker"
 	@echo "  make test-platform-live  alias for the self-hosted live smoke"
+	@echo "  make test-workflow-runtime  run the isolated JS/journal feasibility study (not a product executor)"
 	@echo "  make test-custom-tool-barrier  test custom-tool results across a worker restart"
 	@echo "  make demo-coding-agent  run the coding agent example with a local Docker worker"
 	@echo "  make demo-hitl-gate      run the recoverable HITL Go SDK example"
@@ -80,6 +93,11 @@ help:
 	@echo "  make sdk-check      reject stale SDK bindings or contract snapshots"
 	@echo "  make sdk-test       test/typecheck/build Go, Python and TypeScript SDKs"
 	@echo "  make sdk-conformance  exercise language clients against Mango HTTP handlers"
+	@echo "  make release-build  build matched runtime/SDK candidates without publication"
+	@echo "  make release-check  inspect and freshly install candidate packages"
+	@echo "  make chart-check    lint/render/package the Helm candidate without a cluster"
+	@echo "  make test-kubernetes  exercise isolated installation, Mango restart and Work recovery"
+	@echo "  make test-kubernetes-restore  explicitly run experimental external-state cold restore"
 	@echo "  make security       scan reachable Go code and high-severity npm issues"
 	@echo "  make docs-check     install and verify documentation dependencies"
 	@echo "  make dev-env-init   create ~/.config/mango/dev.env with mode 0600"
@@ -97,7 +115,7 @@ help:
 
 build:
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -trimpath -o $(BINARY) ./cmd/mango
+	$(GO) build -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(BINARY) ./cmd/mango
 
 lint:
 	$(GOLANGCI_LINT) run --new-from-rev=$(LINT_BASE) ./...
@@ -108,11 +126,19 @@ test:
 test-race:
 	MANGO_TEST_DOCKER=0 $(GO) test -race ./...
 
+# Explicit research tier. No runtime, SDK, release or ordinary test depends on
+# these images. First build downloads pinned public engines, never credentials.
+test-workflow-runtime:
+	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
+	$(DOCKER) build --target quickjs -t mango-workflow-study:quickjs scripts/workflow-runtime
+	$(DOCKER) build --target node -t mango-workflow-study:node scripts/workflow-runtime
+	MANGO_TEST_WORKFLOW_RUNTIME=1 $(GO) test -timeout 10m -count=1 -v ./scripts/workflow-runtime
+
 test-service: test-service-core test-self-hosted-docker
 
 worker-test-image:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
-	$(DOCKER) build -f deployments/self-hosted/docker/Dockerfile \
+	$(DOCKER) build -f deployments/workers/docker/Dockerfile \
 		--tag '$(WORKER_TEST_IMAGE)' .
 
 test-service-core: worker-test-image
@@ -139,6 +165,10 @@ test-self-hosted-docker: worker-test-image
 test-model-live:
 	MANGO_TEST_LIVE_MODEL=1 \
 	$(GO) test ./internal/model -run '^TestAnthropic_LiveMessagesConformance$$' -count=1
+
+test-tool-permissions-live:
+	MANGO_TEST_PERMISSION_MODEL=1 \
+	$(GO) test -timeout 5m ./internal/permission -run '^TestEvaluatorLiveQualification$$' -count=1 -v
 
 test-self-hosted-live: worker-test-image
 	MANGO_TEST_DOCKER=1 \
@@ -183,9 +213,34 @@ vet:
 
 verify: lint test test-race vet
 
+chart-check:
+	MANGO_TEST_HELM=1 MANGO_HELM_PATH='$(HELM)' $(GO) test ./scripts/helm -count=1
+
+test-kubernetes:
+	MANGO_TEST_KUBERNETES=1 MANGO_KIND_PATH='$(KIND)' \
+	MANGO_KUBECTL_PATH='$(KUBECTL)' MANGO_HELM_PATH='$(HELM)' \
+	$(GO) test -exec '$(SERVICE_TEST_EXEC)' -timeout 30m ./scripts/kubernetes -run '^TestKubernetesAlpha$$' -count=1 -v
+
+test-kubernetes-restore:
+	MANGO_TEST_KUBERNETES=1 MANGO_KIND_PATH='$(KIND)' \
+	MANGO_KUBECTL_PATH='$(KUBECTL)' MANGO_HELM_PATH='$(HELM)' \
+	$(GO) test -exec '$(SERVICE_TEST_EXEC)' -timeout 30m ./scripts/kubernetes -run '^TestKubernetesQuiescedRestore$$' -count=1 -v
+
 sdk-install:
 	$(UV) sync --project sdk/python --frozen --group dev
 	npm --prefix sdk/typescript ci
+
+release-unit:
+	$(RELEASE_PYTHON) -m unittest discover -s scripts/release -p 'test_*.py'
+
+release-please-check:
+	$(UV) run --python 3.12 npm --prefix scripts/release/please-tests test
+
+release-build:
+	$(RELEASE_PYTHON) scripts/release/build.py --version '$(RELEASE_VERSION)' --output '$(RELEASE_DIR)' --helm '$(HELM)' $(foreach target,$(RELEASE_PLATFORMS),--platform '$(target)')
+
+release-check:
+	$(RELEASE_PYTHON) scripts/release/smoke.py '$(RELEASE_DIR)' --helm '$(HELM)'
 
 sdk-generate:
 	$(GO) run ./scripts/sdk-contract
@@ -232,6 +287,7 @@ image:
 
 image-smoke: image
 	$(DOCKER) run --rm $(IMAGE) serve -h >/dev/null
+	$(DOCKER) run --rm $(IMAGE) sessions connect -h >/dev/null
 
 local-config:
 	$(MAKE) -C deployments/local config COMPOSE='$(COMPOSE)'

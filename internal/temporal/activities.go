@@ -21,6 +21,7 @@ import (
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/mcpclient"
 	"github.com/yanpgwang/mango/internal/model"
+	"github.com/yanpgwang/mango/internal/permission"
 	"github.com/yanpgwang/mango/internal/workspace"
 )
 
@@ -314,6 +315,19 @@ type JournalStore interface {
 	MarkToolStepAmbiguous(ctx context.Context, stepID string) error
 }
 
+// ToolOutputStore publishes an immutable full textual result under a stable File ID.
+type ToolOutputStore interface {
+	StoreToolOutput(context.Context, string, string, string) error
+}
+type toolOutputPublicationJournal interface {
+	MarkToolOutputPublished(context.Context, string, string) error
+}
+
+func (a *Activities) WithToolOutputStore(store ToolOutputStore) *Activities {
+	a.toolOutputs = store
+	return a
+}
+
 // SkillInstructionLoader reads the immutable instruction entry owned by the
 // control plane. The Agent loop uses the same canonical source for every
 // execution environment; self-hosted workers independently receive the pinned
@@ -374,15 +388,17 @@ const toolResultWriteAttempts = 3
 // built-ins execute through Environment Work; only control-plane tools such as
 // MCP, coordinator, Advisor, and Skill activation execute here.
 type Activities struct {
-	modelClient        model.Client
-	source             EventSource
-	journal            JournalStore
-	ids                domain.IDGenerator
-	previews           PreviewPublisher
-	mcp                mcpclient.Client
-	mcpAuth            mcpclient.AuthSource
-	contextTokenBudget int
-	skillInstructions  SkillInstructionLoader
+	modelClient         model.Client
+	permissionEvaluator permission.Evaluator
+	source              EventSource
+	journal             JournalStore
+	ids                 domain.IDGenerator
+	previews            PreviewPublisher
+	mcp                 mcpclient.Client
+	mcpAuth             mcpclient.AuthSource
+	contextTokenBudget  int
+	skillInstructions   SkillInstructionLoader
+	toolOutputs         ToolOutputStore
 }
 
 func NewActivities(
@@ -393,7 +409,7 @@ func NewActivities(
 	previewPublisher ...PreviewPublisher,
 ) *Activities {
 	activities := &Activities{
-		modelClient: modelClient, source: source,
+		modelClient: modelClient, permissionEvaluator: permission.NewModelEvaluator(modelClient), source: source,
 		journal: journal, ids: ids,
 		mcp: mcpclient.NewRemote(nil),
 	}
@@ -674,7 +690,7 @@ func (a *Activities) appendWorkflowEvents(
 // PrepareTurn reads one turn's immutable starting state from PostgreSQL. The
 // result becomes Workflow history; replay never performs these reads in
 // Workflow code.
-func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (PrepareTurnResult, error) {
+func (a *Activities) prepareTurn(ctx context.Context, in PrepareTurnInput) (PrepareTurnResult, error) {
 	trigger, err := a.source.GetEvent(ctx, in.SessionID, in.TriggerEventID)
 	if err != nil {
 		return PrepareTurnResult{}, err
@@ -749,6 +765,17 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 	if err != nil {
 		return PrepareTurnResult{FatalError: "invalid toolset: " + err.Error()}, nil
 	}
+	var originalIntent domain.PermissionIntent
+	if configuredAutoPermission(toolSet) {
+		source, ok := a.source.(PermissionSource)
+		if !ok {
+			return PrepareTurnResult{FatalError: "automatic permissions require durable permission storage"}, nil
+		}
+		originalIntent, err = source.PermissionIntentThrough(ctx, in.SessionID, trigger.ID)
+		if err != nil {
+			return PrepareTurnResult{}, err
+		}
+	}
 	if err := domain.ValidateStoredToolConfiguration(
 		executionAgent.Tools,
 		executionAgent.MCPServers,
@@ -819,6 +846,7 @@ func (a *Activities) PrepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 		toolSchemas = append(toolSchemas, agentruntime.RuntimeSkillToolSchema())
 	}
 	result := PrepareTurnResult{
+		PermissionIntent: originalIntent,
 		AttemptID:        a.ids.NewID(domain.PrefixRunAttempt),
 		ThreadID:         trigger.ThreadID,
 		IsChild:          executionThread != nil && executionThread.ParentThreadID != nil,
@@ -1183,7 +1211,7 @@ func (a *Activities) addMCPTools(
 			if !enabled {
 				continue
 			}
-			if policy.Type != "always_allow" && policy.Type != "always_ask" {
+			if policy.Type != "always_allow" && policy.Type != "always_ask" && policy.Type != "auto" {
 				return nil, domain.Validation(fmt.Sprintf(
 					"mcp tool %s/%s has unsupported permission %q",
 					server.Name,
@@ -1350,7 +1378,7 @@ const outcomeGraderSystem = "You are an independent outcome grader for a managed
 // EvaluateOutcome uses a separate model context from the working agent. It
 // returns only a compact verdict that deterministic Workflow code can use to
 // decide whether to revise or finish.
-func (a *Activities) EvaluateOutcome(
+func (a *Activities) evaluateOutcome(
 	ctx context.Context,
 	in EvaluateOutcomeInput,
 ) (EvaluateOutcomeResult, error) {
@@ -1578,8 +1606,10 @@ func (a *Activities) prepareResumeActions(
 			return nil, domain.Validation("client result names the wrong session Thread")
 		}
 
+		evaluatedPermission, _ := action.Payload["evaluated_permission"].(string)
 		resume := ResumeAction{
-			ActionEventID: action.ID,
+			EvaluatedPermission: evaluatedPermission,
+			ActionEventID:       action.ID,
 			// Carry the durable type forward: the result event that answers this
 			// park must pair with what the ledger actually holds, whatever naming
 			// scheme the resuming Workflow execution would choose for a new call.
@@ -1646,7 +1676,7 @@ func withoutResumeEvents(history []domain.Event, actions []ResumeAction) []domai
 
 // CallModel performs exactly one model call. Its full normalized response is
 // returned to Temporal, which durably records the text/tool round structure.
-func (a *Activities) CallModel(ctx context.Context, in CallModelInput) (CallModelResult, error) {
+func (a *Activities) callModel(ctx context.Context, in CallModelInput) (CallModelResult, error) {
 	if a.modelClient == nil {
 		return CallModelResult{}, fmt.Errorf("temporal: model client is not configured")
 	}
@@ -1856,7 +1886,7 @@ func modelRetryErrorType(kind model.ErrorKind) string {
 // journal. A completed step is returned without re-execution; a started step
 // without a result is classified ambiguous and reported as a successful result
 // so the Workflow terminates rather than retrying the side effect.
-func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (ExecuteToolResult, error) {
+func (a *Activities) executeTool(ctx context.Context, in ExecuteToolInput) (ExecuteToolResult, error) {
 	if a.journal == nil {
 		return ExecuteToolResult{}, fmt.Errorf("temporal: tool execution requires a journal")
 	}
@@ -1891,6 +1921,9 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 			return ExecuteToolResult{}, fmt.Errorf("temporal: completed tool step %s has no result", step.ID)
 		}
 		out.Events = append([]domain.EventDraft(nil), step.Result.Events...)
+		if err := a.publishToolOutput(ctx, in.SessionID, step.ID, *step.Result); err != nil {
+			return ExecuteToolResult{}, err
+		}
 		out.Result = workflowToolResult(*step.Result)
 		return out, nil
 	case domain.ToolStepAmbiguous:
@@ -1983,7 +2016,16 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 	ctx = workspace.WithScope(ctx, session.WorkspaceID)
 	if !retrySafeStarted {
 		dctx, cancel := durableCtx(ctx)
-		err = a.journal.StartToolStep(dctx, step.ID)
+		if in.PermissionReceiptID != "" {
+			source, ok := a.source.(PermissionSource)
+			if !ok {
+				cancel()
+				return ExecuteToolResult{}, fmt.Errorf("temporal: automatic execution requires durable permission storage")
+			}
+			err = source.StartToolStepWithPermission(dctx, step.ID, in.PermissionReceiptID)
+		} else {
+			err = a.journal.StartToolStep(dctx, step.ID)
+		}
 		cancel()
 		if err != nil {
 			return ExecuteToolResult{}, err
@@ -2026,10 +2068,24 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 				IsError: true,
 			}
 		}
-		out.Result = domain.ToolStepResult{
-			Content: executed.Content,
-			IsError: executed.IsError,
-			Raw:     raw,
+		out.Result = domain.ToolStepResult{Content: executed.Content, IsError: executed.IsError, Raw: raw}
+		if full := agentruntime.FlattenResultText(executed.Content); utf8.RuneCountInString(full) > tools.MaxInlineResultChars {
+			if len(full) > app.MaxToolOutputBytes || a.toolOutputs == nil {
+				reason := "Files storage is not configured"
+				if len(full) > app.MaxToolOutputBytes {
+					reason = "projected text exceeds the 32 MiB retention limit"
+				}
+				out.Result.Content = []any{map[string]any{"type": "text", "text": fmt.Sprintf("MCP output could not be retained: %s.\nPreview:\n%s", reason, tools.ResultPreview(full))}}
+				out.Result.IsError = true
+			} else {
+				out.Result.FileID = a.ids.NewID(domain.PrefixFile)
+				out.Result.FullOutput = []byte(full)
+				out.Result.Content = []any{map[string]any{"type": "text", "text": fmt.Sprintf("<truncated-output>\nFull MCP output (%d characters) is available at %s relative to the Session workspace root (not the current shell directory). Read the file for the complete result.\n\nPreview:\n%s\n</truncated-output>", utf8.RuneCountInString(full), app.ToolOutputPath(out.Result.FileID), tools.ResultPreview(full))}}
+			}
+		} else if strings.ContainsRune(full, '\x00') {
+			// JSONB cannot retain literal NUL in inline text; show its explicit
+			// escaped representation. File-backed full receipts remain lossless.
+			out.Result.Content = []any{map[string]any{"type": "text", "text": strings.ReplaceAll(full, "\x00", `\u0000`)}}
 		}
 	}
 	if len(out.Events) > 0 {
@@ -2038,8 +2094,35 @@ func (a *Activities) ExecuteTool(ctx context.Context, in ExecuteToolInput) (Exec
 	if err := completeToolResultDurably(ctx, a.journal, step.ID, out.Result); err != nil {
 		return ExecuteToolResult{}, err
 	}
+	if err := a.publishToolOutput(ctx, in.SessionID, step.ID, out.Result); err != nil {
+		return ExecuteToolResult{}, err
+	}
 	out.Result = workflowToolResult(out.Result)
 	return out, nil
+}
+
+func (a *Activities) publishToolOutput(ctx context.Context, sessionID, stepID string, result domain.ToolStepResult) error {
+	if len(result.FullOutput) == 0 {
+		return nil
+	}
+	if a.toolOutputs == nil {
+		return errors.New("MCP full output publication requires Files storage")
+	}
+	session, err := a.source.GetSession(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	ctx = workspace.WithScope(ctx, session.WorkspaceID)
+	if err := a.toolOutputs.StoreToolOutput(ctx, sessionID, result.FileID, string(result.FullOutput)); err != nil {
+		return err
+	}
+	journal, ok := a.journal.(toolOutputPublicationJournal)
+	if !ok {
+		return errors.New("MCP full output publication journal is unavailable")
+	}
+	dctx, cancel := durableCtx(ctx)
+	defer cancel()
+	return journal.MarkToolOutputPublished(dctx, stepID, result.FileID)
 }
 
 func (a *Activities) executeRuntimeSkill(
@@ -2295,6 +2378,7 @@ func advisorErrorResult(message string) domain.ToolStepResult {
 // Temporal. Executor-native Raw/RawPath stay in the PostgreSQL journal and do
 // not need to inflate Workflow history.
 func workflowToolResult(result domain.ToolStepResult) domain.ToolStepResult {
+	result.FullOutput = nil
 	result.Raw = nil
 	result.RawPath = ""
 	result.Events = nil

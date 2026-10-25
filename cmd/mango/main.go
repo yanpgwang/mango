@@ -15,6 +15,7 @@ import (
 
 	"github.com/yanpgwang/mango/internal/app"
 	"github.com/yanpgwang/mango/internal/blob"
+	"github.com/yanpgwang/mango/internal/buildinfo"
 	"github.com/yanpgwang/mango/internal/controlplane"
 	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/httpapi"
@@ -145,9 +146,16 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key> [flags]")
+		log.Fatal("usage: mango <version|migrate|serve|orchestrate|workspace|api-key|sessions> [flags]")
 	}
 	switch os.Args[1] {
+	case "version":
+		if len(os.Args) != 2 {
+			log.Fatal("usage: mango version")
+		}
+		if err := buildinfo.Write(os.Stdout); err != nil {
+			log.Fatal(err)
+		}
 	case "migrate":
 		runMigrate()
 	case "serve":
@@ -158,8 +166,10 @@ func main() {
 		runWorkspaceCommand()
 	case "api-key":
 		runAPIKeyCommand()
+	case "sessions":
+		runSessionsCommand()
 	default:
-		log.Fatal("usage: mango <migrate|serve|orchestrate|workspace|api-key> [flags]")
+		log.Fatal("usage: mango <version|migrate|serve|orchestrate|workspace|api-key|sessions> [flags]")
 	}
 }
 
@@ -367,6 +377,7 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 	environmentsRepo := pg.NewEnvironmentRepository(pgStore)
 	environments := app.NewEnvironmentService(environmentsRepo, ids, clock)
 	fileRuntime, err := resolveFiles(ctx, pgStore, ids, clock, false)
+	var fileCleanup, skillCleanup func(context.Context) error
 	if err != nil {
 		log.Printf("serve: Files API disabled: %v", err)
 		fileRuntime = nil
@@ -376,9 +387,9 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 		fileReconciler := app.NewFileService(
 			pg.NewFileRepository(systemStore), fileRuntime.blobs, ids, clock,
 		)
+		fileCleanup = fileReconciler.Reconcile
 		if err := fileReconciler.Reconcile(ctx); err != nil {
-			log.Printf("serve: Files API disabled: reconcile incomplete operations: %v", err)
-			fileRuntime = nil
+			log.Printf("serve: Files startup reconciliation will retry: %v", err)
 		} else {
 			log.Printf("serve: Files API object store connected and reconciled")
 		}
@@ -393,9 +404,9 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 		skillReconciler := app.NewSkillService(
 			pg.NewSkillRepository(systemStore), fileRuntime.blobs, ids, clock,
 		)
+		skillCleanup = skillReconciler.Reconcile
 		if err := skillReconciler.Reconcile(ctx); err != nil {
-			log.Printf("serve: Skills API disabled: reconcile incomplete operations: %v", err)
-			skills = nil
+			log.Printf("serve: Skills startup reconciliation will retry: %v", err)
 		} else {
 			log.Printf("serve: Skills API object store connected and reconciled")
 		}
@@ -453,6 +464,8 @@ func runPostgresAPI(addr string, cfg httpapi.Config) {
 		Vaults: vaults, Webhooks: webhooks, Deployments: deployments, EnvironmentWork: environmentWork,
 	}, cfg).Handler()
 	log.Printf("serve: PostgreSQL control plane, Temporal client, and NATS live channel connected")
+	stopCleanup := startBlobReconciliation(ctx, app.UploadLeaseDuration/3, fileCleanup, skillCleanup)
+	defer stopCleanup()
 	serveHTTP(addr, handler)
 }
 

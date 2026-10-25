@@ -17,7 +17,7 @@ process responsibilities.
 ## Prerequisites
 
 - A running Mango deployment from the [Quickstart](../getting-started.md).
-- Go 1.26.6+ to run the launcher from this repository.
+- Go 1.26.10+ to run the launcher from this repository.
 - Docker reachable from the supervisor, plus `curl` and `jq` for setup.
 - A [configured model](model-configuration.md) that can choose tools when you
   are ready to run a tool-capable Agent.
@@ -64,7 +64,7 @@ and queue Stats for this Environment. The supervisor does not fall back to
 
 ```bash
 docker build \
-  -f deployments/self-hosted/docker/Dockerfile \
+  -f deployments/workers/docker/Dockerfile \
   -t mango-self-hosted-worker:local \
   .
 ```
@@ -190,6 +190,24 @@ Docker still shares the host kernel and allows bridge egress by default. Set
 network policy for your deployment; this preview is not a hardened hostile
 multi-tenant boundary.
 
-See the [launcher reference](https://github.com/yanpgwang/mango/tree/main/deployments/self-hosted/docker)
+See the [launcher reference](https://github.com/yanpgwang/mango/tree/main/deployments/workers/docker)
 for credential handling and [Go SDK helpers](../sdk/go.md#composed-environment-worker)
 for building your own isolated launcher.
+
+## Full MCP output files
+
+The native Go worker reads `agent.mcp_tool_result.file_id` during history replay
+and live event processing, downloads the File using its active Work credential,
+and verifies size and SHA-256 before writing
+`{Workdir}/.mango-tool-results/{file_id}.txt`. Subsequent owned tools run only
+after preparation succeeds. Paths in model previews are relative to the Session
+workspace root, independently of a persistent Bash shell's current directory.
+The worker accepts validated File IDs, not arbitrary server paths; filesystem
+symlinks cannot redirect downloads outside the prepared directory.
+
+Custom workers should prepare the same references before executing local tools.
+Use `GET /v1/files/{file_id}` for integrity metadata and
+`GET /v1/files/{file_id}/content` for bytes. Work tokens authorize only generated
+outputs associated with their own Session. Inputs and workspace deliverables
+still use operator-controlled transfers. See [Files](../api/files.md#generated-mcp-output)
+for size, retention, and deletion semantics.

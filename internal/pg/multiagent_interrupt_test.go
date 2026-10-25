@@ -603,3 +603,52 @@ func TestCompleteThreadWorkflowTurn_LateInterruptIsIdleNoop(t *testing.T) {
 		t.Fatalf("late interrupt = %+v, err=%v", interrupt, err)
 	}
 }
+
+func TestChildPendingActionsExposeSourceEventReference(t *testing.T) {
+	for _, actionType := range []string{domain.EvAgentToolUse, domain.EvAgentMcpToolUse, domain.EvAgentCustomToolUse} {
+		t.Run(actionType, func(t *testing.T) {
+			fixture := newMultiagentInterruptFixture(t, "source_reference_"+actionType)
+			const sourceID = "sevt_child_source"
+			payload := map[string]any{"name": "lookup", "input": map[string]any{}}
+			if actionType != domain.EvAgentCustomToolUse {
+				payload["evaluated_permission"] = "ask"
+			}
+			if actionType == domain.EvAgentMcpToolUse {
+				payload["mcp_server_name"] = "catalog"
+			}
+			_, err := fixture.store.CompleteThreadWorkflowTurn(fixture.ctx, fixture.session.ID, fixture.child.ID, fixture.childTrigger.ID,
+				[]domain.EventDraft{{ID: sourceID, Type: actionType, Payload: payload}, {Type: domain.EvSessionStatusIdle, Payload: map[string]any{"stop_reason": map[string]any{"type": "requires_action", "event_ids": []string{sourceID}}}}},
+				domain.StatusIdle, "", "", nil, []string{sourceID}, nil, nil, nil, domain.TokenUsage{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			primaryEvents, err := fixture.store.QueryEvents(fixture.ctx, fixture.session.ID, app.EventQuery{Limit: 100})
+			if err != nil {
+				t.Fatal(err)
+			}
+			relayed := eventOfType(t, primaryEvents, actionType)
+			if relayed.ID == sourceID || relayed.Payload["source_event_id"] != sourceID || relayed.Payload["session_thread_id"] != fixture.child.ID {
+				t.Fatalf("relayed action lost source identity: %+v", relayed)
+			}
+			childEvents, err := fixture.store.ThreadEventsAfter(fixture.ctx, fixture.session.ID, fixture.child.ID, 0, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			original := eventOfType(t, childEvents, actionType)
+			if original.ID != sourceID {
+				t.Fatalf("source event not present on child: %+v", original)
+			}
+			// Both current public action references route to the same child barrier.
+			resolutionType, referenceKey := domain.EvUserToolConfirmation, "tool_use_id"
+			resolution := map[string]any{"result": "deny", referenceKey: sourceID}
+			if actionType == domain.EvAgentCustomToolUse {
+				resolutionType = domain.EvUserCustomToolResult
+				resolution = map[string]any{"custom_tool_use_id": sourceID}
+			}
+			admission, err := fixture.store.AdmitEvents(fixture.ctx, fixture.session.ID, []domain.EventDraft{{Type: resolutionType, Payload: resolution}})
+			if err != nil || len(admission.SubmittedEvents) != 1 || admission.SubmittedEvents[0].ThreadID != fixture.child.ID {
+				t.Fatalf("source-reference resolution failed: %+v,err=%v", admission, err)
+			}
+		})
+	}
+}

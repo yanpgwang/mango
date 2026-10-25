@@ -110,7 +110,7 @@ func TestWorkspaceIsolationAcrossTopLevelResources(t *testing.T) {
 	if err := skills.BeginSkill(ctxA, skill, version); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := skills.CompleteVersion(ctxA, skill.ID, version.Version, app.BlobInfo{}); err != nil {
+	if _, _, err := skills.CompleteVersion(ctxA, skill.ID, version.Version, version.BlobKey, app.BlobInfo{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := skills.GetSkill(ctxB, skill.ID); !isNotFound(err) {

@@ -53,3 +53,29 @@ func TestProjectMCPResult_LargeRawIsOmitted(t *testing.T) {
 		t.Fatalf("inline=%s", inline)
 	}
 }
+
+func TestProjectMCPResult_NULRetainsTextWithoutUnsafeJSONBDiagnostic(t *testing.T) {
+	raw := json.RawMessage(`{"content":[{"type":"text","text":"before\u0000after"}]}`)
+	result, diagnostic, err := ProjectMCPResult(mcpclient.Result{Raw: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content[0].(map[string]any)["text"] != "before\x00after" || diagnostic != nil {
+		t.Fatal("NUL changed projected bytes or entered JSONB diagnostic")
+	}
+}
+
+func TestProjectMCPResult_PreservesLargeTextUntilDurableStorage(t *testing.T) {
+	text := strings.Repeat("中", MaxInlineResultChars+1) + "tail-proof"
+	raw, _ := json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": text}}, "_meta": map[string]any{"secret": "private"}})
+	result, diagnostic, err := ProjectMCPResult(mcpclient.Result{Raw: raw, IsError: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Content[0].(map[string]any)["text"]; got != text {
+		t.Fatal("full projected text was lost before persistence")
+	}
+	if !result.IsError || diagnostic != nil {
+		t.Fatal("error flag or diagnostic bound changed")
+	}
+}

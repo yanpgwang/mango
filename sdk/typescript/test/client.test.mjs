@@ -366,3 +366,18 @@ test('optional action body remains absent when no request fields are supplied', 
   } });
   await client.deployments.run('dpl_1');
 });
+
+test('relayed action identities survive HTTP decoding', async () => {
+  for (const type of ['agent.tool_use', 'agent.mcp_tool_use', 'agent.custom_tool_use']) {
+    const event = { id: 'sevt_relay', type, name: 'lookup', input: {}, processed_at: null,
+      session_thread_id: 'sthr_child', source_event_id: 'sevt_local' };
+    if (type === 'agent.mcp_tool_use') event.mcp_server_name = 'catalog';
+    const client = new Mango({ baseURL: 'https://mango.test', fetch: async url => {
+      assert.equal(new URL(url).pathname, '/v1/sessions/sesn_test/events');
+      return json({ data: [event], next_page: null });
+    } });
+    const page = await client.sessions.events.list('sesn_test');
+    assert.equal(page.data[0].source_event_id, 'sevt_local');
+    assert.equal(page.data[0].id, 'sevt_relay');
+  }
+});

@@ -2,11 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"github.com/yanpgwang/mango/internal/app"
+	"github.com/yanpgwang/mango/internal/domain"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -34,8 +37,27 @@ func TestFirstPartySDKHTTPConformance(t *testing.T) {
 	} {
 		t.Run(language.name, func(t *testing.T) {
 			baseHandler := newTestHandler(t, Config{RequireAuth: true}, false)
+			autoHandler := NewServer(Deps{Events: automaticPermissionContractEvents{}, Sessions: automaticPermissionContractSessions{}}, Config{RequireAuth: true}).Handler()
+			mcpHandler := NewServer(Deps{Events: mcpOutputContractEvents{}, Sessions: mcpOutputContractSessions{}}, Config{RequireAuth: true}).Handler()
 			workHandler := NewServer(Deps{EnvironmentWork: newSDKEnvironmentWorkService()}, Config{RequireAuth: true}).Handler()
+			threadHandler := threadStatusHandler(newThreadStatusFixture())
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1/sessions/"+threadFilterSessionID+"/threads" {
+					// A literal wire assertion, independent of OpenAPI/generation.
+					if !slices.Equal(r.URL.Query()["statuses[]"], []string{"idle", "running"}) || r.URL.Query().Has("statuses") {
+						t.Errorf("Thread list lost repeated statuses[]: %s", r.URL.RawQuery)
+					}
+					threadHandler.ServeHTTP(w, r)
+					return
+				}
+				if r.URL.Path == "/v1/sessions/sesn_auto_fixture/events" {
+					autoHandler.ServeHTTP(w, r)
+					return
+				}
+				if r.URL.Path == "/v1/sessions/sesn_mcp_fixture/events" {
+					mcpHandler.ServeHTTP(w, r)
+					return
+				}
 				if strings.HasPrefix(r.URL.Path, "/v1/environments/") && strings.Contains(r.URL.Path, "/work") {
 					workHandler.ServeHTTP(w, r)
 					return
@@ -84,11 +106,27 @@ func TestFirstPartySDKHTTPConformance(t *testing.T) {
 			t.Logf("%s", output)
 			mu.Lock()
 			defer mu.Unlock()
-			for _, route := range []string{"GET /healthz", "POST /v1/agents", "GET /v1/agents", "POST /v1/environments", "POST /v1/sessions", "POST /v1/files"} {
+			for _, route := range []string{"GET /healthz", "POST /v1/agents", "GET /v1/agents", "POST /v1/environments", "POST /v1/sessions", "POST /v1/files", "POST /v1/environments/env_self_hosted/work/work_sdk/stop", "GET /v1/sessions/" + threadFilterSessionID + "/threads"} {
 				if seen[route] == 0 {
 					t.Errorf("conformance executable did not exercise %s", route)
 				}
 			}
 		})
 	}
+}
+
+// Independently authored expected output reference, passed through real DTOs.
+type mcpOutputContractEvents struct{}
+
+func (mcpOutputContractEvents) Query(_ context.Context, _ string, _ app.EventQuery) ([]domain.Event, error) {
+	return []domain.Event{{ID: "sevt_mcp_fixture", SessionID: "sesn_mcp_fixture", Sequence: 1, Type: domain.EvAgentMcpToolResult, Payload: map[string]any{"mcp_tool_use_id": "sevt_mcp_use", "file_id": "file_mcp_full", "content": []any{map[string]any{"type": "text", "text": "preview"}}, "is_error": false}}}, nil
+}
+
+type mcpOutputContractSessions struct{ SessionService }
+
+func (mcpOutputContractSessions) Get(_ context.Context, id string) (domain.Session, error) {
+	if id != "sesn_mcp_fixture" {
+		return domain.Session{}, domain.NotFound("Session not found")
+	}
+	return domain.Session{ID: id}, nil
 }

@@ -2529,6 +2529,18 @@
             "minLength": 1,
             "type": "string"
           }
+        },
+        {
+          "explode": true,
+          "in": "query",
+          "name": "statuses[]",
+          "schema": {
+            "items": {
+              "$ref": "#/components/schemas/SessionStatus"
+            },
+            "type": "array"
+          },
+          "style": "form"
         }
       ],
       "request_content_type": "",
