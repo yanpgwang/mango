@@ -28,7 +28,7 @@ directly to a pull request with proportionate context.
 
 Requirements:
 
-- Go 1.26.9 or newer;
+- Go 1.26.10 or newer;
 - [golangci-lint](https://golangci-lint.run/docs/welcome/install/local/)
   2.12.x for local lint checks;
 - Node.js 22 or newer for the documentation site and TypeScript SDK;
