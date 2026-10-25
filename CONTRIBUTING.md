@@ -28,7 +28,7 @@ directly to a pull request with proportionate context.
 
 Requirements:
 
-- Go 1.26.9 or newer;
+- Go 1.26.10 or newer;
 - [golangci-lint](https://golangci-lint.run/docs/welcome/install/local/)
   2.12.x for local lint checks;
 - Node.js 22 or newer for the documentation site and TypeScript SDK;
@@ -62,6 +62,13 @@ idempotency, authorization, and cleanup invariants. Add a Python or TypeScript
 test when that language's SDK behavior is the subject; keep Mango runtime and
 durability assertions in Go so they run with the implementation and Go's race
 detector.
+
+The unshipped Workflow program proposal has a separate research tier:
+`make test-workflow-runtime` builds disposable QuickJS/Node candidates and tests
+ordered replay against its own PostgreSQL fixture. Its path-filtered CI job
+runs when the study changes. Passing it is partial feasibility evidence, not a
+released executor or the complete program-runtime gate; see
+[`scripts/workflow-runtime/README.md`](scripts/workflow-runtime/README.md).
 
 `make lint` checks changes relative to `origin/main`, matching the incremental
 CI rollout. Set `LINT_BASE` when your comparison branch differs.
@@ -99,6 +106,12 @@ chart and installs the actual wheel, source package,
 npm tarball and Go source archive outside the checkout. This complements the
 independent HTTP SDK contract tier. See the
 [candidate guide](docs/guides/release-candidates.md); these targets never publish.
+When changing release-version automation, install its isolated test dependency
+with `npm ci --prefix scripts/release/please-tests --ignore-scripts`, then run
+`make release-please-check`. It tests the exact official action's bundled
+release-please updaters and the matched-version handoff without GitHub writes.
+See [release automation](docs/design/release-automation.md) for the version PR,
+final-head CI approval and pending-publication lifecycle.
 The manual **Release candidate** workflow uses tracked snapshots for all archives
 and OCI builds, records both image index digests, then runs the Kubernetes journey
 with the packaged chart, released native supervisor and imported images. Local
@@ -112,13 +125,30 @@ configuration failure, secret-role selection, hook/probe/security invariants and
 package allowlists. Required **Kubernetes lifecycle** CI runs
 `make test-kubernetes KIND=kind KUBECTL=kubectl HELM=helm` against isolated
 kind 0.33.0/Kubernetes 1.37.0 state and the external Docker worker. It owns
-installation, process replacement and quiesced independent restore. Default
+installation, Mango process replacement and Work recovery with retained external
+state. Core service tests retain active-Work/runtime-restart coverage. Default
 tests skip this tier; explicit invocation must fail if tooling is unavailable.
 On native Linux use `SERVICE_TEST_EXEC='sudo -n -E --'`, as for service tests.
 If this fixture fails, it records each owned source/restore dependency's
 running, OOM, exit-code and health status before network and volume teardown.
 Inspect and healthcheck payloads remain private. These facts aid diagnosis;
 an intentionally stopped source dependency normally has exit code zero.
+Before stopping the external supervisor on failure, the fixture also captures
+exact-owned Work container state and a bounded summary of worker lifecycle
+messages, recent Session event metadata and Work state. Dynamic log fields,
+tool arguments/results, credential fields and raw HTTP/Docker errors are never
+printed. Probes share a ten-second budget and cannot prevent fixture teardown.
+
+Independent external Temporal/database cold restore is outside the approved
+developer-preview alpha scope. Its full assertions remain in
+`make test-kubernetes-restore`, also exposed by the manual **Experimental
+external-state cold restore** workflow. This test still fails with a nonzero
+status; neither CI nor the harness suppresses known failures. The
+[Kubernetes guide](docs/guides/kubernetes.md#consistent-same-release-backup-and-restore)
+records the unresolved main-run failure and why successful diagnostic runs do
+not establish a repair. Required **Kubernetes lifecycle** and candidate artifact
+acceptance select the supported journey explicitly; offline package checks
+continue to cover candidate and diagnostic helpers.
 
 Run the same PostgreSQL, Temporal, NATS, SeaweedFS, and Docker conformance suite as
 CI:

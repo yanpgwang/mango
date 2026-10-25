@@ -26,6 +26,11 @@ import (
 )
 
 func TestKubernetesAlpha(t *testing.T) {
+	runKubernetesLifecycle(t)
+}
+
+func runKubernetesLifecycle(t *testing.T) (*stateFixture, journeyEvidence) {
+	t.Helper()
 	if os.Getenv("MANGO_TEST_KUBERNETES") != "1" {
 		t.Skip("set MANGO_TEST_KUBERNETES=1 to require isolated Kubernetes acceptance")
 	}
@@ -34,7 +39,7 @@ func TestKubernetesAlpha(t *testing.T) {
 	cluster.install(source, "alpha", false)
 	evidence := source.verifyRestartJourney()
 	cluster.verifyOwnedWorkCleanup()
-	source.verifyQuiescedRestore(evidence)
+	return source, evidence
 }
 
 type journeyEvidence struct {
@@ -282,17 +287,10 @@ func (s *stateFixture) startSupervisor(environment, session string) func() {
 		})
 	}
 	t.Cleanup(func() {
-		stop()
 		if t.Failed() {
-			data, err := os.ReadFile(logPath)
-			if err == nil {
-				text := strings.ReplaceAll(string(data), key, "[redacted]")
-				if len(text) > 4000 {
-					text = text[len(text)-4000:]
-				}
-				t.Logf("external supervisor diagnostic:\n%s", text)
-			}
+			s.logWorkFailure(environment, session, logPath)
 		}
+		stop()
 	})
 	return stop
 }

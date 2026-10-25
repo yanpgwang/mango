@@ -44,7 +44,7 @@ type EnvironmentWorkRepository interface {
 	AckWork(context.Context, string, string) (domain.EnvironmentWork, error)
 	HeartbeatWork(context.Context, string, string, *string, *int64) (domain.EnvironmentWorkHeartbeat, error)
 	FailWork(context.Context, string, string, string) error
-	StopWork(context.Context, string, string, bool) error
+	StopWork(context.Context, string, string, bool, *string) error
 	WorkStats(context.Context, string) (domain.EnvironmentWorkQueueStats, error)
 }
 
@@ -204,11 +204,15 @@ func (s *EnvironmentWorkService) Stop(
 	ctx context.Context,
 	environmentID, workID string,
 	force bool,
+	expectedIdleEventID *string,
 ) error {
 	if err := s.validateEnvironment(ctx, environmentID); err != nil {
 		return err
 	}
-	return s.repository.StopWork(ctx, environmentID, workID, force)
+	if expectedIdleEventID != nil && strings.TrimSpace(*expectedIdleEventID) == "" {
+		return domain.Validation("expected_idle_event_id must not be empty")
+	}
+	return s.repository.StopWork(ctx, environmentID, workID, force, expectedIdleEventID)
 }
 
 func (s *EnvironmentWorkService) Fail(

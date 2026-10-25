@@ -43,6 +43,14 @@ all exits receive a bounded push-only flush before trusted mount directories
 are removed. The per-Work credential can access only attached Stores and every
 mutation is transactionally fenced by its live lease.
 
+If an upload reply is lost, the worker compares the exact content it sent with
+the next successful Store listing before resolving conflicts. This preserves
+later local edits, including a local revert during cancellation, when the prior
+upload already committed. A different remote value still wins a conflict.
+The worker does not blindly retry the failed write. This reconciliation state
+lasts only for the current Work activation; it does not make unuploaded local
+edits durable across a forced kill.
+
 The file tools reject writes into a read-only root. Bash has ordinary access
 inside the Session container, so this is an agent-tool policy rather than a
 kernel-enforced read-only mount. The Docker sandbox and its credential boundary

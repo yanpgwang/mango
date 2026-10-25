@@ -183,9 +183,12 @@ guards track unknown writes through ready publication, Session/File deletion,
 and restart. Two-pool PostgreSQL/SeaweedFS tests cover delayed accepted requests,
 superseded writers, lost commit/read responses, and deletion outages. This
 extends the storage recovery evidence without establishing broader rollout
-readiness. Next, prioritize a versioned self-hosted alpha bundle,
-matched native SDK artifacts, and a demonstrated backup/restore procedure for
-database, objects, Memory, and encryption keys. Kubernetes distribution and
+readiness. The developer-preview alpha selects versioned runtime/chart/SDK
+artifacts, installation, Mango process restart and Work recovery with retained
+external state. Independent database/object/key cold restore remains separate
+experimental work with an unresolved Temporal exit; see the
+[recovery boundary](../guides/kubernetes.md#consistent-same-release-backup-and-restore).
+Kubernetes distribution and
 worker rollout/versioning require their own operational acceptance; a Docker
 demo or CMA sandbox feature list does not prove them. Additional worker
 languages and private MCP remain separately selectable product work. Complete

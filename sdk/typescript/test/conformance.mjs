@@ -14,6 +14,22 @@ let environment;
 let session;
 try {
   await client.system.health();
+  await client.environments.work.stop('env_self_hosted', 'work_sdk', { force: true, expected_idle_event_id: 'sevt_idle_fixture' });
+  await assert.rejects(client.environments.work.stop('env_self_hosted', 'work_sdk', { force: true, expected_idle_event_id: 'sevt_stale' }), error => error instanceof APIError && error.status === 412 && error.type === 'precondition_failed_error' && !!error.requestId);
+  const threadFilter = { limit: 1, statuses: ['idle', 'running'] };
+  const threadPage = await client.sessions.threads.list('sesn_thread_filter', threadFilter);
+  assert.deepEqual(threadPage.data.map(item => item.id), ['sthr_filter_primary']);
+  assert.ok(threadPage.next_page);
+  const wantedThreads = ['sthr_filter_primary', 'sthr_filter_running', 'sthr_filter_waiting'];
+  const pagedThreads = [];
+  for await (const page of client.sessions.threads.listPages('sesn_thread_filter', threadFilter)) {
+    assert.equal(page.data.length, 1);
+    pagedThreads.push(...page.data.map(item => item.id));
+  }
+  assert.deepEqual(pagedThreads, wantedThreads);
+  const threadItems = [];
+  for await (const item of client.sessions.threads.listItems('sesn_thread_filter', threadFilter)) threadItems.push(item.id);
+  assert.deepEqual(threadItems, wantedThreads);
   const mcpPage = await client.sessions.events.list("sesn_mcp_fixture");
   assert.equal(mcpPage.data[0].type, "agent.mcp_tool_result");
   assert.equal(mcpPage.data[0].file_id, "file_mcp_full");

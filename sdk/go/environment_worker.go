@@ -261,6 +261,7 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 	var runnerErr error
 	abandonWork := false
 	failureCommitted := false
+	expectedIdleEventID := Optional[string]{}
 	if startup.ready {
 		inputs, preparationErr, permanent := w.prepareSessionInputs(
 			sessionCtx, itemClient, work.Data.SessionID(), log,
@@ -303,6 +304,16 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 				}
 			}
 			runnerErr = runner.Err()
+			if errors.Is(runnerErr, ErrIdleTimeout) {
+				// Capture the decision's immutable boundary before Memory flush or
+				// other teardown. Never turn a missing boundary into an unsafe Stop.
+				if runner.idleTimeoutEventID == "" {
+					abandonWork = true
+					log.Warn("idle boundary unavailable; leaving Work for lease reclaim")
+				} else {
+					expectedIdleEventID = Some(runner.idleTimeoutEventID)
+				}
+			}
 			if err := runner.Close(); err != nil && runnerErr == nil {
 				runnerErr = err
 			}
@@ -339,7 +350,9 @@ func (w *EnvironmentWorker) handleWork(ctx context.Context, work EnvironmentWork
 	}
 
 	stopCtx, cancelStop := context.WithTimeout(context.WithoutCancel(ctx), w.stopTimeout)
-	stopErr := itemClient.Environments.Work.Stop(stopCtx, work.EnvironmentID, work.ID, EnvironmentWorkStopRequest{Force: Some(true)})
+	stopErr := itemClient.Environments.Work.Stop(stopCtx, work.EnvironmentID, work.ID, EnvironmentWorkStopRequest{
+		Force: Some(true), ExpectedIdleEventID: expectedIdleEventID,
+	})
 	cancelStop()
 	if isAPIStatus(stopErr, http.StatusConflict) {
 		stopErr = nil

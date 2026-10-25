@@ -86,6 +86,8 @@ jobs:
       - uses: ./.github/actions/setup-helm
         id: helm
       - run: make release-unit
+      - run: npm ci --prefix scripts/release/please-tests --ignore-scripts
+      - run: make release-please-check
       - run: make release-build HELM='${{ steps.helm.outputs.path }}'
       - run: make release-check HELM='${{ steps.helm.outputs.path }}'
 
