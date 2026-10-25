@@ -318,7 +318,7 @@ func TestFileService_CleanupOutlivesCanceledRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	service.cleanupIncomplete(ctx, pending)
+	service.cleanupIncomplete(ctx, pending, true)
 	if len(repo.files) != 0 || len(blobs.objects) != 0 {
 		t.Fatalf("cleanup left row or blob: files=%+v objects=%+v", repo.files, blobs.objects)
 	}
@@ -361,6 +361,7 @@ func TestFileService_FailedUploadRetainsCleanupUntilStorageRecovers(t *testing.T
 }
 
 type memoryFileRepository struct {
+	memoryBlobCleanupRepository
 	mu                     sync.Mutex
 	files                  map[string]domain.File
 	completeErrAfterCommit error
@@ -464,6 +465,20 @@ func (r *memoryFileRepository) ListIncomplete(context.Context) ([]domain.File, e
 		}
 	}
 	return files, nil
+}
+
+func (r *memoryFileRepository) RenewUpload(context.Context, string) error                 { return nil }
+func (r *memoryFileRepository) ReleaseUpload(context.Context, string, string, bool) error { return nil }
+func (r *memoryFileRepository) ClaimIncomplete(_ context.Context, id string) (domain.File, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	file, ok := r.files[id]
+	if !ok || file.State == domain.FileStateReady || file.SessionID != "" {
+		return domain.File{}, false, nil
+	}
+	file.State = domain.FileStateDeleting
+	r.files[id] = file
+	return file, true, nil
 }
 
 type memoryBlobStore struct {

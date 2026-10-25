@@ -36,7 +36,7 @@ func TestPostgresHTTPSkillAdmissionUsesEffectiveAgentConfiguration(t *testing.T)
 	if err := repo.BeginSkill(ctx, skill, version); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := repo.CompleteVersion(ctx, skill.ID, version.Version, app.BlobInfo{}); err != nil {
+	if _, _, err := repo.CompleteVersion(ctx, skill.ID, version.Version, version.BlobKey, app.BlobInfo{}); err != nil {
 		t.Fatal(err)
 	}
 	skills := app.NewSkillService(repo, nil, fixture.ids, fixture.clock)

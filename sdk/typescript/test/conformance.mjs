@@ -9,15 +9,44 @@ const client = new Mango({ baseURL, apiKey, timeoutMs: 10_000 });
 const agents = [];
 const skillInput = { type: 'custom', skill_id: 'skill_reports', version: 'latest' };
 const resolvedSkill = { type: 'custom', skill_id: 'skill_reports', version: '1759178010641129' };
-const skillConfig = { skills: [skillInput], tools: [{ type: 'agent_toolset_20260401' }] };
+const skillConfig = { skills: [skillInput], tools: [{ type: 'agent_toolset_20260401', default_config: { enabled: false }, configs: [{ name: 'read', enabled: true, permission_policy: { type: 'auto' } }] }] };
 let environment;
 let session;
 try {
   await client.system.health();
+  await client.environments.work.stop('env_self_hosted', 'work_sdk', { force: true, expected_idle_event_id: 'sevt_idle_fixture' });
+  await assert.rejects(client.environments.work.stop('env_self_hosted', 'work_sdk', { force: true, expected_idle_event_id: 'sevt_stale' }), error => error instanceof APIError && error.status === 412 && error.type === 'precondition_failed_error' && !!error.requestId);
+  const threadFilter = { limit: 1, statuses: ['idle', 'running'] };
+  const threadPage = await client.sessions.threads.list('sesn_thread_filter', threadFilter);
+  assert.deepEqual(threadPage.data.map(item => item.id), ['sthr_filter_primary']);
+  assert.ok(threadPage.next_page);
+  const wantedThreads = ['sthr_filter_primary', 'sthr_filter_running', 'sthr_filter_waiting'];
+  const pagedThreads = [];
+  for await (const page of client.sessions.threads.listPages('sesn_thread_filter', threadFilter)) {
+    assert.equal(page.data.length, 1);
+    pagedThreads.push(...page.data.map(item => item.id));
+  }
+  assert.deepEqual(pagedThreads, wantedThreads);
+  const threadItems = [];
+  for await (const item of client.sessions.threads.listItems('sesn_thread_filter', threadFilter)) threadItems.push(item.id);
+  assert.deepEqual(threadItems, wantedThreads);
+  const mcpPage = await client.sessions.events.list("sesn_mcp_fixture");
+  assert.equal(mcpPage.data[0].type, "agent.mcp_tool_result");
+  assert.equal(mcpPage.data[0].file_id, "file_mcp_full");
+  const autoPage = await client.sessions.events.list("sesn_auto_fixture");
+  assert.equal(autoPage.data.length, 6);
+  for (const [index, event] of autoPage.data.entries()) {
+    assert.equal(event.type, index < 3 ? "agent.tool_use" : "agent.mcp_tool_use");
+    const expected = ["allow", "ask", "deny"][index % 3];
+    assert.equal(event.evaluated_permission, expected);
+    assert.equal(event.evaluation.type, "auto");
+    assert.equal(event.evaluation.evaluated_permission.type, expected);
+    if (expected !== "allow") assert.equal(event.evaluation.evaluated_permission.reason_code, expected === "ask" ? "indeterminate" : "high_risk");
+  }
   const payload = new Uint8Array([109, 97, 110, 103, 111, 0, 255]);
   const uploaded = await client.files.upload({ file: new File([payload], 'result.bin', { type: 'application/octet-stream' }) });
   try {
-    assert.deepEqual(Object.keys(uploaded).sort(), ['created_at', 'filename', 'id', 'mime_type', 'size_bytes', 'type']);
+    assert.deepEqual(Object.keys(uploaded).sort(), ['checksum_sha256', 'created_at', 'filename', 'id', 'mime_type', 'size_bytes', 'type']);
     assert.equal(uploaded.size_bytes, payload.length);
     const response = await client.files.download(uploaded.id);
     assert.deepEqual(new Uint8Array(await response.arrayBuffer()), payload);
@@ -33,6 +62,7 @@ try {
   assert.deepEqual(checks.data[0].data, { type: 'healthcheck' });
   for (let index = 0; index < 2; index++) agents.push(await client.agents.create({ name: `TypeScript conformance ${index}`, model: 'sdk-conformance', ...skillConfig }));
   assert.equal((await client.agents.retrieve(agents[0].id)).id, agents[0].id);
+  assert.deepEqual(agents[0].tools[0].configs[0].permission_policy, { type: "auto" });
   for (const agent of agents) {
     assert.deepEqual(agent.skills, [resolvedSkill]);
     assert.deepEqual((await client.agents.retrieve(agent.id)).skills, [resolvedSkill]);

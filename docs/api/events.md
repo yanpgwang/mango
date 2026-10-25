@@ -8,6 +8,9 @@ description: Send input, handle actions, and recover live event streams.
 Events are flat tagged-union objects. The `type` field selects the remaining
 shape; persisted events receive an `id` and `processed_at`.
 
+For an interactive operator client over these endpoints, use
+[`mango sessions connect`](../guides/session-connect.md).
+
 ## Send events
 
 `POST /v1/sessions/{id}/events`
@@ -32,7 +35,7 @@ The PostgreSQL/Temporal control plane currently accepts:
 | `user.interrupt` | Cancels active work, or is acknowledged as an idle no-op; omit `session_thread_id` to interrupt every non-archived Thread, or provide it to target one Thread |
 | `user.custom_tool_result` | Supplies a result for a pending custom tool call |
 | `user.tool_result` | Supplies a client-executed built-in result for a `self_hosted` environment |
-| `user.tool_confirmation` | Allows or denies a pending `always_ask` built-in |
+| `user.tool_confirmation` | Allows or denies a recorded `ask` tool call |
 | `user.define_outcome` | Starts outcome work and independent evaluation/revision cycles |
 | `system.message` | Text-only companion context; must be the final event immediately after a message or tool result |
 
@@ -42,6 +45,13 @@ The PostgreSQL/Temporal control plane currently accepts:
 stream. The event reference is authoritative for routing; the hint is optional
 and a conflicting value is rejected. The persisted response and any companion
 `system.message` belong to the child Thread.
+
+Relayed `agent.tool_use`, `agent.mcp_tool_use`, and `agent.custom_tool_use`
+events have a distinct primary-stream `id`, `session_thread_id`, and
+`source_event_id` pointing to the original child action. Match confirmations
+and results against either action ID when reconciling the child ledger. A
+confirmation may reference the primary relay or the child-local action; both
+identify the same pending action. Direct primary actions omit the source field.
 
 ### Handle required client actions
 
@@ -79,10 +89,27 @@ result returns `409` and commits none of the failing request. If a client loses
 the HTTP response, it should list persisted events and correlate the action ID
 before retrying rather than assuming the result was rejected.
 
+### Automatic permission events
+
+Built-in and MCP tool-use events carry both `evaluated_permission` (`allow`,
+`ask`, or `deny`) and typed `evaluation`. Fixed policies expose
+`{"type":"always_allow"}` or `{"type":"always_ask"}`. An automatic evaluation
+exposes `{"type":"auto","evaluated_permission":{"type":"allow"}}`,
+`{"type":"auto","evaluated_permission":{"type":"ask","reason_code":"indeterminate"}}`,
+or `{"type":"auto","evaluated_permission":{"type":"deny","reason_code":"high_risk"}}`.
+The top-level and nested outcomes agree. Custom tool-use events have neither
+permission field.
+
+An automatic denial produces a matching error tool result with
+`Permission to use {tool_name} has been denied.`; the Agent continues without
+executing that invocation. A confirmation for an allow or deny is rejected
+with `400`. See [Tool permissions](../guides/tool-permissions.md) for examples
+and evaluation limits.
+
 ### Approve externally executed tools
 
 Execution location does not change permission policy. A self-hosted built-in
-with `always_ask` emits `agent.tool_use` with `evaluated_permission: "ask"` and
+with a recorded `ask` outcome (`always_ask` or `auto`) emits `agent.tool_use` and
 waits for `user.tool_confirmation` referencing that original event ID.
 
 - `allow` authorizes the external worker to execute the original call. Mango
@@ -161,6 +188,30 @@ The response echoes only the submitted events:
 
 Status and agent output are asynchronous and appear in list/stream results.
 
+### Runtime content capacity
+
+Execution has a **1 MiB encoded limit per content-bearing internal Activity
+input or result**, including prepared context, model and tool results, Outcome
+and permission evaluation inputs, and batched turn output. This is separate
+from HTTP admission and model context-window limits. JSON escaping, metadata,
+and accumulated conversation can make the encoded value larger than an
+individual message; a successful event admission does not guarantee that the
+next turn fits.
+
+When this limit is exceeded, Mango ends the affected execution with a
+`session.error` whose `retry_status.type` is `terminal`, followed by the
+terminated status. The error identifies the operation and encoded size without
+including the content. An interrupt committed before completion retains its
+usual precedence. Already committed input, output, tool-journal records, and
+incurred usage remain durable. Oversized content from the uncommitted part of
+the turn may be discarded; do not rely on recovering that content from event
+history. A completed inference or journaled tool call is not repeated just
+because its result exceeds this transport limit.
+
+This development-preview limit does not provide unlimited Workflow history or
+lossless large-content transport. Split large work into smaller Sessions and
+keep application artifacts in Files or operator-managed storage.
+
 ## List events
 
 `GET /v1/sessions/{id}/events`
@@ -191,7 +242,11 @@ Ordering, timestamp bounds, and cursors use `processed_at`, matching the public
 contract despite the current query name `created_at`. Ascending order
 places processed events first and unprocessed (`null`) events last; descending
 order reverses that placement. The internal receipt sequence is used only as a
-stable tie-breaker for equal or null timestamps and is never exposed.
+stable tie-breaker for equal or null timestamps and is never exposed. An input
+can move from the null section to the processed section during pagination.
+For complete reconciliation, repeat the full ascending pass and deduplicate IDs:
+`processed_at` is assigned once, so rows missed while moving during the first
+pass have a stable position by the second pass.
 
 ## Interpret lifecycle events
 
@@ -312,3 +367,11 @@ frames are ephemeral and can be lost. A replacement API process opens a new
 subscription after the latest committed event; listing history after that
 stream is open fills the process-restart gap without replaying old events on the
 stream itself.
+
+### Large MCP text results
+
+`agent.mcp_tool_result` may include `file_id`, referencing the complete projected
+text retained by the [Files API](files.md#generated-mcp-output). The ordinary
+`content` carries a bounded preview and a path relative to the Session workspace
+root. The native Go worker prepares the file before local tool dispatch. This
+reference is server-emitted; applications cannot submit MCP result events.

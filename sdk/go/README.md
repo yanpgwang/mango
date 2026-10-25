@@ -5,12 +5,14 @@ current `/v1` OpenAPI contract, including health/readiness and the OpenAPI route
 It does not depend on Mango server packages, Temporal, or a hosted agent service.
 Go **1.24+** is required for the JSON omission semantics used by typed inputs.
 
-The SDK is pre-release and has not been published to a package registry or tagged
-for independent releases. To use this checkout from another Go module:
+The SDK is pre-release. Select a version matching your server from the
+[release record](https://github.com/yanpgwang/mango/releases); it identifies the
+published Go tag and inspected package artifacts. Before publication, or for
+development against this checkout, use a local module replacement:
 
 ```sh
 go mod edit -require=github.com/yanpgwang/mango/sdk/go@v0.0.0
-go mod edit -replace=github.com/yanpgwang/mango/sdk/go=/absolute/path/to/managed-agent-go/sdk/go
+go mod edit -replace=github.com/yanpgwang/mango/sdk/go=/absolute/path/to/mango/sdk/go
 go mod tidy
 ```
 
@@ -267,7 +269,19 @@ tool names are yielded with `Owned=false` and left pending for another owner.
 Tool errors and cooperative timeouts become error results.
 
 Reconnects always reconcile durable event history, and ambiguous result writes
-are checked against that history before retrying. This prevents duplicate event
+are checked against that history before retrying. The helper refreshes its live
+connection every 15 seconds, then subscribes before rereading complete history,
+so persisted actions can recover even if the old stream never returns EOF.
+Connection refresh does not cancel active tools or reset the deadline for a
+replayed end-turn; quiet approval waits remain valid. Opening a replacement
+and reading its complete history suspend idle expiry until reconciliation
+succeeds. On `ErrIdleTimeout`, `EnvironmentWorker` captures the decision's exact
+end-turn ID before Memory cleanup and sends it as `expected_idle_event_id` in
+Stop. A missing ID, stale `412`, or uncertain reply never falls back to
+unconditional Stop. Any still-active Work is left for lease reclaim; an
+uncertain reply may mean Stop already committed. Explicit operator Stop and
+other worker exit paths retain their existing semantics. This policy applies to
+`SessionToolRunner`, not the raw SSE iterator. This prevents duplicate event
 submission, but it cannot make an external tool side effect exactly once: a
 process can fail after the tool acts and before its result commits. Tools must
 honor cancellation and use `SessionToolCall.ToolUseID` as their idempotency key.

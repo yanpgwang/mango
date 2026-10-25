@@ -1,0 +1,12 @@
+Mango chart candidate {{ .Chart.Version }} uses operator state services and sandbox execution.
+This candidate does not establish a published alpha or verified Kubernetes recovery support.
+
+Inspect the API:
+  kubectl -n {{ .Release.Namespace }} port-forward service/{{ include "mango.resourceName" (dict "root" . "suffix" "api") }} 8080:{{ .Values.service.port }}
+  curl http://127.0.0.1:8080/readyz
+
+Authenticate /v1 requests with your existing API credential. Model credentials belong to
+orchestration; connect your own Environment worker using a scoped Environment key.
+
+Keep PostgreSQL, Temporal history, S3 bytes and original Vault keys when removing the chart.
+Cross-version upgrades and rollback are unsupported. See the Kubernetes guide before use.

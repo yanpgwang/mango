@@ -60,16 +60,20 @@ type SkillVersionDownload struct {
 // Begin operations commit before blob I/O; CompleteVersion is the visibility
 // boundary for an immutable archive.
 type SkillRepository interface {
+	BlobCleanupRepository
 	BeginSkill(context.Context, domain.Skill, domain.SkillVersion) error
 	BeginVersion(context.Context, domain.SkillVersion) error
-	CompleteVersion(context.Context, string, string, BlobInfo) (domain.Skill, domain.SkillVersion, error)
+	CompleteVersion(context.Context, string, string, string, BlobInfo) (domain.Skill, domain.SkillVersion, error)
+	RenewUpload(context.Context, string, string, string) error
+	ReleaseUpload(context.Context, string, string, string, bool) error
 	GetSkill(context.Context, string) (domain.Skill, error)
 	ListSkills(context.Context, SkillListQuery) (SkillListPage, error)
 	GetVersion(context.Context, string, string) (domain.SkillVersion, error)
 	ListVersions(context.Context, string, SkillVersionListQuery) (SkillVersionListPage, error)
 	BeginDeleteVersion(context.Context, string, string) (domain.SkillVersion, error)
-	RemoveIncompleteVersion(context.Context, string, string) error
+	RemoveIncompleteVersion(context.Context, string, string, string) error
 	ListIncompleteVersions(context.Context) ([]domain.SkillVersion, error)
+	ClaimIncompleteVersion(context.Context, string, string) (domain.SkillVersion, bool, error)
 	DeleteEmptySkill(context.Context, string) error
 	DeleteSkill(context.Context, string) (domain.Skill, error)
 }
@@ -146,11 +150,21 @@ func (s *SkillService) storeVersion(
 	version domain.SkillVersion,
 	archive []byte,
 ) (domain.Skill, domain.SkillVersion, error) {
+	writeFinished := false
+	ctx, stopLease := startUploadLease(ctx, UploadLeaseDuration/3,
+		func(ctx context.Context) error {
+			return s.repo.RenewUpload(ctx, version.SkillID, version.Version, version.BlobKey)
+		},
+		func(ctx context.Context) error {
+			return s.repo.ReleaseUpload(ctx, version.SkillID, version.Version, version.BlobKey, writeFinished)
+		})
+	defer stopLease()
 	info, err := s.blobs.Put(
 		ctx, version.BlobKey, "application/zip", bytes.NewReader(archive), MaxSkillUploadBytes,
 	)
+	writeFinished = err == nil || errors.Is(err, ErrBlobTooLarge) || errors.Is(err, ErrBlobNotWritten)
 	if err != nil {
-		s.cleanupIncompleteVersion(ctx, version)
+		s.cleanupIncompleteVersion(ctx, version, writeFinished)
 		if errors.Is(err, ErrBlobTooLarge) {
 			return domain.Skill{}, domain.SkillVersion{},
 				domain.TooLarge("Skill upload must be smaller than 30 MB")
@@ -158,9 +172,12 @@ func (s *SkillService) storeVersion(
 		return domain.Skill{}, domain.SkillVersion{}, err
 	}
 	completedSkill, completedVersion, err := s.repo.CompleteVersion(
-		ctx, version.SkillID, version.Version, info,
+		ctx, version.SkillID, version.Version, version.BlobKey, info,
 	)
 	if err != nil {
+		if errors.Is(err, ErrUploadLeaseLost) {
+			s.cleanupIncompleteVersion(ctx, version, writeFinished)
+		}
 		// A connection failure may be observed after PostgreSQL committed. Keep
 		// the archive so a visible ready Version never loses its bytes.
 		return domain.Skill{}, domain.SkillVersion{}, err
@@ -182,7 +199,7 @@ func (s *SkillService) newVersion(
 		CreatedAt: time.UnixMicro(epoch).UTC(),
 		Name:      bundle.Name, Description: bundle.Description, Directory: bundle.Directory,
 		BlobKey: workspace.BlobKey(
-			ctx, "skills/"+skillID+"/"+version+".zip",
+			ctx, "skills/"+skillID+"/"+version+"/"+s.ids.NewID("upload_")+".zip",
 		),
 		UncompressedSizeBytes: bundle.UncompressedSizeBytes,
 		State:                 domain.SkillVersionUploading,
@@ -353,7 +370,7 @@ func (s *SkillService) DeleteVersion(
 	if err := s.blobs.Delete(ctx, item.BlobKey); err != nil {
 		return domain.SkillVersion{}, err
 	}
-	if err := s.repo.RemoveIncompleteVersion(ctx, skillID, version); err != nil {
+	if err := s.repo.RemoveIncompleteVersion(ctx, skillID, version, item.BlobKey); err != nil {
 		return domain.SkillVersion{}, err
 	}
 	return item, nil
@@ -364,18 +381,30 @@ func (s *SkillService) Delete(ctx context.Context, id string) (domain.Skill, err
 }
 
 func (s *SkillService) Reconcile(ctx context.Context) error {
+	return reconcileBlobOperations(ctx, skillCleanupTimeout/2, s.repo, s.blobs, s.reconcileIncomplete)
+}
+
+func (s *SkillService) reconcileIncomplete(ctx context.Context) error {
 	versions, err := s.repo.ListIncompleteVersions(ctx)
 	if err != nil {
 		return err
 	}
 	for _, version := range versions {
+		claimed, ok, err := s.repo.ClaimIncompleteVersion(ctx, version.SkillID, version.Version)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		version = claimed
 		if err := s.blobs.Delete(ctx, version.BlobKey); err != nil {
 			return err
 		}
-		if err := s.repo.RemoveIncompleteVersion(ctx, version.SkillID, version.Version); err != nil {
+		if err := s.repo.RemoveIncompleteVersion(ctx, version.SkillID, version.Version, version.BlobKey); err != nil {
 			return err
 		}
-		if version.Initial && version.State == domain.SkillVersionUploading {
+		if version.Initial {
 			if err := s.repo.DeleteEmptySkill(ctx, version.SkillID); err != nil {
 				return err
 			}
@@ -384,15 +413,15 @@ func (s *SkillService) Reconcile(ctx context.Context) error {
 	return nil
 }
 
-func (s *SkillService) cleanupIncompleteVersion(ctx context.Context, version domain.SkillVersion) {
+func (s *SkillService) cleanupIncompleteVersion(ctx context.Context, version domain.SkillVersion, writeFinished bool) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), skillCleanupTimeout)
 	defer cancel()
-	if err := s.blobs.Delete(cleanupCtx, version.BlobKey); err != nil {
+	if err := cleanupBlob(cleanupCtx, s.repo, s.blobs, version.BlobKey, writeFinished); err != nil {
 		// Preserve the Version and its parent so reconciliation can retry an
 		// ambiguous upload's archive deletion after object storage recovers.
 		return
 	}
-	_ = s.repo.RemoveIncompleteVersion(cleanupCtx, version.SkillID, version.Version)
+	_ = s.repo.RemoveIncompleteVersion(cleanupCtx, version.SkillID, version.Version, version.BlobKey)
 	if version.Initial {
 		_ = s.repo.DeleteEmptySkill(cleanupCtx, version.SkillID)
 	}

@@ -23,6 +23,32 @@ same PostgreSQL transaction as the Session, its immutable Skill and Vault pins,
 initial events, and orchestration outbox.
 Deleting a Session cascades to its Threads.
 
+## List and filter Threads
+
+The list returns the primary Thread first, followed by children in spawn order.
+Use repeated `statuses[]` parameters to find Threads that are running or waiting
+for input without paging through unrelated work:
+
+```text
+GET /v1/sessions/{session_id}/threads?statuses[]=running&statuses[]=idle&limit=20
+```
+
+Accepted statuses are `idle`, `running`, `rescheduling`, and `terminated`.
+Omitting the filter includes every status; archived terminated Threads remain
+visible when they match. Empty or unknown values return `400`. Duplicate values
+and different ordering describe the same filter set.
+
+Filtering happens before `limit` is applied. Follow `next_page` using the same
+Session and status set; a different set returns `400`. An empty result has
+`data: []` and `next_page: null`. Each page reflects current Thread state, so
+status changes between requests can change which Threads match; pagination
+does not provide a snapshot.
+
+The SDKs expose `statuses` on Go `Sessions.Threads.List` and `ListAutoPaging`,
+Python sync/async `sessions.threads.list` and `iter`, and TypeScript
+`sessions.threads.list`, `listPages`, and `listItems`. Their pagination helpers
+retain the filter on every request.
+
 ## Projection model
 
 Each Thread owns an independent PostgreSQL projection of its immutable Agent
@@ -54,6 +80,11 @@ dominates a stale wake for the same Thread, and the relay retries the idempotent
 Temporal termination until it succeeds. Session deletion installs the same
 intent for every child before stopping the primary Workflow and releasing the
 sandbox.
+
+Pending child actions are relayed onto the primary ledger with a distinct ID
+and a `source_event_id` pointing to the child-local action. Applications can
+join decisions and results across the two histories without guessing from tool
+arguments or event positions. See [Events and streaming](events.md).
 
 ## Coordinator execution
 

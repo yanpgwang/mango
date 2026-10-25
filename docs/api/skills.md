@@ -10,6 +10,9 @@ Custom Skills are versioned zip bundles stored in S3-compatible storage. An
 Agent or Session resolves every reference to an immutable Skill Version before
 execution.
 
+Skill-enabled Agents must enable the ordinary `read` tool. The API rejects
+a Skill configuration whose toolset disables it.
+
 ```text
 POST   /v1/skills
 GET    /v1/skills
@@ -26,10 +29,16 @@ Skills routes require configured Files storage and Mango's standard bearer
 authentication. Create and Version uploads require `multipart/form-data`.
 
 If writing an archive fails and object cleanup also fails, Mango retains the
-hidden Version record so startup reconciliation can retry deletion after
+hidden Version record so startup and periodic reconciliation can retry deletion after
 storage recovers. A failed first upload also retains its hidden parent Skill
-until cleanup completes. Existing ready Versions remain available. As with
-Files, startup reconciliation currently requires one API process.
+until cleanup completes. Existing ready Versions remain available. Uploads use
+one-minute internal database leases renewed every 20 seconds; cleanup claims
+only ended or expired uploads and retries every 20 seconds. Completion checks
+ownership, including a unique archive object key for each upload attempt, so
+an old writer cannot affect a reused time-based Version. Lease loss cancels the
+upload. Independent object cleanup guards survive removal or reuse of a
+Version's metadata. Unknown remote writes keep a guard until writer completion
+can be confirmed. See the [recovery design](../design/blob-upload-recovery.md).
 
 ## Bundle contract
 

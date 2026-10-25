@@ -66,7 +66,7 @@ func TestEnvironmentHealthcheckDeadlineAfterRowLock(t *testing.T) {
 					expected := "stale"
 					_, err = repo.HeartbeatWork(ctx, work.EnvironmentID, work.ID, &expected, nil)
 				case "stop":
-					err = repo.StopWork(ctx, work.EnvironmentID, work.ID, false)
+					err = repo.StopWork(ctx, work.EnvironmentID, work.ID, false, nil)
 				case "complete":
 					_, err = repo.CompleteHealthcheck(callCtx, work.EnvironmentID, work.ID, domain.EnvironmentWorkResult{Status: "succeeded", Message: "ok"})
 				}

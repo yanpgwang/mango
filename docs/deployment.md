@@ -8,17 +8,40 @@ slug: /deployment
 
 Mango currently publishes a reproducible local stack and builds a multi-role
 application image. It does not yet publish a supported production Docker
-Compose bundle or Kubernetes chart.
+Compose bundle or Kubernetes distribution. A
+[Helm chart candidate](guides/kubernetes.md) is available in source, with isolated
+Kubernetes 1.37.0 installation, Mango restart and Work recovery acceptance.
+Independent external Temporal/database cold restore remains experimental with
+an unresolved failure. Runtime
+image/chart publication remains pending.
+
+Maintainers can build [matched release candidates](guides/release-candidates.md)
+with versioned commands, a packaged chart, SDK packages and multi-platform OCI archives. Candidate
+builds do not publish a runtime release or establish a supported installation.
+The [Kubernetes alpha delivery](design/kubernetes-alpha.md) limits the first
+distribution to fresh installation with external state services and an
+operator-owned sandbox worker; cloud execution is an independent future option.
 
 ## Supported assets
 
 | Asset | Status | Intended use |
 | --- | --- | --- |
-| Root `Dockerfile` | Buildable | Produce the API/worker image on Linux AMD64 or ARM64 |
-| `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, MinIO, API, and worker from the current checkout |
-| `deployments/self-hosted/docker` | Preview | Build and run the standalone Docker Environment Work supervisor and item image |
+| Root `Dockerfile` | Buildable | Produce the API/orchestration image on Linux AMD64 or ARM64 |
+| `deployments/local/compose.yaml` | Development | Run PostgreSQL, Temporal, NATS, SeaweedFS, API, and orchestrator from the current checkout |
+| `deployments/workers/docker` | Preview | Build and run the standalone Docker Environment Work supervisor and item image |
 | Production Docker Compose | Planned | Supported single-host installation using versioned release images |
-| Helm chart | Planned | Kubernetes API and worker deployments with external stateful dependencies |
+| Helm chart | Developer-preview candidate | Source or matched packaged chart with retained external state; Kubernetes 1.37.0 installation, Mango restart and Work recovery acceptance, publication pending |
+
+Choose the local Compose stack for source development, or the
+[Kubernetes guide](guides/kubernetes.md) for a control plane connected to your
+state services. Those services may run in the same cluster; they are external
+to the Mango chart's lifecycle. The current sandbox execution component is
+deployed separately on your Docker host and can connect to either control
+plane. A single-host bundle using release images remains planned.
+
+Deployment directories describe their purpose, while this table records their
+support status. Helm assets live in `charts/mango`; isolated Kubernetes test
+fixtures live in `scripts/kubernetes`, outside user installation assets.
 
 The local stack is intentionally complete so contributors can exercise the
 durable path without installing each dependency. It contains development
@@ -89,11 +112,13 @@ Environment workers use Mango credentials instead.
 
 ## Object storage
 
-Files add an S3-compatible dependency beside PostgreSQL, Temporal, and NATS.
+Files and Skill bundles add an S3-compatible dependency beside PostgreSQL,
+Temporal, and NATS.
 Set `MANGO_FILE_S3_BUCKET` to enable the five Files routes; leaving it
 empty keeps the rest of the API available and makes Files requests return
-`422`. Failure to initialize or reconcile the configured object store also
-disables only Files so the Mango core remains available. The API
+`422`. Failure to initialize the configured object store disables Files and Skills
+while the Mango core remains available. Once connected, a startup cleanup error
+is logged and retried periodically; it does not disable the resource APIs. The API
 process uses these settings for uploads and File-message admission. A worker
 that resolves File message content or File-backed outcome rubrics must use the
 same bucket, endpoint, region, and credentials (it does not run startup intent
@@ -106,20 +131,35 @@ operator-owned self-hosted concerns:
 | `MANGO_FILE_S3_REGION` | AWS region; defaults to `us-east-1` |
 | `MANGO_FILE_S3_ENDPOINT` | Optional S3-compatible endpoint |
 | `MANGO_FILE_S3_ACCESS_KEY` / `MANGO_FILE_S3_SECRET_KEY` | Optional static credentials; configure both together |
-| `MANGO_FILE_S3_PATH_STYLE` | Use path-style addressing for providers such as MinIO |
+| `MANGO_FILE_S3_PATH_STYLE` | Use path-style addressing for providers such as SeaweedFS |
 | `MANGO_FILE_S3_CREATE_BUCKET` | Development convenience; create a missing bucket |
 | `MANGO_FILE_UPLOAD_TEMP_DIR` | Directory for bounded upload spool files |
 
-The first Files slice assumes one Files-enabled API process during startup
-reconciliation. It also needs temporary disk capacity up to 500 MB per
-concurrent upload. These are explicit limits until distributed intent leasing
-and direct multipart object-store operations are implemented.
+Files and Skills uploads use renewable database leases so another API process's
+startup cleanup preserves active uploads. Leases last one minute and renew
+every 20 seconds. Startup and periodic cleanup atomically claim ended or expired
+uploads; periodic scans retry every 20 seconds. PostgreSQL measures expiry,
+independently of API clocks. See the [recovery design](design/blob-upload-recovery.md)
+for failure and verification boundaries. Files still need temporary disk capacity
+up to 500 MB per concurrent upload.
 
 The API and Temporal orchestration worker do not need Docker credentials. Run
 the standalone Environment worker where its selected Docker Engine is
 reachable. Configure a non-default daemon with `DOCKER_HOST` and standard
 Docker TLS variables on that worker only. Host-process execution is not a
 selectable runtime backend.
+
+The local and CI stack uses the SeaweedFS community image with persisted Filer
+metadata and object bytes. Production may use any suitable S3-compatible
+service; Mango does not require SeaweedFS. See the
+[local object-store guide](https://github.com/yanpgwang/mango/blob/main/deployments/local/README.md#development-object-store)
+for sizing, backup boundaries, and the transition from the old MinIO stack.
+
+Unconfirmed abandoned-upload guards remain in PostgreSQL and are revisited by
+bounded periodic object cleanup. They preserve recovery when an old writer or
+remote request might still commit after metadata removal. They must not be
+removed based only on elapsed time. Queue scans rotate through old guards;
+general guard inventory and safe compaction remain future operator work.
 
 ## Memory storage
 
@@ -190,10 +230,15 @@ the schema check, but the API's `/readyz` still rejects read-only PostgreSQL.
 
 ### Development database baseline
 
-The current schema starts from `internal/pg/migrations/00001_schema.sql`.
+The current schema starts from `internal/pg/migrations/20261005000001_schema.sql`.
 Historical pre-release migrations have been squashed into this baseline;
 their old-row backfills and downgrade paths are no longer supported. Mango
 has no supported stable release or customer database migration requirement.
+The first runtime alpha uses the distinct Goose version `20261005000001`, so
+the prior development baseline numbered `1` is rejected by migration and
+startup without modifying its state. Retrying initialization or restoring this
+same release's database preserves its existing data; this is not an upgrade
+path from an older checkout.
 
 Use a fresh development database when moving from a checkout that used the
 historical migration chain. Do not edit Goose's version table to make an old
@@ -206,7 +251,7 @@ check does not detect changes made within an already applied baseline.
 
 For a disposable local Compose stack, `make local-down VOLUMES=1` followed by
 `make local-up` rebuilds state from the baseline. **This deletes all local
-PostgreSQL data, Temporal history, and MinIO objects.** Back up anything you
+PostgreSQL data, Temporal history, and SeaweedFS objects.** Back up anything you
 need before using that reset. Contributor tests create isolated schemas and
 do not require resetting a running local stack.
 
@@ -230,7 +275,7 @@ make local-up
 make local-health
 ```
 
-Stop it while retaining PostgreSQL and MinIO data:
+Stop it while retaining PostgreSQL and SeaweedFS data:
 
 ```sh
 make local-down
@@ -244,7 +289,9 @@ make local-down VOLUMES=1
 
 ## Production promotion gates
 
-A supported Docker or Kubernetes bundle requires:
+A supported production Docker or Kubernetes bundle requires the following broader
+evidence. These are separate from the narrower fresh-install/same-release
+[alpha scope](design/kubernetes-alpha.md):
 
 1. explicit, versioned schema migration;
 2. dependency-aware API and worker readiness;
@@ -252,10 +299,11 @@ A supported Docker or Kubernetes bundle requires:
 4. repeatable live conformance for supported Environment launchers;
 5. real PostgreSQL, Temporal, NATS, S3-compatible storage, and worker
    integration tests in CI;
-6. distributed Files reconciliation and documented temporary-disk sizing;
+6. broader multi-replica recovery evidence and documented temporary-disk sizing;
 7. versioned images with upgrade and rollback documentation.
 
-Kubernetes packaging will use separate API and worker Deployments from the same
-image. Stateful services remain external by default. An Operator is not part
+The current chart uses separate API and Temporal orchestration Deployments from
+the same image. User sandbox execution stays outside those Deployments through
+Environment Work. Stateful services remain external. An Operator is not part
 of the initial deployment model and will be considered only if Mango introduces
 Kubernetes-native custom resources that require reconciliation.

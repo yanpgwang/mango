@@ -43,6 +43,8 @@ func NewWorkerOnTaskQueue(
 	w.RegisterActivityWithOptions(acts.CallModel, activity.RegisterOptions{Name: ActivityCallModel})
 	w.RegisterActivityWithOptions(acts.AccountModelRequest, activity.RegisterOptions{Name: ActivityAccountModelRequest})
 	w.RegisterActivityWithOptions(acts.EvaluateOutcome, activity.RegisterOptions{Name: ActivityEvaluateOutcome})
+	w.RegisterActivityWithOptions(acts.EnsureToolPermissionAttempt, activity.RegisterOptions{Name: ActivityEnsureToolPermissionAttempt})
+	w.RegisterActivityWithOptions(acts.EvaluateToolPermission, activity.RegisterOptions{Name: ActivityEvaluateToolPermission})
 	w.RegisterActivityWithOptions(acts.ExecuteTool, activity.RegisterOptions{Name: ActivityExecuteTool})
 	w.RegisterActivityWithOptions(acts.CompleteWorkflowTurn, activity.RegisterOptions{Name: ActivityCompleteWorkflowTurn})
 	return w
