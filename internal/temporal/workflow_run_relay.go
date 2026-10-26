@@ -12,7 +12,9 @@ import (
 )
 
 type WorkflowRunOutboxStore interface {
-	WorkflowRunWakeups(context.Context) ([]pg.WorkflowRunWakeup, error)
+	ClaimWorkflowRunWakeups(context.Context, int) ([]pg.WorkflowRunWakeup, error)
+	PrepareWorkflowRunStart(context.Context, pg.WorkflowRunWakeup) (bool, error)
+	DeferWorkflowRunWakeup(context.Context, pg.WorkflowRunWakeup) error
 	DeleteWorkflowRunWakeupIfUnchanged(context.Context, pg.WorkflowRunWakeup) (bool, error)
 }
 
@@ -33,15 +35,27 @@ func NewWorkflowRunRelay(store WorkflowRunOutboxStore, deliverer WorkflowRunWake
 }
 
 func (r *WorkflowRunRelay) RunOnce(ctx context.Context) (int, error) {
-	wakes, err := r.store.WorkflowRunWakeups(ctx)
-	if err != nil {
-		return 0, err
-	}
 	removed := 0
 	var failures []error
-	for _, wake := range wakes[:min(len(wakes), r.cfg.BatchSize)] {
-		if err := r.deliverer.WakeWorkflowRun(ctx, wake); err != nil {
-			failures = append(failures, err)
+	for range r.cfg.BatchSize {
+		wakes, err := r.store.ClaimWorkflowRunWakeups(ctx, 1)
+		if err != nil {
+			return removed, errors.Join(append(failures, err)...)
+		}
+		if len(wakes) == 0 {
+			break
+		}
+		wake := wakes[0]
+		wake.StartAllowed, err = r.store.PrepareWorkflowRunStart(ctx, wake)
+		if err != nil {
+			failures = append(failures, err, r.store.DeferWorkflowRunWakeup(ctx, wake))
+			continue
+		}
+		deliveryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err = r.deliverer.WakeWorkflowRun(deliveryCtx, wake)
+		cancel()
+		if err != nil {
+			failures = append(failures, err, r.store.DeferWorkflowRunWakeup(ctx, wake))
 			continue
 		}
 		deleted, err := r.store.DeleteWorkflowRunWakeupIfUnchanged(ctx, wake)
@@ -58,7 +72,7 @@ func (r *WorkflowRunRelay) Run(ctx context.Context) error {
 	ticker := time.NewTicker(r.cfg.PollInterval)
 	defer ticker.Stop()
 	for {
-		// Failed deliveries leave their durable rows. The caller can also drive
+		// Failed deliveries defer their durable rows with bounded retries. The caller can also drive
 		// RunOnce directly to observe errors; this loop retries until canceled.
 		if _, err := r.RunOnce(ctx); err != nil && ctx.Err() == nil {
 			// No raw transport/database error text: it is not a public log API.
@@ -76,11 +90,14 @@ func workflowRunWorkflowID(runID string) string { return "mango.workflow-run." +
 
 func (s *Signaler) WakeWorkflowRun(ctx context.Context, wake pg.WorkflowRunWakeup) error {
 	id := workflowRunWorkflowID(wake.RunID)
-	_, err := s.client.SignalWithStartWorkflow(ctx, id, WorkflowRunWakeSignal, wake, client.StartWorkflowOptions{
+	hint := pg.WorkflowRunWakeup{SessionID: wake.SessionID, RunID: wake.RunID, Version: wake.Version}
+	if !wake.StartAllowed {
+		return s.client.SignalWorkflow(ctx, id, "", WorkflowRunWakeSignal, hint)
+	}
+	_, err := s.client.SignalWithStartWorkflow(ctx, id, WorkflowRunWakeSignal, hint, client.StartWorkflowOptions{
 		ID: id, TaskQueue: s.taskQueue,
-		// Rejects closed IDs only while Temporal retains their history. This is
-		// not a durable PG chain-generation/reset fence; expired-history recovery
-		// remains a gate before this private relay can be enabled in the product.
+		// Retained history rejects a closed start. The PG binding independently
+		// fences a fresh chain after history expires, before evaluator access.
 		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 	}, WorkflowRunWorkflowType, WorkflowRunWorkflowInput{SessionID: wake.SessionID, RunID: wake.RunID})
 	return err

@@ -2035,8 +2035,24 @@ The opt-in coordinator and relay use the existing Run outbox/decision/receipt
 tables. No production language, engine, new journal or agent loop is introduced.
 Unsupported lifecycle/control reconciliation fails the private coordinator
 closed. Temporal's [Workflow ID reuse policy](https://docs.temporal.io/workflow-execution/workflowid-runid)
-rejects closed duplicates only while their history is retained; this is not a
-durable PostgreSQL coordinator-generation fence. History-expiration/reset
-reconciliation, fair relay retries, terminal Run delivery, Outcome resumption,
-ordered Promise replay, containment and public admission remain separate gates,
-not claims derived from this sequential experiment.
+rejects closed duplicates only while their history is retained. The subsequent
+internal reliability closure therefore binds chain/current physical ownership in
+PG and checks it before all frontier cached returns. The pinned Go SDK v1.48.0
+`WorkflowInfo` and API v1.63.4 start-event metadata distinguish `FirstRunID`
+(which spans CAN/retry/Cron/Reset), `OriginalRunID` (preserved by Reset), the
+physical RunID and CAN predecessor. Mango permits verified CAN handoff and
+rejects other ownership changes; these infrastructure IDs never become business
+pump/invocation keys. This is a Mango storage choice, not evidence of CMA internals.
+
+Fair retry selection, database-clock leases, capped backoff and quarantine are
+also Mango operator choices. A separately committed, one-time start reservation
+closes termination-before-first-Pump in the production relay: uncertain starts
+are followed only by signals, requiring reconciliation when no coordinator
+exists. PG cannot identify an arbitrary manual start before a chain is bound;
+manual recovery remains unsupported. Tests use real PG/Temporal and explicitly simulate
+absent history with a fresh fixture Temporal ID against the same PG Run. They do
+not establish elapsed retention or disaster recovery. Unsupported Reset is
+fenced; independent PG restore requires stopped workers and explicit effect
+reconciliation, since a rolled-back database cannot attest to its lost writes.
+Terminal Run delivery, Outcome resumption, ordered Promise replay, containment,
+full lifecycle and public admission remain separate gates.

@@ -28,6 +28,7 @@ type WorkflowRunWorkflowInput struct {
 type WorkflowRunPumpInput struct {
 	SessionID, RunID      string
 	Cursor, PreviousEpoch int64
+	Owner                 pg.WorkflowCoordinatorClaim
 }
 
 type WorkflowRunPumpResult struct {
@@ -36,7 +37,8 @@ type WorkflowRunPumpResult struct {
 }
 
 type WorkflowRunStore interface {
-	ClaimWorkflowEvaluator(context.Context, string, string, string, int64) (pg.WorkflowEvaluatorClaim, error)
+	BindWorkflowCoordinator(context.Context, string, string, pg.WorkflowCoordinatorClaim) error
+	ClaimWorkflowCoordinatorEvaluator(context.Context, string, string, string, int64, string) (pg.WorkflowEvaluatorClaim, error)
 	LoadWorkflowPumpSnapshot(context.Context, string, string, pg.WorkflowPumpRequest) (pg.WorkflowPumpSnapshot, error)
 	CommitWorkflowPump(context.Context, string, string, pg.WorkflowPumpRequest) (pg.WorkflowPumpDecision, error)
 }
@@ -61,11 +63,18 @@ func (a *WorkflowRunActivities) Pump(ctx context.Context, in WorkflowRunPumpInpu
 	if a.Store == nil || a.Evaluator == nil || in.Cursor < 0 || in.Cursor > 256 || in.PreviousEpoch < 0 {
 		return out, temporal.NewNonRetryableApplicationError("internal Workflow pump is unavailable or invalid", "WorkflowPumpConfiguration", nil)
 	}
-	claim, err := a.Store.ClaimWorkflowEvaluator(ctx, in.SessionID, in.RunID, workflowPumpID(in.Cursor), in.PreviousEpoch)
+	if !activity.IsActivity(ctx) || in.Owner.ExecutionID != activity.GetInfo(ctx).WorkflowExecution.RunID ||
+		in.Owner.Cursor != in.Cursor || in.Owner.PreviousEpoch != in.PreviousEpoch {
+		return out, workflowPumpError(domain.Conflict("untrusted Workflow coordinator identity"))
+	}
+	if err := a.Store.BindWorkflowCoordinator(ctx, in.SessionID, in.RunID, in.Owner); err != nil {
+		return out, workflowPumpError(err)
+	}
+	claim, err := a.Store.ClaimWorkflowCoordinatorEvaluator(ctx, in.SessionID, in.RunID, workflowPumpID(in.Cursor), in.PreviousEpoch, in.Owner.ExecutionID)
 	if err != nil {
 		return out, workflowPumpError(err)
 	}
-	request := pg.WorkflowPumpRequest{RequestID: workflowPumpID(in.Cursor), Epoch: claim.Epoch, ExpectedCursor: in.Cursor}
+	request := pg.WorkflowPumpRequest{RequestID: workflowPumpID(in.Cursor), Epoch: claim.Epoch, ExpectedCursor: in.Cursor, CoordinatorExecutionID: in.Owner.ExecutionID}
 	snapshot, err := a.Store.LoadWorkflowPumpSnapshot(ctx, in.SessionID, in.RunID, request)
 	if err != nil {
 		return out, workflowPumpError(err)
@@ -126,6 +135,12 @@ func workflowRunWorkflow(ctx workflow.Context, in WorkflowRunWorkflowInput, comm
 	if in.SessionID == "" || in.RunID == "" || in.Cursor < 0 || in.Cursor > 256 || in.PreviousEpoch < 0 || in.HintVersion < 0 || commandThreshold < 1 || reconcileAfter <= 0 {
 		return errors.New("invalid internal Workflow coordinator input")
 	}
+	info := workflow.GetInfo(ctx)
+	// FirstRunID also spans Reset. OriginalRunID differs from the physical RunID
+	// on Reset; such histories must never replay PG business decisions.
+	if info.FirstRunID == "" || info.OriginalRunID != info.WorkflowExecution.RunID || info.Attempt != 1 || info.CronSchedule != "" {
+		return temporal.NewNonRetryableApplicationError("Workflow coordinator history requires reconciliation", "WorkflowPumpFence", nil)
+	}
 	actx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: time.Minute,
 		RetryPolicy:         &temporal.RetryPolicy{InitialInterval: time.Second, MaximumInterval: time.Minute},
@@ -144,6 +159,7 @@ func workflowRunWorkflow(ctx workflow.Context, in WorkflowRunWorkflowInput, comm
 		var result WorkflowRunPumpResult
 		if err := workflow.ExecuteActivity(actx, ActivityWorkflowRunPump, WorkflowRunPumpInput{
 			SessionID: in.SessionID, RunID: in.RunID, Cursor: in.Cursor, PreviousEpoch: in.PreviousEpoch,
+			Owner: pg.WorkflowCoordinatorClaim{ChainID: info.FirstRunID, ExecutionID: info.WorkflowExecution.RunID, PredecessorID: info.ContinuedExecutionRunID, Cursor: in.Cursor, PreviousEpoch: in.PreviousEpoch},
 		}).Get(actx, &result); err != nil {
 			return err
 		}

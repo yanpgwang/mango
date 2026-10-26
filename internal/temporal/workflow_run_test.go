@@ -21,7 +21,10 @@ import (
 
 type coordinatorErrorStore struct{ err error }
 
-func (s coordinatorErrorStore) ClaimWorkflowEvaluator(context.Context, string, string, string, int64) (pg.WorkflowEvaluatorClaim, error) {
+func (coordinatorErrorStore) BindWorkflowCoordinator(context.Context, string, string, pg.WorkflowCoordinatorClaim) error {
+	return nil
+}
+func (s coordinatorErrorStore) ClaimWorkflowCoordinatorEvaluator(context.Context, string, string, string, int64, string) (pg.WorkflowEvaluatorClaim, error) {
 	return pg.WorkflowEvaluatorClaim{Epoch: 1}, s.err
 }
 func (coordinatorErrorStore) LoadWorkflowPumpSnapshot(context.Context, string, string, pg.WorkflowPumpRequest) (pg.WorkflowPumpSnapshot, error) {
@@ -51,9 +54,16 @@ func TestWorkflowRunErrorsDoNotEnterTemporalFailureHistory(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			acts := WorkflowRunActivities{Store: coordinatorErrorStore{tc.storeErr}, Evaluator: coordinatorErrorEvaluator{tc.evaluatorErr}}
-			_, err := acts.Pump(t.Context(), WorkflowRunPumpInput{SessionID: "session", RunID: "run"})
+			var suite testsuite.WorkflowTestSuite
+			env := suite.NewTestActivityEnvironment()
+			env.RegisterActivityWithOptions(func(ctx context.Context) (WorkflowRunPumpResult, error) {
+				return acts.Pump(ctx, WorkflowRunPumpInput{SessionID: "session", RunID: "run", Owner: pg.WorkflowCoordinatorClaim{ExecutionID: activity.GetInfo(ctx).WorkflowExecution.RunID}})
+			}, activity.RegisterOptions{Name: "probe"})
+			_, err := env.ExecuteActivity("probe")
 			require.Error(t, err)
-			failure := temporal.GetDefaultFailureConverter().ErrorToFailure(err)
+			var activityErr *temporal.ActivityError
+			require.ErrorAs(t, err, &activityErr)
+			failure := temporal.GetDefaultFailureConverter().ErrorToFailure(activityErr.Unwrap())
 			encoded, err := protojson.Marshal(failure)
 			require.NoError(t, err)
 			require.NotContains(t, string(encoded), secret)
@@ -74,14 +84,21 @@ func TestWorkflowRunContinueAsNewCarriesOnlyBoundedReferences(t *testing.T) {
 	env.RegisterDelayedCallback(func() {
 		env.SignalWorkflow(WorkflowRunWakeSignal, pg.WorkflowRunWakeup{SessionID: "session", RunID: "run", Version: 7})
 	}, 0)
-	env.ExecuteWorkflow(workflowRunWorkflow, WorkflowRunWorkflowInput{SessionID: "session", RunID: "run"}, 1, time.Minute)
+	env.ExecuteWorkflow(func(ctx workflow.Context) error {
+		info := workflow.GetInfo(ctx)
+		info.FirstRunID = info.WorkflowExecution.RunID
+		info.OriginalRunID = info.WorkflowExecution.RunID
+		return workflowRunWorkflow(ctx, WorkflowRunWorkflowInput{SessionID: "session", RunID: "run"}, 1, time.Minute)
+	})
 	var continued *workflow.ContinueAsNewError
 	require.ErrorAs(t, env.GetWorkflowError(), &continued)
 	require.Equal(t, WorkflowRunWorkflowType, continued.WorkflowType.Name)
 	var next WorkflowRunWorkflowInput
 	require.NoError(t, converter.GetDefaultDataConverter().FromPayloads(continued.Input, &next))
 	require.Equal(t, WorkflowRunWorkflowInput{SessionID: "session", RunID: "run", Cursor: 1, PreviousEpoch: 1, HintVersion: 7}, next)
-	require.Equal(t, WorkflowRunPumpInput{SessionID: "session", RunID: "run"}, observed)
+	require.Equal(t, "session", observed.SessionID)
+	require.Equal(t, observed.Owner.ExecutionID, observed.Owner.ChainID)
+	require.NotEmpty(t, observed.Owner.ExecutionID)
 	require.Less(t, continued.Input.Size(), 1024)
 }
 
@@ -92,11 +109,18 @@ type runRelayFixture struct {
 	signals                int
 }
 
-func (f *runRelayFixture) WorkflowRunWakeups(context.Context) ([]pg.WorkflowRunWakeup, error) {
+func (f *runRelayFixture) ClaimWorkflowRunWakeups(context.Context, int) ([]pg.WorkflowRunWakeup, error) {
 	if f.wake == nil {
 		return nil, nil
 	}
 	return []pg.WorkflowRunWakeup{*f.wake}, nil
+}
+
+func (*runRelayFixture) PrepareWorkflowRunStart(context.Context, pg.WorkflowRunWakeup) (bool, error) {
+	return true, nil
+}
+func (*runRelayFixture) DeferWorkflowRunWakeup(context.Context, pg.WorkflowRunWakeup) error {
+	return nil
 }
 
 func (f *runRelayFixture) DeleteWorkflowRunWakeupIfUnchanged(_ context.Context, wake pg.WorkflowRunWakeup) (bool, error) {
@@ -124,7 +148,7 @@ func (f *runRelayFixture) WakeWorkflowRun(context.Context, pg.WorkflowRunWakeup)
 
 func TestWorkflowRunRelayRetainsUnacknowledgedOrNewerWake(t *testing.T) {
 	f := &runRelayFixture{wake: &pg.WorkflowRunWakeup{SessionID: "session", RunID: "run", Version: 1}, failSignal: true}
-	relay := NewWorkflowRunRelay(f, f, RelayConfig{})
+	relay := NewWorkflowRunRelay(f, f, RelayConfig{BatchSize: 1})
 	n, err := relay.RunOnce(t.Context())
 	require.Error(t, err)
 	require.Zero(t, n)
@@ -164,11 +188,45 @@ func (c *runStartClient) SignalWithStartWorkflow(_ context.Context, id, name str
 func TestWorkflowRunSignalerRejectsClosedIDsWhileHistoryRetained(t *testing.T) {
 	c := &runStartClient{}
 	s := NewSignalerOnTaskQueue(c, "queue")
-	wake := pg.WorkflowRunWakeup{SessionID: "session", RunID: "run", Version: 3}
+	wake := pg.WorkflowRunWakeup{SessionID: "session", RunID: "run", Version: 3, StartAllowed: true}
 	require.NoError(t, s.WakeWorkflowRun(t.Context(), wake))
 	require.Equal(t, "mango.workflow-run.run", c.options.ID)
 	require.Equal(t, enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE, c.options.WorkflowIDReusePolicy)
 	require.Equal(t, "queue", c.options.TaskQueue)
 	require.Equal(t, WorkflowRunWorkflowInput{SessionID: "session", RunID: "run"}, c.input)
+	wake.StartAllowed = false
 	require.Equal(t, wake, c.wake)
+}
+
+// The real Activity metadata independently fences a replayed predecessor input,
+// even if a Workflow-level guard or a completed bind was replayed from history.
+func TestWorkflowRunPumpRejectsForeignPhysicalExecution(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestActivityEnvironment()
+	acts := WorkflowRunActivities{Store: coordinatorUntouchedStore{}, Evaluator: coordinatorErrorEvaluator{}}
+	env.RegisterActivity(acts.Pump)
+	_, err := env.ExecuteActivity(acts.Pump, WorkflowRunPumpInput{SessionID: "session", RunID: "run", Owner: pg.WorkflowCoordinatorClaim{ChainID: "old-physical", ExecutionID: "old-physical"}})
+	require.ErrorContains(t, err, "reconciliation")
+}
+
+type coordinatorUntouchedStore struct{ coordinatorErrorStore }
+
+func (coordinatorUntouchedStore) BindWorkflowCoordinator(context.Context, string, string, pg.WorkflowCoordinatorClaim) error {
+	panic("foreign physical Activity must not reach PG")
+}
+
+func (c *runStartClient) SignalWorkflow(_ context.Context, id, _ string, signalName string, arg interface{}) error {
+	if id != "mango.workflow-run.run" || signalName != WorkflowRunWakeSignal {
+		return errors.New("unexpected signal target")
+	}
+	c.wake = arg.(pg.WorkflowRunWakeup)
+	return nil
+}
+func TestWorkflowRunRetryCannotStartAnotherChain(t *testing.T) {
+	c := &runStartClient{}
+	s := NewSignalerOnTaskQueue(c, "queue")
+	require.NoError(t, s.WakeWorkflowRun(t.Context(), pg.WorkflowRunWakeup{SessionID: "session", RunID: "run", Version: 2, LeaseToken: "transport-only", DeliveryAttempt: 2}))
+	require.EqualValues(t, 2, c.wake.Version)
+	require.Empty(t, c.input.SessionID, "retry uses Signal only")
+	require.Empty(t, c.wake.LeaseToken)
 }

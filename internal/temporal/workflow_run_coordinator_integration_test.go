@@ -22,7 +22,6 @@ import (
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
-	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 )
@@ -175,10 +174,12 @@ func TestWorkflowRunCoordinatorRecoveryRealTemporal(t *testing.T) {
 	require.Equal(t, first.runID, replay.runID)
 	require.Greater(t, replay.attempt, first.attempt)
 	faults.mu.Unlock()
-	_, err = (&WorkflowRunActivities{Store: store, Evaluator: evaluator}).Pump(ctx, first.input)
-	var fenced *temporal.ApplicationError
-	require.ErrorAs(t, err, &fenced)
-	require.True(t, fenced.NonRetryable(), "the old evaluator must not read/advance after ownership rotated")
+	// This is a direct PG fence probe using the predecessor physical ID
+	// recorded by the actual SDK Activity, not a fake Activity-context replay.
+	_, err = store.ClaimWorkflowCoordinatorEvaluator(ctx, session.ID, run.ID, "pump/0", 0, first.runID)
+	require.ErrorContains(t, err, "coordinator")
+	_, err = store.LoadWorkflowPumpSnapshot(ctx, session.ID, run.ID, pg.WorkflowPumpRequest{RequestID: "pump/0", Epoch: 1, CoordinatorExecutionID: first.runID})
+	require.ErrorContains(t, err, "coordinator", "old execution cannot read its committed decision after CAN")
 	_, err = threadRelay.RunOnce(ctx)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
@@ -328,8 +329,8 @@ type coordinatorLossStore struct {
 	faults *coordinatorRecoveryFaults
 }
 
-func (s *coordinatorLossStore) ClaimWorkflowEvaluator(ctx context.Context, sessionID, runID, claim string, previous int64) (pg.WorkflowEvaluatorClaim, error) {
-	out, err := s.Store.ClaimWorkflowEvaluator(ctx, sessionID, runID, claim, previous)
+func (s *coordinatorLossStore) ClaimWorkflowCoordinatorEvaluator(ctx context.Context, sessionID, runID, claim string, previous int64, owner string) (pg.WorkflowEvaluatorClaim, error) {
+	out, err := s.Store.ClaimWorkflowCoordinatorEvaluator(ctx, sessionID, runID, claim, previous, owner)
 	if err == nil && claim == "pump/0" && s.faults.claimLost.CompareAndSwap(false, true) {
 		return pg.WorkflowEvaluatorClaim{}, errors.New("injected claim SQL ACK loss")
 	}

@@ -25,9 +25,10 @@ type WorkflowPumpCommand struct {
 }
 
 type WorkflowPumpRequest struct {
-	RequestID             string
-	Epoch, ExpectedCursor int64
-	Command               WorkflowPumpCommand
+	RequestID              string
+	Epoch, ExpectedCursor  int64
+	CoordinatorExecutionID string
+	Command                WorkflowPumpCommand
 }
 
 type WorkflowPumpDecision struct {
@@ -41,6 +42,7 @@ type workflowFrontier struct {
 	epoch, cursor  int64
 	bytes          int64
 	state          string
+	coordinator    string
 	deadline       time.Time
 	pauses         []string
 	roster         []byte
@@ -49,8 +51,8 @@ type workflowFrontier struct {
 
 func lockWorkflowFrontier(ctx context.Context, tx pgx.Tx, sessionID, runID string) (workflowFrontier, error) {
 	var f workflowFrontier
-	err := tx.QueryRow(ctx, `SELECT evaluator_epoch,journal_cursor,journal_bytes,state,deadline,pause_reasons,roster,max_invocations
-FROM workflow_runs WHERE session_id=$1 AND id=$2 FOR UPDATE`, sessionID, runID).Scan(&f.epoch, &f.cursor, &f.bytes, &f.state, &f.deadline, &f.pauses, &f.roster, &f.maxInvocations)
+	err := tx.QueryRow(ctx, `SELECT evaluator_epoch,journal_cursor,journal_bytes,state,deadline,pause_reasons,roster,max_invocations,coordinator_execution_id
+FROM workflow_runs WHERE session_id=$1 AND id=$2 FOR UPDATE`, sessionID, runID).Scan(&f.epoch, &f.cursor, &f.bytes, &f.state, &f.deadline, &f.pauses, &f.roster, &f.maxInvocations, &f.coordinator)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return f, domain.NotFound("Workflow Run not found")
 	}
@@ -74,6 +76,10 @@ func validWorkflowRequestID(id string) bool {
 // ClaimWorkflowEvaluator is an explicit CAS ownership replacement. Repeating a
 // committed claim returns its original snapshot; a stale epoch cannot write.
 func (s *Store) ClaimWorkflowEvaluator(ctx context.Context, sessionID, runID, claimID string, previousEpoch int64) (WorkflowEvaluatorClaim, error) {
+	return s.claimWorkflowEvaluator(ctx, sessionID, runID, claimID, previousEpoch, "")
+}
+
+func (s *Store) claimWorkflowEvaluator(ctx context.Context, sessionID, runID, claimID string, previousEpoch int64, owner string) (WorkflowEvaluatorClaim, error) {
 	if !validWorkflowRequestID(claimID) || previousEpoch < 0 {
 		return WorkflowEvaluatorClaim{}, domain.Validation("invalid Workflow evaluator claim")
 	}
@@ -85,6 +91,9 @@ func (s *Store) ClaimWorkflowEvaluator(ctx context.Context, sessionID, runID, cl
 		}
 		f, err := lockWorkflowFrontier(ctx, tx, sessionID, runID)
 		if err != nil {
+			return err
+		}
+		if err = checkWorkflowCoordinator(f, owner); err != nil {
 			return err
 		}
 		var prior int64
@@ -146,6 +155,9 @@ func (s *Store) CommitWorkflowPump(ctx context.Context, sessionID, runID string,
 		}
 		f, err := lockWorkflowFrontier(ctx, tx, sessionID, runID)
 		if err != nil {
+			return err
+		}
+		if err = checkWorkflowCoordinator(f, in.CoordinatorExecutionID); err != nil {
 			return err
 		}
 		if f.epoch != in.Epoch {

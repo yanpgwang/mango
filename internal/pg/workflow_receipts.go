@@ -53,6 +53,9 @@ type WorkflowInvocationReceipt struct {
 type WorkflowRunWakeup struct {
 	SessionID, RunID string
 	Version          int64
+	LeaseToken       string
+	DeliveryAttempt  int
+	StartAllowed     bool
 }
 
 func (s *Store) AdmitWorkflowRun(ctx context.Context, sessionID, key string, request WorkflowRunRequest) (WorkflowRun, error) {
@@ -129,11 +132,12 @@ func (s *Store) AdmitWorkflowInvocation(ctx context.Context, sessionID, runID st
 			return err
 		}
 		var epoch int64
+		var coordinator string
 		var pauses []string
-		if err := tx.QueryRow(ctx, `SELECT evaluator_epoch,pause_reasons FROM workflow_runs WHERE session_id=$1 AND id=$2 FOR UPDATE`, sessionID, runID).Scan(&epoch, &pauses); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT evaluator_epoch,pause_reasons,coordinator_execution_id FROM workflow_runs WHERE session_id=$1 AND id=$2 FOR UPDATE`, sessionID, runID).Scan(&epoch, &pauses, &coordinator); err != nil {
 			return err
 		}
-		if epoch != 0 {
+		if epoch != 0 || coordinator != "" {
 			return domain.Conflict("Workflow admission requires its fenced frontier")
 		}
 		if len(pauses) != 0 || session.BudgetReached(s.clock.Now()) {
@@ -383,8 +387,10 @@ func (s *Store) advanceWorkflowRunLocked(ctx context.Context, tx pgx.Tx, session
 }
 
 func (s *Store) enqueueWorkflowRunLocked(ctx context.Context, tx pgx.Tx, sessionID, runID string, version int64) error {
-	_, err := tx.Exec(ctx, `INSERT INTO workflow_run_outbox(session_id,run_id,version,enqueued_at) VALUES($1,$2,$3,$4)
-ON CONFLICT(run_id) DO UPDATE SET version=GREATEST(workflow_run_outbox.version,EXCLUDED.version)`, sessionID, runID, version, s.clock.Now())
+	_, err := tx.Exec(ctx, `INSERT INTO workflow_run_outbox(session_id,run_id,version,enqueued_at,available_at) VALUES($1,$2,$3,$4,statement_timestamp())
+ON CONFLICT(run_id) DO UPDATE SET version=EXCLUDED.version,
+ delivery_attempts=0,available_at=statement_timestamp(),lease_token=''
+ WHERE EXCLUDED.version>workflow_run_outbox.version`, sessionID, runID, version, s.clock.Now())
 	return err
 }
 
@@ -452,7 +458,7 @@ func (s *Store) DeleteWorkflowRunWakeupIfUnchanged(ctx context.Context, wake Wor
 		if _, err := s.lockWorkflowSession(ctx, q, wake.SessionID); err != nil {
 			return err
 		}
-		command, err := tx.Exec(ctx, `DELETE FROM workflow_run_outbox WHERE session_id=$1 AND run_id=$2 AND version=$3`, wake.SessionID, wake.RunID, wake.Version)
+		command, err := tx.Exec(ctx, `DELETE FROM workflow_run_outbox WHERE session_id=$1 AND run_id=$2 AND version=$3 AND lease_token=$4 AND ($4<>'' OR delivery_attempts=0)`, wake.SessionID, wake.RunID, wake.Version, wake.LeaseToken)
 		deleted = command.RowsAffected() == 1
 		return err
 	})
