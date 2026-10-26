@@ -11,7 +11,7 @@ native `fetch` and has no runtime dependencies.
 
 ## Install
 
-This guide targets `0.1.0-alpha.4`. Select a matching package confirmed in the <!-- x-release-please-version -->
+This guide targets `0.1.0-alpha.5`. Select a matching package confirmed in the <!-- x-release-please-version -->
 [release record](https://github.com/yanpgwang/mango/releases). Before publication
 or during development, use [source installation](../sdk.md#install-from-source)
 or an inspected candidate. Published alpha 1 uses an earlier interface.

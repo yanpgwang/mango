@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mango-sdk"
-version = "0.1.0a4"
+version = "0.1.0a5"
 description = "Typed synchronous and asynchronous client for the Mango development API"
 readme = "README.md"
 requires-python = ">=3.11"
