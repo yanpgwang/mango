@@ -70,6 +70,12 @@ runs when the study changes. Passing it is partial feasibility evidence, not a
 released executor or the complete program-runtime gate; see
 [`scripts/workflow-runtime/README.md`](scripts/workflow-runtime/README.md).
 
+The separate `TestWorkflowThreadRecoveryRealTemporal` service test exercises
+the existing coordinator/Thread journal, outbox and completion transactions under
+lost acknowledgements, worker replacement and Continue-As-New. It runs in
+`make test-service-core`; it is not a Run executor or a complete Workflow gate.
+See the [experiment and remaining boundaries](docs/design/workflow-runtime-study.md#existing-coordinator-and-thread-recovery-experiment).
+
 `make lint` checks changes relative to `origin/main`, matching the incremental
 CI rollout. Set `LINT_BASE` when your comparison branch differs.
 
