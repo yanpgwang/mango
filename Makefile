@@ -138,7 +138,7 @@ test-workflow-quickjs-integration:
 		MANGO_TEST_QUICKJS_IMAGE=mango-workflow-quickjs-vertical:study \
 		MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
 		MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
-		$(GO) test -timeout 10m -count=1 -v ./internal/temporal -run '^TestQuickJSRunVerticalRealServices$$'
+		$(GO) test -timeout 10m -count=1 -v ./internal/temporal -run '^TestQuickJS(RunVertical|FactcheckPipeline|FactcheckLifecycleBoundary)RealServices$$'
 
 test-workflow-runtime:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null

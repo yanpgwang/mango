@@ -6,6 +6,10 @@ slug: /design/workflow-runtime-study
 
 # Workflow program replay study
 
+The [dynamic workflow acceptance evidence](workflow-dynamic-acceptance.md)
+records the actual ten-claim JS pipeline port, independent service assertions,
+and the still-missing Run-to-primary completion loop.
+
 **Status: first feasibility study, 2026-10-25. No product executor is shipped.**
 This records evidence for the [program execution proposal](workflow-program-runtime.md).
 The current Session/Thread/PostgreSQL/Temporal boundaries remain suitable; this

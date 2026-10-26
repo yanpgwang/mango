@@ -58,6 +58,8 @@ type quickJSVerticalFixture struct {
 
 func newQuickJSVerticalFixture(t *testing.T, image string) *quickJSVerticalFixture {
 	t.Helper()
+	require.NotEmpty(t, os.Getenv("MANGO_TEST_DATABASE_URL"), "explicit disposable database endpoint required")
+	require.NotEmpty(t, os.Getenv("MANGO_TEST_TEMPORAL_HOSTPORT"), "explicit disposable Temporal endpoint required")
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	t.Cleanup(cancel)
 	ids := domain.NewRandomIDGen()
@@ -81,12 +83,16 @@ func newQuickJSVerticalFixture(t *testing.T, image string) *quickJSVerticalFixtu
 	return &quickJSVerticalFixture{ctx: ctx, pool: pool, store: pg.NewDefaultWorkspaceStore(pool, ids, payloadOutcomeClock{}), client: c, ids: ids, queue: "quickjs-vertical-" + ids.NewID(""), image: image, profile: "test-only/quickjs-study/v1/" + image}
 }
 func (f *quickJSVerticalFixture) admit(t *testing.T, source string) pg.WorkflowRun {
+	return f.admitRequest(t, pg.WorkflowRunRequest{Source: source, RuntimeProfile: f.profile, Input: json.RawMessage(`{"prefix":"A","topic":"workflow","offset":5,"tag":{"study":true}}`), Deadline: time.Now().UTC().Add(time.Hour), MaxInvocations: 2, MaxResultBytes: 1024})
+}
+
+func (f *quickJSVerticalFixture) admitRequest(t *testing.T, request pg.WorkflowRunRequest) pg.WorkflowRun {
 	t.Helper()
 	now := time.Now().UTC()
 	session := domain.Session{ID: f.ids.NewID(domain.PrefixSession), AgentID: "primary", AgentVersion: 1, EnvironmentID: "env_quickjs_proof", Status: domain.StatusIdle, Metadata: map[string]any{}, CreatedAt: now, UpdatedAt: now, AgentSnapshot: domain.Agent{ID: "primary", Version: 1, Model: domain.Model{ID: "must-not-run"}}, MultiagentRoster: []domain.Agent{{ID: "reviewer", Name: "reviewer", Version: 1, Model: domain.Model{ID: "quickjs-oracle"}}}}
 	_, err := f.store.CreateSession(f.ctx, session, nil)
 	require.NoError(t, err)
-	run, err := f.store.AdmitWorkflowRun(f.ctx, session.ID, "frozen-js", pg.WorkflowRunRequest{Source: source, RuntimeProfile: f.profile, Input: json.RawMessage(`{"prefix":"A","topic":"workflow","offset":5,"tag":{"study":true}}`), Deadline: now.Add(time.Hour), MaxInvocations: 2, MaxResultBytes: 1024})
+	run, err := f.store.AdmitWorkflowRun(f.ctx, session.ID, "frozen-js", request)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		threads, err := f.store.ListChildSessionThreadIDs(context.Background(), session.ID)
