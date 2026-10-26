@@ -73,7 +73,7 @@ version. Install the inspected files directly in your application's environment:
 ```sh
 VERSION=0.1.0-alpha.5 # x-release-please-version
 npm install "/absolute/path/to/mango-sdk-${VERSION}.tgz"
-python -m pip install /absolute/path/to/mango_sdk-0.1.0a4-py3-none-any.whl
+python -m pip install /absolute/path/to/mango_sdk-0.1.0a5-py3-none-any.whl
 ```
 
 The Go source zip is an independently buildable module. Extract it and use a

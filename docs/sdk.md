@@ -22,7 +22,7 @@ For your first complete application, follow the [Quickstart](getting-started.md)
 
 ## Current development version
 
-This checkout targets Python `0.1.0a4`,
+This checkout targets Python `0.1.0a5`,
 TypeScript `0.1.0-alpha.5` and Go <!-- x-release-please-version -->
 `v0.1.0-alpha.5`. Select matching public versions from the <!-- x-release-please-version -->
 [release record](https://github.com/yanpgwang/mango/releases), which confirms
