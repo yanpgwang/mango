@@ -235,6 +235,9 @@ before the Session Outcome projection advances to the next iteration.
 
 Reservation release/fencing commits with the owning end event in the progress
 or final-completion transaction, including correlated interrupt/failure ends.
+When a completed `needs_revision` grade races an interrupt, its end remains in
+the committed prefix and releases that reservation; the interrupted revision
+has no grading start. A distinct next open grading span retains its identity.
 It is never released in an Activity defer or by a timeout alone. Missing
 historical/direct start ownership fails closed in the production adapter.
 Open-Run denial is an Activity/control error before inference, not a failed

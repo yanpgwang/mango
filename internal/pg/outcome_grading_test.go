@@ -107,3 +107,51 @@ func TestOutcomeGradingReservationInterruptFencesExactOwner(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "interrupted", got.Outcomes[0].Result)
 }
+
+func TestOutcomeGradingCompletedRevisionInterruptCommitsOnce(t *testing.T) {
+	store, session, request, trigger, reservation := outcomeReservationFixture(t)
+	require.NoError(t, store.ReserveOutcomeGrading(t.Context(), reservation))
+	_, err := store.AdmitEvents(t.Context(), session.ID, []domain.EventDraft{{Type: domain.EvUserInterrupt, Payload: map[string]any{}}})
+	require.NoError(t, err)
+	// The grading Activity completed while the interrupt watcher also won.
+	// The Workflow preserves the completed grade and carries its active-start
+	// metadata into completion; interruption now belongs to revision work.
+	drafts := []domain.EventDraft{gradingEnd(reservation, "needs_revision"), {
+		Type: domain.EvSessionStatusIdle,
+		Payload: map[string]any{"stop_reason": map[string]any{"type": "end_turn"},
+			domain.InternalOutcomeEvaluationStart: reservation.StartEventID,
+			domain.InternalOutcomeIteration:       0},
+	}}
+	usage := domain.TokenUsage{InputTokens: 13, OutputTokens: 5}
+	completion, err := store.CompleteWorkflowTurnWithUsage(t.Context(), session.ID, trigger.ID, drafts, domain.StatusIdle, "", "", nil, nil, nil, usage)
+	require.NoError(t, err)
+	require.True(t, completion.Applied)
+	require.Equal(t, "interrupted", completion.Session.Outcomes[0].Result)
+	require.Equal(t, 1, completion.Session.Outcomes[0].Iteration)
+	var ends []domain.Event
+	for _, event := range completion.Events {
+		if event.Type == domain.EvSpanOutcomeEvaluationEnd {
+			ends = append(ends, event)
+		}
+	}
+	require.Len(t, ends, 2)
+	require.Equal(t, reservation.EndEventID, ends[0].ID)
+	require.Equal(t, "needs_revision", ends[0].Payload["result"])
+	require.Equal(t, reservation.StartEventID, ends[0].Payload["outcome_evaluation_start_id"])
+	require.Equal(t, "interrupted", ends[1].Payload["result"])
+	require.Empty(t, ends[1].Payload["outcome_evaluation_start_id"], "revision work has no open grading span")
+	require.Equal(t, 1, ends[1].Payload["iteration"])
+	var state, terminal string
+	require.NoError(t, store.pool.QueryRow(t.Context(), `SELECT state,terminal_event_id FROM outcome_grading_reservations WHERE start_event_id=$1`, reservation.StartEventID).Scan(&state, &terminal))
+	require.Equal(t, "finished", state)
+	require.Equal(t, reservation.EndEventID, terminal)
+	_, err = store.AdmitWorkflowRun(t.Context(), session.ID, "after-completed-grade-interrupt", request)
+	require.NoError(t, err, "the completed grading reservation must be released")
+	replayed, err := store.CompleteWorkflowTurnWithUsage(t.Context(), session.ID, trigger.ID, drafts, domain.StatusIdle, "", "", nil, nil, nil, usage)
+	require.NoError(t, err)
+	require.False(t, replayed.Applied, "lost completion ACK replays without replacing the result")
+	got, err := store.GetSession(t.Context(), session.ID)
+	require.NoError(t, err)
+	require.Equal(t, usage.InputTokens, got.Usage.InputTokens)
+	require.Equal(t, usage.OutputTokens, got.Usage.OutputTokens)
+}

@@ -124,6 +124,24 @@ func TestDefineOutcomeProjectsLifecycleAndTerminalEvaluation(t *testing.T) {
 	}
 }
 
+func TestInterruptedOutcomePreservesDistinctOpenGradingStart(t *testing.T) {
+	drafts, iteration, startID := interruptedTurnDrafts([]domain.EventDraft{
+		{ID: "sevt_completed_grade", Type: domain.EvSpanOutcomeEvaluationEnd, Payload: map[string]any{
+			"outcome_evaluation_start_id": "sevt_start_0", "iteration": 0, "result": "needs_revision",
+		}},
+		{Type: domain.EvSessionStatusIdle, Payload: map[string]any{
+			domain.InternalOutcomeEvaluationStart: "sevt_start_1",
+			domain.InternalOutcomeIteration:       1,
+		}},
+	})
+	if iteration != 1 || startID != "sevt_start_1" {
+		t.Fatalf("interruption lost its distinct open grading span: iteration=%d start=%q", iteration, startID)
+	}
+	if len(drafts) != 1 || drafts[0].ID != "sevt_completed_grade" {
+		t.Fatalf("completed grading prefix changed: %+v", drafts)
+	}
+}
+
 func TestOutcomeInterruptUsesEmptyStartIDAndPreservesCompletedRevision(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()

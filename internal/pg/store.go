@@ -2830,6 +2830,12 @@ func interruptedTurnDrafts(drafts []domain.EventDraft) ([]domain.EventDraft, int
 			)
 		}
 	}
+	// A completed needs_revision grade belongs to the preserved prefix. An
+	// interrupt after it ends revision work, which has no grading start yet.
+	// Retain a distinct next open start rather than reusing the completed span.
+	if _, completed := completedOutcomeStarts[interruptedOutcomeStartID]; completed {
+		interruptedOutcomeStartID = ""
+	}
 
 	out := make([]domain.EventDraft, 0, len(drafts))
 	for _, draft := range drafts {
