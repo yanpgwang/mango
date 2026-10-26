@@ -91,6 +91,8 @@ PostgreSQL receipts and Thread runner. Set disposable `MANGO_TEST_DATABASE_URL`
 and `MANGO_TEST_TEMPORAL_HOSTPORT` addresses. It uses deterministic model fixtures,
 never provider credentials. Default tests skip it; see the
 [bounded proof](docs/design/workflow-runtime-study.md#real-quickjs-runthread-proof).
+The same target includes the independent ten-claim pipeline and explicit missing
+lifecycle probes; see [acceptance scope](docs/design/workflow-dynamic-acceptance.md).
 
 `make lint` checks changes relative to `origin/main`, matching the incremental
 CI rollout. Set `LINT_BASE` when your comparison branch differs.
