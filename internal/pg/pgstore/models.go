@@ -513,28 +513,33 @@ type WorkflowPumpDecision struct {
 }
 
 type WorkflowRun struct {
-	ID             string
-	SessionID      string
-	AdmissionKey   string
-	Request        []byte
-	Roster         []byte
-	Deadline       pgtype.Timestamptz
-	MaxInvocations int32
-	MaxResultBytes int32
-	State          string
-	Version        int64
-	CreatedAt      pgtype.Timestamptz
-	EvaluatorEpoch int64
-	JournalCursor  int64
-	JournalBytes   int64
-	PauseReasons   []string
+	ID                     string
+	SessionID              string
+	AdmissionKey           string
+	Request                []byte
+	Roster                 []byte
+	Deadline               pgtype.Timestamptz
+	MaxInvocations         int32
+	MaxResultBytes         int32
+	State                  string
+	Version                int64
+	CreatedAt              pgtype.Timestamptz
+	EvaluatorEpoch         int64
+	JournalCursor          int64
+	JournalBytes           int64
+	PauseReasons           []string
+	CoordinatorChainID     string
+	CoordinatorExecutionID string
 }
 
 type WorkflowRunOutbox struct {
-	SessionID  string
-	RunID      string
-	Version    int64
-	EnqueuedAt pgtype.Timestamptz
+	SessionID        string
+	RunID            string
+	Version          int64
+	EnqueuedAt       pgtype.Timestamptz
+	DeliveryAttempts int32
+	AvailableAt      pgtype.Timestamptz
+	LeaseToken       string
 }
 
 type Workspace struct {

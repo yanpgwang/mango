@@ -274,14 +274,31 @@ cursor, previous epoch and a wakeup version hint across Continue-As-New.
 
 Signals are hints. The coordinator drains accepted signals before waiting or
 continuing, compares their versions with its database snapshot, and periodically
-reconciles PostgreSQL even without delivery. Relay deletion uses the existing
-version CAS after Signal-With-Start acceptance. `REJECT_DUPLICATE` prevents a new
-start for a closed coordinator only while Temporal retains that history; the
-test verifies this retained-history boundary. It is not a durable PG chain fence.
-After history expires, a new chain could reuse a still-current first pump claim
-or recover its decision and continue. A durable coordinator-generation fence and
-explicit reconciliation are required before product enablement. Temporal Reset
-and independent database restore are not supported recovery operations.
+reconciles PostgreSQL even without delivery. Relay deletion uses a version and lease-token CAS after Signal-With-Start
+acceptance. `REJECT_DUPLICATE` protects closed IDs only while Temporal retains
+history. PostgreSQL now permanently binds the first coordinator chain and its
+current physical execution. A fresh chain cannot adopt the same Run, even at
+cursor zero. Only a same-chain Continue-As-New predecessor with the persisted
+cursor/epoch checkpoint may transfer ownership; a waiting checkpoint must match
+its durable `pump/N` claim. Every claim, snapshot and command checks this physical
+owner before returning cached data. Physical IDs are infrastructure fences;
+Run identity and `pump/N` business identity remain unchanged.
+
+The Workflow rejects Reset, Workflow retries and Cron metadata. The Activity
+also checks the actual SDK execution ID, preventing a replayed old Activity
+input from authorizing a new physical execution. Unsupported Reset can fail a
+replay task through nondeterminism or fail the execution through a nonretryable
+fence; it is not a supported business rollback. External termination does not
+undo admitted Thread work, recorded usage or external effects. Its PG chain
+binding remains and prevents a fresh logical restart.
+
+Independent PostgreSQL restore remains unsupported. Stop all coordinator/relay
+workers and keep this opt-in registration disabled during restore; do not clear
+the chain binding or restart at cursor zero. Reconcile PG decisions/receipts with
+Temporal histories and external effects before defining an explicit recovery
+generation. A whole-database rollback can remove the binding itself and cannot
+be detected using that rolled-back database alone. This slice supplies no
+automatic restore/resume route and makes no exactly-once claim for such effects.
 
 The acceptance test uses actual PostgreSQL, Temporal, Run/Thread outboxes and
 the existing Thread runner. An independent deterministic model oracle checks two
@@ -297,19 +314,40 @@ reference payloads and absence of program/prompt/receipt markers. Raw error
 messages, causes and details are sanitized before Temporal failure conversion;
 a sentinel test checks that boundary while retaining retry classification.
 
-The relay currently reads the oldest 100 rows using the existing store method.
-Permanently undeliverable rows are retained without a fair retry schedule. At a
-full blocked batch, newer Run wakes could starve. Fair scanning/backoff and
-operator reconciliation must be added before enabling the product relay; this
-one-Run recovery proof does not qualify outage-scale scheduling.
+The relay reserves due outbox rows with `FOR UPDATE OF wake SKIP LOCKED`,
+without taking Session locks after outbox locks. It claims one delivery at a
+time, uses PostgreSQL time for eligibility/leases/backoff, persists the attempt
+and a 30-second lease before IO, and limits delivery
+to 10 seconds. Failures defer with exponential delay from one second to a
+one-minute cap. Eight attempts, including abandoned leases, quarantine the
+durable row instead of consuming every scan forever. A higher Run version
+re-arms retries and invalidates the lease; equal versions cannot reset them.
+Only the current version/token can ACK or defer. Session deletion cascades these
+rows. Signal acceptance ACKs delivery, not coordinator binding: after absent history,
+a fresh Temporal chain can accept the hint and the relay can delete its wake
+before the Pump rejects PG ownership. Reconciliation must inspect the persisted
+Run binding, not assume every rejected chain retains an outbox row.
+Quarantined rows require explicit operator reconciliation; no product
+re-arm endpoint, metrics or automatic recovery policy is shipped.
+
+`TestWorkflowRunOwnershipAfterAbsentHistoryAndResetRealTemporal` tests completed
+and terminated cursor-zero coordinators against fresh physical chains for the
+same PG business Run. Its fixture uses a fresh Temporal ID to model an empty
+deduplication slot; it does **not** wait out retention or claim to delete history.
+The actual Reset probe resets after a completed Pump Activity and checks the
+worker's nonretryable fence or nondeterminism, excluding Temporal's automatic
+Reset marker. Independent PG/evaluator counters remain unchanged. A real relay
+with 100 intentionally blocked targets still delivers the later healthy wake to
+the actual coordinator. PG tests cover concurrent chain/lease claims, valid and
+stale CAN ownership, backoff deadlines, abandoned leases, retry exhaustion,
+version/lease CAS and deletion cleanup.
 
 The test evaluator waits at its final checkpoint. This does not close the Run,
 deliver a terminal Run event, resume Outcome grading, or certify aggregate
 completion/retirement. Ownership, lifecycle and protocol errors fail the private
 coordinator closed rather than selecting a new product pause/stop policy.
 Infrastructure retries keep their existing pump identity. Public admission must
-stay unreachable until durable chain/lifecycle reconciliation, fair relay
-scheduling, ordered Promise delivery, full
+stay unreachable until lifecycle reconciliation, ordered Promise delivery, full
 runtime/adapter pins, terminal delivery, grading resumption and containment gates
 are complete. The snapshot's command order is not Promise completion order.
 
@@ -317,8 +355,7 @@ are complete. The snapshot's command order is not Promise completion order.
 
 Keep the product gate open. The internal coordinator test establishes a bounded
 sequential recovery path over the existing PostgreSQL decisions and owned
-receipts. It does not qualify ordered program replay, automatic coordinator
-restart/history expiration/Temporal Reset, fair relay scheduling, control
+receipts. It does not qualify ordered program replay, automatic coordinator recovery after closure or independent restore, control
 parking/resumption or complete Run lifecycle.
 An evaluator crash is not evidence that no command committed.
 

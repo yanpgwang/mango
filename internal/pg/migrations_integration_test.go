@@ -75,7 +75,7 @@ func TestMigrateRejectsPreAlphaBaselineLedger(t *testing.T) {
 		}
 		versions = append(versions, version)
 	}
-	if err := rows.Err(); err != nil || len(versions) != 4 || versions[0] != 0 || versions[1] != 1 || versions[2] != 20261025000001 || versions[3] != 20261026000001 {
+	if err := rows.Err(); err != nil || len(versions) != 5 || versions[0] != 0 || versions[1] != 1 || versions[2] != 20261025000001 || versions[3] != 20261026000001 || versions[4] != 20261026000002 {
 		t.Fatalf("old ledger was modified: %v, %v", versions, err)
 	}
 }

@@ -14,7 +14,9 @@ implements a narrow storage/completion boundary. The
 adds atomic one-command decisions and grader reservations. The opt-in
 [Run coordinator gate](workflow-runtime-study.md#internal-run-coordinator-gate)
 connects that frontier to real Temporal/Run outbox recovery using a test-only
-sequential evaluator. The program runtime, ordered deliveries and broader
+sequential evaluator. PG chain ownership and bounded fair wake retries fence
+unsupported coordinator restarts; automatic restore/lifecycle recovery is still
+unavailable. The program runtime, ordered deliveries and broader
 lifecycle below remain proposals; no public Workflow admission is available.
 This is the execution detail of the [Workflow Runs plan](workflow-runs.md).
 The recommendation is restricted JavaScript for orchestration, a PostgreSQL

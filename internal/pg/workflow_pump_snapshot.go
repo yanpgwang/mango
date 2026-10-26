@@ -45,6 +45,9 @@ func (s *Store) LoadWorkflowPumpSnapshot(ctx context.Context, sessionID, runID s
 		if err != nil {
 			return err
 		}
+		if err = checkWorkflowCoordinator(f, in.CoordinatorExecutionID); err != nil {
+			return err
+		}
 		if f.epoch != in.Epoch {
 			return domain.Conflict("stale Workflow evaluator epoch")
 		}
