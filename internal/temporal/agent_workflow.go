@@ -599,6 +599,15 @@ func runWorkflowTurnInternal(
 			}
 		}
 		if len(toolUses) == 0 {
+			if turn.isChild {
+				textOnly := len(called.Response.Content) > 0
+				for _, block := range called.Response.Content {
+					textOnly = textOnly && block.Type == "text"
+				}
+				turn.returnCandidate = &domain.ThreadReturnCandidate{
+					MessageEventID: called.MessageEventID, StopReason: called.Response.StopReason, TextOnly: textOnly,
+				}
+			}
 			if end := modelRequestEndDraft(called, false); end != nil {
 				turn.output = append(turn.output, *end)
 			}

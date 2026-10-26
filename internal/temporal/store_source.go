@@ -464,6 +464,20 @@ func (s storeSource) CompleteThreadWorkflowTurn(
 
 // storeSource also satisfies JournalStore; the methods below delegate directly.
 
+func (s storeSource) CompleteThreadWorkflowTurnWithCandidate(ctx context.Context, in CompleteWorkflowTurnInput, usage domain.TokenUsage) (TurnCompletionResult, error) {
+	candidate := domain.ThreadReturnCandidate{}
+	if in.ReturnCandidate != nil {
+		candidate = *in.ReturnCandidate
+	}
+	result, err := s.store.CompleteThreadWorkflowTurn(ctx, in.SessionID, in.ThreadID, in.TriggerEventID, in.Output, in.Status,
+		in.AttemptID, in.AttemptState, in.AttemptError, in.PendingActionEventIDs, in.ResolutionEventIDs, in.TranscriptDelta, in.ToolUseMappings, usage, candidate)
+	if err != nil {
+		return TurnCompletionResult{}, err
+	}
+	parked := result.Parked
+	return TurnCompletionResult{Events: result.Events, Applied: result.Applied, Status: result.ThreadStatus, Parked: &parked}, nil
+}
+
 func (s storeSource) EnsureAttempt(ctx context.Context, sessionID, triggerEventID, attemptID string) error {
 	_, err := s.store.EnsureAttempt(ctx, sessionID, triggerEventID, attemptID)
 	return err

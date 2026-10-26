@@ -252,6 +252,10 @@ type ThreadCompletionSource interface {
 	) (TurnCompletionResult, error)
 }
 
+type ThreadCandidateCompletionSource interface {
+	CompleteThreadWorkflowTurnWithCandidate(context.Context, CompleteWorkflowTurnInput, domain.TokenUsage) (TurnCompletionResult, error)
+}
+
 // WorkflowEventSource appends already-completed public progress without
 // processing the turn trigger or changing the Session projection. PostgreSQL
 // implements it idempotently by explicit event ID; the Workflow uses it to
@@ -2429,7 +2433,9 @@ func (a *Activities) CompleteWorkflowTurn(
 	if in.UsageAlreadyAccounted {
 		usage = domain.TokenUsage{}
 	}
-	if in.IsChild {
+	if source, ok := a.source.(ThreadCandidateCompletionSource); in.IsChild && ok {
+		completion, err = source.CompleteThreadWorkflowTurnWithCandidate(dctx, in, usage)
+	} else if in.IsChild {
 		source, ok := a.source.(ThreadCompletionSource)
 		if !ok {
 			return RunTurnResult{}, fmt.Errorf(

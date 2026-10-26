@@ -321,15 +321,16 @@ type ExecuteToolResult struct {
 // CompleteWorkflowTurnInput atomically finalizes the optional tool attempt and
 // commits the public turn output in PostgreSQL.
 type CompleteWorkflowTurnInput struct {
-	SessionID      string                 `json:"session_id"`
-	ThreadID       string                 `json:"thread_id,omitempty"`
-	IsChild        bool                   `json:"is_child,omitempty"`
-	TriggerEventID string                 `json:"trigger_event_id"`
-	Output         []domain.EventDraft    `json:"output"`
-	Status         domain.Status          `json:"status"`
-	AttemptID      string                 `json:"attempt_id,omitempty"`
-	AttemptState   domain.RunAttemptState `json:"attempt_state,omitempty"`
-	AttemptError   *string                `json:"attempt_error,omitempty"`
+	ReturnCandidate *domain.ThreadReturnCandidate `json:"return_candidate,omitempty"`
+	SessionID       string                        `json:"session_id"`
+	ThreadID        string                        `json:"thread_id,omitempty"`
+	IsChild         bool                          `json:"is_child,omitempty"`
+	TriggerEventID  string                        `json:"trigger_event_id"`
+	Output          []domain.EventDraft           `json:"output"`
+	Status          domain.Status                 `json:"status"`
+	AttemptID       string                        `json:"attempt_id,omitempty"`
+	AttemptState    domain.RunAttemptState        `json:"attempt_state,omitempty"`
+	AttemptError    *string                       `json:"attempt_error,omitempty"`
 	// PendingActionEventIDs names action events in Output that park this turn
 	// awaiting client input.
 	PendingActionEventIDs []string `json:"pending_action_event_ids,omitempty"`

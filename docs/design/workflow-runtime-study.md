@@ -142,6 +142,53 @@ particular, the existing report goes to the primary; a future Run-owned result
 must settle its Run instead. Worker objects are replaced in one test process;
 no database/Temporal server crash or host-process kill is simulated.
 
+## Internal owned-invocation receipt kernel
+
+The next internal slice adds storage and completion ownership, not an enabled
+Workflow product. `internal/pg/workflow_receipts.go` has trusted Go admission
+operations; no HTTP handler, model tool, CLI command, feature setting or scheduler
+calls them. Source/input/profile bytes are frozen as identity data and are not
+evaluated or certified. The normal relay does not consume the new Run outbox.
+
+The additive `20261025000001_workflow_receipts.sql` migration stores Run admission
+identity and frozen Session roster, Run-local invocations, first business attempts
+with unique owning Threads, immutable terminal receipts and versioned Run wakeups.
+It does not reuse `turn_attempts` as business attempts or require a fabricated
+primary tool call. Transport replay reuses the invocation/Thread; explicit
+business retry on a new Thread is not implemented.
+
+The actual Thread Workflow now passes its terminal model response's event ID and
+disposition as private completion metadata. The bounded text adapter accepts only
+that response; it cannot fall back to an earlier tool-round message. Unsupported,
+missing or oversized output becomes a typed failure. The initial format is text;
+JSON/schema validation remains a separate gate. Closed/deadline-ended ownership
+cannot accept a successful business value. Actual transcripts and usage remain
+retained. Approval/budget waits do not settle a result.
+
+Under Session-first locking, owned completion commits its receipt and Run wake
+with the existing Thread events, transcript, consumption and usage transaction.
+It suppresses the ordinary per-child primary report. Ordinary follow-up and
+archive operations cannot bypass the ownership record. The new PostgreSQL tests
+cover identity/conflict/concurrent replay, wrong-owner/stale returns, frozen
+roster and tenant scope, bounds/deadline, and rollback after wake/spawn failure.
+`TestWorkflowOwnedReceiptsUseExistingThreadRunner` uses real PostgreSQL, Temporal,
+the existing worker/Thread loop and relay, with deterministic model responses
+and post-commit ACK loss. No evaluator language or alternate agent loop is used.
+
+**This kernel must remain unreachable from product admission.** It has no Run
+pump, evaluator epochs, terminal Run delivery, physical cancellation, open-Run
+aggregate/Outcome/retirement barriers or complete Session/Run stop lifecycle.
+Tests may create these internal rows; supported applications cannot. Migrating
+the tables does not enable a Workflow capability. Before adding an entry point,
+implement those barriers and jointly review the HTTP/OpenAPI/SDK contract.
+
+Outcome-versus-Run admission remains a product decision. A proposed future
+Session-lock fence would allow Run admission to win and park grading, or grading
+admission to win and defer/conflict new Runs; invalidation/regrading is a more
+complex alternative. This slice neither chooses that policy nor changes ordinary
+Outcome behavior. Future race tests must prove the selected winner before any
+user-facing admission is enabled.
+
 ## Remaining decisions before product exposure
 
 Keep the gate open. Beyond the existing-component experiment, integration must prove the trusted Temporal pump

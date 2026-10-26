@@ -1962,3 +1962,21 @@ pump, Run-owned receipts, epoch fencing or open-Run/Outcome barrier. Those
 remain explicit gates in the [study](design/workflow-runtime-study.md#remaining-decisions-before-product-exposure).
 No reference implementation or hosted service is executed, and no production
 engine, public API, migration or dependency is selected by this work.
+
+## Internal Workflow invocation receipts (2026-10-25)
+
+The next slice follows the already-recorded Workflow lifecycle and program
+recovery design. Public CMA examples motivate explicit per-invocation ownership
+and validated returns; they do not establish its private validator or scheduler.
+Mango's independently implemented choice is a Session-serialized Run/invocation/
+business-attempt relation, a uniquely owned existing Thread, and a terminal
+receipt committed with a versioned Run wakeup. Its ordinary child-report path
+continues to target the primary; an owned invocation does not.
+
+The current Thread Workflow supplies the actual terminal response event identity
+to the trusted bounded-text adapter. Earlier messages, previews, unsupported
+content and nonterminal model dispositions cannot substitute for that response.
+No JSON/schema result mode, production evaluator, hosted service or external
+implementation is adopted. The additive internal migration and real PG/Temporal
+tests establish this narrow contract; public admission, pump replay, broader
+barriers and the Outcome-versus-Run race policy remain deliberately unimplemented.

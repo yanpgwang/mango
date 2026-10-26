@@ -6,7 +6,11 @@ slug: /design/workflow-program-runtime
 
 # Workflow program execution and recovery
 
-**Status: design proposal, 2026-10-19; nothing on this page is implemented.**
+**Status: design proposal, 2026-10-19; no program executor is enabled.**
+
+The [internal receipt kernel](workflow-runtime-study.md#internal-owned-invocation-receipt-kernel)
+implements a narrow storage/completion boundary. The program, pump and broader
+lifecycle below remain proposals; no public Workflow admission is available.
 This is the execution detail of the [Workflow Runs plan](workflow-runs.md).
 The recommendation is restricted JavaScript for orchestration, a PostgreSQL
 command journal for semantic recovery, and Temporal for durable coordination.

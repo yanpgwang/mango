@@ -2,6 +2,14 @@ package domain
 
 import "time"
 
+// ThreadReturnCandidate identifies the actual terminal model response. It is
+// internal execution metadata, not a user-supplied result or public wire type.
+type ThreadReturnCandidate struct {
+	MessageEventID string `json:"message_event_id"`
+	StopReason     string `json:"stop_reason"`
+	TextOnly       bool   `json:"text_only"`
+}
+
 type RunState string
 
 const (
