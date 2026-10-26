@@ -65,7 +65,7 @@ func (s *Store) BindWorkflowCoordinator(ctx context.Context, sessionID, runID st
 				}
 			}
 		}
-		_, err = tx.Exec(ctx, `UPDATE workflow_runs SET coordinator_chain_id=$2,coordinator_execution_id=$3 WHERE id=$1`, runID, in.ChainID, in.ExecutionID)
+		_, err = tx.Exec(ctx, `UPDATE workflow_runs SET coordinator_chain_id=$2,coordinator_execution_id=$3,coordinator_start_attempted=true WHERE id=$1`, runID, in.ChainID, in.ExecutionID)
 		return err
 	})
 }

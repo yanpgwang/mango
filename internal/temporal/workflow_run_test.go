@@ -116,6 +116,9 @@ func (f *runRelayFixture) ClaimWorkflowRunWakeups(context.Context, int) ([]pg.Wo
 	return []pg.WorkflowRunWakeup{*f.wake}, nil
 }
 
+func (*runRelayFixture) PrepareWorkflowRunStart(context.Context, pg.WorkflowRunWakeup) (bool, error) {
+	return true, nil
+}
 func (*runRelayFixture) DeferWorkflowRunWakeup(context.Context, pg.WorkflowRunWakeup) error {
 	return nil
 }
@@ -185,12 +188,13 @@ func (c *runStartClient) SignalWithStartWorkflow(_ context.Context, id, name str
 func TestWorkflowRunSignalerRejectsClosedIDsWhileHistoryRetained(t *testing.T) {
 	c := &runStartClient{}
 	s := NewSignalerOnTaskQueue(c, "queue")
-	wake := pg.WorkflowRunWakeup{SessionID: "session", RunID: "run", Version: 3}
+	wake := pg.WorkflowRunWakeup{SessionID: "session", RunID: "run", Version: 3, StartAllowed: true}
 	require.NoError(t, s.WakeWorkflowRun(t.Context(), wake))
 	require.Equal(t, "mango.workflow-run.run", c.options.ID)
 	require.Equal(t, enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE, c.options.WorkflowIDReusePolicy)
 	require.Equal(t, "queue", c.options.TaskQueue)
 	require.Equal(t, WorkflowRunWorkflowInput{SessionID: "session", RunID: "run"}, c.input)
+	wake.StartAllowed = false
 	require.Equal(t, wake, c.wake)
 }
 
@@ -209,4 +213,20 @@ type coordinatorUntouchedStore struct{ coordinatorErrorStore }
 
 func (coordinatorUntouchedStore) BindWorkflowCoordinator(context.Context, string, string, pg.WorkflowCoordinatorClaim) error {
 	panic("foreign physical Activity must not reach PG")
+}
+
+func (c *runStartClient) SignalWorkflow(_ context.Context, id, _ string, signalName string, arg interface{}) error {
+	if id != "mango.workflow-run.run" || signalName != WorkflowRunWakeSignal {
+		return errors.New("unexpected signal target")
+	}
+	c.wake = arg.(pg.WorkflowRunWakeup)
+	return nil
+}
+func TestWorkflowRunRetryCannotStartAnotherChain(t *testing.T) {
+	c := &runStartClient{}
+	s := NewSignalerOnTaskQueue(c, "queue")
+	require.NoError(t, s.WakeWorkflowRun(t.Context(), pg.WorkflowRunWakeup{SessionID: "session", RunID: "run", Version: 2, LeaseToken: "transport-only", DeliveryAttempt: 2}))
+	require.EqualValues(t, 2, c.wake.Version)
+	require.Empty(t, c.input.SessionID, "retry uses Signal only")
+	require.Empty(t, c.wake.LeaseToken)
 }

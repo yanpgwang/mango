@@ -2,9 +2,11 @@ package pg
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/yanpgwang/mango/internal/domain"
 	"github.com/yanpgwang/mango/internal/pg/pgstore"
 )
 
@@ -64,4 +66,38 @@ func (s *Store) DeferWorkflowRunWakeup(ctx context.Context, wake WorkflowRunWake
  WHERE session_id=$1 AND run_id=$2 AND version=$3 AND lease_token=$4 AND $4<>''`, wake.SessionID, wake.RunID, wake.Version, wake.LeaseToken, delay.Microseconds())
 		return err
 	})
+}
+
+// PrepareWorkflowRunStart reserves the sole automatic start before remote IO,
+// under Session->Run->outbox locks. Once attempted, all subsequent deliveries
+// may only signal; history absence can never turn a retry into a fresh start.
+// A lost prepare ACK (or crash before RPC) deliberately requires reconciliation.
+func (s *Store) PrepareWorkflowRunStart(ctx context.Context, wake WorkflowRunWakeup) (bool, error) {
+	allowed := false
+	err := s.withPGXTx(ctx, func(tx pgx.Tx, q *pgstore.Queries) error {
+		if _, err := s.lockWorkflowSession(ctx, q, wake.SessionID); err != nil {
+			return err
+		}
+		var attempted bool
+		if err := tx.QueryRow(ctx, `SELECT coordinator_start_attempted FROM workflow_runs WHERE session_id=$1 AND id=$2 FOR UPDATE`, wake.SessionID, wake.RunID).Scan(&attempted); err != nil {
+			return err
+		}
+		var token string
+		err := tx.QueryRow(ctx, `SELECT lease_token FROM workflow_run_outbox
+ WHERE session_id=$1 AND run_id=$2 AND version=$3 AND lease_token=$4 AND $4<>'' AND available_at>statement_timestamp()
+ FOR UPDATE`, wake.SessionID, wake.RunID, wake.Version, wake.LeaseToken).Scan(&token)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Conflict("Workflow wake lease requires reconciliation")
+		}
+		if err != nil {
+			return err
+		}
+		if attempted {
+			return nil
+		}
+		_, err = tx.Exec(ctx, `UPDATE workflow_runs SET coordinator_start_attempted=true WHERE id=$1`, wake.RunID)
+		allowed = err == nil
+		return err
+	})
+	return allowed, err
 }

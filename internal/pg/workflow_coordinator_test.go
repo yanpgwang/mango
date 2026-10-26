@@ -219,8 +219,75 @@ func TestWorkflowRunDeliveryConcurrentClaims(t *testing.T) {
 		count += len(rows)
 	}
 	require.Equal(t, 1, count)
-	_, err := store.pool.Exec(ctx, `DELETE FROM sessions`)
+	leases, err := store.WorkflowRunWakeups(ctx)
+	require.NoError(t, err)
+	require.Len(t, leases, 1)
+	var active WorkflowRunWakeup
+	require.NoError(t, store.pool.QueryRow(ctx, `SELECT session_id,run_id,version,lease_token FROM workflow_run_outbox`).Scan(&active.SessionID, &active.RunID, &active.Version, &active.LeaseToken))
+	starts := make(chan bool, 2)
+	preparationErrors := make(chan error, 2)
+	for range 2 {
+		wg.Go(func() {
+			allowed, err := store.PrepareWorkflowRunStart(ctx, active)
+			starts <- allowed
+			preparationErrors <- err
+		})
+	}
+	wg.Wait()
+	close(starts)
+	close(preparationErrors)
+	allowedCount := 0
+	for allowed := range starts {
+		if allowed {
+			allowedCount++
+		}
+	}
+	for err := range preparationErrors {
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, allowedCount, "one concurrent first-start reservation")
+	_, err = store.pool.Exec(ctx, `DELETE FROM sessions`)
 	require.NoError(t, err)
 	require.NoError(t, store.pool.QueryRow(ctx, `SELECT count(*) FROM workflow_run_outbox`).Scan(&count))
 	require.Zero(t, count, "Session deletion cascades leased wakes and ownership rows")
+}
+
+func TestWorkflowRunStartReservationSurvivesUncertaintyAndNewWake(t *testing.T) {
+	store, session, run, _ := workflowReceiptFixture(t)
+	ctx := t.Context()
+	rows, err := store.ClaimWorkflowRunWakeups(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	lost := rows[0]
+	// Simulate loss of the claim's SQL ACK before preparation or any RPC.
+	_, err = store.pool.Exec(ctx, `UPDATE workflow_run_outbox SET available_at=statement_timestamp()-interval '1 second' WHERE run_id=$1`, run.ID)
+	require.NoError(t, err)
+	rows, err = store.ClaimWorkflowRunWakeups(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	old := rows[0]
+	_, err = store.PrepareWorkflowRunStart(ctx, lost)
+	require.Error(t, err)
+	allowed, err := store.PrepareWorkflowRunStart(ctx, old)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	// The prepare commit succeeded but its caller lost the ACK before doing IO.
+	allowed, err = store.PrepareWorkflowRunStart(ctx, old)
+	require.NoError(t, err)
+	require.False(t, allowed, "cached preparation never reissues a start allowance")
+	require.NoError(t, store.SetWorkflowRunPause(ctx, session.ID, run.ID, "capability", true))
+	require.NoError(t, store.SetWorkflowRunPause(ctx, session.ID, run.ID, "capability", false))
+	_, err = store.PrepareWorkflowRunStart(ctx, old)
+	require.Error(t, err, "stale lease cannot reserve")
+	rows, err = store.ClaimWorkflowRunWakeups(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	allowed, err = store.PrepareWorkflowRunStart(ctx, rows[0])
+	require.NoError(t, err)
+	require.False(t, allowed, "higher versions do not grant another logical start")
+	var attempted bool
+	var chain string
+	require.NoError(t, store.pool.QueryRow(ctx, `SELECT coordinator_start_attempted,coordinator_chain_id FROM workflow_runs WHERE id=$1`, run.ID).Scan(&attempted, &chain))
+	require.True(t, attempted)
+	require.Empty(t, chain)
 }

@@ -277,12 +277,24 @@ continuing, compares their versions with its database snapshot, and periodically
 reconciles PostgreSQL even without delivery. Relay deletion uses a version and lease-token CAS after Signal-With-Start
 acceptance. `REJECT_DUPLICATE` protects closed IDs only while Temporal retains
 history. PostgreSQL now permanently binds the first coordinator chain and its
-current physical execution. A fresh chain cannot adopt the same Run, even at
+current physical execution. Once bound, a fresh chain cannot adopt the same Run, even at
 cursor zero. Only a same-chain Continue-As-New predecessor with the persisted
 cursor/epoch checkpoint may transfer ownership; a waiting checkpoint must match
 its durable `pump/N` claim. Every claim, snapshot and command checks this physical
 owner before returning cached data. Physical IDs are infrastructure fences;
 Run identity and `pump/N` business identity remain unchanged.
+
+Before its first remote start, the relay separately reserves a durable
+`coordinator_start_attempted` flag under Session/Run/outbox locks and verifies the
+current lease/version. Only that reservation's first response permits
+Signal-With-Start. All later deliveries use Signal only, including after a
+higher version or replacement outbox row. This prevents automatic recreation
+even when termination precedes the first Pump/binding. A claim ACK loss before
+preparation only expires a lease; a preparation ACK loss or crash before RPC
+consumes the start allowance and requires explicit reconciliation. There is no
+automatic second start. Before a chain is bound, PG cannot identify an arbitrary
+manual Temporal start; such starts are unsupported. This is a failclosed relay
+contract, not a new public recovery API.
 
 The Workflow rejects Reset, Workflow retries and Cron metadata. The Activity
 also checks the actual SDK execution ID, preventing a replayed old Activity
@@ -326,7 +338,7 @@ Only the current version/token can ACK or defer. Session deletion cascades these
 rows. Signal acceptance ACKs delivery, not coordinator binding: after absent history,
 a fresh Temporal chain can accept the hint and the relay can delete its wake
 before the Pump rejects PG ownership. Reconciliation must inspect the persisted
-Run binding, not assume every rejected chain retains an outbox row.
+Run binding/start reservation, not assume every rejected chain retains an outbox row.
 Quarantined rows require explicit operator reconciliation; no product
 re-arm endpoint, metrics or automatic recovery policy is shipped.
 
@@ -340,7 +352,10 @@ Reset marker. Independent PG/evaluator counters remain unchanged. A real relay
 with 100 intentionally blocked targets still delivers the later healthy wake to
 the actual coordinator. PG tests cover concurrent chain/lease claims, valid and
 stale CAN ownership, backoff deadlines, abandoned leases, retry exhaustion,
-version/lease CAS and deletion cleanup.
+version/lease CAS, one-time concurrent start reservation and deletion cleanup.
+Actual service fixtures also terminate an unpolled coordinator before any Pump
+and simulate preparation ACK loss/crash before RPC. Later wakes cannot start a
+new coordinator and retain their retry row for reconciliation.
 
 The test evaluator waits at its final checkpoint. This does not close the Run,
 deliver a terminal Run event, resume Outcome grading, or certify aggregate

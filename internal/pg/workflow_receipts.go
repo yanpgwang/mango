@@ -55,6 +55,7 @@ type WorkflowRunWakeup struct {
 	Version          int64
 	LeaseToken       string
 	DeliveryAttempt  int
+	StartAllowed     bool
 }
 
 func (s *Store) AdmitWorkflowRun(ctx context.Context, sessionID, key string, request WorkflowRunRequest) (WorkflowRun, error) {

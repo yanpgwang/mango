@@ -40,7 +40,7 @@ func TestWorkflowRunOwnershipAfterAbsentHistoryAndResetRealTemporal(t *testing.T
 	if database == "" || address == "" {
 		t.Skip("set PostgreSQL and Temporal service-test addresses")
 	}
-	for _, mode := range []string{"completed-history-absent", "terminated-history-absent", "unsupported-reset", "blocked-prefix-relay"} {
+	for _, mode := range []string{"completed-history-absent", "terminated-history-absent", "unsupported-reset", "blocked-prefix-relay", "uncertain-first-start", "terminated-before-pump"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 40*time.Second)
 			defer cancel()
@@ -96,6 +96,46 @@ func TestWorkflowRunOwnershipAfterAbsentHistoryAndResetRealTemporal(t *testing.T
 					require.NoError(t, err)
 				}
 			}()
+			if mode == "uncertain-first-start" || mode == "terminated-before-pump" {
+				wakes, err := store.ClaimWorkflowRunWakeups(ctx, 1)
+				require.NoError(t, err)
+				require.Len(t, wakes, 1)
+				wake := wakes[0]
+				wake.StartAllowed, err = store.PrepareWorkflowRunStart(ctx, wake)
+				require.NoError(t, err)
+				require.True(t, wake.StartAllowed)
+				if mode == "terminated-before-pump" {
+					// The first start is accepted on an unpolled test queue,
+					// then terminated before any binding Activity can run.
+					require.NoError(t, NewSignalerOnTaskQueue(c, queue+".unpolled").WakeWorkflowRun(ctx, wake))
+					require.NoError(t, c.TerminateWorkflow(ctx, id, "", "before first Pump fixture"))
+				}
+				// In the uncertain case, no RPC happened after the durable
+				// prepare commit: model a crash/lost ACK before first-start IO.
+				require.NoError(t, store.SetWorkflowRunPause(ctx, session.ID, run.ID, "capability", true))
+				require.NoError(t, store.SetWorkflowRunPause(ctx, session.ID, run.ID, "capability", false))
+				relay := NewWorkflowRunRelay(store, NewSignalerOnTaskQueue(c, queue), RelayConfig{BatchSize: 1})
+				removed, err := relay.RunOnce(ctx)
+				require.Error(t, err)
+				require.Zero(t, removed)
+				description, err := c.DescribeWorkflowExecution(ctx, id, "")
+				if mode == "uncertain-first-start" {
+					var missing *serviceerror.NotFound
+					require.ErrorAs(t, err, &missing)
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, enumspb.WORKFLOW_EXECUTION_STATUS_TERMINATED, description.WorkflowExecutionInfo.Status)
+				}
+				var attempted bool
+				var chain string
+				var epoch int64
+				require.NoError(t, pool.QueryRow(ctx, `SELECT coordinator_start_attempted,coordinator_chain_id,evaluator_epoch FROM workflow_runs WHERE id=$1`, run.ID).Scan(&attempted, &chain, &epoch))
+				require.True(t, attempted)
+				require.Empty(t, chain)
+				require.Zero(t, epoch)
+				require.Zero(t, evaluator.calls.Load())
+				return
+			}
 			kind := WorkflowRunWorkflowType
 			if mode == "completed-history-absent" {
 				kind = "ownership-complete-fixture"

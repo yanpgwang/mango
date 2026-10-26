@@ -2044,8 +2044,12 @@ physical RunID and CAN predecessor. Mango permits verified CAN handoff and
 rejects other ownership changes; these infrastructure IDs never become business
 pump/invocation keys. This is a Mango storage choice, not evidence of CMA internals.
 
-Fair retry selection, per-delivery leases, capped backoff and quarantine are
-also Mango operator choices. Tests use real PG/Temporal and explicitly simulate
+Fair retry selection, database-clock leases, capped backoff and quarantine are
+also Mango operator choices. A separately committed, one-time start reservation
+closes termination-before-first-Pump in the production relay: uncertain starts
+are followed only by signals, requiring reconciliation when no coordinator
+exists. PG cannot identify an arbitrary manual start before a chain is bound;
+manual recovery remains unsupported. Tests use real PG/Temporal and explicitly simulate
 absent history with a fresh fixture Temporal ID against the same PG Run. They do
 not establish elapsed retention or disaster recovery. Unsupported Reset is
 fenced; independent PG restore requires stopped workers and explicit effect

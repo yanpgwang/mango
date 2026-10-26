@@ -13,6 +13,7 @@ import (
 
 type WorkflowRunOutboxStore interface {
 	ClaimWorkflowRunWakeups(context.Context, int) ([]pg.WorkflowRunWakeup, error)
+	PrepareWorkflowRunStart(context.Context, pg.WorkflowRunWakeup) (bool, error)
 	DeferWorkflowRunWakeup(context.Context, pg.WorkflowRunWakeup) error
 	DeleteWorkflowRunWakeupIfUnchanged(context.Context, pg.WorkflowRunWakeup) (bool, error)
 }
@@ -45,6 +46,11 @@ func (r *WorkflowRunRelay) RunOnce(ctx context.Context) (int, error) {
 			break
 		}
 		wake := wakes[0]
+		wake.StartAllowed, err = r.store.PrepareWorkflowRunStart(ctx, wake)
+		if err != nil {
+			failures = append(failures, err, r.store.DeferWorkflowRunWakeup(ctx, wake))
+			continue
+		}
 		deliveryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		err = r.deliverer.WakeWorkflowRun(deliveryCtx, wake)
 		cancel()
@@ -85,6 +91,9 @@ func workflowRunWorkflowID(runID string) string { return "mango.workflow-run." +
 func (s *Signaler) WakeWorkflowRun(ctx context.Context, wake pg.WorkflowRunWakeup) error {
 	id := workflowRunWorkflowID(wake.RunID)
 	hint := pg.WorkflowRunWakeup{SessionID: wake.SessionID, RunID: wake.RunID, Version: wake.Version}
+	if !wake.StartAllowed {
+		return s.client.SignalWorkflow(ctx, id, "", WorkflowRunWakeSignal, hint)
+	}
 	_, err := s.client.SignalWithStartWorkflow(ctx, id, WorkflowRunWakeSignal, hint, client.StartWorkflowOptions{
 		ID: id, TaskQueue: s.taskQueue,
 		// Retained history rejects a closed start. The PG binding independently
