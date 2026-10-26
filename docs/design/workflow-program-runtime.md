@@ -9,7 +9,10 @@ slug: /design/workflow-program-runtime
 **Status: design proposal, 2026-10-19; no program executor is enabled.**
 
 The [internal receipt kernel](workflow-runtime-study.md#internal-owned-invocation-receipt-kernel)
-implements a narrow storage/completion boundary. The program, pump and broader
+implements a narrow storage/completion boundary. The
+[internal frontier gate](workflow-runtime-study.md#internal-fenced-frontier-gate)
+adds atomic one-command decisions and grader reservations. The program,
+Temporal Run pump and broader
 lifecycle below remain proposals; no public Workflow admission is available.
 This is the execution detail of the [Workflow Runs plan](workflow-runs.md).
 The recommendation is restricted JavaScript for orchestration, a PostgreSQL

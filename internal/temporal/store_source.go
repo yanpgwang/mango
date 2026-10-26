@@ -530,3 +530,7 @@ func (s storeSource) RecordToolPermissionReceipt(ctx context.Context, candidate 
 func (s storeSource) StartToolStepWithPermission(ctx context.Context, stepID, toolUseID string) error {
 	return s.store.StartToolStepWithPermission(ctx, stepID, toolUseID)
 }
+
+func (s storeSource) ReserveOutcomeGrading(ctx context.Context, in domain.OutcomeGradingReservation) error {
+	return s.store.ReserveOutcomeGrading(ctx, in)
+}

@@ -88,6 +88,9 @@ func (s *Store) AdmitWorkflowRun(ctx context.Context, sessionID, key string, req
 		if session.ArchivedAt != nil || session.Status == domain.StatusTerminated || !request.Deadline.After(s.clock.Now()) {
 			return domain.Conflict("Workflow admission owner or deadline is no longer eligible")
 		}
+		if err := rejectActiveOutcomeGrading(ctx, tx, sessionID); err != nil {
+			return err
+		}
 		// Freeze the already-admitted Session roster; no saved Agent or live
 		// credential value is copied or resolved by this operation.
 		if len(session.MultiagentRoster) == 0 {
@@ -124,6 +127,17 @@ func (s *Store) AdmitWorkflowInvocation(ctx context.Context, sessionID, runID st
 		session, err := s.lockWorkflowSession(ctx, q, sessionID)
 		if err != nil {
 			return err
+		}
+		var epoch int64
+		var pauses []string
+		if err := tx.QueryRow(ctx, `SELECT evaluator_epoch,pause_reasons FROM workflow_runs WHERE session_id=$1 AND id=$2 FOR UPDATE`, sessionID, runID).Scan(&epoch, &pauses); err != nil {
+			return err
+		}
+		if epoch != 0 {
+			return domain.Conflict("Workflow admission requires its fenced frontier")
+		}
+		if len(pauses) != 0 || session.BudgetReached(s.clock.Now()) {
+			return domain.Conflict("Workflow admission is control-paused")
 		}
 		var state string
 		var deadline time.Time
@@ -172,52 +186,75 @@ WHERE invocation.run_id=$1 AND invocation.ordinal=$2`, runID, ordinal, commandJS
 		if err != nil {
 			return domain.Validation("Workflow Agent is not in the admitted roster")
 		}
-		primaryID, err := q.GetPrimarySessionThreadID(ctx, sessionID)
+		result, err = s.createWorkflowInvocationLocked(ctx, tx, q, session, runID, ordinal, command, agent)
 		if err != nil {
-			return err
-		}
-		now := s.clock.Now().UTC()
-		child := domain.NewChildSessionThread(s.ids.NewID(domain.PrefixSessionThread), sessionID, primaryID, agent, now)
-		child.TransitionStatus(domain.StatusRunning, now)
-		if err := insertSessionThread(ctx, tx, child); err != nil {
-			return err
-		}
-		maxSeq, err := q.MaxEventSeq(ctx, sessionID)
-		if err != nil {
-			return err
-		}
-		// This is a host-admitted child input, not a fabricated coordinator tool
-		// call or primary sent-message. The private ownership row is authoritative.
-		inputs, maxSeq, err := s.appendThreadDraftsAt(ctx, q, sessionID, child.ID, []domain.EventDraft{{
-			Type:    domain.EvAgentThreadMessageReceived,
-			Payload: map[string]any{"content": []any{map[string]any{"type": "text", "text": command.Prompt}}},
-		}}, maxSeq, nil, now)
-		if err != nil {
-			return err
-		}
-		result = WorkflowInvocationAttempt{ID: s.ids.NewID("wiat_"), InvocationID: s.ids.NewID("winv_"), ThreadID: child.ID, RootTriggerID: inputs[0].ID, AttemptNo: 1}
-		snapshot, err := json.Marshal(child.Agent)
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO workflow_invocations(id,session_id,run_id,ordinal,command,agent_snapshot) VALUES($1,$2,$3,$4,$5,$6)`, result.InvocationID, sessionID, runID, ordinal, commandJSON, snapshot)
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO workflow_invocation_attempts(id,session_id,run_id,invocation_id,attempt_no,thread_id,root_trigger_id) VALUES($1,$2,$3,$4,1,$5,$6)`, result.ID, sessionID, runID, result.InvocationID, child.ID, result.RootTriggerID)
-		if err != nil {
-			return err
-		}
-		if err := q.UpsertThreadOutbox(ctx, pgstore.UpsertThreadOutboxParams{SessionID: sessionID, ThreadID: child.ID, MaxEventSeq: maxSeq, EnqueuedAt: tsUTC(now)}); err != nil {
-			return err
-		}
-		session.TransitionStatus(domain.StatusRunning, now)
-		if err := putSessionOnlyTx(ctx, tx, session); err != nil {
 			return err
 		}
 		return s.advanceWorkflowRunLocked(ctx, tx, sessionID, runID)
 	})
 	return result, err
+}
+
+// createWorkflowInvocationLocked shares the actual Thread/input/outbox mutation.
+// Caller owns Session and Run locks and has admitted this exact command.
+func (s *Store) createWorkflowInvocationLocked(ctx context.Context, tx pgx.Tx, q *pgstore.Queries, session domain.Session, runID string, ordinal int, command WorkflowInvocationCommand, agent domain.Agent) (WorkflowInvocationAttempt, error) {
+	sessionID := session.ID
+	commandJSON, err := json.Marshal(command)
+	if err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	primaryID, err := q.GetPrimarySessionThreadID(ctx, sessionID)
+	if err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	now := s.clock.Now().UTC()
+	child := domain.NewChildSessionThread(s.ids.NewID(domain.PrefixSessionThread), sessionID, primaryID, agent, now)
+	child.TransitionStatus(domain.StatusRunning, now)
+	if err := insertSessionThread(ctx, tx, child); err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	maxSeq, err := q.MaxEventSeq(ctx, sessionID)
+	if err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	// This is a host-admitted child input, not a fabricated coordinator tool
+	// call or primary sent-message. The private ownership row is authoritative.
+	inputs, maxSeq, err := s.appendThreadDraftsAt(ctx, q, sessionID, child.ID, []domain.EventDraft{{
+		Type:    domain.EvAgentThreadMessageReceived,
+		Payload: map[string]any{"content": []any{map[string]any{"type": "text", "text": command.Prompt}}},
+	}}, maxSeq, nil, now)
+	if err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	result := WorkflowInvocationAttempt{ID: s.ids.NewID("wiat_"), InvocationID: s.ids.NewID("winv_"), ThreadID: child.ID, RootTriggerID: inputs[0].ID, AttemptNo: 1}
+	snapshot, err := json.Marshal(child.Agent)
+	if err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO workflow_invocations(id,session_id,run_id,ordinal,command,agent_snapshot) VALUES($1,$2,$3,$4,$5,$6)`, result.InvocationID, sessionID, runID, ordinal, commandJSON, snapshot)
+	if err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO workflow_invocation_attempts(id,session_id,run_id,invocation_id,attempt_no,thread_id,root_trigger_id) VALUES($1,$2,$3,$4,1,$5,$6)`, result.ID, sessionID, runID, result.InvocationID, child.ID, result.RootTriggerID)
+	if err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	if err := q.UpsertThreadOutbox(ctx, pgstore.UpsertThreadOutboxParams{SessionID: sessionID, ThreadID: child.ID, MaxEventSeq: maxSeq, EnqueuedAt: tsUTC(now)}); err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	if session.EnvironmentType == "self_hosted" {
+		if err := q.EnqueueEnvironmentWork(ctx, pgstore.EnqueueEnvironmentWorkParams{
+			ID: s.ids.NewID(domain.PrefixEnvironmentWork), EnvironmentID: session.EnvironmentID,
+			SessionID: &sessionID, ActivationSeq: &maxSeq, CreatedAt: tsUTC(now),
+		}); err != nil {
+			return WorkflowInvocationAttempt{}, err
+		}
+	}
+	session.TransitionStatus(domain.StatusRunning, now)
+	if err := putSessionOnlyTx(ctx, tx, session); err != nil {
+		return WorkflowInvocationAttempt{}, err
+	}
+	return result, nil
 }
 
 type workflowCompletionOwner struct {

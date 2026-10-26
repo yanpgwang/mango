@@ -210,6 +210,18 @@ type OrchestrationOutbox struct {
 	LastError     *string
 }
 
+type OutcomeGradingReservation struct {
+	SessionID       string
+	ThreadID        string
+	TriggerID       string
+	OutcomeID       string
+	Iteration       int32
+	StartEventID    string
+	EndEventID      string
+	State           string
+	TerminalEventID *string
+}
+
 type PendingAction struct {
 	ID                  string
 	SessionID           string
@@ -457,6 +469,15 @@ type WebhookEvent struct {
 	CreatedAt   pgtype.Timestamptz
 }
 
+type WorkflowEvaluatorClaim struct {
+	SessionID     string
+	RunID         string
+	ClaimID       string
+	PreviousEpoch int64
+	Epoch         int64
+	JournalCursor int64
+}
+
 type WorkflowInvocation struct {
 	ID            string
 	SessionID     string
@@ -481,6 +502,16 @@ type WorkflowInvocationAttempt struct {
 	TurnAttemptID     *string
 }
 
+type WorkflowPumpDecision struct {
+	SessionID      string
+	RunID          string
+	RequestID      string
+	Epoch          int64
+	ExpectedCursor int64
+	Command        []byte
+	Decision       []byte
+}
+
 type WorkflowRun struct {
 	ID             string
 	SessionID      string
@@ -493,6 +524,10 @@ type WorkflowRun struct {
 	State          string
 	Version        int64
 	CreatedAt      pgtype.Timestamptz
+	EvaluatorEpoch int64
+	JournalCursor  int64
+	JournalBytes   int64
+	PauseReasons   []string
 }
 
 type WorkflowRunOutbox struct {
