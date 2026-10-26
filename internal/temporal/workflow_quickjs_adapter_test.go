@@ -12,6 +12,10 @@ import (
 	"io"
 	"os/exec"
 	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -352,4 +356,29 @@ func (e *quickJSTestEvaluator) Next(ctx context.Context, in pg.WorkflowPumpSnaps
 		return nil, nil
 	}
 	return nil, quickJSFatal()
+}
+
+// Protocol fault bytes are independent of the real-engine vertical fixtures.
+// Receiving an invoke is insufficient until the whole quantum is valid.
+func TestQuickJSQuantumRejectsPartialEffects(t *testing.T) {
+	invoke := `{"kind":"invoke","id":1,"args":{"prompt":"x","options":{"agent":"reviewer"}}}` + "\n"
+	for name, input := range map[string]string{
+		"failure-after-invoke":   invoke + `{"kind":"failure","code":"engine_failure"}` + "\n",
+		"eof-after-invoke":       invoke,
+		"malformed-after-invoke": invoke + `{"kind":"wait","pending":[1],"authority":"admin"}` + "\n",
+		"oversized-frame":        strings.Repeat("x", quickJSFrameLimit+1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := &quickJSProcess{output: bufio.NewScanner(strings.NewReader(input))}
+			p.output.Buffer(make([]byte, 4096), quickJSFrameLimit+1)
+			frames, _, err := p.quantum()
+			require.Error(t, err)
+			require.Empty(t, frames, "partial quantum cannot propose a host effect")
+		})
+	}
+	p := &quickJSProcess{output: bufio.NewScanner(strings.NewReader(invoke + `{"kind":"wait","pending":[1]}` + "\n"))}
+	frames, tail, err := p.quantum()
+	require.NoError(t, err)
+	require.Len(t, frames, 1)
+	require.Equal(t, "wait", tail.Kind)
 }

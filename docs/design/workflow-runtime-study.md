@@ -402,8 +402,9 @@ independent oracle requires exactly two model calls and exactly 14 input/8 outpu
 tokens. Actual Continue-As-New and stale epoch rejection remain part of the path.
 
 Timeout and allocator-exhaustion fixtures terminate the owned evaluator with a
-nonretryable host failure, no persisted return and no fallback invocation. An
-invoke emitted before an infinite loop is not admitted. These probes reuse the
+nonretryable host failure, no persisted return and no fallback invocation. A
+queued Agent call before an infinite loop is not admitted. The separate IPC
+parser test rejects an invoke frame followed by failure, EOF or malformed data. These probes reuse the
 study's limits and C resource latch; they are not a complete sandbox qualification,
 platform comparison or supervisor-crash/orphan-reaping proof. The fixture pins
 and records its actual image ID/platform, not a mutable runtime substitution.
