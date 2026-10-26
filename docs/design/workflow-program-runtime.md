@@ -16,8 +16,9 @@ adds atomic one-command decisions and grader reservations. The opt-in
 connects that frontier to real Temporal/Run outbox recovery using a test-only
 sequential evaluator. PG chain ownership and bounded fair wake retries fence
 unsupported coordinator restarts; automatic restore/lifecycle recovery is still
-unavailable. The program runtime, ordered deliveries and broader
-lifecycle below remain proposals; no public Workflow admission is available.
+unavailable. The [real QuickJS bridge](workflow-runtime-study.md#real-quickjs-runthread-proof)
+tests a bounded command/delivery/return path through actual Threads. The general
+program runtime and broader lifecycle below remain proposals; no public Workflow admission is available.
 This is the execution detail of the [Workflow Runs plan](workflow-runs.md).
 The recommendation is restricted JavaScript for orchestration, a PostgreSQL
 command journal for semantic recovery, and Temporal for durable coordination.

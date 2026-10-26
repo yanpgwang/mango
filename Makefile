@@ -82,6 +82,7 @@ help:
 	@echo "  make test-self-hosted-live  run one real-model turn through a self-hosted Docker worker"
 	@echo "  make test-platform-live  alias for the self-hosted live smoke"
 	@echo "  make test-workflow-runtime  run the isolated JS/journal feasibility study (not a product executor)"
+	@echo "  make test-workflow-quickjs-integration  run real JS through disposable PG/Temporal/Threads"
 	@echo "  make test-custom-tool-barrier  test custom-tool results across a worker restart"
 	@echo "  make demo-coding-agent  run the coding agent example with a local Docker worker"
 	@echo "  make demo-hitl-gate      run the recoverable HITL Go SDK example"
@@ -128,6 +129,17 @@ test-race:
 
 # Explicit research tier. No runtime, SDK, release or ordinary test depends on
 # these images. First build downloads pinned public engines, never credentials.
+# Explicit local research tier over actual PG/Temporal/Thread components.
+# No production evaluator is enabled; service addresses must be disposable.
+.PHONY: test-workflow-quickjs-integration
+test-workflow-quickjs-integration:
+	$(DOCKER) build --target quickjs -t mango-workflow-quickjs-vertical:study scripts/workflow-runtime
+	MANGO_TEST_WORKFLOW_QUICKJS=1 \
+		MANGO_TEST_QUICKJS_IMAGE=mango-workflow-quickjs-vertical:study \
+		MANGO_TEST_DATABASE_URL='$(MANGO_TEST_DATABASE_URL)' \
+		MANGO_TEST_TEMPORAL_HOSTPORT='$(MANGO_TEST_TEMPORAL_HOSTPORT)' \
+		$(GO) test -timeout 10m -count=1 -v ./internal/temporal -run '^TestQuickJSRunVerticalRealServices$$'
+
 test-workflow-runtime:
 	$(DOCKER) info --format '{{.ServerVersion}}' >/dev/null
 	$(DOCKER) build --target quickjs -t mango-workflow-study:quickjs scripts/workflow-runtime

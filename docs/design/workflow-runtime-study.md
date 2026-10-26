@@ -366,12 +366,72 @@ stay unreachable until lifecycle reconciliation, ordered Promise delivery, full
 runtime/adapter pins, terminal delivery, grading resumption and containment gates
 are complete. The snapshot's command order is not Promise completion order.
 
+## Real QuickJS Run/Thread proof
+
+A separate local-only test bridges the existing isolated QuickJS study candidate
+to the actual Run pump, PostgreSQL frontier/receipts, outboxes and Thread runner.
+`TestQuickJSRunVerticalRealServices` executes frozen `WorkflowRunRequest.Source`
+and JSON inputs; its adapter contains no scripted Agent prompts or expected
+results. The independently specified model oracle supplies JSON text from one
+Thread and plain text from another. The JS explicitly parses the JSON text,
+performs two real Agent calls and computes the combined value.
+
+The existing `workflow_pump_decisions` journal now also accepts internal delivery
+entries and bounded program-return candidates. A delivery references an earlier
+invoke's journal cursor and copies its same-Run settled receipt under the current
+Session/Run/epoch fence. Rejections have durable typed delivery too. Every call
+must settle and be delivered before a return candidate can commit; duplicate
+delivery and new effects after return are rejected. Command, cursor, byte budget,
+Run version and wake commit together. No second journal or agent loop is added.
+
+The test adapter starts a fresh content-addressed candidate image for each
+quantum. It validates a complete bounded engine quantum before proposing any
+new effect. During replay it injects only journaled deliveries, one at a time,
+and lets QuickJS drain microtasks after each. It does not resolve all currently
+cached receipts together. JS host-call IDs, invoke journal cursors and complete
+journal positions are mapped separately.
+
+The parallel fixture admits A and B, delivers B while A is held, then commits
+B's delivery with a lost SQL/Activity reply. A settles before an actual Temporal
+worker replacement, leaving both receipts cached. Replay still observes B then
+A and persists `{total:12,note:"beta-text",order:["B","A"],tag:{study:true}}`.
+A real evaluator container is also killed before the second invocation commits.
+A sequential source fixture derives its second prompt from the first JSON text,
+covering `invoke -> deliver -> invoke` where the ordinal spaces diverge. The
+independent oracle requires exactly two model calls and exactly 14 input/8 output
+tokens. Actual Continue-As-New and stale epoch rejection remain part of the path.
+
+Timeout and allocator-exhaustion fixtures terminate the owned evaluator with a
+nonretryable host failure, no persisted return and no fallback invocation. An
+invoke emitted before an infinite loop is not admitted. These probes reuse the
+study's limits and C resource latch; they are not a complete sandbox qualification,
+platform comparison or supervisor-crash/orphan-reaping proof. The fixture pins
+and records its actual image ID/platform, not a mutable runtime substitution.
+
+Run the explicit research tier against disposable PostgreSQL/Temporal services:
+
+```sh
+make test-workflow-quickjs-integration \
+  MANGO_TEST_DATABASE_URL='postgres://.../disposable_fixture?sslmode=disable' \
+  MANGO_TEST_TEMPORAL_HOSTPORT='127.0.0.1:7233'
+```
+
+`MANGO_TEST_QUICKJS_REPORT=/tmp/quickjs-evidence.json` optionally retains the
+queried result, ordered trace, source hash, image identity, usage and evaluator
+exit observations after the fixture schema is removed. The value lives in the
+actual PG decision before teardown. It is a program candidate, not product Run
+closure: the Run remains open, and no primary terminal delivery, Outcome resume,
+aggregate completion/retirement, public admission or production engine selection
+is enabled. General language/profile replay and hard containment remain open.
+
 ## Remaining decisions before product exposure
 
 Keep the product gate open. The internal coordinator test establishes a bounded
 sequential recovery path over the existing PostgreSQL decisions and owned
 receipts. It does not qualify ordered program replay, automatic coordinator recovery after closure or independent restore, control
 parking/resumption or complete Run lifecycle.
+The real QuickJS bridge above adds one bounded language-driven recovery path;
+it does not qualify arbitrary programs or the complete runtime profile.
 An evaluator crash is not evidence that no command committed.
 
 Select the deployable engine/profile after verifying runtime availability,

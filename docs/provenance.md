@@ -2056,3 +2056,28 @@ fenced; independent PG restore requires stopped workers and explicit effect
 reconciliation, since a rolled-back database cannot attest to its lost writes.
 Terminal Run delivery, Outcome resumption, ordered Promise replay, containment,
 full lifecycle and public admission remain separate gates.
+
+
+## Real QuickJS bridge to Mango coordination (2026-10-26)
+
+The [QuickJS C API documentation](https://bellard.org/quickjs/quickjs.html#Memory-handling)
+describes allocator/memory controls; its
+[interrupt interface](https://bellard.org/quickjs/quickjs.html#Execution-timeout-and-interrupts)
+provides a host interruption hook. The existing study checksum-pins QuickJS
+2026-06-04 and supplies an independently authored C embedder/realm. The new local
+bridge reuses that candidate by actual image ID and records the tested platform;
+it does not select a production engine or infer private CMA internals.
+
+Current public CMA Workflow Runs and the pinned SDK dynamic-workflow cookbook
+remain useful evidence for program-owned agent calls/results, not proof of a
+specific private JS engine. Mango's original adapter executes its own frozen JS
+source, explicit JSON parsing and native Promise callbacks against the existing
+Run/Thread components. Ordered delivery and return candidates enter Mango's
+existing fenced frontier journal; physical Thread settlement is separate from
+script-visible delivery. Activity/worker replacement uses that journal rather
+than treating Temporal retry as JS semantic replay.
+
+The [real-component proof](design/workflow-runtime-study.md#real-quickjs-runthread-proof)
+records actual source-driven invocations, cached delivery ordering after ACK loss,
+usage, final value and resource termination. No public wire/SDK mapping, hosted
+execution, third-party SDK runtime dependency or complete lifecycle is adopted.
