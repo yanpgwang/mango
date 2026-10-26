@@ -179,14 +179,23 @@ func TestWorkflowRunOwnershipAfterAbsentHistoryAndResetRealTemporal(t *testing.T
 				require.Error(t, err)
 				require.Zero(t, n)
 				require.EqualValues(t, 100, deliverer.blocked)
-				n, err = relay.RunOnce(ctx)
+				// Make blocked retries due explicitly. Fairness must hold
+				// even when a slower runner outlives the first backoff.
+				_, err = pool.Exec(ctx, `UPDATE workflow_run_outbox SET available_at=statement_timestamp() WHERE run_id<>$1`, run.ID)
 				require.NoError(t, err)
-				require.Equal(t, 1, n)
+				n, err = relay.RunOnce(ctx)
+				require.Equal(t, 1, n, "healthy wake is delivered alongside due blocked retries")
+				require.ErrorIs(t, err, errOwnershipBlockedTarget)
+				joined, ok := err.(interface{ Unwrap() []error })
+				require.True(t, ok)
+				for _, cause := range joined.Unwrap() {
+					require.ErrorIs(t, cause, errOwnershipBlockedTarget)
+				}
 				require.Eventually(t, func() bool {
 					return coordinatorEventCount(coordinatorHistory(t, ctx, c, id, original.GetRunID()), enumspb.EVENT_TYPE_WORKFLOW_EXECUTION_SIGNALED) == 1
 				}, 10*time.Second, 20*time.Millisecond)
 				var remaining int
-				require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM workflow_run_outbox WHERE delivery_attempts=1`).Scan(&remaining))
+				require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM workflow_run_outbox`).Scan(&remaining))
 				require.Equal(t, 100, remaining)
 				return
 			}
@@ -250,6 +259,8 @@ type ownershipFixedClock struct{ now time.Time }
 
 func (c ownershipFixedClock) Now() time.Time { return c.now }
 
+var errOwnershipBlockedTarget = errors.New("permanently blocked test target")
+
 type ownershipBlockedDeliverer struct {
 	*Signaler
 	healthy string
@@ -259,7 +270,7 @@ type ownershipBlockedDeliverer struct {
 func (d *ownershipBlockedDeliverer) WakeWorkflowRun(ctx context.Context, wake pg.WorkflowRunWakeup) error {
 	if wake.RunID != d.healthy {
 		d.blocked++
-		return errors.New("permanently blocked test target")
+		return errOwnershipBlockedTarget
 	}
 	return d.Signaler.WakeWorkflowRun(ctx, wake)
 }
