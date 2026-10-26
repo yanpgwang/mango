@@ -534,3 +534,15 @@ func (s storeSource) StartToolStepWithPermission(ctx context.Context, stepID, to
 func (s storeSource) ReserveOutcomeGrading(ctx context.Context, in domain.OutcomeGradingReservation) error {
 	return s.store.ReserveOutcomeGrading(ctx, in)
 }
+
+func (s storeSource) IsWorkflowResultTrigger(ctx context.Context, sid, eid string) (bool, error) {
+	return s.store.IsWorkflowResultTrigger(ctx, sid, eid)
+}
+
+func (s storeSource) WorkflowOutcomeContinuation(ctx context.Context, sid, eid string) (*domain.WorkflowOutcomeContinuation, error) {
+	return s.store.WorkflowOutcomeContinuation(ctx, sid, eid)
+}
+
+func (s storeSource) WorkflowOutcomeTurnDeferred(ctx context.Context, sid, eid string) (bool, error) {
+	return s.store.WorkflowOutcomeTurnDeferred(ctx, sid, eid)
+}

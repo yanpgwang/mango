@@ -8,8 +8,9 @@ slug: /design/workflow-dynamic-acceptance
 
 Mango does not yet provide a user-facing dynamic Workflow product, and this
 experiment does not establish CMA parity. It runs an independently authored port
-of the SDK cookbook's **computational pattern** through real QuickJS, PostgreSQL,
-Temporal and Mango Threads with deterministic model responses. It does not run
+of the SDK cookbook's pattern through real QuickJS, PostgreSQL, Temporal and
+Mango Threads, including the primary synthesis turn, with deterministic model
+responses. It does not run
 the upstream SDK, a paid model, hosted CMA or the complete upstream application.
 
 ## References actually read
@@ -96,19 +97,19 @@ Independent model checks and direct PG admission/receipt assertions require:
 | Pipeline helper | Local pure JS implementation, no public helper/ABI |
 | Metadata, phase UI, log, model routing | Omitted, not silently emulated |
 | Program return | Candidate persisted in the existing fenced journal |
-| Run terminal result and primary notification | Missing: Run remains open and primary receives no report |
-| Primary final answer and completion barrier | Missing; primary end_turn/Session idle can coexist with open Runs |
+| Run terminal result and primary notification | Implemented behind explicit internal finalization registration; one owned terminal delivery and primary Session wake |
+| Primary final answer and completion barrier | Actual primary synthesis tested; open/paused Runs, pending deliveries and deferred Outcomes suppress premature final completion |
 | Public Workflow tool, HTTP/events/SDK application | Unavailable; admission remains unexposed |
 | CMA security review | Read only; its 20 → 3 → 3 review/controller application was not run |
 | Production engine and strong isolation | Unselected/unqualified; one existing study profile is tested |
 | Arbitrary programs and full lifecycle | Not established; operational, pause/stop/deadline/budget and retirement gates remain |
 
-`TestQuickJSFactcheckLifecycleBoundaryRealServices` explicitly persists primary
-`end_turn` with an open Run, adds a second open Run and pauses one. The paused
-frontier rejects progress, but Session idle still coexists with open Runs and
-zero Run-terminal events. This records a missing product boundary, not a working
-completion guard. The computational tests likewise assert `state=open` and zero
-primary report messages after candidate persistence.
+`TestQuickJSFactcheckLifecycleBoundaryRealServices` checks that a primary
+`end_turn` is suppressed with an open Run, a second open Run or a paused Run.
+The older computational-only registrations deliberately retain candidates so
+those tests can isolate replay behavior. The separate internal `FinalizeResults`
+registration enables the successful closure experiment described below; neither
+registration is enabled by the default application or public admission.
 
 The strict
 [public CMA completion criterion](https://platform.claude.com/docs/en/managed-agents/workflow-runs#know-when-the-work-is-done)
@@ -117,8 +118,47 @@ rechecking if new Runs appear. Refusal may end an interaction but is not busines
 success. The security helper's additional refusal-as-idle branch is not adopted
 as a success criterion.
 
-The remaining user loop is candidate → fenced Run terminal result → durable
-primary notification → later primary answer, including open/paused/second-Run
-barriers. It requires lifecycle/event/API design and independent fault tests.
-This port does not synthesize terminal events or enable a partial public feature
-to claim that the complete cookbook application has run.
+## Successful Run-to-primary closure
+
+`TestQuickJSFactcheckPrimaryClosureRealServices` now executes the same frozen
+sixteen-invocation JS fact-check program through Run closure and an actual
+primary model turn on the existing `SessionWorkflow`. It uses the independent
+primary Thread projection and the real Thread runner. It tests lost finalizer
+ACK plus Run-worker replacement, lost primary-consumption ACK plus primary
+worker replacement, early replies, a second paused Run, refusal, active Outcome
+resumption, revision and evaluation-budget exhaustion. Model behavior remains a
+fixture, so program completion does not establish report accuracy or CMA parity.
+
+| Transaction boundary | Durable fact and recovery rule |
+| --- | --- |
+| Program candidate | Existing fenced journal stores the exact accepted JSON return bytes and its JSONB value after every owned invocation has a delivered immutable receipt. JSONB numeric/whitespace normalization cannot change the accepted byte budget. A candidate alone does not finish a Run. |
+| Successful Run finalization | Session then Run locks check physical coordinator, epoch, exact candidate cursor, deadline/control eligibility and settled receipts. One transaction closes the Run, stores its terminal value and unique delivery binding, appends the primary input, enqueues the primary Session outbox and retires obsolete Run wakeups. |
+| Terminal ACK recovery | The exact persisted owner/epoch/cursor/pump identity recovers the terminal checkpoint before the ordinary closed-Run rejection path. A new/stale chain cannot restart it. Temporal receives only small terminal metadata and finishes its coordinator. |
+| Primary consumption | The existing primary runner loads a PG-bound notification as data. Consumption commits with completion and requires the exact terminal response's message ID, nonempty text-only content and end_turn; earlier tool-round text, refusal, empty final responses, interruptions and requires_action do not count. A validated pending-action continuation retains the same delivery identity. |
+| Aggregate completion | Under the Session lock, no open Run (including paused), unconsumed terminal delivery or waiting Outcome may be treated as finished. New Run admission, Outcome grading and conditional idle Work retirement use the same serialization boundary. Intermediate primary replies remain possible. |
+| Outcome defer/resume | Before grading provider I/O, the typed Run barrier yields the existing primary loop. Working completion persists original Outcome/rubric, causal trigger, span identities and iteration. A bound result turn synthesizes with the retained context before grading. The current incorporated delivery is excluded only from its own grading barrier; other Runs/deliveries still block. |
+| Outcome progress | Committed revision/end spans advance or finish the saved continuation with the same transaction. An ended span is not reused after a tool/approval park. Completion ACK retries distinguish a completed deferred working turn from a receipt-processed initial Outcome. |
+
+The typed binding lives in `workflow_run_terminal_results`. The public envelope
+uses the existing `system.message` content shape, with **no new HTTP/SDK field or
+Run endpoint**. Trusted PG classification controls both turn selection and model
+projection: Run values become clearly typed **user-role data**, not higher-trust
+system instructions. A client-supplied marker cannot create that binding.
+Ordinary system messages retain their existing behavior. Run-result text never
+becomes authenticated user permission intent or widens tools/credentials.
+
+The additive `20261026000003_workflow_terminal.sql` migration also stores durable
+Outcome continuations. Only disposable test schemas are migrated in this study;
+operators must use the normal explicit migration command before running a binary
+against an older installation. Startup still performs no schema writes. Older unshipped study candidates lacking
+exact return-byte receipts fail closed; no inferred re-encoding or automatic
+replay is provided.
+
+The refusal/interrupt/empty-final branches fail closed with an unconsumed result;
+automatic redelivery/reconciliation after those controls is not implemented as a
+product capability. Full stop/deadline/error terminalization, pause/resume control,
+archive/repin protection, arbitrary-program qualification and production JS
+isolation remain gates before public admission. The separate CMA security
+review's twenty-session custom-tool and repair/recheck application remains
+unexecuted here. A public application, real source-reading agents and paid model
+acceptance are distinct from this internal deterministic closure proof.

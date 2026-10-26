@@ -2081,3 +2081,16 @@ The [real-component proof](design/workflow-runtime-study.md#real-quickjs-runthre
 records actual source-driven invocations, cached delivery ordering after ACK loss,
 usage, final value and resource termination. No public wire/SDK mapping, hosted
 execution, third-party SDK runtime dependency or complete lifecycle is adopted.
+
+### Internal successful Workflow terminal closure
+
+The public [CMA workflow lifecycle](https://platform.claude.com/docs/en/managed-agents/workflow-runs)
+and pinned/current SDK fact-check and CMA security-review notebooks inform the
+separation of program completion, primary synthesis and application validation.
+Mango implements that boundary using its own PG Session-first transactions,
+terminal/delivery receipts, existing primary Session runner and outbox, and
+durable Outcome continuation. It adopts no hosted SDK, private engine inference
+or vendor wire extension. The existing system-message envelope is classified by
+trusted PG ownership and projected as user-role result data. Source revisions,
+actual tests, intentional helper/schema deviations and remaining gates are in
+[acceptance evidence](design/workflow-dynamic-acceptance.md).

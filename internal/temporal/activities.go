@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -480,7 +481,16 @@ func (a *Activities) LoadEvents(ctx context.Context, in LoadEventsInput) (LoadEv
 	}
 	refs := make([]EventRef, 0, len(events))
 	for _, e := range events {
-		refs = append(refs, EventRef{ID: e.ID, Seq: e.Sequence, Type: e.Type})
+		owned := false
+		if e.Type == domain.EvSystemMessage {
+			if source, ok := a.source.(WorkflowResultSource); ok {
+				owned, err = source.IsWorkflowResultTrigger(ctx, in.SessionID, e.ID)
+				if err != nil {
+					return LoadEventsResult{}, err
+				}
+			}
+		}
+		refs = append(refs, EventRef{ID: e.ID, Seq: e.Sequence, Type: e.Type, WorkflowResult: owned})
 	}
 	return LoadEventsResult{Events: refs}, nil
 }
@@ -699,6 +709,32 @@ func (a *Activities) appendWorkflowEvents(
 // PrepareTurn reads one turn's immutable starting state from PostgreSQL. The
 // result becomes Workflow history; replay never performs these reads in
 // Workflow code.
+type WorkflowOutcomeSource interface {
+	WorkflowOutcomeTurnDeferred(context.Context, string, string) (bool, error)
+	WorkflowOutcomeContinuation(context.Context, string, string) (*domain.WorkflowOutcomeContinuation, error)
+}
+type WorkflowResultSource interface {
+	IsWorkflowResultTrigger(context.Context, string, string) (bool, error)
+}
+
+func (a *Activities) classifyWorkflowResult(ctx context.Context, e *domain.Event) error {
+	if e.Type != domain.EvSystemMessage {
+		return nil
+	}
+	e.Payload = maps.Clone(e.Payload)
+	delete(e.Payload, domain.InternalWorkflowRunResult)
+	if source, ok := a.source.(WorkflowResultSource); ok {
+		found, err := source.IsWorkflowResultTrigger(ctx, e.SessionID, e.ID)
+		if err != nil {
+			return err
+		}
+		if found {
+			e.Payload[domain.InternalWorkflowRunResult] = true
+		}
+	}
+	return nil
+}
+
 func (a *Activities) prepareTurn(ctx context.Context, in PrepareTurnInput) (PrepareTurnResult, error) {
 	trigger, err := a.source.GetEvent(ctx, in.SessionID, in.TriggerEventID)
 	if err != nil {
@@ -758,6 +794,13 @@ func (a *Activities) prepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 			// contract, before its asynchronous work completes. It remains runnable
 			// only while the matching Session outcome projection is active.
 			completed = active == nil || active.OutcomeID != outcomeID
+			if source, ok := a.source.(WorkflowOutcomeSource); ok {
+				deferred, err := source.WorkflowOutcomeTurnDeferred(ctx, in.SessionID, trigger.ID)
+				if err != nil {
+					return PrepareTurnResult{}, err
+				}
+				completed = completed || deferred
+			}
 		}
 		if completed {
 			return PrepareTurnResult{
@@ -770,6 +813,15 @@ func (a *Activities) prepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 	if err != nil {
 		return PrepareTurnResult{}, err
 	}
+	if err = a.classifyWorkflowResult(ctx, &trigger); err != nil {
+		return PrepareTurnResult{}, err
+	}
+	for i := range history {
+		if err = a.classifyWorkflowResult(ctx, &history[i]); err != nil {
+			return PrepareTurnResult{}, err
+		}
+	}
+
 	toolSet, err := domain.ParseTools(executionAgent.Tools)
 	if err != nil {
 		return PrepareTurnResult{FatalError: "invalid toolset: " + err.Error()}, nil
@@ -912,6 +964,23 @@ func (a *Activities) prepareTurn(ctx context.Context, in PrepareTurnInput) (Prep
 					"type": "text", "content": rubricContent,
 				},
 				MaxIterations: maxIterations,
+			}
+		}
+	}
+	if source, ok := a.source.(WorkflowResultSource); ok {
+		result.WorkflowResultTurn, err = source.IsWorkflowResultTrigger(ctx, in.SessionID, trigger.ID)
+		if err != nil {
+			return PrepareTurnResult{}, err
+		}
+	}
+	if result.WorkflowResultTurn {
+		if source, ok := a.source.(WorkflowOutcomeSource); ok {
+			result.OutcomeContinuation, err = source.WorkflowOutcomeContinuation(ctx, in.SessionID, trigger.ID)
+			if err != nil {
+				return PrepareTurnResult{}, err
+			}
+			if result.OutcomeContinuation != nil {
+				result.Outcome = &result.OutcomeContinuation.Outcome
 			}
 		}
 	}
@@ -1358,7 +1427,7 @@ func transcriptCoversPriorTurns(
 			// require a separate provider transcript trigger row.
 			continue
 		}
-		if !drivesPreparedModelTurn(event.Type) {
+		if !drivesPreparedModelTurn(event.Type) && event.Payload[domain.InternalWorkflowRunResult] != true {
 			continue
 		}
 		if _, ok := represented[event.ID]; !ok {
@@ -1414,8 +1483,11 @@ func (a *Activities) evaluateOutcome(
 		return EvaluateOutcomeResult{FatalError: err.Error()}, nil
 	}
 	if source, ok := a.source.(OutcomeGradingSource); ok {
-		if err := source.ReserveOutcomeGrading(ctx, domain.OutcomeGradingReservation{SessionID: in.SessionID,
+		if err := source.ReserveOutcomeGrading(ctx, domain.OutcomeGradingReservation{TriggerEventID: in.TriggerEventID, SessionID: in.SessionID,
 			OutcomeID: in.Outcome.OutcomeID, StartEventID: in.StartEventID, EndEventID: in.EndEventID, Iteration: in.Iteration}); err != nil {
+			if errors.Is(err, domain.ErrWorkflowCompletionPending) {
+				return EvaluateOutcomeResult{WorkflowDeferred: true}, nil
+			}
 			return EvaluateOutcomeResult{}, err // control/retry error, never a business verdict
 		}
 	}

@@ -108,16 +108,18 @@ type PrepareTurnInput struct {
 // The projected messages and tool definitions are Activity output, so Temporal
 // records them in history and deterministic replay never rereads PostgreSQL.
 type PrepareTurnResult struct {
-	AlreadyCompleted bool           `json:"already_completed"`
-	Terminated       bool           `json:"terminated"`
-	FatalError       string         `json:"fatal_error,omitempty"`
-	AttemptID        string         `json:"attempt_id,omitempty"`
-	ThreadID         string         `json:"thread_id,omitempty"`
-	IsChild          bool           `json:"is_child,omitempty"`
-	SkillRuntimeRoot string         `json:"skill_runtime_root,omitempty"`
-	Request          model.Request  `json:"request"`
-	Tools            []TurnTool     `json:"tools,omitempty"`
-	ResumeActions    []ResumeAction `json:"resume_actions,omitempty"`
+	WorkflowResultTurn  bool                                `json:"workflow_result_turn,omitempty"`
+	OutcomeContinuation *domain.WorkflowOutcomeContinuation `json:"outcome_continuation,omitempty"`
+	AlreadyCompleted    bool                                `json:"already_completed"`
+	Terminated          bool                                `json:"terminated"`
+	FatalError          string                              `json:"fatal_error,omitempty"`
+	AttemptID           string                              `json:"attempt_id,omitempty"`
+	ThreadID            string                              `json:"thread_id,omitempty"`
+	IsChild             bool                                `json:"is_child,omitempty"`
+	SkillRuntimeRoot    string                              `json:"skill_runtime_root,omitempty"`
+	Request             model.Request                       `json:"request"`
+	Tools               []TurnTool                          `json:"tools,omitempty"`
+	ResumeActions       []ResumeAction                      `json:"resume_actions,omitempty"`
 	// PreludeEvents are recoverable setup diagnostics, such as one unavailable
 	// MCP server. The Workflow commits them with the turn while continuing with
 	// the remaining tool surface.
@@ -135,26 +137,28 @@ type PrepareTurnResult struct {
 }
 
 type EvaluateOutcomeInput struct {
-	SessionID    string             `json:"session_id"`
-	StartEventID string             `json:"start_event_id,omitempty"`
-	EndEventID   string             `json:"end_event_id,omitempty"`
-	Model        string             `json:"model"`
-	Effort       string             `json:"effort,omitempty"`
-	Speed        string             `json:"speed,omitempty"`
-	Outcome      domain.OutcomeSpec `json:"outcome"`
-	Candidate    []domain.Message   `json:"candidate"`
-	Iteration    int                `json:"iteration"`
-	FinalCycle   bool               `json:"final_cycle"`
+	TriggerEventID string             `json:"trigger_event_id,omitempty"`
+	SessionID      string             `json:"session_id"`
+	StartEventID   string             `json:"start_event_id,omitempty"`
+	EndEventID     string             `json:"end_event_id,omitempty"`
+	Model          string             `json:"model"`
+	Effort         string             `json:"effort,omitempty"`
+	Speed          string             `json:"speed,omitempty"`
+	Outcome        domain.OutcomeSpec `json:"outcome"`
+	Candidate      []domain.Message   `json:"candidate"`
+	Iteration      int                `json:"iteration"`
+	FinalCycle     bool               `json:"final_cycle"`
 }
 
 type EvaluateOutcomeResult struct {
-	StartEventID string            `json:"start_event_id"`
-	EndEventID   string            `json:"end_event_id"`
-	Result       string            `json:"result"`
-	Explanation  string            `json:"explanation"`
-	Usage        domain.TokenUsage `json:"usage"`
-	StopReason   string            `json:"stop_reason,omitempty"`
-	FatalError   string            `json:"fatal_error,omitempty"`
+	WorkflowDeferred bool              `json:"workflow_deferred,omitempty"`
+	StartEventID     string            `json:"start_event_id"`
+	EndEventID       string            `json:"end_event_id"`
+	Result           string            `json:"result"`
+	Explanation      string            `json:"explanation"`
+	Usage            domain.TokenUsage `json:"usage"`
+	StopReason       string            `json:"stop_reason,omitempty"`
+	FatalError       string            `json:"fatal_error,omitempty"`
 }
 
 // ResumeAction is the server-owned reconstruction of one parked tool call and
@@ -357,9 +361,10 @@ type LoadEventsInput struct {
 // decide what to do. Payloads never enter workflow history; the Activity holds
 // the authoritative event.
 type EventRef struct {
-	ID   string `json:"id"`
-	Seq  int64  `json:"seq"`
-	Type string `json:"type"`
+	WorkflowResult bool   `json:"workflow_result,omitempty"`
+	ID             string `json:"id"`
+	Seq            int64  `json:"seq"`
+	Type           string `json:"type"`
 }
 
 // LoadEventsResult carries the ordered event references after the cursor.

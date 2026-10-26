@@ -92,7 +92,7 @@ and `MANGO_TEST_TEMPORAL_HOSTPORT` addresses. It uses deterministic model fixtur
 never provider credentials. Default tests skip it; see the
 [bounded proof](docs/design/workflow-runtime-study.md#real-quickjs-runthread-proof).
 The same target includes the independent ten-claim pipeline and explicit missing
-lifecycle probes; see [acceptance scope](docs/design/workflow-dynamic-acceptance.md).
+lifecycle probes, successful Run-to-primary closure, and trusted data projection; see [acceptance scope](docs/design/workflow-dynamic-acceptance.md).
 
 `make lint` checks changes relative to `origin/main`, matching the incremental
 CI rollout. Set `LINT_BASE` when your comparison branch differs.
@@ -285,6 +285,9 @@ regenerate the query bindings with sqlc and review the generated diff.
 The additive `20261025000001_workflow_receipts.sql` and
 `20261026000001_workflow_frontier.sql` migrations introduce internal, unexposed
 Workflow ownership, receipts, frontier decisions and grader reservations.
+The additive `20261026000003_workflow_terminal.sql` adds internal successful
+terminal delivery and Outcome continuation receipts. No public admission or
+production JS engine is enabled by these migrations.
 Run `mango migrate` before starting
 this checkout against an initialized baseline; startup remains read-only and
 rejects pending versions. No Workflow product capability is enabled by it.

@@ -59,14 +59,40 @@ func (s *Store) ReserveOutcomeGrading(ctx context.Context, in domain.OutcomeGrad
 		if err != nil {
 			return err
 		}
-		if trigger.ThreadID != primaryID || trigger.Type != domain.EvUserDefineOutcome {
-			return domain.Conflict("Outcome grading trigger is not its primary Outcome turn")
+		execution := trigger
+		if in.TriggerEventID != "" && in.TriggerEventID != trigger.ID {
+			execution, err = q.GetEvent(ctx, pgstore.GetEventParams{SessionID: in.SessionID, ID: in.TriggerEventID})
+			if err != nil {
+				return err
+			}
+		}
+		if trigger.ThreadID != primaryID || execution.ThreadID != primaryID {
+			return domain.Conflict("Outcome grading trigger is not primary")
+		}
+		origin := trigger
+		var deliveryRoot string
+		rootErr := tx.QueryRow(ctx, workflowDeliveryRootSQL, in.SessionID, execution.ID).Scan(&deliveryRoot)
+		if rootErr != nil && !errors.Is(rootErr, pgx.ErrNoRows) {
+			return rootErr
+		}
+		if trigger.Type != domain.EvUserDefineOutcome || execution.ID != trigger.ID {
+			var originID string
+			if rootErr != nil {
+				return domain.Conflict("Outcome continuation lacks an owned Run result")
+			}
+			if err = tx.QueryRow(ctx, `SELECT trigger_id FROM workflow_outcome_waits WHERE session_id=$1 AND state='waiting'`, in.SessionID).Scan(&originID); err != nil {
+				return domain.Conflict("Outcome continuation is not waiting")
+			}
+			origin, err = q.GetEvent(ctx, pgstore.GetEventParams{SessionID: in.SessionID, ID: originID})
+			if err != nil {
+				return err
+			}
 		}
 		var triggerPayload map[string]any
-		if err = json.Unmarshal(trigger.Payload, &triggerPayload); err != nil {
+		if err = json.Unmarshal(origin.Payload, &triggerPayload); err != nil {
 			return err
 		}
-		if triggerPayload["outcome_id"] != in.OutcomeID {
+		if origin.Type != domain.EvUserDefineOutcome || triggerPayload["outcome_id"] != in.OutcomeID {
 			return domain.Conflict("Outcome grading trigger has different ownership")
 		}
 		thread, err := loadSessionThreadForUpdate(ctx, tx, in.SessionID, primaryID)
@@ -76,19 +102,19 @@ func (s *Store) ReserveOutcomeGrading(ctx context.Context, in domain.OutcomeGrad
 		if thread.ArchivedAt != nil || thread.Status != domain.StatusRunning {
 			return domain.Conflict("Outcome grading Thread is ineligible")
 		}
-		_, err = q.FirstUnprocessedInterruptAfter(ctx, pgstore.FirstUnprocessedInterruptAfterParams{SessionID: in.SessionID, AfterSeq: trigger.Seq})
+		_, err = q.FirstUnprocessedInterruptAfter(ctx, pgstore.FirstUnprocessedInterruptAfterParams{SessionID: in.SessionID, AfterSeq: execution.Seq})
 		if err == nil {
 			return domain.Conflict("Outcome grading was interrupted")
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		var open bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workflow_runs WHERE session_id=$1 AND state='open')`, in.SessionID).Scan(&open); err != nil {
+		blocked, err := workflowCompletionBlocked(ctx, tx, in.SessionID, deliveryRoot)
+		if err != nil {
 			return err
 		}
-		if open {
-			return domain.Conflict("Outcome grading waits for open Workflow Runs")
+		if blocked {
+			return domain.ErrWorkflowCompletionPending
 		}
 		var end, state string
 		err = tx.QueryRow(ctx, `SELECT end_event_id,state FROM outcome_grading_reservations WHERE session_id=$1 AND start_event_id=$2`, in.SessionID, in.StartEventID).Scan(&end, &state)
@@ -111,7 +137,7 @@ func (s *Store) ReserveOutcomeGrading(ctx context.Context, in domain.OutcomeGrad
 		if err = rejectActiveOutcomeGrading(ctx, tx, in.SessionID); err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO outcome_grading_reservations(session_id,thread_id,trigger_id,outcome_id,iteration,start_event_id,end_event_id) VALUES($1,$2,$3,$4,$5,$6,$7)`, in.SessionID, primaryID, trigger.ID, in.OutcomeID, in.Iteration, in.StartEventID, in.EndEventID)
+		_, err = tx.Exec(ctx, `INSERT INTO outcome_grading_reservations(session_id,thread_id,trigger_id,outcome_id,iteration,start_event_id,end_event_id) VALUES($1,$2,$3,$4,$5,$6,$7)`, in.SessionID, primaryID, execution.ID, in.OutcomeID, in.Iteration, in.StartEventID, in.EndEventID)
 		return err
 	})
 }

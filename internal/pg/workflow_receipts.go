@@ -109,6 +109,20 @@ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, result.ID, sessionID, key, requestJSON, ros
 		if err != nil {
 			return err
 		}
+		if session.Status == domain.StatusIdle {
+			now := s.clock.Now().UTC()
+			session.TransitionStatus(domain.StatusRunning, now)
+			if err = putSessionOnlyTx(ctx, tx, session); err != nil {
+				return err
+			}
+			seq, err := q.MaxEventSeq(ctx, sessionID)
+			if err != nil {
+				return err
+			}
+			if _, _, err = s.appendDraftsAt(ctx, q, sessionID, []domain.EventDraft{{Type: domain.EvSessionStatusRunning, Payload: map[string]any{}}}, seq, nil, now); err != nil {
+				return err
+			}
+		}
 		return s.enqueueWorkflowRunLocked(ctx, tx, sessionID, result.ID, 1)
 	})
 	return result, err

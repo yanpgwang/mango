@@ -34,6 +34,7 @@ type WorkflowRunPumpInput struct {
 type WorkflowRunPumpResult struct {
 	Cursor, Epoch, Version int64
 	Waiting                bool
+	Terminal               bool
 }
 
 type WorkflowRunStore interface {
@@ -51,9 +52,15 @@ type WorkflowRunEvaluator interface {
 	Next(context.Context, pg.WorkflowPumpSnapshot) (*pg.WorkflowPumpCommand, error)
 }
 
+type WorkflowRunTerminalStore interface {
+	RecoverWorkflowRunTerminal(context.Context, string, string, pg.WorkflowCoordinatorClaim) (*pg.WorkflowRunTerminal, error)
+	FinalizeWorkflowRunCandidate(context.Context, string, string, pg.WorkflowPumpRequest) (pg.WorkflowRunTerminal, error)
+}
 type WorkflowRunActivities struct {
-	Store     WorkflowRunStore
-	Evaluator WorkflowRunEvaluator
+	// Explicit internal closure gate; public admission and default app stay off.
+	FinalizeResults bool
+	Store           WorkflowRunStore
+	Evaluator       WorkflowRunEvaluator
 }
 
 func workflowPumpID(cursor int64) string { return fmt.Sprintf("pump/%d", cursor) }
@@ -66,6 +73,19 @@ func (a *WorkflowRunActivities) Pump(ctx context.Context, in WorkflowRunPumpInpu
 	if !activity.IsActivity(ctx) || in.Owner.ExecutionID != activity.GetInfo(ctx).WorkflowExecution.RunID ||
 		in.Owner.Cursor != in.Cursor || in.Owner.PreviousEpoch != in.PreviousEpoch {
 		return out, workflowPumpError(domain.Conflict("untrusted Workflow coordinator identity"))
+	}
+	if a.FinalizeResults {
+		terminalStore, ok := a.Store.(WorkflowRunTerminalStore)
+		if !ok {
+			return out, workflowPumpError(domain.Conflict("Workflow terminal store is unavailable"))
+		}
+		terminal, err := terminalStore.RecoverWorkflowRunTerminal(ctx, in.SessionID, in.RunID, in.Owner)
+		if err != nil {
+			return out, workflowPumpError(err)
+		}
+		if terminal != nil {
+			return WorkflowRunPumpResult{Cursor: terminal.Cursor, Epoch: terminal.Epoch, Version: terminal.Version, Terminal: true}, nil
+		}
 	}
 	if err := a.Store.BindWorkflowCoordinator(ctx, in.SessionID, in.RunID, in.Owner); err != nil {
 		return out, workflowPumpError(err)
@@ -83,6 +103,14 @@ func (a *WorkflowRunActivities) Pump(ctx context.Context, in WorkflowRunPumpInpu
 	if snapshot.Committed != nil {
 		out.Cursor = snapshot.Committed.Cursor
 		return out, nil
+	}
+	if a.FinalizeResults && len(snapshot.Journal) > 0 && snapshot.Journal[len(snapshot.Journal)-1].Decision.Type == "return" {
+		terminalStore := a.Store.(WorkflowRunTerminalStore)
+		terminal, err := terminalStore.FinalizeWorkflowRunCandidate(ctx, in.SessionID, in.RunID, request)
+		if err != nil {
+			return out, workflowPumpError(err)
+		}
+		return WorkflowRunPumpResult{Cursor: terminal.Cursor, Epoch: terminal.Epoch, Version: terminal.Version, Terminal: true}, nil
 	}
 	command, err := a.Evaluator.Next(ctx, snapshot)
 	if err != nil {
@@ -162,6 +190,12 @@ func workflowRunWorkflow(ctx workflow.Context, in WorkflowRunWorkflowInput, comm
 			Owner: pg.WorkflowCoordinatorClaim{ChainID: info.FirstRunID, ExecutionID: info.WorkflowExecution.RunID, PredecessorID: info.ContinuedExecutionRunID, Cursor: in.Cursor, PreviousEpoch: in.PreviousEpoch},
 		}).Get(actx, &result); err != nil {
 			return err
+		}
+		if result.Terminal {
+			if result.Waiting || result.Cursor != in.Cursor || result.Epoch != in.PreviousEpoch+1 || result.Version < 1 {
+				return errors.New("invalid Workflow terminal checkpoint")
+			}
+			return nil
 		}
 		cycles++
 		if result.Epoch != in.PreviousEpoch+1 || result.Version < 1 ||
