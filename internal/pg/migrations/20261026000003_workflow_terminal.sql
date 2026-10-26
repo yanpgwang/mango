@@ -1,4 +1,9 @@
 -- +goose Up
+-- Preserve the exact accepted wire bytes; JSONB normalizes numbers and spaces.
+ALTER TABLE workflow_pump_decisions ADD COLUMN return_value_bytes bytea;
+ALTER TABLE workflow_pump_decisions ADD CONSTRAINT workflow_return_bytes_match CHECK (
+ return_value_bytes IS NULL OR (decision->>'type'='return' AND convert_from(return_value_bytes,'UTF8')::jsonb=decision->'value')
+);
 -- Internal successful terminal receipts. Public Run admission remains absent.
 CREATE TABLE workflow_run_terminal_results (
     run_id text PRIMARY KEY,
@@ -31,3 +36,5 @@ CREATE UNIQUE INDEX workflow_outcome_one_wait ON workflow_outcome_waits(session_
 -- +goose Down
 DROP TABLE workflow_outcome_waits;
 DROP TABLE workflow_run_terminal_results;
+ALTER TABLE workflow_pump_decisions DROP CONSTRAINT workflow_return_bytes_match;
+ALTER TABLE workflow_pump_decisions DROP COLUMN return_value_bytes;

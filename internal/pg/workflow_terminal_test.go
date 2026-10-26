@@ -342,22 +342,26 @@ func TestDeferredOutcomeCompletedRevisionInterruptKeepsGradeAndClosesWait(t *tes
 }
 
 func TestWorkflowTerminalJSONBWhitespaceDoesNotChangeAdmittedValueBudget(t *testing.T) {
-	s, session, _, req := workflowReceiptFixture(t)
-	ctx := t.Context()
-	value := json.RawMessage(`{"a":1,"bb":2}`)
-	req.MaxResultBytes = len(value)
-	run, err := s.AdmitWorkflowRun(ctx, session.ID, "value-budget", req)
-	require.NoError(t, err)
-	require.NoError(t, s.BindWorkflowCoordinator(ctx, session.ID, run.ID, WorkflowCoordinatorClaim{ChainID: "budget", ExecutionID: "budget"}))
-	c, err := s.ClaimWorkflowCoordinatorEvaluator(ctx, session.ID, run.ID, "pump/0", 0, "budget")
-	require.NoError(t, err)
-	_, err = s.CommitWorkflowPump(ctx, session.ID, run.ID, WorkflowPumpRequest{RequestID: "pump/0", Epoch: c.Epoch, CoordinatorExecutionID: "budget", Command: WorkflowPumpCommand{Kind: "return", Value: value}})
-	require.NoError(t, err)
-	var stored []byte
-	require.NoError(t, s.pool.QueryRow(ctx, `SELECT decision->'value' FROM workflow_pump_decisions WHERE run_id=$1`, run.ID).Scan(&stored))
-	require.Greater(t, len(stored), len(value), "JSONB adds representational whitespace")
-	c, err = s.ClaimWorkflowCoordinatorEvaluator(ctx, session.ID, run.ID, "pump/1", 1, "budget")
-	require.NoError(t, err)
-	_, err = s.FinalizeWorkflowRunCandidate(ctx, session.ID, run.ID, WorkflowPumpRequest{RequestID: "pump/1", Epoch: c.Epoch, ExpectedCursor: 1, CoordinatorExecutionID: "budget"})
-	require.NoError(t, err)
+	for _, value := range []json.RawMessage{json.RawMessage(`{"a":1,"bb":2}`), json.RawMessage(`1e+21`)} {
+		t.Run(string(value), func(t *testing.T) {
+			s, session, _, req := workflowReceiptFixture(t)
+			ctx := t.Context()
+			req.MaxResultBytes = len(value)
+			run, err := s.AdmitWorkflowRun(ctx, session.ID, "value-budget", req)
+			require.NoError(t, err)
+			require.NoError(t, s.BindWorkflowCoordinator(ctx, session.ID, run.ID, WorkflowCoordinatorClaim{ChainID: "budget", ExecutionID: "budget"}))
+			c, err := s.ClaimWorkflowCoordinatorEvaluator(ctx, session.ID, run.ID, "pump/0", 0, "budget")
+			require.NoError(t, err)
+			_, err = s.CommitWorkflowPump(ctx, session.ID, run.ID, WorkflowPumpRequest{RequestID: "pump/0", Epoch: c.Epoch, CoordinatorExecutionID: "budget", Command: WorkflowPumpCommand{Kind: "return", Value: value}})
+			require.NoError(t, err)
+			var stored []byte
+			require.NoError(t, s.pool.QueryRow(ctx, `SELECT decision->'value' FROM workflow_pump_decisions WHERE run_id=$1`, run.ID).Scan(&stored))
+			require.Greater(t, len(stored), len(value), "JSONB adds representational whitespace")
+			c, err = s.ClaimWorkflowCoordinatorEvaluator(ctx, session.ID, run.ID, "pump/1", 1, "budget")
+			require.NoError(t, err)
+			_, err = s.FinalizeWorkflowRunCandidate(ctx, session.ID, run.ID, WorkflowPumpRequest{RequestID: "pump/1", Epoch: c.Epoch, ExpectedCursor: 1, CoordinatorExecutionID: "budget"})
+			require.NoError(t, err)
+		})
+	}
+
 }

@@ -1,7 +1,6 @@
 package pg
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -83,18 +82,13 @@ func (s *Store) FinalizeWorkflowRunCandidate(ctx context.Context, sid, rid strin
 			return domain.Conflict("Workflow terminal cursor changed")
 		}
 		var value []byte
-		err = tx.QueryRow(ctx, `SELECT decision->'value' FROM workflow_pump_decisions WHERE run_id=$1 AND expected_cursor=$2 AND decision->>'type'='return'`, rid, f.cursor-1).Scan(&value)
+		err = tx.QueryRow(ctx, `SELECT return_value_bytes FROM workflow_pump_decisions WHERE run_id=$1 AND expected_cursor=$2 AND decision->>'type'='return'`, rid, f.cursor-1).Scan(&value)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Conflict("Workflow lacks a committed return candidate")
 		}
 		if err != nil {
 			return err
 		}
-		var compact bytes.Buffer
-		if err = json.Compact(&compact, value); err != nil {
-			return err
-		}
-		value = compact.Bytes()
 		if !validWorkflowProgramValue(value) || len(value) > f.maxResultBytes {
 			return domain.Conflict("Workflow terminal value is invalid")
 		}

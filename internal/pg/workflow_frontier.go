@@ -251,7 +251,11 @@ func (s *Store) CommitWorkflowPump(ctx context.Context, sessionID, runID string,
 		if bytesAfter > 8*1024*1024 {
 			return domain.Conflict("Workflow journal byte budget exhausted")
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO workflow_pump_decisions(session_id,run_id,request_id,epoch,expected_cursor,command,decision) VALUES($1,$2,$3,$4,$5,$6,$7)`, sessionID, runID, in.RequestID, in.Epoch, in.ExpectedCursor, encoded, decision); err != nil {
+		var returnValueBytes []byte
+		if result.Type == "return" {
+			returnValueBytes = append([]byte(nil), in.Command.Value...)
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO workflow_pump_decisions(session_id,run_id,request_id,epoch,expected_cursor,command,decision,return_value_bytes) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, sessionID, runID, in.RequestID, in.Epoch, in.ExpectedCursor, encoded, decision, returnValueBytes); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(ctx, `UPDATE workflow_runs SET journal_cursor=$2,journal_bytes=$3 WHERE id=$1`, runID, result.Cursor, bytesAfter); err != nil {

@@ -131,7 +131,7 @@ fixture, so program completion does not establish report accuracy or CMA parity.
 
 | Transaction boundary | Durable fact and recovery rule |
 | --- | --- |
-| Program candidate | Existing fenced journal stores the bounded return value after every owned invocation has a delivered immutable receipt. A candidate alone does not finish a Run. |
+| Program candidate | Existing fenced journal stores the exact accepted JSON return bytes and its JSONB value after every owned invocation has a delivered immutable receipt. JSONB numeric/whitespace normalization cannot change the accepted byte budget. A candidate alone does not finish a Run. |
 | Successful Run finalization | Session then Run locks check physical coordinator, epoch, exact candidate cursor, deadline/control eligibility and settled receipts. One transaction closes the Run, stores its terminal value and unique delivery binding, appends the primary input, enqueues the primary Session outbox and retires obsolete Run wakeups. |
 | Terminal ACK recovery | The exact persisted owner/epoch/cursor/pump identity recovers the terminal checkpoint before the ordinary closed-Run rejection path. A new/stale chain cannot restart it. Temporal receives only small terminal metadata and finishes its coordinator. |
 | Primary consumption | The existing primary runner loads a PG-bound notification as data. Consumption commits with completion and requires the exact terminal response's message ID, nonempty text-only content and end_turn; earlier tool-round text, refusal, empty final responses, interruptions and requires_action do not count. A validated pending-action continuation retains the same delivery identity. |
@@ -150,7 +150,9 @@ becomes authenticated user permission intent or widens tools/credentials.
 The additive `20261026000003_workflow_terminal.sql` migration also stores durable
 Outcome continuations. Only disposable test schemas are migrated in this study;
 operators must use the normal explicit migration command before running a binary
-against an older installation. Startup still performs no schema writes.
+against an older installation. Startup still performs no schema writes. Older unshipped study candidates lacking
+exact return-byte receipts fail closed; no inferred re-encoding or automatic
+replay is provided.
 
 The refusal/interrupt/empty-final branches fail closed with an unconsumed result;
 automatic redelivery/reconciliation after those controls is not implemented as a

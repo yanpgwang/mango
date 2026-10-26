@@ -513,13 +513,14 @@ type WorkflowOutcomeWait struct {
 }
 
 type WorkflowPumpDecision struct {
-	SessionID      string
-	RunID          string
-	RequestID      string
-	Epoch          int64
-	ExpectedCursor int64
-	Command        []byte
-	Decision       []byte
+	SessionID        string
+	RunID            string
+	RequestID        string
+	Epoch            int64
+	ExpectedCursor   int64
+	Command          []byte
+	Decision         []byte
+	ReturnValueBytes []byte
 }
 
 type WorkflowRun struct {
