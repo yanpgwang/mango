@@ -45,7 +45,7 @@ type WorkflowRunStore interface {
 
 // WorkflowRunEvaluator is an unexposed integration boundary, not a qualified
 // language/runtime ABI. No production implementation is shipped. nil command
-// means host wait, including the test double's quiescent final checkpoint; it
+// means host wait, including a persisted program-value checkpoint; it
 // neither closes a Run nor publishes a terminal result.
 type WorkflowRunEvaluator interface {
 	Next(context.Context, pg.WorkflowPumpSnapshot) (*pg.WorkflowPumpCommand, error)

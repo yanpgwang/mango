@@ -96,3 +96,14 @@ after replacement. Catching a failed child or ignoring a rejected derived
 Promise does not cancel siblings; every admitted host invocation must settle
 before a successful final return. This host policy matches the QuickJS fixture
 and is part of the pinned research profile, not an inference about CMA.
+
+## Bridge to actual Run and Thread components
+
+The separate `make test-workflow-quickjs-integration` research tier uses this
+same QuickJS image, the actual Run pump/PG frontier/outboxes and real Thread
+runner. Its JS source drives two model-fixture calls, replays committed receipt
+delivery order after loss and persists a program-return candidate. It does not
+use this directory's toy SQL journal or execute the external cookbook/SDK.
+See the [proof and limits](../../docs/design/workflow-runtime-study.md#real-quickjs-runthread-proof).
+Default tests and application startup do not enable the adapter; no production
+engine choice or complete Run lifecycle is implied.

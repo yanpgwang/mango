@@ -19,9 +19,11 @@ type WorkflowEvaluatorClaim struct {
 }
 
 type WorkflowPumpCommand struct {
-	Kind      string `json:"kind"`
-	AgentName string `json:"agent_name"`
-	Prompt    string `json:"prompt"`
+	Kind             string          `json:"kind"`
+	AgentName        string          `json:"agent_name"`
+	Prompt           string          `json:"prompt"`
+	InvocationCursor int64           `json:"invocation_cursor,omitempty"`
+	Value            json.RawMessage `json:"value,omitempty"`
 }
 
 type WorkflowPumpRequest struct {
@@ -36,6 +38,8 @@ type WorkflowPumpDecision struct {
 	Type      string                     `json:"type"`
 	ErrorCode string                     `json:"error_code,omitempty"`
 	Attempt   *WorkflowInvocationAttempt `json:"attempt,omitempty"`
+	Delivery  *WorkflowPumpDelivery      `json:"delivery,omitempty"`
+	Value     json.RawMessage            `json:"value,omitempty"`
 }
 
 type workflowFrontier struct {
@@ -47,12 +51,13 @@ type workflowFrontier struct {
 	pauses         []string
 	roster         []byte
 	maxInvocations int
+	maxResultBytes int
 }
 
 func lockWorkflowFrontier(ctx context.Context, tx pgx.Tx, sessionID, runID string) (workflowFrontier, error) {
 	var f workflowFrontier
-	err := tx.QueryRow(ctx, `SELECT evaluator_epoch,journal_cursor,journal_bytes,state,deadline,pause_reasons,roster,max_invocations,coordinator_execution_id
-FROM workflow_runs WHERE session_id=$1 AND id=$2 FOR UPDATE`, sessionID, runID).Scan(&f.epoch, &f.cursor, &f.bytes, &f.state, &f.deadline, &f.pauses, &f.roster, &f.maxInvocations, &f.coordinator)
+	err := tx.QueryRow(ctx, `SELECT evaluator_epoch,journal_cursor,journal_bytes,state,deadline,pause_reasons,roster,max_invocations,coordinator_execution_id,max_result_bytes
+FROM workflow_runs WHERE session_id=$1 AND id=$2 FOR UPDATE`, sessionID, runID).Scan(&f.epoch, &f.cursor, &f.bytes, &f.state, &f.deadline, &f.pauses, &f.roster, &f.maxInvocations, &f.coordinator, &f.maxResultBytes)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return f, domain.NotFound("Workflow Run not found")
 	}
@@ -144,7 +149,7 @@ func (s *Store) CommitWorkflowPump(ctx context.Context, sessionID, runID string,
 	if err != nil {
 		return WorkflowPumpDecision{}, err
 	}
-	if len(encoded) > 512*1024 || len(in.Command.Kind) > 64 {
+	if len(encoded) > 512*1024 || len(in.Command.Kind) > 64 || in.Command.InvocationCursor < 0 || (len(in.Command.Value) > 0 && !validWorkflowProgramValue(in.Command.Value)) {
 		return WorkflowPumpDecision{}, domain.Validation("Workflow pump protocol byte limit exceeded")
 	}
 	var result WorkflowPumpDecision
@@ -185,12 +190,30 @@ func (s *Store) CommitWorkflowPump(ctx context.Context, sessionID, runID string,
 		if f.cursor >= 256 {
 			return domain.Conflict("Workflow command budget exhausted")
 		}
+		var returned bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workflow_pump_decisions WHERE run_id=$1 AND decision->>'type'='return')`, runID).Scan(&returned); err != nil {
+			return err
+		}
+		if returned {
+			return domain.Conflict("Workflow program value is already committed")
+		}
+		if in.Command.Kind == "invoke" && (in.Command.InvocationCursor != 0 || len(in.Command.Value) != 0) {
+			return domain.Validation("invalid Workflow invocation frame")
+		}
+
 		result = WorkflowPumpDecision{Cursor: f.cursor + 1, Type: "rejected"}
 		var roster []domain.Agent
 		if err = json.Unmarshal(f.roster, &roster); err != nil {
 			return err
 		}
 		switch {
+		case in.Command.Kind == "deliver" || in.Command.Kind == "return":
+			entry, err := workflowProgramDecisionLocked(ctx, tx, runID, f, in.Command)
+			if err != nil {
+				return err
+			}
+			result = entry
+			result.Cursor = f.cursor + 1
 		case in.Command.Kind != "invoke":
 			result.ErrorCode = "unsupported_command"
 		case in.Command.AgentName == "" || len(in.Command.AgentName) > 256 || in.Command.Prompt == "" || len(in.Command.Prompt) > 65536:

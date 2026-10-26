@@ -85,6 +85,13 @@ admission. `TestWorkflowRunOwnershipAfterAbsentHistoryAndResetRealTemporal` adds
 chain/Reset fencing and blocked-prefix relay coverage; its fresh-chain fixture
 simulates absent history rather than waiting out retention. See the [scope and open gates](docs/design/workflow-runtime-study.md#internal-run-coordinator-gate).
 
+The explicit `make test-workflow-quickjs-integration` tier builds the existing
+isolated QuickJS candidate and runs frozen JS through the real Run pump,
+PostgreSQL receipts and Thread runner. Set disposable `MANGO_TEST_DATABASE_URL`
+and `MANGO_TEST_TEMPORAL_HOSTPORT` addresses. It uses deterministic model fixtures,
+never provider credentials. Default tests skip it; see the
+[bounded proof](docs/design/workflow-runtime-study.md#real-quickjs-runthread-proof).
+
 `make lint` checks changes relative to `origin/main`, matching the incremental
 CI rollout. Set `LINT_BASE` when your comparison branch differs.
 
