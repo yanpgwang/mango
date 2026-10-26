@@ -2011,3 +2011,32 @@ reveals CMA's private engine, journal or transaction boundaries. The previously
 recorded paired public API/SDK mapping remains research context; no new wire or
 SDK mapping is adopted by these internal operations. Neither notebook nor an
 external SDK is executed as a Mango test harness.
+
+## Internal Run coordinator recovery gate (2026-10-26)
+
+The current official Temporal Go [Continue-As-New documentation](https://docs.temporal.io/develop/go/workflows/continue-as-new)
+describes a stable Workflow ID with a new Run ID/history and explicitly carried
+application state. Its [message-passing documentation](https://docs.temporal.io/develop/go/workflows/message-passing)
+requires draining signal channels before continuation. Mango therefore keeps
+business pump/claim identities in its existing PostgreSQL frontier, carries only
+bounded references through Temporal, and reconciles persisted versions when a
+wakeup hint is missing. These are Mango's original implementation choices.
+
+The current public CMA [Workflow Runs design](https://platform.claude.com/docs/en/managed-agents/workflow-runs)
+describes program-owned agent Threads and results returning to the program.
+It does not establish private coordinator, replay or transaction mechanisms.
+The previously pinned/current cookbook and paired API/SDK evidence above remain
+context; this slice adopts no new public wire/SDK mapping and executes none of
+those examples or clients. Its only evaluator is an independently written Go
+test protocol, with separate expected prompts/results checked by a model double
+through the real Mango Thread runner.
+
+The opt-in coordinator and relay use the existing Run outbox/decision/receipt
+tables. No production language, engine, new journal or agent loop is introduced.
+Unsupported lifecycle/control reconciliation fails the private coordinator
+closed. Temporal's [Workflow ID reuse policy](https://docs.temporal.io/workflow-execution/workflowid-runid)
+rejects closed duplicates only while their history is retained; this is not a
+durable PostgreSQL coordinator-generation fence. History-expiration/reset
+reconciliation, fair relay retries, terminal Run delivery, Outcome resumption,
+ordered Promise replay, containment and public admission remain separate gates,
+not claims derived from this sequential experiment.
