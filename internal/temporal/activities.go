@@ -151,6 +151,11 @@ type AdvisorToolSource interface {
 	) error
 }
 
+// OutcomeGradingSource is implemented by the production PG adapter.
+type OutcomeGradingSource interface {
+	ReserveOutcomeGrading(context.Context, domain.OutcomeGradingReservation) error
+}
+
 type ModelRequestAdmissionSource interface {
 	AdmitModelRequest(context.Context, string, string) (bool, error)
 }
@@ -1407,6 +1412,12 @@ func (a *Activities) evaluateOutcome(
 	preparedContext, err := prepareRequestContext(graderRequest, false, 0)
 	if err != nil {
 		return EvaluateOutcomeResult{FatalError: err.Error()}, nil
+	}
+	if source, ok := a.source.(OutcomeGradingSource); ok {
+		if err := source.ReserveOutcomeGrading(ctx, domain.OutcomeGradingReservation{SessionID: in.SessionID,
+			OutcomeID: in.Outcome.OutcomeID, StartEventID: in.StartEventID, EndEventID: in.EndEventID, Iteration: in.Iteration}); err != nil {
+			return EvaluateOutcomeResult{}, err // control/retry error, never a business verdict
+		}
 	}
 	response, err := a.modelClient.CreateMessage(ctx, preparedContext.Request)
 	if err != nil {

@@ -12,6 +12,13 @@ type ThreadReturnCandidate struct {
 
 type RunState string
 
+// OutcomeGradingReservation binds trusted grading I/O to an already committed
+// primary evaluation start. It is internal, never an HTTP or SDK resource.
+type OutcomeGradingReservation struct {
+	SessionID, OutcomeID, StartEventID, EndEventID string
+	Iteration                                      int
+}
+
 const (
 	RunQueued    RunState = "queued"
 	RunRunning   RunState = "running"

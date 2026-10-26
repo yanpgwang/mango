@@ -722,6 +722,15 @@ func (s *Store) admitLocked(
 			return Admission{}, domain.Validation("event type is not client-submittable: " + d.Type)
 		}
 	}
+	for _, draft := range drafts {
+		_, targeted := draft.Payload["session_thread_id"]
+		if draft.Type == domain.EvUserInterrupt && !targeted {
+			if err := s.pauseWorkflowRunsForInterruptLocked(ctx, tx, session.ID); err != nil {
+				return Admission{}, err
+			}
+			break
+		}
+	}
 	if session.BudgetReached(s.clock.Now().UTC()) {
 		interruptOnly := len(drafts) > 0
 		for _, draft := range drafts {
@@ -1594,6 +1603,9 @@ func (s *Store) AppendWorkflowEvents(
 			return domain.Conflict("workflow progress batch is only partially present")
 		}
 
+		if err := s.finishOutcomeGradingLocked(ctx, tx, q, sessionID, triggerEventID, drafts); err != nil {
+			return err
+		}
 		if err := s.validateToolPermissionDraftsLocked(ctx, tx, q, domain.ToolPermissionOwner{SessionID: sessionID, ThreadID: trigger.ThreadID, TriggerEventID: triggerEventID}, drafts); err != nil {
 			return err
 		}
@@ -2343,6 +2355,10 @@ func (s *Store) completeTurn(
 			})
 		}
 
+		if err := s.finishOutcomeGradingLocked(ctx, tx, q, sessionID, triggerEventID, outputDrafts); err != nil {
+			return err
+		}
+
 		if err := validatePendingCompletion(
 			status,
 			outputDrafts,
@@ -2813,6 +2829,12 @@ func interruptedTurnDrafts(drafts []domain.EventDraft) ([]domain.EventDraft, int
 				intFromAny(draft.Payload["iteration"])+1,
 			)
 		}
+	}
+	// A completed needs_revision grade belongs to the preserved prefix. An
+	// interrupt after it ends revision work, which has no grading start yet.
+	// Retain a distinct next open start rather than reusing the completed span.
+	if _, completed := completedOutcomeStarts[interruptedOutcomeStartID]; completed {
+		interruptedOutcomeStartID = ""
 	}
 
 	out := make([]domain.EventDraft, 0, len(drafts))

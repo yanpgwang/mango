@@ -1980,3 +1980,34 @@ No JSON/schema result mode, production evaluator, hosted service or external
 implementation is adopted. The additive internal migration and real PG/Temporal
 tests establish this narrow contract; public admission, pump replay, broader
 barriers and the Outcome-versus-Run race policy remain deliberately unimplemented.
+
+## Internal Workflow frontier and grading exclusion (2026-10-26)
+
+Mango retains the existing PG/Temporal/Thread ownership design. Local lifecycle
+research reproduced Outcome/Run admission races, control gaps and worker
+activation gaps in the deliberately unexposed receipt kernel. This next internal
+slice adds independently authored epoch/cursor-fenced host decisions and a
+Session-serialized reservation around actual external Outcome grading. It does
+not introduce a language runtime, hosted scheduler, public API or second agent
+loop. The existing adapter/Thread/outbox paths remain the execution owners.
+
+Rechecked current official [Workflow lifecycle documentation](https://platform.claude.com/docs/en/managed-agents/workflow-runs)
+and [Temporal Continue-As-New guidance](https://docs.temporal.io/develop/go/workflows/continue-as-new).
+The former excludes grading while Runs are open; the latter changes Temporal
+Run ID/history across continuation. Mango therefore keeps business decision
+identity in PG and serializes admission against an exact grader reservation.
+The choice of one-command transactions, independent control fences and internal
+256-decision/8-MiB bounds belongs to Mango. Public policy, full ordered replay,
+terminal delivery/cleanup and engine qualification remain open gates.
+
+The official cookbook's current main was
+`bfe50e59dbb4f5546a0af9ca36ebb77e637c9ce1` when rechecked on 2026-10-26.
+Compared with pinned `a162e0184e71b60290808a43961a6cbc8060123c`, the CMA security
+review notebook is byte-identical; the SDK dynamic-workflow notebook changes
+only its default model in code cells and retains identical saved fact-check JS.
+The former supplies application-owned prompt/Thread/page/schema checks; the
+latter demonstrates program control flow and local intermediate values. Neither
+reveals CMA's private engine, journal or transaction boundaries. The previously
+recorded paired public API/SDK mapping remains research context; no new wire or
+SDK mapping is adopted by these internal operations. Neither notebook nor an
+external SDK is executed as a Mango test harness.

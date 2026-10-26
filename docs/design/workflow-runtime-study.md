@@ -175,24 +175,92 @@ roster and tenant scope, bounds/deadline, and rollback after wake/spawn failure.
 the existing worker/Thread loop and relay, with deterministic model responses
 and post-commit ACK loss. No evaluator language or alternate agent loop is used.
 
-**This kernel must remain unreachable from product admission.** It has no Run
-pump, evaluator epochs, terminal Run delivery, physical cancellation, open-Run
-aggregate/Outcome/retirement barriers or complete Session/Run stop lifecycle.
+**This kernel must remain unreachable from product admission.** The frontier
+gate below adds epoch-fenced database decisions and a grading exclusion boundary.
+It has no Temporal Run pump, terminal Run delivery, physical cancellation,
+open-Run aggregate/retirement barriers or complete Session/Run stop lifecycle.
 Tests may create these internal rows; supported applications cannot. Migrating
 the tables does not enable a Workflow capability. Before adding an entry point,
 implement those barriers and jointly review the HTTP/OpenAPI/SDK contract.
 
-Outcome-versus-Run admission remains a product decision. A proposed future
-Session-lock fence would allow Run admission to win and park grading, or grading
-admission to win and defer/conflict new Runs; invalidation/regrading is a more
-complex alternative. This slice neither chooses that policy nor changes ordinary
-Outcome behavior. Future race tests must prove the selected winner before any
-user-facing admission is enabled.
+The receipt-only slice leaves Outcome-versus-Run admission open. The next gate
+implements Session-serialized mutual exclusion for actual external grading,
+while Outcome working/revision stages can still start Runs. Durable parking,
+resumption and fresh synthesis after Run results remain product gates.
+
+## Internal fenced frontier gate
+
+The additive `20261026000001_workflow_frontier.sql` migration and
+`internal/pg/workflow_frontier.go` establish a one-command database pump boundary.
+There is no evaluator, Temporal Run coordinator, dispatcher or public caller.
+Application-owned claim/request identities survive Activity replacement and
+Continue-As-New; this slice tests those identities at the PostgreSQL boundary,
+without claiming a new Temporal pump integration test.
+
+Under Session-first then Run locking, evaluator claims replace ownership by an
+epoch compare-and-swap. A request checks the current epoch, expected journal
+cursor, Session/Run authority, absolute deadline, independent pause reasons and
+shared budget. It commits the immutable command/decision with the actual existing
+invocation, Thread input and Thread/Run outboxes in one transaction. A retry by
+the current owner returns the same decision; an old epoch cannot progress even
+through a cached decision. Once a Run has been claimed, the older trusted
+unfenced admission helper refuses writes. An existing unfenced effect prefix
+cannot be adopted without reconciliation.
+
+Semantic argument/unknown-Agent/unsupported-command rejections consume journal
+positions and are durably replayable. Control waits, revoked authority, changed
+traces and protocol-limit failures return host errors, without a script-visible
+catchable decision. A future adapter must preserve this distinction. Fixed
+internal bounds are 256 decisions and 8 MiB of charged command/decision JSON;
+replay does not charge again. These bounds do not replace pre-parse IPC limits,
+evaluator resource containment, ordered Promise delivery or cumulative execution
+budgets. Full schema/adapter/engine/image/platform pins remain required before
+an executor can use this boundary.
+
+Global interrupt records its independent Run pause under the Session admission
+lock, including the budget-idle eventless control path. Clearing another reason
+or removing budget does not clear that pause or extend the deadline. Existing
+Thread execution/usage behavior is retained. Child admission now also queues
+self-hosted Environment Work atomically, so an earlier worker retirement cannot
+strand its new tool execution. The aggregate completion and retirement barrier
+for an open Run is still missing.
+
+The production Outcome Activity reserves its already persisted primary grading
+start before provider I/O. The reservation binds Session, Thread, triggering
+Outcome turn, Outcome/iteration and expected start/end identities. New Run
+admission and grading reservation serialize on the same Session lock: the winner
+excludes the other. An active Outcome's working/revision stage remains eligible
+to admit a Run. A completed grading prefix can release its exact reservation
+before the Session Outcome projection advances to the next iteration.
+
+Reservation release/fencing commits with the owning end event in the progress
+or final-completion transaction, including correlated interrupt/failure ends.
+When a completed `needs_revision` grade races an interrupt, its end remains in
+the committed prefix and releases that reservation; the interrupted revision
+has no grading start. A distinct next open grading span retains its identity.
+It is never released in an Activity defer or by a timeout alone. Missing
+historical/direct start ownership fails closed in the production adapter.
+Open-Run denial is an Activity/control error before inference, not a failed
+business verdict. No durable Run-aware grading parking/resume loop is provided
+yet. Forced termination or an orphaned reservation still requires explicit
+lifecycle reconciliation; silently expiring the reservation could let an old
+grader race new work. Known usage accounting remains separate and unchanged;
+this does not promise exactly-once provider execution or known usage for a lost
+response.
+
+Real PostgreSQL tests cover ACK replay, replacement epochs, competing cursors,
+durable rejections, control/byte bounds and transactional rollback after child
+creation. They invert the lifecycle research's grading-admission, independent
+interrupt and successor-Work counterexamples. The actual Activity adapter test
+proves reservation failure prevents provider I/O and is not a business verdict.
+Existing Outcome, ordinary Thread, receipt, interrupt and retirement tests remain
+regression gates. No public HTTP/OpenAPI/SDK contract changes here.
 
 ## Remaining decisions before product exposure
 
-Keep the gate open. Beyond the existing-component experiment, integration must prove the trusted Temporal pump
-request/decision identity, retry after SQL acknowledgement loss,
+Keep the gate open. Beyond the PostgreSQL frontier transaction, integration must
+prove the actual trusted Temporal Run coordinator using those stable decisions,
+retry after SQL acknowledgement loss,
 Continue-As-New and reconciliation against actual product ownership and outbox
 transitions. An evaluator crash is not evidence that no command committed.
 
