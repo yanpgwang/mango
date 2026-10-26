@@ -12,9 +12,9 @@
     "test": "node --test scripts/*.test.mjs"
   },
   "dependencies": {
-    "fumadocs-core": "16.15.4",
+    "fumadocs-core": "16.15.15",
     "fumadocs-mdx": "15.4.0",
-    "fumadocs-ui": "npm:@fumadocs/base-ui@16.15.4",
+    "fumadocs-ui": "npm:@fumadocs/base-ui@16.15.15",
     "lucide-react": "^1.48.0",
     "mdast-util-gfm": "^3.1.0",
     "mermaid": "^11.12.0",
