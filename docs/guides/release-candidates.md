@@ -26,18 +26,18 @@ so ignored local files cannot affect compilation or packaging.
 
 ```sh
 make release-unit
-make release-build RELEASE_VERSION=0.1.0-alpha.4 # x-release-please-version
-make release-check RELEASE_VERSION=0.1.0-alpha.4 # x-release-please-version
+make release-build RELEASE_VERSION=0.1.0-alpha.5 # x-release-please-version
+make release-check RELEASE_VERSION=0.1.0-alpha.5 # x-release-please-version
 ```
 
-The default output is `dist/release/0.1.0-alpha.4`. `manifest.json` records the <!-- x-release-please-version -->
+The default output is `dist/release/0.1.0-alpha.5`. `manifest.json` records the <!-- x-release-please-version -->
 full source revision, language versions, platform and SHA-256 for each archive.
 Chart version and `appVersion` must match the runtime/SDK candidate. Helm packages
 the tracked source without overriding that metadata; mismatches fail before builds.
 `SHA256SUMS` also covers the manifest. Check that index before installing:
 
 ```sh
-cd dist/release/0.1.0-alpha.4 # x-release-please-version
+cd dist/release/0.1.0-alpha.5 # x-release-please-version
 sha256sum -c SHA256SUMS
 ```
 
@@ -71,7 +71,7 @@ candidates include a wheel and source distribution, both exposing the same
 version. Install the inspected files directly in your application's environment:
 
 ```sh
-VERSION=0.1.0-alpha.4 # x-release-please-version
+VERSION=0.1.0-alpha.5 # x-release-please-version
 npm install "/absolute/path/to/mango-sdk-${VERSION}.tgz"
 python -m pip install /absolute/path/to/mango_sdk-0.1.0a4-py3-none-any.whl
 ```
@@ -160,7 +160,7 @@ An unchanged passing diagnostic run did not establish a fix.
 Publish only a candidate built from the reviewed merged revision after its
 required CI and artifact acceptance pass. Keep the inspected archives unchanged,
 use their recorded OCI index digests, and tag the Go module from that same source
-with `sdk/go/v0.1.0-alpha.4`. Registry publication requires maintainer credentials; <!-- x-release-please-version -->
+with `sdk/go/v0.1.0-alpha.5`. Registry publication requires maintainer credentials; <!-- x-release-please-version -->
 those are never development or CI dependencies.
 
 Release notes record the actual source, checksums, image digests, successful
@@ -168,7 +168,7 @@ candidate workflow and supported lifecycle. Operators install the inspected
 `mango-<version>.tgz` with their existing Secrets and dependency values:
 
 ```sh
-VERSION=0.1.0-alpha.4 # x-release-please-version
+VERSION=0.1.0-alpha.5 # x-release-please-version
 helm install mango "./mango-${VERSION}.tgz" --namespace mango --create-namespace \
   --values operator-values.yaml \
   --set image.repository=ghcr.io/yanpgwang/mango \

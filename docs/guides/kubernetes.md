@@ -13,7 +13,7 @@ cold restore is experimental and has an unresolved intermittent failure; see
 Choose matching public chart/images confirmed in the
 [release record](https://github.com/yanpgwang/mango/releases), or use inspected
 [candidate artifacts](release-candidates.md) from your own registry.
-This checkout defaults to `ghcr.io/yanpgwang/mango:0.1.0-alpha.4`. <!-- x-release-please-version -->
+This checkout defaults to `ghcr.io/yanpgwang/mango:0.1.0-alpha.5`. <!-- x-release-please-version -->
 
 The chart runs `mango serve` and `mango orchestrate` as separate Deployments.
 Your sandbox worker runs on your infrastructure and connects through
@@ -79,7 +79,7 @@ with your existing inspected candidate; use a digest when available:
 ```yaml
 image:
   repository: registry.example.com/team/mango
-  tag: 0.1.0-alpha.4 # x-release-please-version
+  tag: 0.1.0-alpha.5 # x-release-please-version
   # digest: sha256:<the actual multi-platform image digest>
 database:
   existingSecret: {name: mango-database, key: database-url}
@@ -155,7 +155,7 @@ export MANGO_BASE_URL=https://your-mango.example.com
 export MANGO_DOCKER_BASE_URL=https://your-mango.example.com
 export MANGO_ENVIRONMENT_ID=env_replace_with_your_id
 # Set MANGO_ENVIRONMENT_KEY through your secret manager.
-mango-worker docker --image registry.example.com/team/mango-self-hosted-worker:0.1.0-alpha.4 # x-release-please-version
+mango-worker docker --image registry.example.com/team/mango-self-hosted-worker:0.1.0-alpha.5 # x-release-please-version
 ```
 
 The Docker host, workspace storage and execution policy belong to the operator.

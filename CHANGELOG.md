@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.0-alpha.5](https://github.com/yanpgwang/mango/compare/v0.1.0-alpha.4...v0.1.0-alpha.5) (2026-10-26)
+
+
+### Features
+
+* **workflows:** add opt-in Run coordinator recovery gate ([#278](https://github.com/yanpgwang/mango/issues/278)) ([0020331](https://github.com/yanpgwang/mango/commit/0020331d5acd836f2756da0c5a336b8385716938))
+* **workflows:** close successful Runs through durable primary synthesis ([#283](https://github.com/yanpgwang/mango/issues/283)) ([57406c0](https://github.com/yanpgwang/mango/commit/57406c00198b49462421e798faf61553976613db))
+* **workflows:** fence internal frontier decisions and grading ([#276](https://github.com/yanpgwang/mango/issues/276)) ([d5ba11f](https://github.com/yanpgwang/mango/commit/d5ba11fb273b7b5f71c1f87db4c51d59e6c95291))
+* **workflows:** persist internal owned invocation receipts ([#274](https://github.com/yanpgwang/mango/issues/274)) ([b57f458](https://github.com/yanpgwang/mango/commit/b57f458d2d2adf84b73b8de0f3382e147b6bdd9b))
+
+
+### Bug Fixes
+
+* **workflows:** fence coordinator chains and make wake retries fair ([#279](https://github.com/yanpgwang/mango/issues/279)) ([4e90b6d](https://github.com/yanpgwang/mango/commit/4e90b6d0a207144891b274e137b62be4b297f91c))
+
 ## [0.1.0-alpha.4](https://github.com/yanpgwang/mango/compare/v0.1.0-alpha.3...v0.1.0-alpha.4) (2026-10-17)
 
 
