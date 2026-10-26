@@ -420,8 +420,9 @@ func workflowCompletionWait(drafts []domain.EventDraft) bool {
 	return false
 }
 
-// WorkflowRunWakeups is deliberately not wired to the ordinary Session relay:
-// no Run coordinator/pump is enabled by this receipt-only kernel.
+// WorkflowRunWakeups lists the existing Run outbox. The ordinary Session relay
+// ignores it; the internal coordinator gate uses a separate opt-in relay.
+// Application startup does not enable that coordinator or relay.
 func (s *Store) WorkflowRunWakeups(ctx context.Context) ([]WorkflowRunWakeup, error) {
 	id, _, err := s.workspaceForRead(ctx)
 	if err != nil {

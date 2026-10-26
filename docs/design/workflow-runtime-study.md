@@ -256,13 +256,71 @@ proves reservation failure prevents provider I/O and is not a business verdict.
 Existing Outcome, ordinary Thread, receipt, interrupt and retirement tests remain
 regression gates. No public HTTP/OpenAPI/SDK contract changes here.
 
+## Internal Run coordinator gate
+
+The next internal boundary connects the existing frontier and owned receipts to
+an opt-in Temporal `WorkflowRunWorkflow`, Activity and versioned Run outbox relay.
+The default worker, application startup and ordinary Thread relay do not enable
+it. There is no shipped evaluator implementation, public admission or new journal.
+The integration evaluator is a test-only sequential protocol, not a workflow
+language or a qualified replay adapter.
+
+Application pump/claim identities are derived from the journal cursor, not the
+Temporal Run ID or Activity attempt. Claim ACK loss reuses the claim; a committed
+decision is recovered before evaluator work. Advancing the cursor acquires the
+next epoch and fences an old Activity. Source, prompts, the journal and current
+owned receipts stay inside an Activity; Temporal carries bounded identifiers,
+cursor, previous epoch and a wakeup version hint across Continue-As-New.
+
+Signals are hints. The coordinator drains accepted signals before waiting or
+continuing, compares their versions with its database snapshot, and periodically
+reconciles PostgreSQL even without delivery. Relay deletion uses the existing
+version CAS after Signal-With-Start acceptance. `REJECT_DUPLICATE` prevents a new
+start for a closed coordinator only while Temporal retains that history; the
+test verifies this retained-history boundary. It is not a durable PG chain fence.
+After history expires, a new chain could reuse a still-current first pump claim
+or recover its decision and continue. A durable coordinator-generation fence and
+explicit reconciliation are required before product enablement. Temporal Reset
+and independent database restore are not supported recovery operations.
+
+The acceptance test uses actual PostgreSQL, Temporal, Run/Thread outboxes and
+the existing Thread runner. An independent deterministic model oracle checks two
+sequential prompts and exact terminal answers. Fault schedules cover claim
+and decision ACK loss, worker replacement, stale evaluator rejection, a signal
+accepted before wait, a withheld wake recovered by reconciliation, and real
+Continue-As-New without repeated invocation or inference.
+
+The withheld-hint schedule retains the real outbox row; it neither erases a wake
+nor invents a successful signal. Worker replacement stops one SDK worker, not
+PostgreSQL, Temporal or the host. Coordinator histories are checked for bounded
+reference payloads and absence of program/prompt/receipt markers. Raw error
+messages, causes and details are sanitized before Temporal failure conversion;
+a sentinel test checks that boundary while retaining retry classification.
+
+The relay currently reads the oldest 100 rows using the existing store method.
+Permanently undeliverable rows are retained without a fair retry schedule. At a
+full blocked batch, newer Run wakes could starve. Fair scanning/backoff and
+operator reconciliation must be added before enabling the product relay; this
+one-Run recovery proof does not qualify outage-scale scheduling.
+
+The test evaluator waits at its final checkpoint. This does not close the Run,
+deliver a terminal Run event, resume Outcome grading, or certify aggregate
+completion/retirement. Ownership, lifecycle and protocol errors fail the private
+coordinator closed rather than selecting a new product pause/stop policy.
+Infrastructure retries keep their existing pump identity. Public admission must
+stay unreachable until durable chain/lifecycle reconciliation, fair relay
+scheduling, ordered Promise delivery, full
+runtime/adapter pins, terminal delivery, grading resumption and containment gates
+are complete. The snapshot's command order is not Promise completion order.
+
 ## Remaining decisions before product exposure
 
-Keep the gate open. Beyond the PostgreSQL frontier transaction, integration must
-prove the actual trusted Temporal Run coordinator using those stable decisions,
-retry after SQL acknowledgement loss,
-Continue-As-New and reconciliation against actual product ownership and outbox
-transitions. An evaluator crash is not evidence that no command committed.
+Keep the product gate open. The internal coordinator test establishes a bounded
+sequential recovery path over the existing PostgreSQL decisions and owned
+receipts. It does not qualify ordered program replay, automatic coordinator
+restart/history expiration/Temporal Reset, fair relay scheduling, control
+parking/resumption or complete Run lifecycle.
+An evaluator crash is not evidence that no command committed.
 
 Select the deployable engine/profile after verifying runtime availability,
 upgrade/platform pins, installation on local/Kubernetes operators and hard

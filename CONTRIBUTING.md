@@ -76,6 +76,13 @@ lost acknowledgements, worker replacement and Continue-As-New. It runs in
 `make test-service-core`; it is not a Run executor or a complete Workflow gate.
 See the [experiment and remaining boundaries](docs/design/workflow-runtime-study.md#existing-coordinator-and-thread-recovery-experiment).
 
+`TestWorkflowRunCoordinatorRecoveryRealTemporal` covers the opt-in internal Run
+coordinator, versioned Run outbox and fenced decisions with the real Thread
+runner under ACK loss, replacement, Continue-As-New and delayed wake delivery.
+It also runs in `make test-service-core`. Its sequential evaluator is test-only;
+the default worker/application do not enable a program executor or public Run
+admission. See the [scope and open gates](docs/design/workflow-runtime-study.md#internal-run-coordinator-gate).
+
 `make lint` checks changes relative to `origin/main`, matching the incremental
 CI rollout. Set `LINT_BASE` when your comparison branch differs.
 
