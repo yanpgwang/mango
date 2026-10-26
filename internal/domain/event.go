@@ -60,10 +60,14 @@ const (
 // changing the public Mango event shape. HTTP projections must never
 // expose keys with this prefix.
 const (
-	InternalCompanionSystemEventID = "__companion_system_event_id"
-	InternalCompanionSystemContent = "__companion_system_content"
-	InternalOriginTriggerEventID   = "__origin_trigger_event_id"
-	InternalOriginPermissionIntent = "__origin_permission_intent"
+	InternalWorkflowOutcomeEndEvent    = "__workflow_outcome_end_event"
+	InternalWorkflowSynthesisCandidate = "__workflow_synthesis_candidate"
+	InternalWorkflowRunResult          = "__workflow_run_result"
+	InternalDeferredWorkflowOutcome    = "__deferred_workflow_outcome"
+	InternalCompanionSystemEventID     = "__companion_system_event_id"
+	InternalCompanionSystemContent     = "__companion_system_content"
+	InternalOriginTriggerEventID       = "__origin_trigger_event_id"
+	InternalOriginPermissionIntent     = "__origin_permission_intent"
 	// InternalPermissionToolName correlates MCP wire names with the evaluated model alias.
 	InternalPermissionToolName     = "__permission_tool_name"
 	InternalToolExecutionOwner     = "__tool_execution_owner"

@@ -34,6 +34,7 @@ func failTurn(message string) turnFailure {
 // manually passing the same session, trigger, output, attempt, and resolution
 // arguments in positional order.
 type workflowTurnState struct {
+	deferredWorkflowOutcome        *domain.WorkflowOutcomeContinuation
 	returnCandidate                *domain.ThreadReturnCandidate
 	actx                           workflow.Context
 	sessionID                      string
@@ -653,6 +654,12 @@ func (t *workflowTurnState) completeTurn(
 	}
 	statusType := domain.EvSessionStatusIdle
 	statusPayload := map[string]any{"stop_reason": stopReason}
+	if t.deferredWorkflowOutcome != nil {
+		statusPayload[domain.InternalDeferredWorkflowOutcome] = *t.deferredWorkflowOutcome
+	}
+	if !t.isChild && t.returnCandidate != nil {
+		statusPayload[domain.InternalWorkflowSynthesisCandidate] = *t.returnCandidate
+	}
 	if t.isChild {
 		statusType = domain.EvSessionThreadStatusIdle
 		statusPayload["session_thread_id"] = t.threadID

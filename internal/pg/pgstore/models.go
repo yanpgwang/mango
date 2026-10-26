@@ -502,6 +502,16 @@ type WorkflowInvocationAttempt struct {
 	TurnAttemptID     *string
 }
 
+type WorkflowOutcomeWait struct {
+	SessionID      string
+	TriggerID      string
+	StartEventID   string
+	EndEventID     string
+	Iteration      int32
+	EvaluationOpen bool
+	State          string
+}
+
 type WorkflowPumpDecision struct {
 	SessionID      string
 	RunID          string
@@ -541,6 +551,19 @@ type WorkflowRunOutbox struct {
 	DeliveryAttempts int32
 	AvailableAt      pgtype.Timestamptz
 	LeaseToken       string
+}
+
+type WorkflowRunTerminalResult struct {
+	RunID                  string
+	SessionID              string
+	CandidateCursor        int64
+	EvaluatorEpoch         int64
+	CoordinatorExecutionID string
+	RequestID              string
+	Value                  []byte
+	PrimaryEventID         string
+	ConsumedTriggerID      *string
+	ConsumedAt             pgtype.Timestamptz
 }
 
 type Workspace struct {

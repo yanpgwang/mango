@@ -1473,10 +1473,10 @@ SELECT event.*
 FROM events AS event
 WHERE event.session_id = $1
   AND event.thread_id = $2
-  AND event.type IN (
+  AND (event.type IN (
       'user.message', 'user.custom_tool_result', 'user.tool_confirmation',
       'user.tool_result', 'agent.thread_message_received'
-  )
+  ) OR (event.type='user.define_outcome' AND EXISTS(SELECT 1 FROM workflow_outcome_waits WHERE trigger_id=event.id AND session_id=event.session_id)) OR (event.type='system.message' AND EXISTS(SELECT 1 FROM workflow_run_terminal_results WHERE primary_event_id=event.id AND session_id=event.session_id)))
   AND event.processed_at IS NOT NULL
 	AND event.turn_event_id IS NULL
   AND NOT EXISTS (
@@ -1623,6 +1623,9 @@ func (s *Store) AppendWorkflowEvents(
 			maxSeq,
 			&triggerEventID,
 		); err != nil {
+			return err
+		}
+		if err = advanceDeferredOutcomeProgressLocked(ctx, tx, &session, drafts, s.clock.Now().UTC()); err != nil {
 			return err
 		}
 		applied = true
@@ -2248,7 +2251,13 @@ func (s *Store) completeTurn(
 			if err != nil {
 				return err
 			}
-			if !pendingResume && !activeReceiptProcessedOutcome(session, trigger.Type, triggerPayload) {
+			deferred := false
+			if trigger.Type == domain.EvUserDefineOutcome {
+				if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workflow_outcome_waits WHERE session_id=$1 AND trigger_id=$2)`, sessionID, triggerEventID).Scan(&deferred); err != nil {
+					return err
+				}
+			}
+			if !pendingResume && (deferred || !activeReceiptProcessedOutcome(session, trigger.Type, triggerPayload)) {
 				priorRows, err := q.ListEventsByTurn(ctx, pgstore.ListEventsByTurnParams{
 					SessionID:   sessionID,
 					TurnEventID: &triggerEventID,
@@ -2355,6 +2364,20 @@ func (s *Store) completeTurn(
 			})
 		}
 
+		if interrupt != nil || trigger.Type == domain.EvUserInterrupt {
+			outputDrafts, err = interruptDeferredWorkflowOutcomeLocked(ctx, tx, sessionID, triggerEventID, outputDrafts)
+			if err != nil {
+				return err
+			}
+		}
+		if interrupt == nil {
+			if err = s.deferWorkflowOutcomeLocked(ctx, tx, q, session, triggerEventID, outputDrafts); err != nil {
+				return err
+			}
+		}
+		if err = finishDeferredWorkflowOutcomeLocked(ctx, tx, sessionID, outputDrafts); err != nil {
+			return err
+		}
 		if err := s.finishOutcomeGradingLocked(ctx, tx, q, sessionID, triggerEventID, outputDrafts); err != nil {
 			return err
 		}
@@ -2463,6 +2486,19 @@ func (s *Store) completeTurn(
 			}
 		}
 
+		if interrupt == nil && !gatedAfterCompletion && status == domain.StatusIdle {
+			if err = s.consumeWorkflowResultLocked(ctx, tx, sessionID, triggerEventID, outputDrafts); err != nil {
+				return err
+			}
+			blocked, err := workflowCompletionBlocked(ctx, tx, sessionID, "")
+			if err != nil {
+				return err
+			}
+			if blocked {
+				effectiveStatus = domain.StatusRunning
+				drafts = withoutTerminalIdle(drafts)
+			}
+		}
 		ownerStatus := effectiveStatus
 		if independentPrimary && effectiveStatus == domain.StatusIdle {
 			activeChildren, err := q.HasActiveChildThreads(ctx, sessionID)

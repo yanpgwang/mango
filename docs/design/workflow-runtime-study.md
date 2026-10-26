@@ -8,7 +8,7 @@ slug: /design/workflow-runtime-study
 
 The [dynamic workflow acceptance evidence](workflow-dynamic-acceptance.md)
 records the actual ten-claim JS pipeline port, independent service assertions,
-and the still-missing Run-to-primary completion loop.
+and the bounded successful Run-to-primary closure experiment.
 
 **Status: first feasibility study, 2026-10-25. No product executor is shipped.**
 This records evidence for the [program execution proposal](workflow-program-runtime.md).
@@ -451,3 +451,11 @@ budget/approval/interrupt, two Runs plus the primary, late usage and scoped
 cleanup. HTTP/OpenAPI and all three SDKs must move with that product slice.
 The public program wrapper/helper spelling, schema-error contract and operator
 controls remain proposals until those independent contract tests exist.
+
+## Successful terminal-result closure gate
+
+The [closure experiment](workflow-dynamic-acceptance.md#successful-run-to-primary-closure)
+uses the actual JS fact-check pipeline, atomic PG terminal receipt, existing
+primary Session outbox and runner. It distinguishes the program candidate,
+terminal result, primary consumption, aggregate end_turn and Outcome quality.
+Public admission and a production evaluator remain disabled.

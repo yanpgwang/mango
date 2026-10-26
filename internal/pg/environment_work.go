@@ -668,6 +668,9 @@ WHERE environment_id = $1 AND id = $2`, environmentID, workID).Scan(&activationS
       AND event.type='session.status_idle' AND event.processed_at IS NOT NULL
       AND event.payload->'stop_reason'->>'type'='end_turn'
       AND event.seq=(SELECT MAX(seq) FROM events WHERE session_id=$1)
+      AND NOT EXISTS (SELECT 1 FROM workflow_runs WHERE session_id=$1 AND state='open')
+ AND NOT EXISTS (SELECT 1 FROM workflow_run_terminal_results WHERE session_id=$1 AND consumed_at IS NULL)
+ AND NOT EXISTS (SELECT 1 FROM workflow_outcome_waits WHERE session_id=$1 AND state='waiting')
       AND NOT EXISTS (SELECT 1 FROM pending_actions WHERE session_id=$1 AND resolved_at IS NULL)
       AND NOT EXISTS (SELECT 1 FROM turn_attempts WHERE session_id=$1 AND state='active')
       AND NOT EXISTS (SELECT 1 FROM session_threads WHERE session_id=$1 AND archived_at IS NULL AND status IN ('running','rescheduling'))

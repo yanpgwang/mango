@@ -162,6 +162,10 @@ func ProjectMessages(events []Event) []Message {
 		switch e.Type {
 		case EvUserMessage:
 			add(RoleUser, contentBlocks(e.Payload))
+		case EvSystemMessage:
+			if e.Payload[InternalWorkflowRunResult] == true {
+				add(RoleUser, contentBlocks(e.Payload))
+			}
 		case EvAgentThreadMessageReceived:
 			add(RoleUser, receivedThreadMessageBlocks(e.Payload))
 		case EvAgentThreadMessageSent:
@@ -522,7 +526,7 @@ func ProjectSystemContext(base string, events []Event, trigger Event) string {
 		}
 	}
 	for _, event := range events {
-		if event.Type == EvSystemMessage {
+		if event.Type == EvSystemMessage && event.Payload[InternalWorkflowRunResult] != true {
 			appendContent(event.Payload["content"])
 		}
 	}

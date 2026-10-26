@@ -714,5 +714,12 @@ WHERE session_id = $1 AND archived_at IS NULL`, sessionID)
 	if allTerminated {
 		return domain.StatusTerminated, nil
 	}
+	blocked, err := workflowCompletionBlocked(ctx, tx, sessionID, "")
+	if err != nil {
+		return "", err
+	}
+	if blocked {
+		return domain.StatusRunning, nil
+	}
 	return domain.StatusIdle, nil
 }

@@ -565,11 +565,14 @@ func TestQuickJSFactcheckLifecycleBoundaryRealServices(t *testing.T) {
 		require.NoError(t, err)
 		session, err := f.store.GetSession(f.ctx, run.SessionID)
 		require.NoError(t, err)
-		require.Equal(t, domain.StatusIdle, session.Status)
+		require.Equal(t, domain.StatusRunning, session.Status)
 		var open, ended int
 		require.NoError(t, f.pool.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM workflow_runs WHERE session_id=$1 AND state='open'),(SELECT count(*) FROM events WHERE session_id=$1 AND type='workflow_run.status_ended')`, run.SessionID).Scan(&open, &ended))
 		require.Positive(t, open)
 		require.Zero(t, ended)
-		t.Logf("%s: primary end_turn/idle persisted with %d open Runs and zero Run terminal events; full completion is unavailable", mode, open)
+		var idle int
+		require.NoError(t, f.pool.QueryRow(f.ctx, `SELECT count(*) FROM events WHERE session_id=$1 AND type='session.status_idle'`, run.SessionID).Scan(&idle))
+		require.Zero(t, idle)
+		t.Logf("%s: primary end_turn suppressed with %d open Runs and zero Run terminal events; aggregate remains blocked", mode, open)
 	}
 }

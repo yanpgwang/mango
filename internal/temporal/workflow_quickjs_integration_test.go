@@ -87,9 +87,15 @@ func (f *quickJSVerticalFixture) admit(t *testing.T, source string) pg.WorkflowR
 }
 
 func (f *quickJSVerticalFixture) admitRequest(t *testing.T, request pg.WorkflowRunRequest) pg.WorkflowRun {
+	return f.admitWithPrimary(t, request, "must-not-run")
+}
+func (f *quickJSVerticalFixture) admitWithPrimary(t *testing.T, request pg.WorkflowRunRequest, primaryModel string) pg.WorkflowRun {
 	t.Helper()
 	now := time.Now().UTC()
-	session := domain.Session{ID: f.ids.NewID(domain.PrefixSession), AgentID: "primary", AgentVersion: 1, EnvironmentID: "env_quickjs_proof", Status: domain.StatusIdle, Metadata: map[string]any{}, CreatedAt: now, UpdatedAt: now, AgentSnapshot: domain.Agent{ID: "primary", Version: 1, Model: domain.Model{ID: "must-not-run"}}, MultiagentRoster: []domain.Agent{{ID: "reviewer", Name: "reviewer", Version: 1, Model: domain.Model{ID: "quickjs-oracle"}}}}
+	session := domain.Session{ID: f.ids.NewID(domain.PrefixSession), AgentID: "primary", AgentVersion: 1, EnvironmentID: "env_quickjs_proof", Status: domain.StatusIdle, Metadata: map[string]any{}, CreatedAt: now, UpdatedAt: now, AgentSnapshot: domain.Agent{ID: "primary", Version: 1, Model: domain.Model{ID: primaryModel}}, MultiagentRoster: []domain.Agent{{ID: "reviewer", Name: "reviewer", Version: 1, Model: domain.Model{ID: "quickjs-oracle"}}}}
+	if primaryModel != "must-not-run" {
+		session.AgentSnapshot.Multiagent = &domain.Multiagent{Type: "coordinator", Agents: []domain.AgentReference{{Type: "agent", ID: "reviewer", Version: 1}}}
+	}
 	_, err := f.store.CreateSession(f.ctx, session, nil)
 	require.NoError(t, err)
 	run, err := f.store.AdmitWorkflowRun(f.ctx, session.ID, "frozen-js", request)
@@ -97,7 +103,16 @@ func (f *quickJSVerticalFixture) admitRequest(t *testing.T, request pg.WorkflowR
 	t.Cleanup(func() {
 		threads, err := f.store.ListChildSessionThreadIDs(context.Background(), session.ID)
 		require.NoError(t, err)
-		ids := []string{workflowRunWorkflowID(run.ID)}
+		ids := []string{run.SessionID}
+		rows, err := f.pool.Query(context.Background(), `SELECT id FROM workflow_runs WHERE session_id=$1`, run.SessionID)
+		require.NoError(t, err)
+		for rows.Next() {
+			var rid string
+			require.NoError(t, rows.Scan(&rid))
+			ids = append(ids, workflowRunWorkflowID(rid))
+		}
+		require.NoError(t, rows.Err())
+		rows.Close()
 		for _, thread := range threads {
 			ids = append(ids, sessionThreadWorkflowID(thread))
 		}

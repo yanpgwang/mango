@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.temporal.io/sdk/workflow"
@@ -256,6 +257,13 @@ func runWorkflowTurnInternal(
 		maxRounds *= prepared.Outcome.MaxIterations + 1
 	}
 	outcomeIteration := 0
+	if prepared.OutcomeContinuation != nil {
+		outcomeIteration = prepared.OutcomeContinuation.Iteration
+		if prepared.OutcomeContinuation.EvaluationOpen {
+			turn.activeOutcomeEvaluationStartID = prepared.OutcomeContinuation.StartEventID
+		}
+		turn.activeOutcomeIteration = outcomeIteration
+	}
 	outcomeFinished := false
 	pauseTurnContinuations := 0
 	outputContinuations := 0
@@ -599,7 +607,7 @@ func runWorkflowTurnInternal(
 			}
 		}
 		if len(toolUses) == 0 {
-			if turn.isChild {
+			if turn.isChild || prepared.WorkflowResultTurn {
 				textOnly := len(called.Response.Content) > 0
 				for _, block := range called.Response.Content {
 					textOnly = textOnly && block.Type == "text"
@@ -610,6 +618,17 @@ func runWorkflowTurnInternal(
 			}
 			if end := modelRequestEndDraft(called, false); end != nil {
 				turn.output = append(turn.output, *end)
+			}
+			if prepared.WorkflowResultTurn {
+				text := ""
+				for _, block := range called.Response.Content {
+					if block.Type == "text" {
+						text += block.Text
+					}
+				}
+				if called.Response.StopReason != "end_turn" || !turn.returnCandidate.TextOnly || strings.TrimSpace(text) == "" {
+					return turn.complete(nil)
+				}
 			}
 			if prepared.Outcome == nil || outcomeFinished {
 				return turn.complete(nil)
@@ -634,12 +653,19 @@ func runWorkflowTurnInternal(
 					return RunTurnResult{}, err
 				}
 			}
-			if outcomeEvaluationHeartbeats {
+			continuing := prepared.OutcomeContinuation != nil && prepared.OutcomeContinuation.EvaluationOpen && prepared.OutcomeContinuation.Iteration == outcomeIteration
+			if continuing {
+				evaluationStartID, evaluationEndID = prepared.OutcomeContinuation.StartEventID, prepared.OutcomeContinuation.EndEventID
+			}
+			if outcomeEvaluationHeartbeats && !continuing {
 				turn.output = append(turn.output, outcomeEvaluationStartDraft(
 					*prepared.Outcome,
 					outcomeIteration,
 					evaluationStartID,
 				))
+				if prepared.OutcomeContinuation != nil {
+					turn.output[len(turn.output)-1].Payload[domain.InternalWorkflowOutcomeEndEvent] = evaluationEndID
+				}
 				if err := turn.flushOutput(); err != nil {
 					return RunTurnResult{}, err
 				}
@@ -648,16 +674,17 @@ func runWorkflowTurnInternal(
 			}
 			evaluated, evaluationOutcome, err := turn.evaluateOutcome(
 				EvaluateOutcomeInput{
-					SessionID:    sessionID,
-					StartEventID: evaluationStartID,
-					EndEventID:   evaluationEndID,
-					Model:        prepared.Request.Model,
-					Effort:       prepared.Request.Effort,
-					Speed:        prepared.Request.Speed,
-					Outcome:      *prepared.Outcome,
-					Candidate:    candidate,
-					Iteration:    outcomeIteration,
-					FinalCycle:   finalCycle,
+					TriggerEventID: triggerEventID,
+					SessionID:      sessionID,
+					StartEventID:   evaluationStartID,
+					EndEventID:     evaluationEndID,
+					Model:          prepared.Request.Model,
+					Effort:         prepared.Request.Effort,
+					Speed:          prepared.Request.Speed,
+					Outcome:        *prepared.Outcome,
+					Candidate:      candidate,
+					Iteration:      outcomeIteration,
+					FinalCycle:     finalCycle,
 				},
 			)
 			if err != nil {
@@ -665,6 +692,14 @@ func runWorkflowTurnInternal(
 			}
 			if evaluationOutcome.Interrupted && !evaluationOutcome.Completed {
 				return turn.completeInterrupted()
+			}
+			if evaluated.WorkflowDeferred {
+				root := triggerEventID
+				if prepared.OutcomeContinuation != nil {
+					root = prepared.OutcomeContinuation.TriggerID
+				}
+				turn.deferredWorkflowOutcome = &domain.WorkflowOutcomeContinuation{EvaluationOpen: true, TriggerID: root, StartEventID: evaluationStartID, EndEventID: evaluationEndID, Iteration: outcomeIteration, Outcome: *prepared.Outcome}
+				return turn.complete(nil)
 			}
 			if evaluated.FatalError != "" {
 				if evaluationOutcome.Interrupted {
